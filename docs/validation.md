@@ -38,7 +38,7 @@ An intermediate wheel,
 `a6aea761286a3806b9ebc02beae54366a21e24696b7fd8dae14bf85acc7043f0`,
 corrected the review instruction for retaining native tool-result evidence and its generated
 audit and manifest metadata; its executable modules matched the full native matrix wheel.
-The publication wheel is
+The review-history correction wheel is
 `1c24238e2271f8d4fb04b8ee8471467aac86525684748e79b3fd17b261b26552`.
 It additionally fixes review-history handling: a full review does not parse unused prior
 reports, inherited review evidence excludes unrelated generic assignments, and conflicting
@@ -48,6 +48,16 @@ relevant evidence and acceptance of equivalent prior passing reviews. The update
 macOS and Linux suites, external package checks, real uv installation, self-installation,
 and fresh activation on both hosts cover this wheel. The earlier full native lifecycle,
 messaging, and learning results remain tied to their original wheel above.
+The final publication wheel is
+`aa91a4ae93759e5380ca866a8b5fb57821a8f70839e1b9877674f6612a194b8f`.
+It only supplements the comment-triage instructions and generated audit and manifest: the existing
+third channel collects review bodies, replies belong in the general PR discussion, and
+acknowledgments use a distinct agent marker while the handled marker belongs only on the
+final response. Local API fixtures verified collection, acknowledgment exclusion without
+closing the original item, and final handled-marker filtering. Its executable modules are unchanged from the
+review-history correction wheel; the earlier native lifecycle claims keep their original
+artifact scope. Duplicate wording was removed to preserve the existing entry-size limit;
+the prompt-loading suite passed without changing its limit or tests.
 Linux ran from the built source archive with Python 3.14. The development selector accepts
 the 3.14 series so it also works with uv installations whose interpreter catalog predates
 a particular patch release.

@@ -104,7 +104,7 @@ Skill entry 외 필수 reference, path rule, hook protocol, name/path wrapper는
 | `sync-dev-docs` | 984 | 93 | 12938 |
 | `sync-docs` | 2924 | 88 | 14878 |
 | `sync-user-docs` | 972 | 92 | 12926 |
-| `triage-comments` | 10545 | 110 | 22499 |
+| `triage-comments` | 10869 | 110 | 22823 |
 | `update-dependencies` | 1639 | 74 | 13593 |
 | `update-project-status` | 953 | 63 | 12907 |
 

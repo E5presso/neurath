@@ -34,25 +34,30 @@ REPO=example/project PR_NUMBER={N} bash {MONITOR_PR_SKILL_DIR}/scripts/collect_c
 > `{MONITOR_PR_SKILL_DIR}`은 `monitor-pr` 스킬 디렉토리 경로.
 > 동일 `.agents/skills/` 하위이므로 상대 경로로 `$(dirname {SKILL_DIR})/monitor-pr`로 접근.
 
-### 2채널 구조
+### 3채널 구조
 
 | 채널 | 소스 | 설명 |
 |------|------|------|
 | CH1 | 인라인 리뷰 코멘트 (`pulls/comments` REST) | `in_reply_to_id` 추적으로 내가 reply하지 않은 코멘트 |
 | CH2 | 일반 PR 코멘트 (`issues/comments` REST) | 내가 응답하지 않은 코멘트 |
+| CH3 | 리뷰 본문 (`pulls/reviews` REST) | 비어 있거나 승인·기각된 리뷰를 제외한 미응답 본문 |
+
+CH3의 수신 확인과 최종 답변은 일반 PR 코멘트에 원본 리뷰 링크를 포함해 남긴다.
 
 `TOTAL == 0`이면 처리할 코멘트가 없으므로 즉시 종료한다.
 
 ## 즉시 수신 확인 (판단·작업보다 먼저)
 
 수집된 미처리 코멘트가 있으면, 판단 루프에 들어가기 전에 각 코멘트 스레드(CH1)
-또는 PR(CH2)에 **수신 확인 코멘트를 먼저 게시한다**. 리뷰어는 GitHub에서 응답이
+또는 PR(CH2·CH3)에 **수신 확인 코멘트를 먼저 게시한다**. 리뷰어는 GitHub에서 응답이
 보이기 전까지 agent가 이벤트를 놓쳤다고 판단할 수밖에 없으므로, 확인 응답은 모든
 분석·구현·검증보다 앞선다.
 
 - 내용은 한 문장이면 충분하다: 지적을 확인했고 검토를 시작했다는 사실, 그리고
   결론 코멘트가 뒤따른다는 것.
 - 수신 확인은 판단이 아니다. 수용/반론 결론, 원인 추정, 수정 약속을 담지 않는다.
+- 수신 확인에는 `<!-- claude-agent-reply ack={id} -->`를 붙인다. 에이전트의 확인
+  메시지는 재수집하지 않되 원본은 미처리로 유지하는 마커다. `to={id}`는 쓰지 않는다.
 - 결론 코멘트는 기존 절차대로 판단·작업·검증이 끝난 뒤 같은 스레드에 게시한다.
 
 ## 판단 루프 (코멘트 1건당)
@@ -147,7 +152,7 @@ REPO=example/project PR_NUMBER={N} bash {MONITOR_PR_SKILL_DIR}/scripts/collect_c
 - "틀렸습니다"가 아니라 "검토 결과 현행 유지로 판단했습니다. 근거:" 형식을 쓴다.
 - 수용이든 반론이든, 판단 과정을 스레드에 투명하게 남긴다.
 - **사용자 confirm 질의 금지** — 코멘트 처리 방향은 본 스킬이 자체 판단으로 결정한다. "이 코멘트 어떻게 할까요?" 형태의 사용자 질문 금지. 재시도 후에도 결정 못 하면 위 "default = 수용" 규칙 적용.
-- **에이전트 reply 마커 필수**: 모든 reply 본문 끝에 `<!-- claude-agent-reply to=<id> -->`를 포함한다 (`<id>`는 응답 대상 코멘트/리뷰의 숫자 GitHub ID). collect_comments.sh가 이 태그를 기반으로 "처리된 ID 집합"을 구성하므로 id 누락 시 대상 매칭 실패로 원본 코멘트가 미처리 상태로 남는다. 상세 포맷과 채널별 예시는 `monitor-pr/SKILL.md` "에이전트 reply 마커" 참조.
+- **최종 reply 마커**: 최종 답변 끝에 `<!-- claude-agent-reply to=<id> -->`를 붙인다. `<id>`는 대상 코멘트·리뷰의 숫자 GitHub ID이며, 수집기가 처리 완료로 기록할 ID다. 수신 확인은 `ack=<id>`만 사용한다. 포맷은 `monitor-pr/SKILL.md`의 "에이전트 reply 마커"를 참고한다.
 
 ## 스타일 피드백의 하네스 환류
 
