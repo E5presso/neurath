@@ -1,0 +1,71 @@
+{
+  "schema": "neurath-design-collaboration-v3",
+  "canvas": {
+    "preferred": "penpot",
+    "alternatives": [
+      "figma"
+    ],
+    "experimental": [
+      "pen.dev"
+    ],
+    "implementation_source_of_truth": false,
+    "visualize_product_direction_allowed": false
+  },
+  "authorities": {
+    "product_meaning": "repository-spec",
+    "visual_direction": "user-approved-canvas-node",
+    "token_values": "repository-design-source-if-present",
+    "components": "repository-source-if-present",
+    "runtime_outcome": "deployed-product-surface",
+    "visual_acceptance": "user"
+  },
+  "token_sync": {
+    "direction": "repository-to-canvas",
+    "canvas_to_repository": "explicit-user-approved-proposal-only"
+  },
+  "implementation_gate": {
+    "exact_canvas_node_required": true,
+    "surface_required": true,
+    "state_required": true,
+    "visualize_fallback": "forbidden",
+    "unavailable_canvas_result": "blocked"
+  },
+  "runtime_owned_visuals": {
+    "canvas_representation": "runtime-capture-or-static-export-or-slot",
+    "canvas_reconstruction": "forbidden"
+  },
+  "review": {
+    "comparison": "approved-node-and-runtime-capture-side-by-side",
+    "agent_visual_acceptance": "forbidden",
+    "user_decision_required": true
+  },
+  "content_reset": {
+    "deletable_content": [
+      "design-values",
+      "brand-assets",
+      "product-visuals",
+      "discussion-records",
+      "canvas-artifacts"
+    ],
+    "protected_capabilities": [
+      "design-collaboration-policy",
+      "design-workflow-skills",
+      "design-canvas-runtime-mapping",
+      "connector-registration",
+      "collaboration-regression-oracle",
+      "capability-retirement-runtime-guard"
+    ],
+    "missing_design_source": "clean-slate",
+    "cross_plane_deletion": "fail-closed"
+  },
+  "connector_lifecycle": {
+    "registration_class": "capability",
+    "artifact_deletion_implies_uninstall": false,
+    "uninstall_requires_explicit_connector_retirement": true,
+    "credential_recovery_from_logs": "forbidden"
+  },
+  "compaction": {
+    "preservation_fact_key": "design.collaboration.preservation-boundary",
+    "preservation_fact_value": "content-may-reset;capability-and-connector-preserved"
+  }
+}

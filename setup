@@ -1,0 +1,57 @@
+#!/bin/bash
+# Install this distribution in a persistent tool environment, then set up a target repo.
+set -euo pipefail
+
+usage() {
+    cat <<'USAGE'
+사용법: ./setup /대상/프로젝트 [--host codex|claude-code] [--profile PROFILE] [--dry-run] [--json]
+
+소스 빌드, Python 3.14 도구 환경 준비, 프로젝트 설치, 로컬 진단을 한 번에 실행합니다.
+대상은 기존 Git 저장소여야 합니다. 새 프로젝트라면 먼저 git init을 실행하세요.
+--self는 Neurath 개발 저장소 자체에 설치합니다.
+--dry-run은 대상 프로젝트 변경만 미리 봅니다. 도구 환경은 준비합니다.
+uv가 없으면 공식 설치기로 준비합니다. NEURATH_NO_BOOTSTRAP=1로 자동 다운로드를 끌 수 있습니다.
+USAGE
+}
+
+fail() { printf 'neurath setup: %s\n' "$*" >&2; exit 2; }
+
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then usage; exit 0; fi
+if [[ $# -eq 0 ]]; then usage >&2; exit 2; fi
+case "$(uname -s)" in Darwin|Linux) ;; *) fail "macOS/Linux에서 실행하세요." ;; esac
+command -v git >/dev/null 2>&1 || fail "Git을 먼저 설치하세요."
+source_dir=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+self_install=0
+if [[ "${1:-}" == "--self" ]]; then
+    self_install=1
+    shift
+    set -- "$source_dir" "$@"
+fi
+[[ -d "$1" ]] || fail "대상 폴더가 없습니다: $1"
+target=$(CDPATH= cd -- "$1" && pwd -P)
+shift
+git_root=$(git -C "$target" rev-parse --show-toplevel 2>/dev/null) || fail "대상에서 먼저 git init을 실행하세요."
+git_root=$(CDPATH= cd -- "$git_root" && pwd -P)
+[[ "$git_root" == "$target" ]] || fail "대상 Git root를 지정하세요: $git_root"
+[[ "$target" != "$source_dir" || "$self_install" == "1" ]] || fail "자기 설치는 ./setup --self를 사용하세요."
+
+uv_bin=$(command -v uv || true)
+uv_install_dir=${UV_INSTALL_DIR:-${HOME}/.local/bin}
+if [[ -z "$uv_bin" && -x "$uv_install_dir/uv" ]]; then uv_bin="$uv_install_dir/uv"; fi
+if [[ -z "$uv_bin" ]]; then
+    [[ "${NEURATH_NO_BOOTSTRAP:-0}" != "1" ]] || fail "uv가 필요합니다: https://docs.astral.sh/uv/getting-started/installation/"
+    command -v curl >/dev/null 2>&1 || fail "uv 또는 curl을 먼저 설치하세요."
+    printf '%s\n' 'uv를 공식 설치기로 준비합니다. 셸 설정 파일은 수정하지 않습니다.' >&2
+    installer=$(mktemp)
+    trap 'rm -f -- "$installer"' EXIT
+    curl --fail --silent --show-error --location https://astral.sh/uv/install.sh --output "$installer"
+    UV_INSTALL_DIR="$uv_install_dir" UV_NO_MODIFY_PATH=1 sh "$installer" >&2
+    rm -f -- "$installer"
+    trap - EXIT
+    uv_bin="$uv_install_dir/uv"
+    [[ -x "$uv_bin" ]] || fail "uv 설치 경로를 확인하세요: $uv_bin"
+fi
+
+printf '%s\n' 'Neurath 전용 도구 환경과 Python 3.14를 준비합니다…' >&2
+exec "$uv_bin" --no-config run --isolated --no-project --python 3.14 \
+    python -I "$source_dir/tools/setup_runtime.py" "$uv_bin" "$source_dir" "$target" "$@"

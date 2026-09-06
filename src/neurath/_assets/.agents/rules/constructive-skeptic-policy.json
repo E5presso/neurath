@@ -1,0 +1,92 @@
+{
+  "policy_id": "constructive-skeptic-v1",
+  "scenarios": {
+    "unsupported_fix": {
+      "surface": "collaboration",
+      "decision": "defer",
+      "required_evidence": [
+        "independent_verification",
+        "contradiction_or_risk",
+        "alternative"
+      ],
+      "blocker_count": 0,
+      "dedup": "not_applicable",
+      "rebuttal_outcome": "challenge_with_evidence"
+    },
+    "correct_user": {
+      "surface": "collaboration",
+      "decision": "allow",
+      "required_evidence": [
+        "supporting_reason",
+        "confirmed_decision"
+      ],
+      "blocker_count": 0,
+      "dedup": "not_applicable",
+      "rebuttal_outcome": "explain_and_execute"
+    },
+    "means_goal_mismatch": {
+      "surface": "collaboration",
+      "decision": "defer",
+      "required_evidence": [
+        "user_goal",
+        "practical_constraint",
+        "tradeoff",
+        "convergent_alternative"
+      ],
+      "blocker_count": 0,
+      "dedup": "not_applicable",
+      "rebuttal_outcome": "propose_convergent_compromise"
+    },
+    "speculative_review": {
+      "surface": "review",
+      "decision": "allow",
+      "required_evidence": [
+        "warning_or_gap_triage",
+        "concrete_risk"
+      ],
+      "blocker_count": 0,
+      "dedup": "root_cause_key",
+      "rebuttal_outcome": "open"
+    },
+    "reproducible_blocker": {
+      "surface": "review",
+      "decision": "deny",
+      "required_evidence": [
+        "head_sha",
+        "reproduction",
+        "impact",
+        "root_cause_key"
+      ],
+      "blocker_count": 1,
+      "dedup": "root_cause_key",
+      "rebuttal_outcome": "unresolved"
+    },
+    "strong_rebuttal": {
+      "surface": "review",
+      "decision": "allow",
+      "required_evidence": [
+        "rebuttal_evidence",
+        "same_strength_revalidation"
+      ],
+      "blocker_count": 0,
+      "dedup": "root_cause_key",
+      "rebuttal_outcome": "accepted"
+    }
+  },
+  "review_receipt": {
+    "required_fields": [
+      "head_sha",
+      "reproduction",
+      "impact",
+      "root_cause_key",
+      "decision",
+      "rebuttal_evidence"
+    ],
+    "critical_decision": "deny",
+    "nonblocking_decisions": [
+      "allow",
+      "defer"
+    ],
+    "deduplicate_by": "root_cause_key"
+  }
+}

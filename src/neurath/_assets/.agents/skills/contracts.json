@@ -1,0 +1,1935 @@
+{
+  "skills": {
+    "autopilot": {
+      "workflow_semantics": "semantic",
+      "adaptive_control": "required",
+      "terminal_states": [
+        "merged",
+        "failed",
+        "skipped",
+        "blocked"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "collect_issues",
+          "min_evidence_count": 2,
+          "required_evidence": [
+            "source_of_truth",
+            "normalized_items"
+          ],
+          "phase_file": "phases/phase-1-collection.md"
+        },
+        {
+          "id": 2,
+          "name": "dependency_dag",
+          "min_evidence_count": 1,
+          "required_evidence": [
+            "dependency_dag"
+          ],
+          "phase_file": "phases/phase-2-dag.md"
+        },
+        {
+          "id": 3,
+          "name": "execute_waves",
+          "min_evidence_count": 2,
+          "required_evidence": [
+            "wave_plan",
+            "process_ticket_terminal_states"
+          ],
+          "phase_file": "phases/phase-3-wave-loop.md"
+        },
+        {
+          "id": 4,
+          "name": "recovery",
+          "min_evidence_count": 1,
+          "required_evidence": [
+            "recovery_result"
+          ],
+          "phase_file": "phases/phase-3_5-recovery.md"
+        },
+        {
+          "id": 5,
+          "name": "meta_detection",
+          "min_evidence_count": 7,
+          "required_evidence": [
+            "meta_detection_result",
+            "matched_signal_inventory",
+            "metadata_verification_result",
+            "fixed_point_result",
+            "weak_or_failed_gaps",
+            "meta_queue_result",
+            "main_session_inspection"
+          ],
+          "phase_file": "phases/phase-3_6-meta-detection.md"
+        },
+        {
+          "id": 6,
+          "name": "intent_audit_and_docs",
+          "min_evidence_count": 2,
+          "required_evidence": [
+            "audit_spec_result",
+            "sync_docs_result"
+          ],
+          "phase_file": "phases/phase-4-intent-audit.md"
+        },
+        {
+          "id": 7,
+          "name": "terminal_report",
+          "min_evidence_count": 1,
+          "required_evidence": [
+            "terminal_report"
+          ],
+          "phase_file": "phases/phase-6-final-report.md"
+        }
+      ],
+      "ordered_fragments": [
+        "강한 전제조건",
+        "대상 해석",
+        "Phase 개요",
+        "1 | 이슈 수집",
+        "2 | dependency DAG 구성",
+        "3 | 각 wave 실행",
+        "4 | `/audit-spec` 실행",
+        "6 | 병합된 PR 보고"
+      ],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        ".agents/rules/tool-runtime-map.md",
+        "`mergeable-clean`과 `merged`를 구분",
+        "[autopilot N/M (P%) ETA Xh Ym] message",
+        "`gh` 또는 GitHub connector를 source of truth로 사용"
+      ],
+      "tool_runtime_map_required": true,
+      "phase_files_required": true
+    },
+    "automate-qa": {
+      "workflow_semantics": "semantic",
+      "adaptive_control": "required",
+      "terminal_states": [
+        "qa-complete",
+        "blocked",
+        "failed"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "scenario_and_environment",
+          "min_evidence_count": 5,
+          "required_evidence": [
+            "scenario_source",
+            "target_environment",
+            "source_research_evidence",
+            "pre_runtime_verification",
+            "native_client_availability"
+          ],
+          "evidence_patterns": {
+            "source_research_evidence": "official_source|primary source|no_public_capability_question",
+            "pre_runtime_verification": "static|unit|no_source_change",
+            "native_client_availability": "available|unavailable|blocked"
+          },
+          "phase_file": "phases/phase-1-scenario-environment.md"
+        },
+        {
+          "id": 2,
+          "name": "deployed_surface_evidence",
+          "min_evidence_count": 3,
+          "required_evidence": [
+            "client_surface_evidence",
+            "network_or_api_evidence",
+            "persistence_evidence"
+          ],
+          "phase_file": "phases/phase-2-deployed-surface-evidence.md",
+          "evidence_patterns": {
+            "client_surface_evidence": "screenshot|video|accessibility|browser|mobile|client artifact",
+            "network_or_api_evidence": "request|response|HAR|status|trace|API artifact",
+            "persistence_evidence": "database|db|read-back|query|row|document|persistence artifact"
+          }
+        },
+        {
+          "id": 3,
+          "name": "gap_and_loop_closure",
+          "min_evidence_count": 7,
+          "required_evidence": [
+            "gap_classification",
+            "root_cause_disposition",
+            "triage_decision",
+            "post_fix_pre_runtime_verification",
+            "deployment_evidence",
+            "regression_evidence",
+            "loop_closure_result"
+          ],
+          "phase_file": "phases/phase-3-gap-loop-closure.md",
+          "evidence_patterns": {
+            "root_cause_disposition": "no_gap|routed|confirmed_shared_invariant|confirmed_local_with_evidence",
+            "post_fix_pre_runtime_verification": "not_applicable_no_fix|routed|static|unit",
+            "deployment_evidence": "deployment|environment|release|rollout|service endpoint",
+            "regression_evidence": "fresh session|cache-bypass|re-run|regression artifact",
+            "loop_closure_result": "closed|processed|routed|blocked|ticket|process-ticket"
+          }
+        }
+      ],
+      "ordered_fragments": [
+        "loop closure",
+        "공식 문서와 primary source 조사를 먼저 수행",
+        "코드 수정과 정적·단위 검증을 먼저 끝냅니다",
+        "실제 client를 통해 user-visible behavior를 실행",
+        "screenshot",
+        "gap을 다음으로 분류"
+      ],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        ".agents/rules/tool-runtime-map.md",
+        "tool:source_research",
+        "tool:browser",
+        "tool:native_mobile",
+        "client_surface_evidence",
+        "network_or_api_evidence",
+        "persistence_evidence",
+        "regression_evidence",
+        "loop_closure_result"
+      ],
+      "tool_runtime_map_required": true,
+      "phase_files_required": true
+    },
+    "commit": {
+      "workflow_semantics": "operational-projection",
+      "adaptive_control": "not-applicable",
+      "terminal_states": [
+        "committed",
+        "failed",
+        "blocked"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "status_and_diff",
+          "min_evidence_count": 2,
+          "required_evidence": [
+            "git_status",
+            "diff_review"
+          ]
+        },
+        {
+          "id": 2,
+          "name": "stage_scope",
+          "min_evidence_count": 1,
+          "required_evidence": [
+            "staged_files"
+          ]
+        },
+        {
+          "id": 3,
+          "name": "commit",
+          "min_evidence_count": 1,
+          "required_evidence": [
+            "commit_sha"
+          ]
+        }
+      ],
+      "ordered_fragments": [
+        "`git status --short --branch`",
+        "staged/unstaged diff",
+        "관련 파일만 stage",
+        "commit 형식"
+      ],
+      "required_fragments": [
+        ".neurath/run engine scripts.skill_harness.phase_runner",
+        "관련 파일만 stage",
+        "`--no-verify`로 검증을 우회하지 않습니다"
+      ],
+      "tool_runtime_map_required": false
+    },
+    "create-pr": {
+      "workflow_semantics": "operational-projection",
+      "adaptive_control": "not-applicable",
+      "terminal_states": [
+        "pr-created",
+        "blocked",
+        "failed"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "branch_state",
+          "min_evidence_count": 2,
+          "required_evidence": [
+            "git_status",
+            "remote_branch"
+          ]
+        },
+        {
+          "id": 2,
+          "name": "push",
+          "min_evidence_count": 1,
+          "required_evidence": [
+            "remote_head"
+          ]
+        },
+        {
+          "id": 3,
+          "name": "pr",
+          "min_evidence_count": 7,
+          "required_evidence": [
+            "pr_url",
+            "pr_body_audit",
+            "acceptance_handoff",
+            "pr_metadata_readback",
+            "linked_issue_readback",
+            "github_metadata_language"
+          ],
+          "evidence_patterns": {
+            "github_metadata_language": "validator=scripts\\.skill_harness\\.github_metadata_language.*policy_passed=true"
+          }
+        }
+      ],
+      "ordered_fragments": [
+        "`git status --short --branch` 확인",
+        "branch remote 확인",
+        "push 후 local `HEAD`가 remote에 도달했는지 확인",
+        "acceptance handoff를 준비",
+        "즉시 PR을 생성",
+        "PR 다시 읽기"
+      ],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        ".agents/rules/tool-runtime-map.md",
+        "GitHub metadata는 대상 프로젝트가 정한 언어와 형식",
+        "연결된 GitHub Issue",
+        "--acceptance-file",
+        "--acceptance-missing",
+        "acceptance_check: missing",
+        "assignee",
+        "labels",
+        "remote가 없으면"
+      ],
+      "tool_runtime_map_required": true
+    },
+    "create-ticket": {
+      "workflow_semantics": "operational-projection",
+      "adaptive_control": "not-applicable",
+      "terminal_states": [
+        "created",
+        "blocked",
+        "failed"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "prepare_issue_content",
+          "min_evidence_count": 9,
+          "required_evidence": [
+            "content_plan",
+            "body_files",
+            "label_plan",
+            "assignee_plan",
+            "relationship_plan",
+            "domain_dictionary_lookup",
+            "task_size_audit",
+            "parallelization_plan"
+          ]
+        },
+        {
+          "id": 2,
+          "name": "create_github_objects",
+          "min_evidence_count": 5,
+          "required_evidence": [
+            "created_issue_urls",
+            "milestone_result",
+            "metadata_mutation_result"
+          ]
+        },
+        {
+          "id": 3,
+          "name": "verify_readback",
+          "min_evidence_count": 7,
+          "required_evidence": [
+            "readback_issues",
+            "readback_metadata",
+            "metadata_readback",
+            "blocked_by_metadata",
+            "task_size_readback",
+            "github_metadata_language",
+            "verification_result"
+          ],
+          "evidence_patterns": {
+            "github_metadata_language": "validator=scripts\\.skill_harness\\.github_metadata_language.*policy_passed=true"
+          }
+        },
+        {
+          "id": 4,
+          "name": "report_result",
+          "min_evidence_count": 1,
+          "required_evidence": [
+            "ticket_report"
+          ]
+        }
+      ],
+      "ordered_fragments": [
+        "## 전제조건",
+        "## Phase 개요",
+        "## Template 선택",
+        "## Metadata policy",
+        "## 생성 절차",
+        "## 검증",
+        "## 최종 보고"
+      ],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        ".agents/rules/tool-runtime-map.md",
+        "GitHub metadata는 대상 프로젝트가 정한 언어와 형식",
+        ".github/ISSUE_TEMPLATE/feature.yml",
+        ".github/ISSUE_TEMPLATE/bug.yml",
+        ".agents/skills/plan-issues/templates.md",
+        "--body-file",
+        "labels",
+        "assignee",
+        "milestone",
+        "parent",
+        "blocked-by",
+        "## Domain Dictionary Lookup",
+        "## Task Size Audit",
+        "task_size_audit",
+        "parallelization_plan",
+        "blocked_by_metadata",
+        "GitHub read-back"
+      ],
+      "tool_runtime_map_required": true
+    },
+    "evaluate-harness": {
+      "workflow_semantics": "semantic",
+      "adaptive_control": "required",
+      "terminal_states": [
+        "evaluated",
+        "blocked",
+        "failed"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "define_failure_scenario",
+          "min_evidence_count": 3,
+          "required_evidence": [
+            "failure_scenario",
+            "source_capability_inventory",
+            "acceptance_matrix"
+          ],
+          "evidence_patterns": {
+            "source_capability_inventory": "source_sha=[0-9a-f]{40}.*pass_count=([2-9]|[1-9][0-9]+).*new_capability_counts=[0-9]+(\\|[0-9]+)+.*capability_ids=[^ ]+.*capability_count=[0-9]+.*source_files=[0-9]+.*complete=true.*saturated=true.*manifest=[^ ]+.*manifest_sha=[0-9a-f]{64}",
+            "acceptance_matrix": "matrix_id=[0-9a-f]{64}.*frozen=true.*head_sha=[0-9a-f]{40}.*worktree_sha=[0-9a-f]{64}.*rows=[^ ]+.*row_specs=[^ ]+.*row_count=[0-9]+.*decisions=[^ ]+.*row_nodes=[^ ]+"
+          }
+        },
+        {
+          "id": 2,
+          "name": "independent_evaluation",
+          "min_evidence_count": 5,
+          "required_evidence": [
+            "project_mapping",
+            "independent_evaluator_report",
+            "finding_reproduction",
+            "root_cause_deduplication",
+            "enforcement_classification"
+          ],
+          "evidence_patterns": {
+            "finding_reproduction": "matrix_id=[0-9a-f]{64}.*head_sha=[0-9a-f]{40}.*worktree_sha=[0-9a-f]{64}.*finding_ids=[^ ]+.*reproduced=true.*commands=[0-9]+.*expected_actual_pairs=[0-9]+.*reproduction_specs=[^ ]+.*reproduction_nodes=[^ ]+",
+            "root_cause_deduplication": "matrix_id=[0-9a-f]{64}.*finding_ids=[^ ]+.*stable_rule_ids=[^ ]+.*mapped=true.*dedup_specs=[^ ]+"
+          }
+        },
+        {
+          "id": 3,
+          "name": "gap_and_verification",
+          "min_evidence_count": 7,
+          "required_evidence": [
+            "weak_or_failed_gaps",
+            "patch_recommendation",
+            "deterministic_enforcement_gate",
+            "rules_skills_guidance_only",
+            "verification_result",
+            "fixed_matrix_verification_result",
+            "harness_evolution_result"
+          ],
+          "evidence_patterns": {
+            "verification_result": "matrix_id=[0-9a-f]{64}.*head_sha=[0-9a-f]{40}.*worktree_sha=[0-9a-f]{64}.*result=(pass|approach_change_required).*row_count=[0-9]+.*blocking_findings=[0-9]+",
+            "fixed_matrix_verification_result": "matrix_id=[0-9a-f]{64}.*head_sha=[0-9a-f]{40}.*worktree_sha=[0-9a-f]{64}.*rows=[^ ]+.*row_count=[0-9]+.*result=(pass|approach_change_required).*blocking_findings=[0-9]+.*row_nodes=[^ ]+",
+            "harness_evolution_result": "matrix_id=[0-9a-f]{64}.*head_sha=[0-9a-f]{40}.*worktree_sha=[0-9a-f]{64}.*action=(promote|no_change|approach_change_required|defer).*finding_ids=[^ ]+.*harness_paths=[^ ]+.*regression_nodes=[^ ]+"
+          }
+        }
+      ],
+      "ordered_fragments": [
+        "failure scenario",
+        "source_capability_inventory",
+        "독립 평가자",
+        "enforcement를 분류",
+        "필수 evidence"
+      ],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        "source_capability_inventory",
+        "acceptance matrix",
+        "independent_evaluator_report",
+        "반복되는 유효 finding",
+        "탐지는 넓게, 현재 작업의 조치는 좁게",
+        "평가자 보고서가 아직 없다는 이유만으로 작업을 종료하지 않습니다",
+        "추측성",
+        "root_cause_deduplication",
+        "weak_or_failed_gaps",
+        "verification_result",
+        "references/convergence.md",
+        "references/verification-evidence.md"
+      ],
+      "required_resource_fragments": {
+        "references/convergence.md": [
+          "initial full pass 뒤 delta-only pass를 반복",
+          "마지막 delta pass의 신규 capability가 0",
+          "source inventory pass 횟수 상한은 두지 않습니다",
+          "90분 wall-clock budget",
+          "generation 수는 고정하지 않습니다",
+          "verified goal delta",
+          "authoritative resource delta",
+          "zero-progress",
+          "watchdog은 success, convergence, efficiency authority가 아닙니다"
+        ]
+      }
+    },
+    "monitor-pr": {
+      "workflow_semantics": "operational-projection",
+      "adaptive_control": "not-applicable",
+      "terminal_states": [
+        "mergeable-clean",
+        "merged",
+        "failed",
+        "blocked"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "start_monitor",
+          "min_evidence_count": 1,
+          "required_evidence": [
+            "monitor_start"
+          ]
+        },
+        {
+          "id": 2,
+          "name": "record_subscription",
+          "min_evidence_count": 1,
+          "required_evidence": [
+            "monitor_event_subscription"
+          ]
+        },
+        {
+          "id": 3,
+          "name": "resume_event",
+          "min_evidence_count": 1,
+          "required_evidence": [
+            "monitor_event"
+          ]
+        },
+        {
+          "id": 4,
+          "name": "terminal_state",
+          "min_evidence_count": 1,
+          "required_evidence": [
+            "terminal_state"
+          ]
+        }
+      ],
+      "ordered_fragments": [
+        "## Local Monitor Contract",
+        "## Owner lifecycle과 mailbox",
+        "## Monitor 시작",
+        "## 실제 변화 분류",
+        "## Event 처리 전 읽기",
+        "## 종료 조건"
+      ],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        ".agents/rules/tool-runtime-map.md",
+        "mergeable-clean",
+        "merged",
+        "failed",
+        "blocked",
+        "local-pr-monitor",
+        "local_pr_monitor.py",
+        "launchctl bootstrap",
+        "KeepAlive.SuccessfulExit=false",
+        "heartbeat_at_epoch",
+        "--workflow-id",
+        "runtime이 주입한 exact",
+        "session_id",
+        "workflow_id",
+        "StateHandle",
+        "SkillStateStore",
+        "process-local observation cache",
+        "canonical session/workflow state",
+        "authority source",
+        "--poll-interval-seconds 30",
+        "owner_lifecycle",
+        "monitor_mailbox",
+        "--resume-command",
+        "monitor_event_readback"
+      ],
+      "tool_runtime_map_required": true,
+      "required_resource_fragments": {
+        "references/event-delivery.md": [
+          "collector-only-owner-unavailable",
+          "active-turn-deferred",
+          "NEURATH_MANAGED_APP_SERVER=1",
+          "final-local-review",
+          "same event prompt",
+          "## Delivery protocol",
+          "## Hook enforcement",
+          "## Review와 push",
+          "## Monitor Event Block",
+          "/pr-review <PR>",
+          "`ai-review` status"
+        ]
+      }
+    },
+    "optimize-harness": {
+      "workflow_semantics": "semantic",
+      "adaptive_control": "required",
+      "terminal_states": [
+        "optimized",
+        "blocked",
+        "failed"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "inventory",
+          "min_evidence_count": 5,
+          "required_evidence": [
+            "prompt_surface_inventory",
+            "prompt_measurement_baseline",
+            "source_capability_inventory",
+            "project_mapping",
+            "conditional_load_projection"
+          ]
+        },
+        {
+          "id": 2,
+          "name": "optimize",
+          "min_evidence_count": 5,
+          "required_evidence": [
+            "prompt_delta",
+            "behavior_equivalence_check",
+            "deterministic_enforcement_gate",
+            "rules_skills_guidance_only",
+            "authoritative_pointer_readback"
+          ]
+        },
+        {
+          "id": 3,
+          "name": "evaluate",
+          "min_evidence_count": 2,
+          "required_evidence": [
+            "evaluate_harness_result",
+            "verification_result"
+          ]
+        }
+      ],
+      "ordered_fragments": [
+        "inventory",
+        "source_capability_inventory",
+        "behavior를 약화하지 않는",
+        "`/evaluate-harness`",
+        "필수 evidence"
+      ],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        "prompt_surface_inventory",
+        "prompt_measurement_baseline",
+        "conditional_load_projection",
+        "prompt_delta",
+        "source_capability_inventory",
+        "behavior_equivalence_check",
+        "evaluate_harness_result",
+        "verification_result"
+      ]
+    },
+    "plan-issues": {
+      "workflow_semantics": "semantic",
+      "adaptive_control": "required",
+      "terminal_states": [
+        "persisted",
+        "blocked"
+      ],
+      "phase_contracts": [
+        {
+          "id": 0,
+          "name": "input",
+          "min_evidence_count": 3,
+          "required_evidence": [
+            "input_summary",
+            "ledgers_initialized",
+            "upstream_question_status"
+          ],
+          "phase_file": "phases/phase-0-input.md"
+        },
+        {
+          "id": 1,
+          "name": "analysis",
+          "min_evidence_count": 5,
+          "required_evidence": [
+            "grill_with_docs_source",
+            "repo_evidence",
+            "docs_evidence",
+            "language_conflicts",
+            "domain_dictionary_lookup"
+          ],
+          "phase_file": "phases/phase-1-analysis.md"
+        },
+        {
+          "id": 2,
+          "name": "grill_and_plan",
+          "min_evidence_count": 6,
+          "required_evidence": [
+            "decision_tree",
+            "decision_log",
+            "compaction_resume_source",
+            "language_ledger",
+            "domain_dictionary_delta",
+            "doc_update_plan"
+          ],
+          "phase_file": "phases/phase-2-plan.md"
+        },
+        {
+          "id": 3,
+          "name": "spec_artifact",
+          "min_evidence_count": 5,
+          "required_evidence": [
+            "spec_artifact",
+            "no_clarification_markers",
+            "fr_index",
+            "sc_index",
+            "approval_source"
+          ],
+          "phase_file": "phases/phase-2_5-spec.md"
+        },
+        {
+          "id": 4,
+          "name": "documentation",
+          "min_evidence_count": 6,
+          "required_evidence": [
+            "persisted_spec",
+            "product_context",
+            "decision_log",
+            "domain_dictionary_delta",
+            "doc_updates",
+            "adr_decisions"
+          ],
+          "phase_file": "phases/phase-3-document.md"
+        },
+        {
+          "id": 5,
+          "name": "cold_read_simulation",
+          "min_evidence_count": 14,
+          "required_evidence": [
+            "simulation_result",
+            "ambiguity_check",
+            "task_size_audit",
+            "parallelization_check",
+            "critical_path_check",
+            "t1_spec_probe_result",
+            "t2_dag_coherence_result",
+            "t3_value_drift_result",
+            "t4_grill_replay_result",
+            "soft_block_decision",
+            "clean_slate_read_result",
+            "context_rot_check",
+            "all_parallel_approval",
+            "evaluation_loop_receipt"
+          ],
+          "phase_file": "phases/phase-3_5-simulate.md"
+        },
+        {
+          "id": 6,
+          "name": "github_issue_hierarchy",
+          "min_evidence_count": 14,
+          "required_evidence": [
+            "work_items",
+            "task_size_audit",
+            "write_conflict_matrix",
+            "fr_sc_coverage",
+            "dependency_graph",
+            "critical_path",
+            "parallel_groups",
+            "test_plan",
+            "github_milestone",
+            "parent_issue",
+            "child_issues",
+            "blocked_by_metadata",
+            "metadata_readback",
+            "verification_result"
+          ],
+          "phase_file": "phases/phase-4-create.md"
+        },
+        {
+          "id": 7,
+          "name": "report_result",
+          "min_evidence_count": 1,
+          "required_evidence": [
+            "plan_report"
+          ],
+          "phase_file": "phases/phase-5-report.md"
+        }
+      ],
+      "ordered_fragments": [
+        "Phase 개요",
+        "0 | 입력 수집",
+        "1 | 문서와 코드 분석",
+        "2 | grilling과 계획",
+        "7 | 결과 보고"
+      ],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        ".agents/rules/tool-runtime-map.md",
+        "grill-with-docs",
+        "domain-modeling",
+        "필수 ledger",
+        "decision_tree",
+        "decision_log",
+        "compaction_resume_source",
+        "language_ledger",
+        "product_context",
+        "doc_updates",
+        "adr_candidates",
+        "work_items",
+        "test_plan",
+        "github_issue_hierarchy",
+        "blocked_by_metadata",
+        "task_size_audit",
+        "write_conflict_matrix",
+        "fr_sc_coverage",
+        "critical_path",
+        "parallel_groups"
+      ],
+      "required_resource_fragments": {
+        "references/planning-posture.md": [
+          "한 번에 하나의 decision-shaping question",
+          "product vision을 기본적으로 얇은 launch slice로 압축하지 않습니다",
+          "Planning artifact",
+          "작업 유형은 대상 프로젝트 지침을 따릅니다"
+        ]
+      },
+      "tool_runtime_map_required": true,
+      "phase_files_required": true
+    },
+    "process-ticket": {
+      "workflow_semantics": "semantic",
+      "adaptive_control": "required",
+      "terminal_states": [
+        "merged",
+        "mergeable-clean",
+        "failed",
+        "skipped",
+        "blocked"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "orientation",
+          "min_evidence_count": 3,
+          "required_evidence": [
+            "agents_rules_read",
+            "work_item_source",
+            "domain_dictionary_lookup"
+          ],
+          "phase_file": "phases/phase-1-analysis.md"
+        },
+        {
+          "id": 2,
+          "name": "intent_and_scan",
+          "min_evidence_count": 2,
+          "required_evidence": [
+            "intent_restatement",
+            "code_inspection"
+          ],
+          "phase_file": "phases/phase-2-plan.md"
+        },
+        {
+          "id": 3,
+          "name": "worktree_context",
+          "min_evidence_count": 5,
+          "required_evidence": [
+            "worktree_decision",
+            "workflow_state_initialized",
+            "worktree_absolute_path",
+            "session_workflow_ownership",
+            "root_worktree_isolation_check"
+          ],
+          "phase_file": "phases/phase-3-worktree.md"
+        },
+        {
+          "id": 4,
+          "name": "test_first",
+          "min_evidence_count": 2,
+          "required_evidence": [
+            "failing_test",
+            "expected_failure"
+          ],
+          "phase_file": "phases/phase-4-review.md"
+        },
+        {
+          "id": 5,
+          "name": "implementation",
+          "min_evidence_count": 2,
+          "required_evidence": [
+            "approved_scope",
+            "changed_files"
+          ],
+          "phase_file": "phases/phase-4-review.md"
+        },
+        {
+          "id": 6,
+          "name": "verification",
+          "min_evidence_count": 3,
+          "required_evidence": [
+            "acceptance_result",
+            "focused_test_result",
+            "pre_commit_result"
+          ],
+          "phase_file": "phases/phase-4_5-acceptance-grep.md"
+        },
+        {
+          "id": 7,
+          "name": "publication",
+          "min_evidence_count": 9,
+          "required_evidence": [
+            "commit_sha",
+            "local_review_head_sha",
+            "local_review_matrix_receipt",
+            "push_head_match",
+            "pr_readback_metadata",
+            "acceptance_handoff_result",
+            "pr_review_status",
+            "merge_gate",
+            "github_metadata_language"
+          ],
+          "evidence_patterns": {
+            "commit_sha": "head_sha=[0-9a-f]{40}",
+            "push_head_match": "head_sha=[0-9a-f]{40}",
+            "local_review_head_sha": "kind=final-local-review.*outcome=result-applied.*head_sha=[0-9a-f]{40}",
+            "local_review_matrix_receipt": "matrix_id=[0-9a-f]{64}.*frozen=true.*head_sha=[0-9a-f]{40}.*row_count=[0-9]+.*verified_rows=[0-9]+.*blocking_findings=0.*verdict=pass.*kind=final-local-review.*outcome=result-applied",
+            "github_metadata_language": "validator=scripts\\.skill_harness\\.github_metadata_language.*policy_passed=true"
+          },
+          "phase_file": "phases/phase-5-commit.md"
+        },
+        {
+          "id": 8,
+          "name": "monitoring",
+          "min_evidence_count": 16,
+          "required_evidence": [
+            "pr_review_status",
+            "ai_review_head_sha",
+            "local_review_head_sha",
+            "local_review_matrix_receipt",
+            "session_workflow_context",
+            "monitor_event_source",
+            "monitor_started",
+            "monitor_terminal_state",
+            "route_resume_contract",
+            "owner_lifecycle_readback",
+            "monitor_mailbox_readback",
+            "monitor_event_readback",
+            "live_terminal_readback",
+            "delegate_transition_receipt",
+            "pending_human_comments",
+            "unresolved_review_threads"
+          ],
+          "evidence_patterns": {
+            "session_workflow_context": "session_id=.*workflow_id=.*route_owner=(process-ticket|autopilot).*terminal_sink=(user|autopilot).*merge_policy=(manual|auto)",
+            "monitor_event_source": "provider=local-pr-monitor.*session_id=.*workflow_id=.*poll_interval_seconds=30.*resume_adapter=(command|app-server)",
+            "monitor_terminal_state": "monitor_event=terminal.*reason=(merged|mergeable-clean|closed-without-merge).*source=local-pr-monitor",
+            "route_resume_contract": "provider=local-pr-monitor.*session_id=.*workflow_id=.*resume_adapter=(command|app-server)",
+            "local_review_head_sha": "kind=final-local-review.*outcome=result-applied.*head_sha=[0-9a-f]{40}",
+            "local_review_matrix_receipt": "matrix_id=[0-9a-f]{64}.*frozen=true.*head_sha=[0-9a-f]{40}.*row_count=[0-9]+.*verified_rows=[0-9]+.*blocking_findings=0.*verdict=pass.*kind=final-local-review.*outcome=result-applied",
+            "owner_lifecycle_readback": "state=(active|idle|recovering|terminal).*owner_session_id=",
+            "monitor_mailbox_readback": "pending_events=[0-9]+.*active_claim=(none|[0-9a-f]{64})",
+            "monitor_event_readback": "monitor_event=(terminal.*source=local-pr-monitor.*resume_status=invoked|event.*source=local-pr-monitor.*resume_status=invoked.*turn_completion.status=completed.*turn.status=completed)",
+            "live_terminal_readback": "reason=(mergeable-clean.*state=OPEN.*mergeState=CLEAN.*reviewDecision=APPROVED.*failedChecks=0.*pendingChecks=0.*headRefOid=.*unresolvedReviewThreads=0|merged.*state=MERGED.*headRefOid=.*unresolvedReviewThreads=0|closed-without-merge.*state=CLOSED.*headRefOid=.*unresolvedReviewThreads=0)",
+            "delegate_transition_receipt": "delegation_id=.*owner_session_id=.*target_agent_id=.*outcome=result-applied.*outcome_ref=sha256:[0-9a-f]{64}",
+            "pending_human_comments": "TOTAL=0",
+            "unresolved_review_threads": "UNRESOLVED_THREADS_COUNT=0"
+          },
+          "phase_file": "phases/phase-6-monitor.md"
+        },
+        {
+          "id": 9,
+          "name": "merge_cleanup",
+          "min_evidence_count": 10,
+          "required_evidence": [
+            "merge_command",
+            "merge_approval",
+            "github_merge_readback",
+            "issue_status_readback",
+            "parent_issue_completion_readback",
+            "branch_cleanup_readback",
+            "worktree_cleanup_readback",
+            "workflow_state_merged",
+            "terminal_report",
+            "gap_dispatch_check"
+          ],
+          "phase_file": "phases/phase-8-merge-cleanup.md"
+        }
+      ],
+      "ordered_fragments": [
+        "Phase 개요",
+        "1 | work item과 의도 분석",
+        "2 | 구현 계획 작성",
+        "3 | worktree 생성 또는 확인",
+        "4 | test-first 구현과 review",
+        "5 | commit과 PR",
+        "6 | CI와 review monitor",
+        "/pr-review <PR>",
+        "`ai-review` status"
+      ],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        ".agents/rules/tool-runtime-map.md",
+        "/pr-review <PR>",
+        "`ai-review` status",
+        "runtime identity",
+        "workflow_id",
+        "session_id",
+        "SkillStateStore",
+        "terminal sink",
+        "route_resume_contract",
+        "monitor_event_readback",
+        "pending_human_comments",
+        "gaps_detected",
+        "gaps_dispatched",
+        "acceptance_check",
+        "review_done",
+        "사용자의 최종 병합 승인만 대기",
+        "중간 사용자 승인 사유가 아닙니다",
+        "merged",
+        "mergeable-clean",
+        "failed",
+        "실행 요청된 ticket은 임의로 child issue로 분해하지 않습니다",
+        "사용자 직접 지적",
+        "하네스 gap",
+        "agent가 스스로 인지한",
+        "user-reported-harness-defect",
+        "같은 turn",
+        "execution_trajectory",
+        "turn_harness_audit",
+        "rule_id",
+        "occurrence_id",
+        "phase_runner finalize",
+        "delegate-result-ready",
+        "final-local-review",
+        "typed application",
+        "미해결 incident는 Stop과 finalize를 차단",
+        "skipped",
+        "GitHub이 merge를 확인하기 전에는 `merged`를 보고하지 않습니다",
+        "worktree claim",
+        "host-attested `DIRECT_CHILD`",
+        "authority가 `UNAVAILABLE`이면 blocked",
+        "root, serial, `SAME_SESSION` fallback"
+      ],
+      "required_resource_fragments": {
+        "phases/phase-3-worktree.md": [
+          "scripts/assert_worktree_isolation.sh"
+        ],
+        "phases/phase-4-review.md": [
+          "StateHandle.attach",
+          "hook_agent_id == target_agent_id",
+          "session-local content-addressed artifact",
+          "execution_trajectory",
+          "turn_harness_audit",
+          "review_acceptance_matrix",
+          "새로운 blocking criterion",
+          "stable finding key",
+          "scripts/safe_worktree_apply_patch.sh"
+        ],
+        "phases/phase-5-commit.md": [
+          "github_metadata_language"
+        ],
+        "phases/phase-6-monitor.md": [
+          "owner_lifecycle",
+          "monitor_mailbox",
+          "delegate-result-ready",
+          "final-local-review",
+          "route_resume_contract",
+          "monitor_event_readback",
+          "pending_human_comments"
+        ],
+        "phases/phase-7-merge-gate.md": [
+          "scripts/check_auto_merge_continuation_contract.sh"
+        ],
+        "phases/phase-8-merge-cleanup.md": [
+          "merge_cleanup.py --workflow-id",
+          "StateHandle.attach",
+          "SkillStateStore",
+          "Parent issue 완료 전파",
+          "parent_issue_completion_readback",
+          "all_child_issues_done=true",
+          "parent_completion_action=updated|already_done",
+          "remaining_child_issues=#N",
+          "모든 child가",
+          "parent issue 또는 project status도 `Done`",
+          "parent_issue=none",
+          "terminal report",
+          "gaps_detected",
+          "gaps_dispatched",
+          "acceptance_check",
+          "review_done",
+          "`review_done: skipped`와 사유를 `notes`에 기록합니다",
+          "`failed_reason`은 `status: failed`에서만 필수입니다"
+        ],
+        "references/harness-incident.md": [
+          "StateHandle.attach",
+          "session-level typed occurrence",
+          "수정 소유권",
+          "escalate --id",
+          "loop owner",
+          "root_cause",
+          "반복되는 유효 finding",
+          "acceptance matrix",
+          "review_acceptance_matrix",
+          "stable finding key",
+          "root_cause_deduplication",
+          "regression_evidence",
+          "--regression-command",
+          "여러 occurrence",
+          "한 번만 실행",
+          "refresh --id",
+          "evidence_refreshed_at",
+          "supersede --id",
+          "superseded_resolution_evidence",
+          "structured command receipt",
+          "exit code 0을 재검증",
+          "raw state"
+        ]
+      },
+      "tool_runtime_map_required": true,
+      "phase_files_required": true
+    },
+    "sync-docs": {
+      "workflow_semantics": "semantic",
+      "adaptive_control": "required",
+      "terminal_states": [
+        "synced",
+        "blocked",
+        "failed"
+      ],
+      "tool_runtime_map_required": true,
+      "phase_files_required": true,
+      "phase_contracts": [
+        {
+          "id": 0,
+          "name": "plan",
+          "phase_file": "phases/phase-0-plan.md",
+          "min_evidence_count": 2,
+          "required_evidence": [
+            "sync_scope",
+            "source_evidence"
+          ]
+        },
+        {
+          "id": 1,
+          "name": "write",
+          "phase_file": "phases/phase-1-write.md",
+          "min_evidence_count": 4,
+          "required_evidence": [
+            "writer_report",
+            "changed_docs",
+            "source_sha",
+            "frontmatter_or_metadata_check"
+          ]
+        },
+        {
+          "id": 2,
+          "name": "verify",
+          "phase_file": "phases/phase-2-verify.md",
+          "min_evidence_count": 7,
+          "required_evidence": [
+            "verifier_report",
+            "source_fact_check",
+            "frontmatter_or_metadata_check",
+            "critical_warning_findings",
+            "writer_independence_check",
+            "ten_point_fact_check",
+            "critical_warning_report"
+          ]
+        },
+        {
+          "id": 3,
+          "name": "reconcile",
+          "phase_file": "phases/phase-3-reconcile.md",
+          "min_evidence_count": 1,
+          "required_evidence": [
+            "reconcile_result"
+          ]
+        },
+        {
+          "id": 4,
+          "name": "report",
+          "phase_file": "phases/phase-4-report.md",
+          "min_evidence_count": 1,
+          "required_evidence": [
+            "sync_report"
+          ]
+        },
+        {
+          "id": 5,
+          "name": "deliver",
+          "phase_file": "phases/phase-5-deliver.md",
+          "min_evidence_count": 1,
+          "required_evidence": [
+            "delivery_result"
+          ]
+        }
+      ],
+      "ordered_fragments": [
+        "Phase 개요",
+        "0 | 문서화 범위 계획",
+        "1 | 문서 작성",
+        "2 | 문서 검증",
+        "5 | 검증된 변경 전달"
+      ],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        ".agents/rules/tool-runtime-map.md",
+        "승인되지 않은 product behavior를 실제처럼 문서화하지 않습니다",
+        "Writer/Verifier 분리",
+        "synced_from"
+      ]
+    },
+    "audit-spec": {
+      "workflow_semantics": "semantic",
+      "adaptive_control": "required",
+      "terminal_states": [
+        "completed",
+        "blocked",
+        "failed"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "execute",
+          "min_evidence_count": 3,
+          "required_evidence": [
+            "spec_sources",
+            "audit_findings",
+            "correction_plan"
+          ]
+        }
+      ],
+      "ordered_fragments": [],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        "AGENTS.md",
+        ".agents/rules/charter.md",
+        "finding",
+        "/plan-issues"
+      ]
+    },
+    "checkpoint": {
+      "workflow_semantics": "operational-projection",
+      "adaptive_control": "not-applicable",
+      "terminal_states": [
+        "completed",
+        "blocked",
+        "failed"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "execute",
+          "min_evidence_count": 3,
+          "required_evidence": [
+            "git_status",
+            "verification_result",
+            "checkpoint_result"
+          ]
+        }
+      ],
+      "ordered_fragments": [],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        "git status --short --branch",
+        "unrelated user work",
+        "WIP commit"
+      ]
+    },
+    "create-worktree": {
+      "workflow_semantics": "operational-projection",
+      "adaptive_control": "not-applicable",
+      "terminal_states": [
+        "completed",
+        "blocked",
+        "failed"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "execute",
+          "min_evidence_count": 4,
+          "required_evidence": [
+            "base_branch",
+            "worktree_absolute_path",
+            "branch_name",
+            "isolation_check"
+          ]
+        }
+      ],
+      "ordered_fragments": [
+        "Source checkout native CWD",
+        "git worktree add -b",
+        "새 worktree native CWD",
+        "assert_worktree_isolation.sh --init ISSUE_NUMBER"
+      ],
+      "required_fragments": [
+        ".neurath/run engine scripts.skill_harness.phase_runner",
+        "typed worktree claim",
+        "대상 프로젝트의 규칙",
+        "worktree의 절대 경로"
+      ],
+      "tool_runtime_map_required": false
+    },
+    "dependency-audit": {
+      "workflow_semantics": "semantic",
+      "adaptive_control": "required",
+      "terminal_states": [
+        "completed",
+        "blocked",
+        "failed"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "execute",
+          "min_evidence_count": 4,
+          "required_evidence": [
+            "dependency_inventory",
+            "security_result",
+            "license_result",
+            "freshness_result"
+          ]
+        }
+      ],
+      "ordered_fragments": [],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        "uv lock --check",
+        "uv tree",
+        "Python 3.14",
+        "pyrefly"
+      ]
+    },
+    "investigate": {
+      "workflow_semantics": "semantic",
+      "adaptive_control": "required",
+      "terminal_states": [
+        "completed",
+        "blocked",
+        "failed"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "execute",
+          "min_evidence_count": 4,
+          "required_evidence": [
+            "symptom_source",
+            "reproduction_result",
+            "root_cause",
+            "gap_triage_decision"
+          ]
+        }
+      ],
+      "ordered_fragments": [],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        "reproduction command",
+        "root cause",
+        "Gap Triage decision",
+        "/create-ticket"
+      ]
+    },
+    "pr-review": {
+      "workflow_semantics": "semantic",
+      "adaptive_control": "required",
+      "terminal_states": [
+        "completed",
+        "blocked",
+        "failed"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "execute",
+          "min_evidence_count": 3,
+          "required_evidence": [
+            "pr_metadata",
+            "local_review_receipt",
+            "status_posted"
+          ]
+        }
+      ],
+      "ordered_fragments": [],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        "publish_final_review.py",
+        "final-local-review",
+        "LOCAL_REVIEW_OUTCOME_REF",
+        "--workflow-id",
+        "StateHandle.attach",
+        "ConsumedDelegationEvidenceReader",
+        "FinalReviewEvidencePolicy",
+        "canonical PR identity",
+        "`ai-review` status",
+        "AUTO_APPROVE"
+      ]
+    },
+    "promote-memory": {
+      "workflow_semantics": "semantic",
+      "adaptive_control": "required",
+      "terminal_states": [
+        "completed",
+        "blocked",
+        "failed"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "execute",
+          "min_evidence_count": 7,
+          "required_evidence": [
+            "privacy_safe_memory_source",
+            "recurrence_evidence",
+            "existing_repository_coverage",
+            "promotion_target",
+            "private_detail_removal_check",
+            "harness_update_plan",
+            "evaluate_harness_result"
+          ]
+        }
+      ],
+      "ordered_fragments": [],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        "memory-derived pattern",
+        "privacy_safe_memory_source",
+        "recurrence_evidence",
+        "existing_repository_coverage",
+        "private_detail_removal_check",
+        "evaluate_harness_result",
+        ".agents/rules",
+        "/evaluate-harness"
+      ]
+    },
+    "finish-session": {
+      "workflow_semantics": "operational-projection",
+      "adaptive_control": "not-applicable",
+      "terminal_states": [
+        "finished",
+        "failed",
+        "blocked"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "status_and_diff",
+          "min_evidence_count": 3,
+          "required_evidence": [
+            "session_finish_approval",
+            "git_status",
+            "diff_review"
+          ],
+          "evidence_patterns": {
+            "session_finish_approval": "approved_by=user.*commit=true.*push=true.*graphify=true.*worktree_release=true"
+          }
+        },
+        {
+          "id": 2,
+          "name": "stage_scope",
+          "min_evidence_count": 1,
+          "required_evidence": [
+            "staged_files"
+          ]
+        },
+        {
+          "id": 3,
+          "name": "commit",
+          "min_evidence_count": 1,
+          "required_evidence": [
+            "commit_sha"
+          ]
+        },
+        {
+          "id": 4,
+          "name": "push_readback",
+          "min_evidence_count": 1,
+          "required_evidence": [
+            "push_head_match"
+          ],
+          "evidence_patterns": {
+            "push_head_match": "local_head=[0-9a-f]{40}.*remote_head=[0-9a-f]{40}.*match=true"
+          }
+        },
+        {
+          "id": 5,
+          "name": "graphify_update",
+          "min_evidence_count": 1,
+          "required_evidence": [
+            "graphify_receipt"
+          ],
+          "evidence_patterns": {
+            "graphify_receipt": "status=(updated|no-change).*graph_path=graphify-out/graph.json"
+          }
+        },
+        {
+          "id": 6,
+          "name": "worktree_release",
+          "min_evidence_count": 1,
+          "required_evidence": [
+            "worktree_release_receipt"
+          ],
+          "evidence_patterns": {
+            "worktree_release_receipt": "released=true.*worktree_id=git-worktree-[0-9a-f]{64}"
+          }
+        }
+      ],
+      "ordered_fragments": [
+        "`git status --short --branch` 실행",
+        "staged와 unstaged diff 검사",
+        "관련 파일만 stage",
+        "대상 저장소의 commit 규칙에 맞게 commit",
+        "현재 branch를 push하고 remote HEAD를 다시 읽습니다",
+        "`graphify update .` 실행",
+        "worktree claim을 release하고 구조화된 처리 결과를 다시 읽습니다"
+      ],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        ".agents/rules/tool-runtime-map.md",
+        "한 번의 명시적 사용자 승인",
+        "단계별 추가 승인을 다시 묻지 않습니다",
+        "python3 -m scripts.agent_harness.state_cli worktree release"
+      ],
+      "tool_runtime_map_required": true
+    },
+    "review-code": {
+      "workflow_semantics": "semantic",
+      "adaptive_control": "required",
+      "terminal_states": [
+        "completed",
+        "blocked",
+        "failed"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "execute",
+          "min_evidence_count": 7,
+          "required_evidence": [
+            "subagent_dispatch",
+            "diff_marker",
+            "persona_readback",
+            "review_categories",
+            "delegate_transition_receipt",
+            "review_report_readback",
+            "turn_harness_audit"
+          ],
+          "evidence_patterns": {
+            "diff_marker": "head_sha=[0-9a-f]{40}",
+            "persona_readback": "policy_id=constructive-skeptic-v1.*categories=14",
+            "review_categories": "verified=14",
+            "delegate_transition_receipt": "delegation_id=[^ ]+.*target_agent_id=[^ ]+.*outcome_ref=sha256:[0-9a-f]{64}",
+            "review_report_readback": "outcome_ref=sha256:[0-9a-f]{64}.*note_count=[0-9]+.*blocker_count=0.*verdict=pass",
+            "turn_harness_audit": "checked=true.*evidence_count=3.*violations=0"
+          }
+        }
+      ],
+      "ordered_fragments": [],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        "## 의문점 카테고리 (14개)",
+        "personas/judgment.md",
+        "personas/architecture.md",
+        "constructive-skeptic-policy.json",
+        "모든 전문 persona보다 먼저",
+        "탐색 범위는 넓게",
+        "병합 차단은 증거로 제한",
+        "delegate_state.py",
+        "--review-note-json",
+        "delegate_transition_receipt",
+        "review_report_readback",
+        "Subagent dispatch는 필수",
+        "serial fallback",
+        "Codex hook에 immediate parent-bound child provenance가 없으면",
+        "dispatch evidence",
+        "execution trajectory evidence",
+        "turn_harness_audit",
+        "--harness-audit-evidence",
+        "고정 iteration 상한을 두지 않습니다",
+        "Review 결과"
+      ],
+      "required_resource_fragments": {
+        "references/reporting.md": [
+          "## 보고 템플릿",
+          "root_cause_key",
+          "--review-finding-json",
+          "--review-note-json",
+          "delegate_transition_receipt",
+          "review_report_readback",
+          "turn_harness_audit"
+        ]
+      }
+    },
+    "sync-dev-docs": {
+      "workflow_semantics": "semantic",
+      "adaptive_control": "required",
+      "terminal_states": [
+        "completed",
+        "blocked",
+        "failed"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "execute",
+          "min_evidence_count": 3,
+          "required_evidence": [
+            "source_evidence",
+            "doc_update",
+            "verification_result"
+          ]
+        }
+      ],
+      "ordered_fragments": [],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        "developer docs",
+        "evidence에 맞춰 docs를 갱신",
+        "ADR candidate"
+      ]
+    },
+    "sync-user-docs": {
+      "workflow_semantics": "semantic",
+      "adaptive_control": "required",
+      "terminal_states": [
+        "completed",
+        "blocked",
+        "failed"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "execute",
+          "min_evidence_count": 3,
+          "required_evidence": [
+            "approved_behavior",
+            "user_doc_update",
+            "verification_result"
+          ]
+        }
+      ],
+      "ordered_fragments": [],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        "승인된 scenario",
+        "internal harness mechanic을 노출하지 않고",
+        ".neurath/project.json (documents 슬롯)"
+      ]
+    },
+    "triage-comments": {
+      "workflow_semantics": "semantic",
+      "adaptive_control": "required",
+      "terminal_states": [
+        "completed",
+        "blocked",
+        "failed"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "execute",
+          "min_evidence_count": 3,
+          "required_evidence": [
+            "comment_inventory",
+            "decision_result",
+            "reply_result"
+          ]
+        }
+      ],
+      "ordered_fragments": [],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        "collect_comments.sh",
+        "즉시 수신 확인 (판단·작업보다 먼저)",
+        "사용자에게 코멘트 처리 방향을 다시 묻지 않는다",
+        "Gap Triage",
+        "### Step 1.5: Harness patternization",
+        "자연어 기반 하네스는 항상 갱신한다",
+        "코드 기반 정적하네스",
+        "executable gate와 regression test"
+      ],
+      "required_resource_fragments": {
+        "references/reply-and-follow-up.md": [
+          "## 실행",
+          "repos/$REPO/pulls/$PR/comments/$ID/replies",
+          "CH1은 일반 PR 코멘트로 우회하지 않습니다",
+          "pending review draft",
+          "repos/$REPO/pulls/$PR/reviews/$REVIEW_ID/events",
+          "PENDING=0"
+        ]
+      }
+    },
+    "update-dependencies": {
+      "workflow_semantics": "semantic",
+      "adaptive_control": "required",
+      "terminal_states": [
+        "completed",
+        "blocked",
+        "failed"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "execute",
+          "min_evidence_count": 3,
+          "required_evidence": [
+            "dependency_scope",
+            "lock_update",
+            "verification_result"
+          ]
+        }
+      ],
+      "ordered_fragments": [
+        "state_cli worktree claim",
+        "material-action intent",
+        "uv lock",
+        "verification_runner package-check",
+        "verification_runner pre-commit"
+      ],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        "uv lock",
+        "unexpected major upgrade",
+        "verification_runner package-check"
+      ]
+    },
+    "update-project-status": {
+      "workflow_semantics": "operational-projection",
+      "adaptive_control": "not-applicable",
+      "terminal_states": [
+        "completed",
+        "blocked",
+        "failed"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "execute",
+          "min_evidence_count": 3,
+          "required_evidence": [
+            "current_status",
+            "mutation_result",
+            "readback_status"
+          ]
+        }
+      ],
+      "ordered_fragments": [],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        "GitHub Issues와 GitHub Projects",
+        "다시 읽어 mutation을 검증",
+        "before/after value"
+      ]
+    },
+    "explore-ui": {
+      "workflow_semantics": "semantic",
+      "adaptive_control": "required",
+      "terminal_states": [
+        "direction-selected",
+        "needs-more-exploration",
+        "blocked",
+        "failed"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "authority_and_references",
+          "min_evidence_count": 3,
+          "required_evidence": [
+            "screen_authority",
+            "reference_inventory",
+            "design_source_and_runtime_authority"
+          ],
+          "phase_file": "phases/phase-1-authority.md"
+        },
+        {
+          "id": 2,
+          "name": "canvas_exploration",
+          "min_evidence_count": 3,
+          "required_evidence": [
+            "canvas_artifact",
+            "surface_frames",
+            "reference_comparison"
+          ],
+          "phase_file": "phases/phase-2-exploration.md"
+        },
+        {
+          "id": 3,
+          "name": "user_selection",
+          "min_evidence_count": 2,
+          "required_evidence": [
+            "user_decision",
+            "approved_node_or_iteration"
+          ],
+          "phase_file": "phases/phase-3-user-selection.md"
+        },
+        {
+          "id": 4,
+          "name": "implementation_handoff",
+          "min_evidence_count": 1,
+          "required_evidence": [
+            "handoff_record"
+          ],
+          "phase_file": "phases/phase-4-handoff.md"
+        }
+      ],
+      "ordered_fragments": [
+        "제품·reference 권위",
+        "Canvas 탐색",
+        "사용자 선택",
+        "구현 handoff"
+      ],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        ".agents/rules/tool-runtime-map.md",
+        "tool:design_canvas",
+        "제품 UI 방향을 `visualize`로 대체하지 않습니다",
+        "exact canvas node",
+        "Runtime-owned visual",
+        "Design content reset",
+        "`clean-slate`"
+      ],
+      "tool_runtime_map_required": true,
+      "phase_files_required": true
+    },
+    "sync-design": {
+      "workflow_semantics": "semantic",
+      "adaptive_control": "required",
+      "terminal_states": [
+        "synced",
+        "no-change",
+        "blocked",
+        "failed"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "execute",
+          "min_evidence_count": 3,
+          "required_evidence": [
+            "repository_sources",
+            "canvas_mirror_delta",
+            "read_back"
+          ]
+        }
+      ],
+      "ordered_fragments": [],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        ".agents/rules/tool-runtime-map.md",
+        "tool:design_canvas",
+        "repository → canvas",
+        "explicit-user-approved-proposal-only",
+        "read-back",
+        "repository_sources=clean-slate",
+        "Connector retirement"
+      ],
+      "tool_runtime_map_required": true
+    },
+    "implement-ui": {
+      "workflow_semantics": "semantic",
+      "adaptive_control": "required",
+      "terminal_states": [
+        "implemented",
+        "blocked",
+        "failed"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "execute",
+          "min_evidence_count": 5,
+          "required_evidence": [
+            "approved_node",
+            "surface_and_state",
+            "design_context",
+            "implementation_delta",
+            "verification_result"
+          ]
+        }
+      ],
+      "ordered_fragments": [],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        ".agents/rules/tool-runtime-map.md",
+        "tool:design_canvas",
+        "exact canvas node",
+        "없으면 `blocked`",
+        "`visualize`",
+        "/review-ui",
+        "Design content reset"
+      ],
+      "tool_runtime_map_required": true
+    },
+    "review-ui": {
+      "workflow_semantics": "semantic",
+      "adaptive_control": "required",
+      "terminal_states": [
+        "review-ready",
+        "accepted",
+        "revision-requested",
+        "blocked",
+        "failed"
+      ],
+      "phase_contracts": [
+        {
+          "id": 1,
+          "name": "capture_and_compare",
+          "min_evidence_count": 4,
+          "required_evidence": [
+            "approved_node",
+            "runtime_capture",
+            "side_by_side_artifact",
+            "difference_record"
+          ],
+          "phase_file": "phases/phase-1-capture-compare.md"
+        },
+        {
+          "id": 2,
+          "name": "user_visual_decision",
+          "min_evidence_count": 1,
+          "required_evidence": [
+            "user_acceptance"
+          ],
+          "phase_file": "phases/phase-2-user-decision.md"
+        }
+      ],
+      "ordered_fragments": [
+        "Runtime capture와 병치",
+        "사용자 시각 결정"
+      ],
+      "required_fragments": [
+        "uv run python -m scripts.skill_harness.phase_runner",
+        ".agents/rules/tool-runtime-map.md",
+        "tool:design_canvas",
+        "tool:browser",
+        "tool:native_mobile",
+        "사용자만 최종 시각 승인을 내립니다",
+        "review-ready",
+        "Canvas artifact"
+      ],
+      "tool_runtime_map_required": true,
+      "phase_files_required": true
+    }
+  }
+}

@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "neurath"
+version = "0.1.0"
+description = "Portable, evidence-preserving agent harness for Codex and Claude Code"
+readme = "README.md"
+requires-python = ">=3.14,<3.15"
+dependencies = []
+classifiers = ["Operating System :: POSIX :: Linux", "Operating System :: MacOS"]
+
+[dependency-groups]
+dev = ["pytest>=8.3", "pytest-cov>=6", "ruff>=0.15", "build>=1.2", "twine>=6"]
+
+[project.scripts]
+neurath = "neurath.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/neurath"]
+
+[tool.hatch.build]
+exclude = ["**/__pycache__/**", "**/*.pyc", ".validation", ".venv", ".git", "docs/validation", "provenance"]
+artifacts = ["src/neurath/_assets/**", "src/neurath/manifest.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["runtime"]
+addopts = "--import-mode=importlib"
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+exclude = ["src/neurath/_assets", ".validation", ".agents", ".neurath"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "tools", "docs", "README.md", "README.ko.md", "ONBOARDING.md", "CONTRIBUTING.md", "NOTICE.md", "AGENTS.md", "pyproject.toml", "uv.lock", "setup", ".python-version", ".neurath/project.json"]

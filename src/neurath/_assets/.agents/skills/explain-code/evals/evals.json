@@ -1,0 +1,84 @@
+{
+  "skill_name": "explain-code",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "evals/files/api.py의 parse_quantity를 비개발자도 이해하게 brief로 설명해 주세요.",
+      "expected_output": "짧은 설명이 입력 정규화와 실패 조건을 실제 source line에 연결하고, 불필요한 diagram이나 구조 분석을 만들지 않는다.",
+      "files": [
+        "evals/files/api.py",
+        "evals/files/test_order_flow.py"
+      ],
+      "expectations": [
+        "답변은 boolean을 quantity로 허용하지 않는 조건과 그 결과를 설명한다.",
+        "답변은 int 변환과 0 이하 거부를 설명하며 실제 api.py line 근거를 붙인다.",
+        "답변은 brief 요청에 맞게 단일 함수에 집중하고 diagram을 만들지 않는다."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "evals/files/api.py의 submit_order 요청이 inventory reservation과 ledger 기록으로 이어지는 흐름을 maintainer 수준의 deep 설명으로 따라가 주세요.",
+      "expected_output": "entry point부터 validation, retry, side effect, 반환과 실패 경로까지 여러 파일을 따라가며 현재 source에 근거한 설명을 제공한다.",
+      "files": [
+        "evals/files/api.py",
+        "evals/files/order_service.py",
+        "evals/files/test_order_flow.py"
+      ],
+      "expectations": [
+        "답변은 submit_order의 SKU와 quantity validation에서 OrderRequest 생성과 service.place 호출까지 추적한다.",
+        "답변은 임시 inventory 오류를 최대 다섯 번 시도하고 마지막 오류를 다시 올리는 흐름을 설명한다.",
+        "답변은 inventory reservation 뒤 ledger record가 실행되고 reservation_id가 반환되는 side-effect 순서를 설명한다.",
+        "답변은 ledger 실패 시 이미 성공한 reservation에 대한 보상 경로가 source에 보이지 않는다는 maintainer gotcha를 근거와 함께 구분한다.",
+        "중요한 non-trivial claim에는 api.py 또는 order_service.py의 정확한 current line citation이 있다.",
+        "답변은 같은 line link를 반복하지 않고 전체 line link를 24개 이하로 유지해 claim별 최소 근거를 사용한다."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "이 fixture의 임시 inventory 오류 재시도 정책을 standard 깊이로 설명해 주세요. README와 구현이 같은지도 확인해 주세요.",
+      "expected_output": "문서가 말하는 세 번과 source/test가 관찰시키는 다섯 번을 구분하고, current behavior는 구현과 test로 판단한다.",
+      "files": [
+        "evals/files/README.md",
+        "evals/files/order_service.py",
+        "evals/files/test_order_flow.py"
+      ],
+      "expectations": [
+        "답변은 README가 세 번이라고 말하지만 OrderService.MAX_ATTEMPTS는 다섯이라고 명시한다.",
+        "답변은 test가 다섯 번째 임시 실패 뒤 예외와 attempts == 5를 기대한다는 근거를 확인한다.",
+        "답변은 문서화된 설명과 현재 source/test에서 관찰되는 동작을 서로 다른 근거 범주로 표현한다.",
+        "README, order_service.py와 test_order_flow.py의 정확한 current line citation이 있다."
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "OrderService.MAX_ATTEMPTS가 왜 5로 정해졌는지 설명해 주세요.",
+      "expected_output": "현재 checkout에서 확인되는 값과 동작은 설명하되, 선택 이유의 근거가 없으면 확인 불가로 남기고 저자 의도를 꾸며내지 않는다.",
+      "files": [
+        "evals/files/README.md",
+        "evals/files/order_service.py",
+        "evals/files/test_order_flow.py"
+      ],
+      "expectations": [
+        "답변은 현재 source에서 MAX_ATTEMPTS 값 5와 그 retry 동작을 확인한다.",
+        "답변은 5라는 선택의 이유를 뒷받침하는 ADR, comment 또는 history 근거가 제공되지 않았음을 확인 불가로 표현한다.",
+        "답변은 reliability, latency 또는 저자 의도를 확인된 사실처럼 발명하지 않는다.",
+        "source와 test에 대한 정확한 current line citation이 있다."
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "evals/files/order_service.py의 retry 로직 버그를 고치고 회귀 테스트를 추가해 주세요.",
+      "expected_output": "주목적이 구현과 bug fix이므로 explain-code 범위가 아님을 식별하며, 설명 skill로 source나 test를 수정하지 않는다.",
+      "files": [
+        "evals/files/order_service.py",
+        "evals/files/test_order_flow.py"
+      ],
+      "expectations": [
+        "답변은 요청의 주목적이 설명이 아니라 bug fix와 regression test 추가임을 식별한다.",
+        "답변은 explain-code로 source 또는 test를 수정하지 않고 적합한 구현 또는 진단 workflow로 넘긴다.",
+        "답변은 제공된 근거만으로 retry bug가 실제로 존재한다고 단정하지 않는다.",
+        "답변은 explain-code의 read-only 경계를 사용자 요청 자체가 read-only라는 주장으로 바꾸지 않는다."
+      ]
+    }
+  ]
+}

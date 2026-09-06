@@ -1,0 +1,4 @@
+interface:
+  display_name: "Finish Session"
+  short_description: "Commit, push, Graphify, claim release로 세션 마무리"
+  default_prompt: "Use $finish-session to preserve the current work, update Graphify, and release the worktree claim so the coding-agent session can finish."

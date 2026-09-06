@@ -1,0 +1,182 @@
+{
+  "schema": "skill-intent-routing-evals-v1",
+  "cases": [
+    {
+      "id": "private-memory-promotion",
+      "prompt": "개인 memory에 여러 session 반복된 작업 선호를 privacy-safe한 project rule로 승격해 주세요.",
+      "expected_selected_skill": "promote-memory",
+      "expected_rejected_skills": [
+        "optimize-harness"
+      ],
+      "expected_input_authority": "private-personal-memory",
+      "phase_initialization_allowed": true,
+      "reason": "주요 input이 private personal memory이고 완수 목표가 durable project behavior 승격이다."
+    },
+    {
+      "id": "prompt-token-optimization",
+      "prompt": "현재 enforcement와 의사결정을 유지하면서 AGENTS와 rule prompt token을 줄여 주세요.",
+      "expected_selected_skill": "optimize-harness",
+      "expected_rejected_skills": [
+        "promote-memory"
+      ],
+      "expected_input_authority": "repository-prompt-surface",
+      "phase_initialization_allowed": true,
+      "reason": "완수 목표는 behavior-equivalent prompt 축소이며 private memory나 production code가 input이 아니다."
+    },
+    {
+      "id": "product-memory-architecture",
+      "prompt": "Neurath 제품의 long-term memory architecture를 설계해 주세요.",
+      "expected_selected_skill": "plan-issues",
+      "expected_rejected_skills": [
+        "promote-memory",
+        "optimize-harness"
+      ],
+      "expected_input_authority": "user-product-intent",
+      "phase_initialization_allowed": true,
+      "reason": "제품 architecture decision은 private memory promotion이나 prompt token optimization이 아니며, user product intent를 소유한 plan-issues planning이 필요하다."
+    },
+    {
+      "id": "runtime-state-retention",
+      "prompt": "workflow typed state의 retention과 snapshot 크기 정책을 바꿔 주세요.",
+      "expected_selected_skill": null,
+      "expected_rejected_skills": [
+        "optimize-harness",
+        "promote-memory"
+      ],
+      "expected_input_authority": "runtime-typed-state",
+      "phase_initialization_allowed": false,
+      "reason": "runtime state architecture 변경은 prompt-surface equivalence나 private-memory 승격이 아니다."
+    },
+    {
+      "id": "skill-name-in-explanation",
+      "prompt": "promote-memory가 왜 이 작업에는 맞지 않는지 source를 보고 설명해 주세요.",
+      "expected_selected_skill": "explain-code",
+      "expected_rejected_skills": [
+        "promote-memory"
+      ],
+      "expected_input_authority": "repository-source",
+      "phase_initialization_allowed": false,
+      "reason": "skill 이름은 설명 대상이지 explicit invocation이 아니다."
+    },
+    {
+      "id": "memory-keyword-in-prompt-optimization",
+      "prompt": "memory라는 단어가 반복되는 always-on prompt를 동일 동작으로 줄여 주세요.",
+      "expected_selected_skill": "optimize-harness",
+      "expected_rejected_skills": [
+        "promote-memory"
+      ],
+      "expected_input_authority": "repository-prompt-surface",
+      "phase_initialization_allowed": true,
+      "reason": "keyword는 memory이지만 object와 완수 목표는 prompt token 최적화입니다."
+    },
+    {
+      "id": "combined-intents",
+      "prompt": "개인 memory pattern을 rule로 승격하고 동시에 전체 prompt token도 줄여 주세요.",
+      "expected_selected_skill": null,
+      "expected_rejected_skills": [],
+      "expected_input_authorities": [
+        "private-personal-memory",
+        "repository-prompt-surface"
+      ],
+      "phase_initialization_allowed": false,
+      "expected_subtasks": [
+        {
+          "skill": "promote-memory",
+          "input_authority": "private-personal-memory",
+          "phase_initialization_allowed_after_decomposition": true
+        },
+        {
+          "skill": "optimize-harness",
+          "input_authority": "repository-prompt-surface",
+          "phase_initialization_allowed_after_decomposition": true
+        }
+      ],
+      "reason": "서로 다른 input authority와 완수 목표를 가진 두 subtask를 parent skill 하나로 자동 축소하지 않고, 명시적으로 분해한 뒤 각 subtask workflow를 시작합니다."
+    },
+    {
+      "id": "harness-correctness-repair",
+      "prompt": "goal amendment가 finalization까지 도달하지 못하는 harness bug를 테스트 먼저 고쳐 주세요.",
+      "expected_selected_skill": null,
+      "expected_rejected_skills": [
+        "optimize-harness",
+        "promote-memory"
+      ],
+      "expected_input_authority": "repository-source",
+      "phase_initialization_allowed": false,
+      "reason": "behavior defect를 수리하는 direct harness implementation이며 prompt equivalence나 memory promotion이 아니다."
+    },
+    {
+      "id": "harness-failure-simulation",
+      "prompt": "선언된 worktree rule이 실제 failure scenario를 막는지 simulation해 주세요.",
+      "expected_selected_skill": "evaluate-harness",
+      "expected_rejected_skills": [
+        "optimize-harness"
+      ],
+      "expected_input_authority": "repository-source",
+      "phase_initialization_allowed": true,
+      "reason": "주요 행위는 기존 harness enforcement 평가이지 prompt 축소가 아닙니다."
+    },
+    {
+      "id": "production-code-refactor",
+      "prompt": "behavior를 바꾸지 말고 이 Python module의 중복을 refactor해 주세요.",
+      "expected_selected_skill": null,
+      "expected_rejected_skills": [
+        "optimize-harness"
+      ],
+      "expected_input_authority": "repository-source",
+      "phase_initialization_allowed": false,
+      "reason": "현재 저장소 지침과 공통 구현·테스트 절차에 따라 직접 수행합니다."
+    },
+    {
+      "id": "memory-promotion-proposal-only",
+      "prompt": "개인 memory에서 승격 후보와 담을 durable owner만 제안하고 repository는 수정하지 마세요.",
+      "expected_selected_skill": "promote-memory",
+      "expected_rejected_skills": [
+        "optimize-harness",
+        "plan-issues"
+      ],
+      "expected_input_authority": "private-personal-memory",
+      "phase_initialization_allowed": false,
+      "repository_mutation_allowed": false,
+      "reason": "입력과 판단 대상은 private personal memory promotion이지만, 사용자가 반영을 금지했으므로 read-only 후보 분류만 합니다."
+    },
+    {
+      "id": "failure-simulation-before-prompt-optimization",
+      "prompt": "먼저 현재 harness의 failure scenario를 simulation하고, 동일한 보장을 유지하는 것이 확인되면 prompt token을 줄여 주세요.",
+      "expected_selected_skill": null,
+      "expected_rejected_skills": [
+        "promote-memory"
+      ],
+      "expected_input_authorities": [
+        "repository-source",
+        "repository-prompt-surface"
+      ],
+      "phase_initialization_allowed": false,
+      "expected_subtasks": [
+        {
+          "skill": "evaluate-harness",
+          "input_authority": "repository-source",
+          "phase_initialization_allowed_after_decomposition": true
+        },
+        {
+          "skill": "optimize-harness",
+          "input_authority": "repository-prompt-surface",
+          "phase_initialization_allowed_after_decomposition": true
+        }
+      ],
+      "reason": "failure simulation과 prompt equivalence 축소는 서로 다른 authority를 쓰는 순차적 subtask이므로 parent skill 하나로 합치지 않습니다."
+    },
+    {
+      "id": "cross-file-architecture-explanation",
+      "prompt": "현재 checkout의 여러 파일을 연결해 Agent OS architecture와 request flow를 설명해 주세요.",
+      "expected_selected_skill": "explain-code",
+      "expected_rejected_skills": [
+        "graphify",
+        "review-code"
+      ],
+      "expected_input_authority": "repository-source",
+      "phase_initialization_allowed": false,
+      "reason": "주요 완수 목표는 현재 source 기반 설명이며 knowledge graph 생성, defect review, 변경 impact 판정이 아닙니다."
+    }
+  ]
+}

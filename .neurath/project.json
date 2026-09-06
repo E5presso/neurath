@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "documents": {
+    "intent": "README.md",
+    "decisions": "docs/architecture.md"
+  },
+  "verification": {
+    "check": {
+      "argv": [
+        "uv",
+        "run",
+        "--locked",
+        "python",
+        "tools/check.py"
+      ],
+      "cwd": ".",
+      "success_codes": [
+        0
+      ],
+      "timeout_seconds": 1800,
+      "stdout_contains": "NEURATH_CHECK_OK"
+    },
+    "pytest": {
+      "argv": [
+        "uv",
+        "run",
+        "pytest"
+      ],
+      "cwd": ".",
+      "success_codes": [
+        0
+      ],
+      "timeout_seconds": 600
+    }
+  }
+}
