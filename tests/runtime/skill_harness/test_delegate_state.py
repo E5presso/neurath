@@ -15,7 +15,11 @@ from scripts.agent_harness.session_kernel import (
     ActorKind,
     ActorLineageAssurance,
     ActorStarted,
+    DelegationAssigned,
+    DelegationConsumed,
     DelegationId,
+    DelegationReported,
+    DelegationResult,
     DelegationStatus,
     DelegationTopologyPolicy,
     ProcessState,
@@ -200,6 +204,40 @@ class DelegateCliFixture:
     def inspect(self) -> ProcessState:
         """Exact session의 latest canonical process state를 읽습니다."""
         return SessionKernel(self.locator).inspect(self.root_handle.session_id)
+
+    def consume_generic(self, target: ActorId, assignment: str) -> DelegationId:
+        """Generic state API가 허용하는 assignment를 원래 lifecycle로 소비합니다."""
+        identifier = DelegationId(f"generic-{len(self.inspect().delegations)}")
+        self.root_handle.apply(DelegationAssigned(
+            session_id=self.root_handle.session_id,
+            delegation_id=identifier,
+            owner_actor_id=self.root_actor_id,
+            target_actor_id=target,
+            assignment=assignment,
+            idempotency_key=f"assign:{identifier}",
+            topology_policy=DelegationTopologyPolicy.DIRECT_CHILD,
+        ))
+        binding = self._resolver.resolve({
+            "CODEX_THREAD_ID": self.session_id,
+            "NEURATH_AGENT_SESSION_ID": self.session_id,
+            "NEURATH_AGENT_ACTOR_ID": str(target),
+            "NEURATH_AGENT_RUNTIME": "codex",
+        })
+        child = StateHandle.attach(self.locator, binding)
+        child.apply(DelegationReported(
+            session_id=child.session_id,
+            delegation_id=identifier,
+            reporter_actor_id=target,
+            result=DelegationResult("pass", "Generic report", "generic-report", ()),
+            idempotency_key=f"report:{identifier}",
+        ))
+        self.root_handle.apply(DelegationConsumed(
+            session_id=self.root_handle.session_id,
+            delegation_id=identifier,
+            consumer_actor_id=self.root_actor_id,
+            idempotency_key=f"consume:{identifier}",
+        ))
+        return identifier
 
     def workflow_snapshot(self) -> tuple[int, Mapping[str, object]]:
         """Workflow-local revision과 detached payload를 split-commit 검증용으로 반환합니다."""
@@ -720,6 +758,15 @@ class DelegateStateTest(TestCase):
         second_actor = ActorId("codex:delta-reviewer")
         fixture.start_actor(first_actor)
         fixture.start_actor(second_actor)
+        for assignment in (
+            "Inspect the installed package",
+            '"generic JSON string"',
+            "[]",
+            '{"workflow_id":"other-workflow","kind":"final-local-review"}',
+            json.dumps({"workflow_id": str(fixture.workflow_id), "kind": "package-check"}),
+            json.dumps({"workflow_id": str(fixture.workflow_id), "kind": {"generic": True}}),
+        ):
+            fixture.consume_generic(first_actor, assignment)
         before = fixture.workflow_snapshot()
 
         first = fixture.begin(
@@ -774,6 +821,55 @@ class DelegateStateTest(TestCase):
         self.assertEqual(first_head, report["inherited_from_head"])
         self.assertEqual(before, fixture.workflow_snapshot())
 
+    def test_full_review_does_not_depend_on_unused_prior_review_proof(self) -> None:
+        """새 전수 리뷰는 사용하지 않는 과거 결과의 내용이나 artifact를 신뢰하지 않습니다."""
+        fixture = self._fixture()
+        _, head = fixture.create_review_heads()
+        actor = ActorId("codex:full-reviewer")
+        fixture.start_actor(actor)
+        generic = fixture.consume_generic(actor, "Review the package independently")
+        malformed_review = fixture.consume_generic(actor, json.dumps({
+            "workflow_id": str(fixture.workflow_id), "kind": "final-local-review",
+        }))
+        begun = fixture.begin(actor, kind="final-local-review", reviewed_head_sha=head)
+        arguments = list(self._harness_audit_arguments())
+        for row in REVIEW_ROW_IDS:
+            arguments.extend(("--verified-review-row", row))
+        submitted = fixture.submit(begun, actor, extra_arguments=arguments)
+        self.assertEqual(0, submitted.returncode, submitted.stderr)
+        completed = fixture.complete(begun, json.loads(submitted.stdout))
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        state = fixture.inspect()
+        self.assertEqual("Review the package independently", state.delegations[generic].assignment)
+        self.assertEqual(DelegationStatus.CONSUMED, state.delegations[malformed_review].status)
+
+    def test_inheritance_rejects_identified_review_with_invalid_metadata_or_artifact(self) -> None:
+        """같은 workflow의 review로 식별한 과거 근거는 strict 검증을 통과해야 합니다."""
+        for defect in ("metadata", "artifact"):
+            with self.subTest(defect=defect):
+                fixture = self._fixture()
+                first_head, second_head = fixture.create_review_heads()
+                actor = ActorId("codex:delta-reviewer")
+                fixture.start_actor(actor)
+                prior = fixture.begin(actor, kind="final-local-review", reviewed_head_sha=first_head)
+                assignment = fixture.inspect().delegations[DelegationId(prior["delegation_id"])].assignment
+                if defect == "metadata":
+                    assignment = json.dumps({
+                        "workflow_id": str(fixture.workflow_id), "kind": "final-local-review",
+                    })
+                fixture.consume_generic(actor, assignment)
+                current = fixture.begin(actor, kind="final-local-review", reviewed_head_sha=second_head)
+                arguments = ["--verified-review-row", "C01", "--inherited-from-head", first_head]
+                for row in REVIEW_ROW_IDS[1:]:
+                    arguments.extend(("--inherited-review-row", row))
+                arguments.extend(self._harness_audit_arguments())
+                submitted = fixture.submit(current, actor, extra_arguments=arguments)
+                self.assertEqual(2, submitted.returncode, submitted.stderr)
+                self.assertIn("identity is incomplete" if defect == "metadata" else "artifact", submitted.stderr)
+                self.assertEqual((), fixture.artifact_files)
+                record = fixture.inspect().delegations[DelegationId(current["delegation_id"])]
+                self.assertEqual(DelegationStatus.PENDING, record.status)
+
     def test_cross_session_cli_cannot_read_or_mutate_original_workflow(self) -> None:
         """다른 runtime session identity는 원래 workflow나 delegation으로 fallback하지 않습니다."""
         fixture = self._fixture()
@@ -796,6 +892,50 @@ class DelegateStateTest(TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertEqual({}, fixture.inspect().delegations)
         self.assertFalse(fixture.legacy_state_path.exists())
+
+    def test_inheritance_is_independent_of_conflicting_prior_record_order(self) -> None:
+        """동일 head의 상충하는 결과는 ID 순서와 무관하게 차단하고 일치하는 pass는 허용합니다."""
+        for verdicts in (("pass", "block"), ("block", "pass"), ("pass", "pass")):
+            with self.subTest(verdicts=verdicts):
+                fixture = self._fixture()
+                first_head, second_head = fixture.create_review_heads()
+                actor = ActorId("codex:reviewer")
+                fixture.start_actor(actor)
+                claims = sorted(
+                    [fixture.begin(actor, kind="final-local-review", reviewed_head_sha=first_head)
+                     for _ in range(2)],
+                    key=lambda claim: claim["delegation_id"],
+                )
+                for claim, verdict in zip(claims, verdicts, strict=True):
+                    arguments = list(self._harness_audit_arguments())
+                    for row in REVIEW_ROW_IDS:
+                        arguments.extend(("--verified-review-row", row))
+                    if verdict == "block":
+                        arguments.extend(("--review-finding-json", json.dumps({
+                            "stable_key": "C09-PRIOR-CONFLICT",
+                            "row_id": "C09",
+                            "summary": "Prior review reported a persistent defect.",
+                            "reproduction_command": "python -m unittest prior_failure",
+                            "expected": "pass", "actual": "failed",
+                            "impact": "The prior head is not accepted.",
+                            "root_cause_key": "prior-conflict",
+                        })))
+                    submitted = fixture.submit(claim, actor, verdict=verdict, extra_arguments=arguments)
+                    self.assertEqual(0, submitted.returncode, submitted.stderr)
+                    completed = fixture.complete(claim, json.loads(submitted.stdout))
+                    self.assertEqual(0, completed.returncode, completed.stderr)
+                current = fixture.begin(actor, kind="final-local-review", reviewed_head_sha=second_head)
+                arguments = ["--verified-review-row", "C01", "--inherited-from-head", first_head]
+                for row in REVIEW_ROW_IDS[1:]:
+                    arguments.extend(("--inherited-review-row", row))
+                arguments.extend(self._harness_audit_arguments())
+                submitted = fixture.submit(current, actor, extra_arguments=arguments)
+                expected = 0 if verdicts == ("pass", "pass") else 2
+                self.assertEqual(expected, submitted.returncode, submitted.stderr)
+                if expected:
+                    self.assertIn("conflicting prior review", submitted.stderr)
+                    record = fixture.inspect().delegations[DelegationId(current["delegation_id"])]
+                    self.assertEqual(DelegationStatus.PENDING, record.status)
 
     def _harness_audit_arguments(self) -> tuple[str, ...]:
         """세 source의 typed SHA-256 audit locator를 반환합니다."""

@@ -504,10 +504,20 @@ class DelegateReviewPolicy:
         prior_verifications: Sequence[Mapping[str, object]],
         head_sha: str,
     ) -> Mapping[str, object]:
-        for verification in prior_verifications:
-            if verification.get("head_sha") == head_sha:
-                return verification
-        raise DelegateInputError("inherited rows require a prior verified review receipt")
+        matching = [item for item in prior_verifications if item.get("head_sha") == head_sha]
+        if not matching:
+            raise DelegateInputError("inherited rows require a prior verified review receipt")
+        proof_fields = (
+            "verdict", "verified_rows", "blocking_finding_count", "matrix_id",
+            "harness_audit_checked", "harness_audit_evidence_count",
+        )
+        first = matching[0]
+        if any(
+            any(item.get(field) != first.get(field) for field in proof_fields)
+            for item in matching[1:]
+        ):
+            raise DelegateInputError("conflicting prior review receipts require a full review")
+        return first
 
     def _audit_evidence(self, values: Sequence[str]) -> list[str]:
         evidence = list(dict.fromkeys(values))
@@ -715,7 +725,11 @@ class DelegateStateService:
             raise DelegateStateInvariantError(f"delegation cannot report: {delegation.status}")
         assignment = self._codec.decode(delegation.assignment)
         kind = self._text.nonblank(assignment.get("kind"), "kind")
-        prior_verifications = self._prior_review_verifications() if kind in REVIEW_KINDS else ()
+        prior_verifications = (
+            self._prior_review_verifications()
+            if kind in REVIEW_KINDS and args.inherited_review_row
+            else ()
+        )
         report = self._review.report(
             assignment=assignment,
             args=args,
@@ -931,12 +945,21 @@ class DelegateStateService:
         for delegation in self._handle.inspect().delegations.values():
             if delegation.status is not DelegationStatus.CONSUMED:
                 continue
+            # Generic state API assignments may be prose or arbitrary JSON.
+            # Identify this workflow's review records before strict decoding;
+            # unrelated reports never become inherited review evidence.
+            try:
+                candidate = json.loads(delegation.assignment)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(candidate, dict):
+                continue
+            if candidate.get("workflow_id") != str(self._workflow_id):
+                continue
+            kind = candidate.get("kind")
+            if not isinstance(kind, str) or kind not in REVIEW_KINDS:
+                continue
             assignment = self._codec.decode(delegation.assignment)
-            if assignment.get("workflow_id") != str(self._workflow_id):
-                continue
-            kind = self._text.nonblank(assignment.get("kind"), "kind")
-            if kind not in REVIEW_KINDS:
-                continue
             matrix = self._review.assignment_matrix(assignment)
             artifact = self._artifacts.read_json(delegation.result.outcome_ref)
             report = self._artifact_report(artifact, delegation)

@@ -116,7 +116,7 @@
     "_assets/.agents/skills/process-ticket/references/harness-incident.md": "71a90b3f7517feca24d2744bfd8b8abd13e7628d6f418c6babd79fcc923a12ae",
     "_assets/.agents/skills/process-ticket/scripts/assert_worktree_isolation.sh": "75e007673aca99b98bced2c3ad773af86c14ac45aefa53bfb86a23950198874d",
     "_assets/.agents/skills/process-ticket/scripts/check_auto_merge_continuation_contract.sh": "7e97709180fbebc988d7c99dc7de710b34cd4d0cabd21127476815dcef3505be",
-    "_assets/.agents/skills/process-ticket/scripts/delegate_state.py": "4b7e9eae41b688f33e898f46ed42eec9bf1d8ddf07c6bbf0e300f3ec08b2b784",
+    "_assets/.agents/skills/process-ticket/scripts/delegate_state.py": "08d51b0b9b8c2f1b77d110659be51b3a9980e437e36ec742b40d12cf7a197394",
     "_assets/.agents/skills/process-ticket/scripts/merge_cleanup.py": "076a4aaae8d6c2d602b7c126d17b206066d6fd70aceb87ce0329902032b99d35",
     "_assets/.agents/skills/process-ticket/scripts/process_state_evidence.py": "5d23a190c36ecfda1b7289e05ee16e127d791c7f517873609ed2bd67b3dc43bd",
     "_assets/.agents/skills/process-ticket/scripts/safe_worktree_apply_patch.sh": "722e84dd1173894d7a58e6dbcc678aa5693ecd8aa0b21247e2004db44c2c02c4",

@@ -9,7 +9,7 @@ runtime contracts, and events emitted by real Codex and Claude Code hosts. A suc
 | Boundary | Result |
 | --- | --- |
 | Package and installer tests | 408 passed on macOS and Linux |
-| Runtime contracts | 1,035 tests passed on each platform; Linux also reported 539 subtests |
+| Runtime contracts | 1,038 tests passed on each platform; Linux also reported 544 subtests |
 | Runtime manifest | 243 files; source, wheel, and self-installed copy agree |
 | External wheel | Empty, Python, and JavaScript repositories passed |
 | Quick installer | Real uv/Python bootstrap, three repository types, and a fresh self-hosting checkout passed |
@@ -34,12 +34,20 @@ normalization separately.
 
 The full native lifecycle, messaging, and learning matrix above used wheel SHA-256
 `e4347d3d836313b7d61edce04a847f8731f5c7c52c0b436269542580a3e43609`.
+An intermediate wheel,
+`a6aea761286a3806b9ebc02beae54366a21e24696b7fd8dae14bf85acc7043f0`,
+corrected the review instruction for retaining native tool-result evidence and its generated
+audit and manifest metadata; its executable modules matched the full native matrix wheel.
 The publication wheel is
-`a6aea761286a3806b9ebc02beae54366a21e24696b7fd8dae14bf85acc7043f0`.
-It changes the review instruction for retaining native tool-result evidence and its generated
-audit and manifest metadata; executable modules are identical. Package checks, self-installation,
-fresh host activation, and the final native review cover this instruction correction separately.
-The complete macOS check preserved the same source fingerprint before and after execution.
+`1c24238e2271f8d4fb04b8ee8471467aac86525684748e79b3fd17b261b26552`.
+It additionally fixes review-history handling: a full review does not parse unused prior
+reports, inherited review evidence excludes unrelated generic assignments, and conflicting
+reviews of the same commit require a new full review regardless of record order.
+The focused review suite passed 19 tests and 5 subtests, including rejection of malformed
+relevant evidence and acceptance of equivalent prior passing reviews. The updated full
+macOS and Linux suites, external package checks, real uv installation, self-installation,
+and fresh activation on both hosts cover this wheel. The earlier full native lifecycle,
+messaging, and learning results remain tied to their original wheel above.
 Linux ran from the built source archive with Python 3.14. The development selector accepts
 the 3.14 series so it also works with uv installations whose interpreter catalog predates
 a particular patch release.
