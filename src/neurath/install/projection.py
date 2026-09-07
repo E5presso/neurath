@@ -6,7 +6,7 @@ import shlex
 import sys
 
 from neurath.resources import BUNDLE
-from neurath.skill_names import SKILL_NAMES, public_name
+from neurath.skill_names import SKILL_NAMES, public_name, validate_skill_prefix
 
 PROFILES = ("generic",)
 HOSTS = ("codex", "claude-code")
@@ -162,7 +162,28 @@ def skills():
     return sorted(p.parent.name for p in (BUNDLE / ".agents/skills").glob("*/SKILL.md"))
 
 
-def project_text(text, profile):
+def _prefix_references(text, skill_prefix):
+    """Project public references once; canonical JSON contract IDs stay unchanged."""
+    validate_skill_prefix(skill_prefix)
+    if not skill_prefix:
+        return text
+    names = "|".join(re.escape(public_name(name)) for name in skills())
+    pattern = (
+        rf"(?P<path>\.agents/skills/)(?P<path_name>{names})(?=/)|"
+        rf"(?P<slash>(?<![\w-])/)(?P<slash_name>{names})(?![\w-])|"
+        rf"(?P<command>\.neurath/run skill )(?P<command_name>{names})(?![\w-])"
+    )
+
+    def projected(match):
+        for kind in ("path", "slash", "command"):
+            if match[kind] is not None:
+                return match[kind] + skill_prefix + match[kind + "_name"]
+        raise ValueError("unrecognized skill reference")
+
+    return re.sub(pattern, projected, text)
+
+
+def project_text(text, profile, skill_prefix=""):
     text = text.replace("uv run python -m scripts.", ".neurath/run engine scripts.")
     text = text.replace("python3 -m scripts.", ".neurath/run engine scripts.")
     text = text.replace("python -m scripts.", ".neurath/run engine scripts.")
@@ -204,13 +225,14 @@ def project_text(text, profile):
         ".neurath/project.json (documents 슬롯)",
         text,
     )
-    return text
+    return _prefix_references(text, skill_prefix)
 
 
-def asset_files(profile, hosts):
+def asset_files(profile, hosts, skill_prefix=""):
+    validate_skill_prefix(skill_prefix)
     files = {}
     for skill in skills():
-        name = public_name(skill)
+        name = public_name(skill, skill_prefix)
         source = BUNDLE / ".agents/skills" / skill
         for path in sorted(source.rglob("*")):
             if not path.is_file() or "__pycache__" in path.parts or path.suffix == ".pyc":
@@ -218,7 +240,7 @@ def asset_files(profile, hosts):
             relative = path.relative_to(source).as_posix()
             dest = f".agents/skills/{name}/{relative}"
             if path.suffix == ".md":
-                content = project_text(path.read_text(), profile)
+                content = project_text(path.read_text(), profile, skill_prefix)
                 if relative == "SKILL.md":
                     content = re.sub(r"(?m)^name:.*$", f"name: {name}", content, count=1)
                     # Frontmatter is retained; the authority boundary precedes the source body.
@@ -232,7 +254,7 @@ def asset_files(profile, hosts):
                 files[dest] = (content.encode(), 0o644)
             else:
                 files[dest] = (path.read_bytes(), path.stat().st_mode & 0o777)
-    files[".neurath/policy.md"] = (POLICY.encode(), 0o644)
+    files[".neurath/policy.md"] = (_prefix_references(POLICY, skill_prefix).encode(), 0o644)
     for source in (
         ".agents/HARNESS_INDEX.md",
         ".agents/HARNESS_AUDIT.md",
@@ -241,12 +263,12 @@ def asset_files(profile, hosts):
         ".agents/skills/intent-routing-evals.json",
     ):
         path = BUNDLE / source
-        content = project_text(path.read_text(), profile)
+        content = project_text(path.read_text(), profile, skill_prefix)
         if path.name in {"HARNESS_INDEX.md", "HARNESS_AUDIT.md"}:
             content = re.sub(r"\]\(rules/([^)]*)\)", r"](../rules/\1)", content)
             content = re.sub(
                 r"\]\(skills/([\w-]+)/([^)]*)\)",
-                lambda match: f"](../../.agents/skills/{public_name(match[1])}/{match[2]})",
+                lambda match: f"](../../.agents/skills/{public_name(match[1], skill_prefix)}/{match[2]})",
                 content,
             )
         files[f".neurath/reference/{path.name}"] = (content.encode(), 0o644)
@@ -256,7 +278,7 @@ def asset_files(profile, hosts):
         if path.suffix == ".md":
             content = (
                 "<!-- Neurath: apply current project authority and .neurath/policy.md before source-specific conditions. -->\n"
-                + project_text(content, profile)
+                + project_text(content, profile, skill_prefix)
             )
         files[f".neurath/rules/{name}"] = (content.encode(), 0o644)
     files[".neurath/profile.json"] = (

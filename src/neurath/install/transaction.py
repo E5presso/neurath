@@ -14,7 +14,7 @@ from pathlib import Path, PurePosixPath
 from neurath import __version__
 from neurath.install.projection import HOSTS, PROFILES, asset_files, host_hooks, skills
 from neurath.resources import distribution_id
-from neurath.skill_names import public_name
+from neurath.skill_names import public_name, validate_skill_prefix
 
 STATE = ".neurath/install.json"
 MARKER = "<!-- neurath:managed -->"
@@ -108,6 +108,11 @@ def read_state(root):
         raise InstallError("invalid installation state") from error
     if state is not None and (state.get("schema") != 1 or not isinstance(state.get("owned"), dict)):
         raise InstallError("unsupported installation state")
+    if state is not None:
+        try:
+            validate_skill_prefix(state.get("skill_prefix", ""))
+        except ValueError as error:
+            raise InstallError("invalid installation skill prefix") from error
     return state
 
 
@@ -119,8 +124,11 @@ def _read_receipt(root, receipt):
         result = json.loads(path.read_text())
     except (OSError, ValueError) as error:
         raise InstallError("installation record unavailable") from error
-    if result["root"] != str(root) or result["id"] != receipt:
+    if not isinstance(result, dict) or result.get("root") != str(root) or result.get("id") != receipt:
         raise InstallError("installation record belongs to a different target or ID")
+    content = {key: value for key, value in result.items() if key != "id"}
+    if hashlib.sha256(canonical(content).encode()).hexdigest() != receipt:
+        raise InstallError("installation record integrity mismatch")
     return result
 
 
@@ -183,13 +191,29 @@ def rebase_shared(path, record, current):
     return {"original": original, "installed": current}
 
 
-def make_plan(root, *, action="install", profile=None, hosts=None, receipt=None):
+def make_plan(root, *, action="install", profile=None, hosts=None, receipt=None, skill_prefix=None):
     root = repository(root)
     if (git_dir(root) / "neurath-journal.json").exists():
         raise InstallError("interrupted transaction: run neurath recover")
     if action not in {"install", "update", "uninstall", "restore"}:
         raise InstallError("unsupported action")
     state = read_state(root)
+    saved = _read_receipt(root, receipt) if action == "restore" else None
+    recorded_prefix = (
+        state.get("skill_prefix", "") if state else
+        saved.get("skill_prefix", "") if saved else ""
+    )
+    try:
+        validate_skill_prefix(recorded_prefix)
+        skill_prefix = validate_skill_prefix(
+            recorded_prefix if skill_prefix is None else skill_prefix
+        )
+    except ValueError as error:
+        raise InstallError(str(error)) from error
+    if (state or action in {"restore", "uninstall"}) and skill_prefix != recorded_prefix:
+        raise InstallError(
+            "skill prefix differs from the installation record; uninstall before changing it"
+        )
     profile = profile or (state["profile"] if state else "generic")
     hosts = sorted(set(hosts or (state["hosts"] if state else HOSTS)))
     if profile not in PROFILES or not hosts or any(host not in HOSTS for host in hosts):
@@ -219,7 +243,6 @@ def make_plan(root, *, action="install", profile=None, hosts=None, receipt=None)
     for path, record in owned.items():
         owned[path] = rebase_shared(path, record, observe(path))
     if action == "restore":
-        saved = _read_receipt(root, receipt)
         for item in saved["changes"]:
             if observe(item["path"]) != item["after"]:
                 raise InstallError(f"restore conflict: {item['path']}")
@@ -271,6 +294,8 @@ def make_plan(root, *, action="install", profile=None, hosts=None, receipt=None)
 
         block = f"\n{MARKER}\n## Neurath\n\nRead `.neurath/policy.md` and `.neurath/project.json` for the {profile} profile.\nUse the skills in `.agents/skills`; execute through `.neurath/run`.\n<!-- /neurath:managed -->\n"
         legacy_block = block.replace("Use the skills", "Use the `neurath-` skills")
+        if skill_prefix:
+            block = block.replace("Use the skills", f"Use the `{skill_prefix}` skills")
         managed_text("AGENTS.md", block, legacy=(legacy_block,))
         if "claude-code" in hosts:
             claude = original("CLAUDE.md")
@@ -282,14 +307,14 @@ def make_plan(root, *, action="install", profile=None, hosts=None, receipt=None)
             else:
                 managed_text("CLAUDE.md", f"\n{MARKER}\n@AGENTS.md\n<!-- /neurath:managed -->\n")
         for name in skills():
-            directory = f".agents/skills/{public_name(name)}"
+            directory = f".agents/skills/{public_name(name, skill_prefix)}"
             current = observe(directory)
             if current is not None and not any(p.startswith(directory + "/") for p in owned):
                 if current["kind"] != "directory" or any(
                     not p.is_dir() or p.is_symlink() for p in (root / directory).rglob("*")
                 ):
                     raise InstallError(f"unowned skill directory conflict: {directory}")
-        for path, (data, mode) in asset_files(profile, hosts).items():
+        for path, (data, mode) in asset_files(profile, hosts, skill_prefix).items():
             value = original(path)
             if path not in owned and value is not None:
                 raise InstallError(f"unowned asset conflict: {path}")
@@ -301,7 +326,7 @@ def make_plan(root, *, action="install", profile=None, hosts=None, receipt=None)
                     raise InstallError(".claude/skills symlink conflict")
             else:
                 for name in skills():
-                    name = public_name(name)
+                    name = public_name(name, skill_prefix)
                     path = f".claude/skills/{name}"
                     if path not in owned and observe(path) is not None:
                         raise InstallError(f"skill conflict: {path}")
@@ -393,6 +418,7 @@ def make_plan(root, *, action="install", profile=None, hosts=None, receipt=None)
             "distribution": distribution_id(),
             "profile": profile,
             "hosts": hosts,
+            "skill_prefix": skill_prefix,
             "owned": new_owned,
         }
         change(STATE, file_value((canonical(after_state) + "\n").encode(), 0o600))
@@ -403,6 +429,7 @@ def make_plan(root, *, action="install", profile=None, hosts=None, receipt=None)
         "action": action,
         "profile": profile,
         "hosts": hosts,
+        "skill_prefix": skill_prefix,
         "receipt": receipt,
         "checks": checks,
         "changes": changes,
@@ -492,6 +519,7 @@ def apply_plan(root, plan):
             profile=plan["profile"],
             hosts=plan["hosts"],
             receipt=plan.get("receipt"),
+            skill_prefix=plan.get("skill_prefix"),
         )
         if expected != plan:
             raise InstallError("stale or modified plan: regenerate with this distribution")

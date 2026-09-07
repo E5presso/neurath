@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from neurath.resources import BUNDLE
-from neurath.skill_names import source_id
+from neurath.skill_names import public_name, source_id
 
 
 def activate(root=None):
@@ -41,9 +41,18 @@ def run_engine(root, module, arguments):
 
 def run_skill(root, skill, script, arguments):
     from neurath.install.projection import skills
+    from neurath.install.transaction import read_state
 
-    skill = source_id(skill)
-    if skill not in skills() or Path(script).name != script:
+    known = skills()
+    requested = skill
+    skill = source_id(requested)
+    state = read_state(root)
+    if skill not in known and state and state.get("skill_prefix"):
+        aliases = {public_name(name, state["skill_prefix"]): name for name in known}
+        entry = f".agents/skills/{requested}/SKILL.md"
+        if entry in state["owned"]:
+            skill = aliases.get(requested, requested)
+    if skill not in known or Path(script).name != script:
         raise ValueError("unknown skill/script")
     source = BUNDLE / ".agents/skills" / skill / "scripts" / script
     if not source.is_file():

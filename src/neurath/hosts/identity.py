@@ -704,25 +704,32 @@ def _latest_codex_turn(path):
 
 
 def _reverse_native_lifecycle(path):
+    kinds = {"task_started", "task_complete", "task_completed", "turn_aborted"}
+    for event in _reverse_native_records(path, kinds):
+        item = event.get("payload")
+        if (event.get("type") == "event_msg" and isinstance(item, dict)
+                and item.get("type") in kinds):
+            yield item
+
+
+def _reverse_native_records(path, needles):
     """Scan complete lines backwards; huge message records cannot hide lifecycle.
 
     Lifecycle envelopes are small. Oversized non-lifecycle lines are skipped as
     whole records, never parsed from a fragment. No transcript tail limit applies.
     """
-    kinds = {"task_started", "task_complete", "task_completed", "turn_aborted"}
-    needles = tuple(('"' + kind + '"').encode() for kind in kinds)
+    needles = tuple(('"' + kind + '"').encode() for kind in needles)
 
     def parse(line):
-        if len(line) > 1024 * 1024 or not any(word in line for word in needles):
+        if len(line) > 1024 * 1024:
+            return {"type": "oversized_native_record"}
+        if not any(word in line for word in needles):
             return None
         try:
             event = json.loads(line)
         except (ValueError, UnicodeDecodeError):
             return None
-        if not isinstance(event, dict) or event.get("type") != "event_msg":
-            return None
-        item = event.get("payload")
-        return item if isinstance(item, dict) and item.get("type") in kinds else None
+        return event if isinstance(event, dict) else None
 
     with Path(path).open("rb") as stream:
         position = stream.seek(0, 2)
@@ -738,7 +745,9 @@ def _reverse_native_lifecycle(path):
                 else:
                     tail = parts[0] + tail
                 continue
-            if not skipping:
+            if skipping:
+                yield {"type": "oversized_native_record"}
+            else:
                 item = parse(parts[-1] + tail)
                 if item is not None:
                     yield item
@@ -747,7 +756,9 @@ def _reverse_native_lifecycle(path):
                 if item is not None:
                     yield item
             tail, skipping = parts[0], False
-        if not skipping:
+        if skipping:
+            yield {"type": "oversized_native_record"}
+        else:
             item = parse(tail)
             if item is not None:
                 yield item
@@ -862,7 +873,109 @@ def validate_tool_foreground(root, host, payload, environment):
     state = _state(root, session)
     turn = state.foreground_turns.get(state.session.root_actor_id)
     if turn is None or turn.vendor_turn_id != payload["turn_id"]:
-        raise ValueError("native tool turn is not reconciled with the foreground prompt")
+        if turn is None or not _native_peer_turn(root, path, session, payload["turn_id"]):
+            raise ValueError("native tool turn is not reconciled with the foreground prompt")
+        _resume_peer_foreground(root, session, path, payload["turn_id"])
+    elif turn.user_prompt_receipt is None:
+        from scripts.agent_harness.session_kernel import ForegroundTurnStatus
+
+        if (turn.status is ForegroundTurnStatus.CLOSED
+                or _latest_codex_turn(path) != payload["turn_id"]):
+            raise ValueError("native peer turn is no longer active")
+
+
+def native_root_turn(root, path, session, turn_id):
+    """Read-only proof of the exact live Codex root turn."""
+    try:
+        record = _first_record(path)
+        meta = record["payload"]
+        if (record["type"] != "session_meta" or meta["id"] != session
+                or meta.get("session_id", session) != session
+                or meta.get("source") not in ("vscode", "cli", "exec")
+                or meta.get("thread_source") not in (None, "user")
+                or any(meta.get(k) for k in (
+                    "parent_thread_id", "parent_session_id", "agent_id"))
+                or meta.get("agent_path") not in (None, "/root")
+                or Path(meta["cwd"]).resolve() != Path(root).resolve()
+                or _latest_codex_turn(path) != turn_id):
+            return False
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return False
+    return True
+
+
+def _native_peer_turn(root, path, session, turn_id):
+    """Require paired host delivery records; message text grants no authority."""
+    if not native_root_turn(root, path, session, turn_id):
+        return False
+
+    def delivery(item):
+        if (not isinstance(item, dict) or "call_id" in item
+                or item.get("name") != "send_message_to_thread"
+                or item.get("namespace") != "codex_app"
+                or not isinstance(item.get("id"), str)
+                or not item["id"].startswith("fco_")
+                or not isinstance(item.get("output"), str)):
+            return None
+        return item["id"], hashlib.sha256(item["output"].encode()).hexdigest()
+
+    completed, verified = None, False
+    for record in _reverse_native_records(path, {
+        "task_started", "item_completed", "function_call_output", "message",
+    }):
+        if record.get("type") == "oversized_native_record":
+            return False  # Its size cannot hide an unreconciled human prompt.
+        item = record.get("payload")
+        if not isinstance(item, dict):
+            continue
+        if record.get("type") == "event_msg":
+            if item.get("type") == "task_started":
+                return verified and item.get("turn_id") == turn_id
+            native = item.get("item")
+            if (item.get("type") == "item_completed"
+                    and item.get("thread_id") == session and item.get("turn_id") == turn_id
+                    and isinstance(native, dict) and native.get("type") == "FunctionCallOutput"):
+                completed = delivery(native)
+        elif record.get("type") == "response_item":
+            if item.get("type") == "message" and item.get("role") == "user":
+                return False  # A deferred human prompt still needs its own reconciliation.
+            metadata = item.get("internal_chat_message_metadata_passthrough")
+            if (item.get("type") == "function_call_output"
+                    and isinstance(metadata, dict) and metadata.get("turn_id") == turn_id
+                    and completed is not None and delivery(item) == completed):
+                verified = True
+    return False
+
+
+def _resume_peer_foreground(root, session, path, turn_id):
+    """Reconcile execution provenance without creating a user prompt receipt."""
+    from scripts.agent_harness.session_kernel import (
+        ForegroundTurnClosed, ForegroundTurnPrompted, ForegroundTurnStatus, SessionKernel,
+    )
+
+    with journal(root, session) as data:
+        if not _native_peer_turn(root, path, session, turn_id):
+            raise ValueError("peer delivery changed before foreground reconciliation")
+        state = _state(root, session)
+        actor = state.session.root_actor_id
+        turn = state.foreground_turns[actor]
+        if turn.vendor_turn_id == turn_id:
+            if turn.status is ForegroundTurnStatus.CLOSED:
+                raise ValueError("native peer turn is no longer active")
+            return
+        state = _settle_interrupted_action(root, state, native_turn=turn_id)
+        kernel = SessionKernel(_locator(root))
+        if turn.status is not ForegroundTurnStatus.CLOSED:
+            state = kernel.apply(ForegroundTurnClosed(
+                session_id=state.session.id, actor_id=actor, expected_turn_revision=turn.revision,
+                idempotency_key=f"native-peer-close:{turn_id}:{turn.generation}:{turn.revision}",
+            ), expected_revision=state.revision)
+        kernel.apply(ForegroundTurnPrompted(
+            session_id=state.session.id, actor_id=actor, vendor_turn_id=turn_id,
+            prompt_digest=None, authority_context=None,
+            idempotency_key=f"native-peer-turn:{turn_id}",
+        ), expected_revision=state.revision)
+        data.update(transcript=str(path), resume_pending=None, connected=True)
 
 
 def resume_foreground(root, host, payload, environment):

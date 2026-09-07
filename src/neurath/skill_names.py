@@ -1,5 +1,7 @@
 """Public names are independent of persisted workflow and bundled source IDs."""
 
+import re
+
 SKILL_NAMES = {
     "audit-spec": "review-spec",
     "automate-qa": "qa",
@@ -21,8 +23,17 @@ SKILL_NAMES = {
 }
 
 
-def public_name(skill_id):
-    return SKILL_NAMES.get(skill_id, skill_id)
+def validate_skill_prefix(value):
+    """Accept an explicit empty prefix or a lowercase slug ending in a hyphen."""
+    if not isinstance(value, str) or (
+        value and re.fullmatch(r"[a-z][a-z0-9-]*-", value) is None
+    ):
+        raise ValueError("skill prefix must be empty or a lowercase slug ending in '-'")
+    return value
+
+
+def public_name(skill_id, skill_prefix=""):
+    return validate_skill_prefix(skill_prefix) + SKILL_NAMES.get(skill_id, skill_id)
 
 
 def source_id(name):

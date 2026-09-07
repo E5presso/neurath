@@ -34,6 +34,10 @@ Claude Code나 Codex에서 새 대화를 열면 관련 기록을 자동으로 �
 기존 프로젝트의 의존성과 `.venv`는 그대로 두며, Claude Code와 Codex를 모두 설정합니다.
 다른 프로젝트를 설치하거나 갱신해도 이 프로젝트의 실행 환경은 바뀌지 않습니다.
 
+기존 스킬과 이름이 겹치면 `./setup /path/to/project --skill-prefix neurath-`로 설치하세요.
+Neurath 스킬을 `/neurath-debug`처럼 호출하며, 기존 스킬을 보존합니다.
+업데이트할 때는 설치 시 선택한 접두어를 유지합니다.
+
 설치한 프로젝트의 에이전트에게 다음과 같이 요청하세요.
 
 > `.neurath/policy.md`와 `.neurath/project.json`을 읽고, 이 프로젝트의 실제 문서와

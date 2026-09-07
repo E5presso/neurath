@@ -62,6 +62,14 @@ typed 복구 절차를 실행합니다. 명시적 kernel `SessionEnded`는 여�
 이어갑니다. 영구 종료된 session은 새 SessionStart로 되살리지 않습니다.
 최신 실제 실행 결과는 [검증 기록](validation.md)에 있습니다.
 
+Codex 앱에서 다른 작업의 메시지가 새 턴으로 들어오고 UserPromptSubmit이 생략되는 경우,
+등록된 루트 transcript의 실제 메시지 전달·완료 기록과 현재 native 턴을 함께 확인합니다.
+이때 기존 사용자 목표를 이어갈 foreground만 열고 사용자 승인 기록은 만들지 않습니다.
+메시지 본문, 일반 도구 출력 또는 오래된 전달 기록만으로는 이 경로를 사용할 수 없습니다.
+이전 턴의 Stop이 늦게 도착해도 현재 턴의 출처가 확인되면 상태를 보존한 채 처리합니다.
+출처를 확인할 수 없는 불일치 Stop은 상태를 바꾸지 않고 거부합니다.
+명시적으로 영구 종료된 루트의 반복 Stop은 무변경 처리하며 실행 권한을 되살리지 않습니다.
+
 관련 공식 문서:
 
 - [Codex hooks와 trust](https://learn.chatgpt.com/docs/hooks)

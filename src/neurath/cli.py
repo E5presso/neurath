@@ -43,8 +43,10 @@ def main(arguments=None):
     plan.add_argument("--output", type=Path, required=True)
     apply = commands.add_parser("apply")
     apply.add_argument("plan", type=Path)
+    installation_commands = []
     for action in ("install", "update", "uninstall"):
         sub = commands.add_parser(action)
+        installation_commands.append(sub)
         sub.add_argument("--profile", choices=PROFILES)
         sub.add_argument("--host", action="append", choices=HOSTS, dest="hosts")
     restore = commands.add_parser("restore")
@@ -80,6 +82,11 @@ def main(arguments=None):
     add_newsroom_commands(commands)
     source = commands.add_parser("corpus")
     source.add_argument("destination", type=Path)
+    for command_parser in (setup, plan, wizard, *installation_commands):
+        command_parser.add_argument(
+            "--skill-prefix", metavar="PREFIX",
+            help="새 설치의 스킬 접두어 (예: neurath-); 생략하면 기존 설치 기록을 유지",
+        )
     args = parser.parse_args(arguments)
     try:
         if args.command == "integrity":
@@ -130,7 +137,8 @@ def main(arguments=None):
             from neurath.install.setup import setup_project, show_setup
 
             result = setup_project(
-                root, profile=args.profile, hosts=args.hosts, dry_run=args.dry_run
+                root, profile=args.profile, hosts=args.hosts, dry_run=args.dry_run,
+                skill_prefix=args.skill_prefix,
             )
             emit(result) if args.json else show_setup(result)
             return 1 if result["status"] == "failed" else 0
@@ -143,6 +151,7 @@ def main(arguments=None):
                 profile=args.profile,
                 hosts=args.hosts,
                 receipt=args.receipt,
+                skill_prefix=args.skill_prefix,
             )
             output = write_plan(root, result, args.output)
             emit(
@@ -161,7 +170,8 @@ def main(arguments=None):
             emit(
                 apply_plan(
                     root,
-                    make_plan(root, action=args.command, profile=args.profile, hosts=args.hosts),
+                    make_plan(root, action=args.command, profile=args.profile, hosts=args.hosts,
+                              skill_prefix=args.skill_prefix),
                 )
             )
         elif args.command == "restore":
@@ -175,7 +185,7 @@ def main(arguments=None):
             hosts = (input("Hosts (codex,claude-code) [both]: ").strip() or ",".join(HOSTS)).split(
                 ","
             )
-            result = make_plan(root, profile=profile, hosts=hosts)
+            result = make_plan(root, profile=profile, hosts=hosts, skill_prefix=args.skill_prefix)
             output = write_plan(root, result, args.output)
             print(f"{len(result['changes'])} changes; inspect {output}")
             if input("Apply this plan? [y/N]: ").lower() == "y":

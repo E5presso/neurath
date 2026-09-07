@@ -200,6 +200,9 @@ def _dispatch_hook(root, host, raw, environment=None):
         request = json.loads(raw)
     except ValueError, TypeError:
         request = {}
+    readonly = _readonly_root_stop(root, host, request, environment)
+    if readonly is not None:
+        return readonly
     diagnostics = []
     if isinstance(request, dict) and request.get("hook_event_name") == "Stop":
         from neurath.memory.hooks import checkpoint_request
@@ -229,6 +232,68 @@ def _dispatch_hook(root, host, raw, environment=None):
                 output, diagnostic = _bookkeeping_failure(output, request["hook_event_name"], component, error)
                 diagnostics.append(diagnostic)
     return code, output, "\n".join(diagnostics)
+
+
+def _readonly_root_stop(root, host, request, environment):
+    """Late Stop events cannot retire a new turn or revive an ended session."""
+    if (host not in HOSTS or not isinstance(request, dict)
+            or request.get("hook_event_name") != "Stop"):
+        return None
+    activate(root)
+    from scripts.agent_harness.session_kernel import (
+        ActorStatus, SessionKernel, SessionLocator, SessionRuntime, SessionStatus,
+    )
+    from scripts.agent_harness.state_handle import RuntimeEnvironmentResolver
+
+    try:
+        binding = RuntimeEnvironmentResolver().resolve_hook_actor(
+            os.environ if environment is None else environment,
+            request.get("agent_id"), request.get("session_id"), hook_runtime=SessionRuntime(host),
+        )
+        if not binding.is_root:
+            return None
+        if (any(request.get(key) is not None for key in (
+                "actor_id", "parent_actor_id", "parent_thread_id", "parent_session_id"))
+                or request.get("thread_id") not in (None, request.get("session_id"))
+                or request.get("runtime") not in (None, host)
+                or not isinstance(request.get("cwd"), str)
+                or Path(request["cwd"]).resolve() != Path(root).resolve()):
+            return 2, {}, "Neurath Stop root identity or worktree mismatch; state is unchanged."
+        state = SessionKernel(SessionLocator.from_worktree(Path(root))).inspect(binding.session_id)
+        actor = state.actors.get(binding.actor_id)
+        if (state.session.runtime is not binding.runtime
+                or state.session.root_actor_id != binding.actor_id
+                or actor is None or actor.parent_actor_id is not None):
+            return 2, {}, "Neurath Stop root binding mismatch; state is unchanged."
+    except (OSError, ValueError, RuntimeError):
+        return 2, {}, "Neurath Stop lacks a valid root binding; state is unchanged."
+    if state.session.status is SessionStatus.ENDED and actor.status is ActorStatus.RETIRED:
+        return 0, {}, (
+            "Neurath logical session is already ended; Stop acknowledged without "
+            "state changes or execution authority. Continue in a new native session."
+        )
+    turn = state.foreground_turns.get(binding.actor_id)
+    if (host != "codex" or state.session.status is not SessionStatus.ACTIVE
+            or turn is None or not turn.vendor_turn_id or not request.get("turn_id")
+            or turn.vendor_turn_id == request["turn_id"]):
+        return None
+    from neurath.hosts.identity import (
+        _transcript, _validate_root_transcript, native_root_turn, snapshot,
+    )
+
+    try:
+        data = snapshot(root, request["session_id"])
+        path = _transcript(host, request["transcript_path"],
+                           os.environ if environment is None else environment)
+        _validate_root_transcript(root, host, request, path, data)
+        current = bool(data.get("transcript")) and native_root_turn(
+            root, path, request["session_id"], turn.vendor_turn_id,
+        )
+    except (OSError, ValueError, KeyError, TypeError):
+        current = False
+    if current:
+        return 0, {}, "Neurath stale Stop acknowledged; the current native turn is unchanged."
+    return 2, {}, "Neurath Stop turn mismatch lacks current native proof; state is unchanged."
 
 
 def hook(root, host, raw, environment=None):

@@ -41,6 +41,10 @@ applies the harness, and checks the installation. Your project's dependencies an
 are preserved. Both Claude Code and Codex are enabled by default.
 Each project keeps its installed runtime until you explicitly update that project.
 
+If the project already has skills with the same names, use
+`./setup /path/to/project --skill-prefix neurath-` to call Neurath skills as
+`/neurath-debug`, for example. Existing skills are preserved; updates retain the chosen prefix.
+
 Then, in your coding agent:
 
 > Read `.neurath/policy.md` and `.neurath/project.json`. Connect this project's actual

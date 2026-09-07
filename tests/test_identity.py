@@ -915,6 +915,358 @@ def test_unannounced_native_turn_requires_current_host_evidence(runtime, invalid
     assert snapshot(root, "root") == receipt
 
 
+def native_peer_delivery(transcript, turn_id, *, completed=True, completion_changes=None, **changes):
+    """Mirror Codex's incoming peer envelope, not an ordinary tool response."""
+    item = {
+        "type": "function_call_output",
+        "id": "fco_native_delivery",
+        "name": "send_message_to_thread",
+        "namespace": "codex_app",
+        "output": "<codex_delegation><source_thread_id>peer</source_thread_id>"
+                  "<input>Review the result</input></codex_delegation>",
+        "internal_chat_message_metadata_passthrough": {"turn_id": turn_id},
+        **changes,
+    }
+    with transcript.open("a") as stream:
+        stream.write(json.dumps({"type": "response_item", "payload": item}) + "\n")
+        if completed:
+            stream.write(json.dumps({"type": "event_msg", "payload": {
+                "type": "item_completed", "thread_id": "root", "turn_id": turn_id,
+                "item": {key: value for key, value in {
+                    **item, "type": "FunctionCallOutput",
+                }.items() if key != "internal_chat_message_metadata_passthrough"},
+                **(completion_changes or {}),
+            }}) + "\n")
+
+
+def peer_root_metadata(root, transcript, **changes):
+    transcript.write_text(json.dumps({"type": "session_meta", "payload": {
+        "id": "root", "session_id": "root", "source": "vscode",
+        "thread_source": "user", "cwd": str(root), **changes,
+    }}) + "\n")
+
+
+@pytest.mark.parametrize("previous", ["closed", "interrupted", "in-flight"])
+def test_native_peer_turn_reconciles_without_user_authority(runtime, previous):
+    from neurath.hosts.identity import snapshot
+    from scripts.agent_harness import session_kernel as k
+
+    root, _, transcript, send = runtime
+    peer_root_metadata(root, transcript)
+    if previous == "closed":
+        start(send, "codex")
+        assert send("codex", "Stop", stop_hook_active=False,
+                    last_assistant_message="Finished")[0] == 0
+        kernel = k.SessionKernel(k.SessionLocator.from_worktree(root))
+    else:
+        kernel, _, _ = prepare_interrupted_action(
+            runtime, "codex", "in-flight" if previous == "in-flight" else "succeeded",
+        )
+    before = kernel.inspect(k.SessionId("root"))
+    native_turn_started(transcript, "peer-turn")
+    native_peer_delivery(transcript, "peer-turn")
+    code, _, diagnostic = send(
+        "codex", "PreToolUse", turn_id="peer-turn", tool_use_id="peer-read",
+        tool_name="mcp__codex_app__read_thread", tool_input={"threadId": "peer"},
+    )
+    assert code == 0, diagnostic
+    after = kernel.inspect(k.SessionId("root"))
+    turn = after.foreground_turns[after.session.root_actor_id]
+    assert turn.vendor_turn_id == "peer-turn"
+    assert turn.generation == before.foreground_turns[after.session.root_actor_id].generation + 1
+    assert turn.user_prompt_receipt is None
+    assert {key: value.to_payload() for key, value in after.workflows.items()} == {
+        key: value.to_payload() for key, value in before.workflows.items()
+    }
+    if previous == "in-flight":
+        batch = after.material_actions[after.session.root_actor_id]
+        assert batch.resolution.value == "blocked"
+        assert batch.invocations[0].receipt.outcome.value == "unknown"
+    journal = snapshot(root, "root")
+    assert send("codex", "PreToolUse", turn_id="peer-turn", tool_use_id="peer-retry",
+                tool_name="mcp__codex_app__read_thread", tool_input={})[0] == 0
+    assert kernel.inspect(k.SessionId("root")).to_payload() == after.to_payload()
+    assert snapshot(root, "root") == journal
+
+
+@pytest.mark.parametrize("invalid", [
+    "no-start", "stale", "completed", "wrong-turn", "wrong-name", "wrong-namespace",
+    "called-tool", "missing-id", "user-text", "foreign-root", "child-root",
+    "foreign-cwd", "human-prompt", "ordinary-output", "missing-ingress",
+    "missing-completion", "completion-thread", "completion-turn", "completion-item",
+])
+def test_peer_turn_requires_exact_native_ingress(runtime, invalid):
+    from neurath.hosts.identity import snapshot
+    from scripts.agent_harness import session_kernel as k
+
+    root, _, transcript, send = runtime
+    peer_root_metadata(root, transcript)
+    start(send, "codex")
+    kernel = k.SessionKernel(k.SessionLocator.from_worktree(root))
+    if invalid in {"foreign-root", "child-root", "foreign-cwd"}:
+        peer_root_metadata(root, transcript, **{
+            "foreign-root": {"id": "foreign"},
+            "child-root": {"parent_thread_id": "another-root"},
+            "foreign-cwd": {"cwd": str(root.parent)},
+        }[invalid])
+    if invalid != "no-start":
+        native_turn_started(transcript, "peer-turn")
+    changes = {
+        "wrong-turn": {"internal_chat_message_metadata_passthrough": {"turn_id": "old"}},
+        "wrong-name": {"name": "exec_command"},
+        "wrong-namespace": {"namespace": "other"},
+        "called-tool": {"call_id": "call_echoed_tool_output"},
+        "missing-id": {"id": None},
+        "user-text": {"type": "message", "role": "user"},
+        "ordinary-output": {"type": "custom_tool_call_output"},
+    }.get(invalid, {})
+    if invalid != "missing-ingress":
+        native_peer_delivery(transcript, "peer-turn", **changes,
+            completed=invalid != "missing-completion",
+            completion_changes={
+                "completion-thread": {"thread_id": "foreign"},
+                "completion-turn": {"turn_id": "old"},
+                "completion-item": {"item": {"id": "other"}},
+            }.get(invalid))
+    if invalid == "human-prompt":
+        with transcript.open("a") as stream:
+            stream.write(json.dumps({"type": "response_item", "payload": {
+                "type": "message", "role": "user", "content": "Unreconciled correction",
+            }}) + "\n")
+    if invalid == "stale":
+        native_turn_started(transcript, "newer-turn")
+    if invalid == "completed":
+        with transcript.open("a") as stream:
+            stream.write(json.dumps({"type": "event_msg", "payload": {
+                "type": "task_complete", "turn_id": "peer-turn",
+            }}) + "\n")
+    before = kernel.inspect(k.SessionId("root")).to_payload()
+    journal = snapshot(root, "root")
+    with pytest.raises(ValueError, match="not reconciled"):
+        send("codex", "PreToolUse", turn_id="peer-turn", tool_use_id="unverified",
+             tool_name="mcp__codex_app__read_thread", tool_input={})
+    assert kernel.inspect(k.SessionId("root")).to_payload() == before
+    assert snapshot(root, "root") == journal
+
+
+
+@pytest.mark.parametrize("ended", [False, True])
+def test_peer_retry_after_journal_failure_uses_canonical_provenance(runtime, monkeypatch, ended):
+    from neurath.hosts import identity
+    from scripts.agent_harness import session_kernel as k
+
+    root, _, transcript, send = runtime
+    peer_root_metadata(root, transcript)
+    start(send, "codex")
+    native_turn_started(transcript, "peer-turn")
+    native_peer_delivery(transcript, "peer-turn")
+    original = identity.os.replace
+
+    def failed_flush(source, target):
+        if str(target).endswith(".neurath-host.json"):
+            raise OSError("fixture journal flush failure")
+        return original(source, target)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(identity.os, "replace", failed_flush)
+        with pytest.raises(OSError, match="journal flush"):
+            send("codex", "PreToolUse", turn_id="peer-turn", tool_use_id="crashed-read",
+                 tool_name="mcp__codex_app__read_thread", tool_input={})
+    kernel = k.SessionKernel(k.SessionLocator.from_worktree(root))
+    state = kernel.inspect(k.SessionId("root"))
+    assert state.foreground_turns[state.session.root_actor_id].vendor_turn_id == "peer-turn"
+    assert state.foreground_turns[state.session.root_actor_id].user_prompt_receipt is None
+    if ended:
+        with transcript.open("a") as stream:
+            stream.write(json.dumps({"type": "event_msg", "payload": {
+                "type": "task_complete", "turn_id": "peer-turn",
+            }}) + "\n")
+        with pytest.raises(ValueError, match="no longer active"):
+            send("codex", "PreToolUse", turn_id="peer-turn", tool_use_id="stale-read",
+                 tool_name="mcp__codex_app__read_thread", tool_input={})
+    else:
+        assert send("codex", "PreToolUse", turn_id="peer-turn", tool_use_id="retry-read",
+                    tool_name="mcp__codex_app__read_thread", tool_input={})[0] == 0
+    assert kernel.inspect(k.SessionId("root")).to_payload() == state.to_payload()
+
+
+def test_peer_ingress_cannot_skip_oversized_unclassified_input(runtime):
+    from scripts.agent_harness import session_kernel as k
+
+    root, _, transcript, send = runtime
+    peer_root_metadata(root, transcript)
+    start(send, "codex")
+    native_turn_started(transcript, "peer-turn")
+    native_peer_delivery(transcript, "peer-turn")
+    with transcript.open("a") as stream:
+        stream.write(json.dumps({"type": "response_item", "payload": {
+            "type": "message", "role": "user", "content": "x" * 3_000_000,
+        }}) + "\n")
+    kernel = k.SessionKernel(k.SessionLocator.from_worktree(root))
+    before = kernel.inspect(k.SessionId("root")).to_payload()
+    with pytest.raises(ValueError, match="not reconciled"):
+        send("codex", "PreToolUse", turn_id="peer-turn", tool_use_id="unclassified-read",
+             tool_name="mcp__codex_app__read_thread", tool_input={})
+    assert kernel.inspect(k.SessionId("root")).to_payload() == before
+
+
+def test_closed_peer_turn_cannot_be_reopened_by_replayed_tools(runtime):
+    from scripts.agent_harness import session_kernel as k
+
+    root, _, transcript, send = runtime
+    peer_root_metadata(root, transcript)
+    start(send, "codex")
+    native_turn_started(transcript, "peer-turn")
+    native_peer_delivery(transcript, "peer-turn")
+    assert send("codex", "PreToolUse", turn_id="peer-turn", tool_use_id="first-read",
+                tool_name="mcp__codex_app__read_thread", tool_input={})[0] == 0
+    kernel = k.SessionKernel(k.SessionLocator.from_worktree(root))
+    state = kernel.inspect(k.SessionId("root"))
+    turn = state.foreground_turns[state.session.root_actor_id]
+    kernel.apply(k.ForegroundTurnClosed(
+        session_id=state.session.id, actor_id=state.session.root_actor_id,
+        expected_turn_revision=turn.revision, idempotency_key="fixture-peer-close",
+    ))
+    before = kernel.inspect(k.SessionId("root")).to_payload()
+    with pytest.raises(ValueError, match="no longer active"):
+        send("codex", "PreToolUse", turn_id="peer-turn", tool_use_id="stale-read",
+             tool_name="mcp__codex_app__read_thread", tool_input={})
+    assert kernel.inspect(k.SessionId("root")).to_payload() == before
+
+
+
+@pytest.mark.parametrize("ingress", ["human", "peer"])
+@pytest.mark.parametrize("native", ["current", "missing", "completed"])
+def test_stale_stop_preserves_new_foreground(runtime, ingress, native):
+    from scripts.agent_harness import session_kernel as k
+
+    root, _, transcript, send = runtime
+    peer_root_metadata(root, transcript)
+    start(send, "codex")
+    native_turn_started(transcript, "new-turn")
+    if ingress == "human":
+        assert send("codex", "UserPromptSubmit", turn_id="new-turn", prompt="Continue")[0] == 0
+    else:
+        native_peer_delivery(transcript, "new-turn")
+        assert send("codex", "PreToolUse", turn_id="new-turn", tool_use_id="peer-read",
+                    tool_name="mcp__codex_app__read_thread", tool_input={})[0] == 0
+    if native == "missing":
+        peer_root_metadata(root, transcript)
+    elif native == "completed":
+        with transcript.open("a") as stream:
+            stream.write(json.dumps({"type": "event_msg", "payload": {
+                "type": "task_complete", "turn_id": "new-turn",
+            }}) + "\n")
+    kernel = k.SessionKernel(k.SessionLocator.from_worktree(root))
+    before = kernel.inspect(k.SessionId("root")).to_payload()
+    local = fixture_local_bytes(root)
+    code, _, diagnostic = send("codex", "Stop", turn_id="parent-turn")
+    assert code == (0 if native == "current" else 2), diagnostic
+    assert "Stop" in diagnostic
+    assert kernel.inspect(k.SessionId("root")).to_payload() == before
+    assert fixture_local_bytes(root) == local
+
+
+@pytest.mark.parametrize("ingress", ["human", "peer"])
+@pytest.mark.parametrize("field", ["cwd", "parent_thread_id", "actor_id", "thread_id", "runtime"])
+def test_stale_stop_invalid_identity_cannot_fall_through(runtime, ingress, field):
+    from scripts.agent_harness import session_kernel as k
+
+    root, _, transcript, send = runtime
+    peer_root_metadata(root, transcript)
+    start(send, "codex")
+    native_turn_started(transcript, "new-turn")
+    if ingress == "human":
+        assert send("codex", "UserPromptSubmit", turn_id="new-turn", prompt="Continue")[0] == 0
+    else:
+        native_peer_delivery(transcript, "new-turn")
+        assert send("codex", "PreToolUse", turn_id="new-turn", tool_use_id="peer-read",
+                    tool_name="mcp__codex_app__read_thread", tool_input={})[0] == 0
+    if field == "cwd":
+        (root / "subdir").mkdir()
+    value = str(root / "subdir") if field == "cwd" else "foreign"
+    kernel = k.SessionKernel(k.SessionLocator.from_worktree(root))
+    before = kernel.inspect(k.SessionId("root")).to_payload()
+    local = fixture_local_bytes(root)
+    code, _, _ = send("codex", "Stop", turn_id="parent-turn", **{field: value})
+    assert code == 2
+    assert kernel.inspect(k.SessionId("root")).to_payload() == before
+    assert fixture_local_bytes(root) == local
+
+
+def fixture_local_bytes(root):
+    return {str(p.relative_to(root)): p.read_bytes()
+            for p in (root / ".neurath/local").rglob("*") if p.is_file()}
+
+
+@pytest.mark.parametrize("host", ["codex", "claude-code"])
+def test_retired_root_stop_has_no_state_or_bookkeeping_effect(runtime, host):
+    from scripts.agent_harness import session_kernel as k
+
+    root, _, _, send = runtime
+    start(send, host)
+    kernel = k.SessionKernel(k.SessionLocator.from_worktree(root))
+    state = kernel.inspect(k.SessionId("root"))
+    kernel.apply(k.SessionEnded(session_id=state.session.id, actor_id=state.session.root_actor_id,
+                                idempotency_key="explicit-fixture-end"))
+    before = fixture_local_bytes(root)
+    assert any(p.endswith(".neurath-host.json") for p in before)
+    assert any(p.endswith("project.sqlite3") for p in before)
+    for _ in range(2):
+        code, output, diagnostic = send(host, "Stop", turn_id="unadmitted-turn")
+        assert code == 0 and output == {}, diagnostic
+        assert "already ended" in diagnostic
+        assert fixture_local_bytes(root) == before
+    with pytest.raises(ValueError, match="active session"):
+        send(host, "SessionStart", source="resume")
+    try:
+        code, _, diagnostic = send(host, "PreToolUse", turn_id="parent-turn",
+            tool_name="exec_command", tool_input={"cmd": "true"}, tool_use_id="after-end")
+    except ValueError as error:
+        assert "active session" in str(error)
+    else:
+        assert code != 0, diagnostic
+    assert fixture_local_bytes(root) == before
+
+
+@pytest.mark.parametrize("change", [
+    {"agent_id": "child"}, {"agent_id": ""}, {"actor_id": "codex:session:root"},
+    {"parent_thread_id": "parent"}, {"parent_actor_id": "parent"},
+    {"thread_id": "foreign"}, {"session_id": "missing"}, {"session_id": None},
+    {"cwd": "/"}, {"runtime": "claude-code"},
+])
+def test_retired_stop_rejects_foreign_or_child_payload(runtime, change):
+    from scripts.agent_harness import session_kernel as k
+
+    root, _, _, send = runtime
+    start(send, "codex")
+    kernel = k.SessionKernel(k.SessionLocator.from_worktree(root))
+    state = kernel.inspect(k.SessionId("root"))
+    kernel.apply(k.SessionEnded(session_id=state.session.id, actor_id=state.session.root_actor_id,
+                                idempotency_key="explicit-fixture-end"))
+    before = fixture_local_bytes(root)
+    code, _, diagnostic = send("codex", "Stop", **change)
+    assert code != 0
+    assert "already ended" not in diagnostic
+    assert fixture_local_bytes(root) == before
+
+
+def test_peer_message_in_same_native_turn_preserves_user_receipt(runtime):
+    from scripts.agent_harness import session_kernel as k
+
+    root, _, transcript, send = runtime
+    peer_root_metadata(root, transcript)
+    start(send, "codex")
+    native_turn_started(transcript, "parent-turn")
+    native_peer_delivery(transcript, "parent-turn")
+    kernel = k.SessionKernel(k.SessionLocator.from_worktree(root))
+    before = kernel.inspect(k.SessionId("root")).to_payload()
+    assert send("codex", "PreToolUse", turn_id="parent-turn", tool_use_id="same-turn",
+                tool_name="mcp__codex_app__read_thread", tool_input={})[0] == 0
+    assert kernel.inspect(k.SessionId("root")).to_payload() == before
+
+
+
 def test_native_new_turn_recovers_missing_posttool_as_unknown(runtime):
     from scripts.agent_harness import session_kernel as k
 

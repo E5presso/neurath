@@ -4,7 +4,7 @@ from neurath import doctor as diagnostics
 from neurath.install.transaction import InstallError, apply_plan, make_plan
 
 
-def next_steps(hosts):
+def next_steps(hosts, skill_prefix=""):
     steps = [
         "대상 프로젝트의 에이전트에서 .neurath/project.json에 실제 문서 경로와 검증 명령을 연결하세요.",
     ]
@@ -17,19 +17,22 @@ def next_steps(hosts):
             "Claude Code에서 대상 프로젝트를 열고 /hooks에서 Neurath 훅 로딩을 확인하세요."
         )
     steps.append(
+        f"Neurath 스킬은 /{skill_prefix}debug처럼 호출합니다. 기존 프로젝트 스킬의 이름은 유지합니다."
+        if skill_prefix else
         "새 세션에서 작업을 요청하세요. 에이전트가 대상 프로젝트의 스킬을 접두어 없이 사용합니다."
     )
     return steps
 
 
-def setup_project(root, *, profile=None, hosts=None, dry_run=False):
+def setup_project(root, *, profile=None, hosts=None, dry_run=False, skill_prefix=None):
     if diagnostics.integrity()["status"] != "passed":
         raise InstallError("distribution integrity failed; obtain an intact Neurath distribution")
-    plan = make_plan(root, profile=profile, hosts=hosts)
+    plan = make_plan(root, profile=profile, hosts=hosts, skill_prefix=skill_prefix)
     result = {
         "root": str(root),
         "profile": plan["profile"],
         "hosts": plan["hosts"],
+        "skill_prefix": plan["skill_prefix"],
         "changes": [
             {"path": item["path"], "action": "remove" if item["after"] is None else "write"}
             for item in plan["changes"]
@@ -40,13 +43,15 @@ def setup_project(root, *, profile=None, hosts=None, dry_run=False):
     result["receipt"] = apply_plan(root, plan)
     result["doctor"] = diagnostics.doctor(root, protocol=True)
     result["status"] = "passed" if diagnostics.passed(result["doctor"]) else "failed"
-    result["next_steps"] = next_steps(plan["hosts"])
+    result["next_steps"] = next_steps(plan["hosts"], plan["skill_prefix"])
     return result
 
 
 def show_setup(result):
     print(f"Neurath · {result['root']}")
     print(f"프로필: {result['profile']} | 호스트: {', '.join(result['hosts'])}")
+    if result.get("skill_prefix"):
+        print(f"Neurath 스킬 접두어: {result['skill_prefix']}")
     if result["status"] == "planned":
         print(
             f"미리보기: {len(result['changes'])}개 경로 변경 예정. 대상 파일을 수정하지 않았습니다."
