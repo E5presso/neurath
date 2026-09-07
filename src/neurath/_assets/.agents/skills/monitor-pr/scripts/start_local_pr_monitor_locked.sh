@@ -57,13 +57,14 @@ fi
 if command -v realpath >/dev/null 2>&1; then
   python_bin="$(realpath "$python_bin")"
 fi
-if ! "$python_bin" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 14) else 1)' >/dev/null 2>&1; then
+# Inline Python must ignore target modules; file-based helpers retain sibling imports.
+if ! "$python_bin" -P -c 'import sys; sys.exit(0 if sys.version_info >= (3, 14) else 1)' >/dev/null 2>&1; then
   printf 'monitor requires the Neurath tool Python 3.14+; rerun Neurath setup for %s. refusing to launch with %s\n' \
     "$worktree" "$python_bin" >&2
   exit 1
 fi
 
-runtime_id="$("$python_bin" -c 'import uuid; print(uuid.uuid4().hex)')"
+runtime_id="$("$python_bin" -P -c 'import uuid; print(uuid.uuid4().hex)')"
 handoff_receipt="$("$python_bin" "$skill_dir/scripts/monitor_runtime_handoff.py" \
   --workflow-id "$WORKFLOW_ID" \
   --expected-label "$launch_label" \
@@ -118,7 +119,7 @@ if [ -n "${SSH_AUTH_SOCK:-}" ]; then
   launcher_command+=("SSH_AUTH_SOCK=$SSH_AUTH_SOCK")
 fi
 launcher_command+=("${command[@]}")
-launch_started_at_epoch="$("$python_bin" -c 'import time; print(time.time())')"
+launch_started_at_epoch="$("$python_bin" -P -c 'import time; print(time.time())')"
 
 if [ "$launcher" = "launchctl" ]; then
   "$python_bin" "$skill_dir/scripts/launch_agent_plist.py" \
@@ -133,8 +134,8 @@ manager_receipt="$("$python_bin" "$skill_dir/scripts/monitor_process_manager.py"
   --user-id "$(id -u)" \
   --readiness-attempts "$process_manager_readiness_attempts" \
   -- "${launcher_command[@]}")"
-launcher="$("$python_bin" -c 'import json,sys; print(json.loads(sys.argv[1])["launcher"])' "$manager_receipt")"
-manager_pid="$("$python_bin" -c 'import json,sys; print(json.loads(sys.argv[1]).get("manager_pid", ""))' "$manager_receipt")"
+launcher="$("$python_bin" -P -c 'import json,sys; print(json.loads(sys.argv[1])["launcher"])' "$manager_receipt")"
+manager_pid="$("$python_bin" -P -c 'import json,sys; print(json.loads(sys.argv[1]).get("manager_pid", ""))' "$manager_receipt")"
 
 evidence_helper="$skill_dir/../process-ticket/scripts/process_state_evidence.py"
 runtime_assets=""
@@ -152,7 +153,7 @@ while [ "$attempt" -lt "$startup_readback_attempts" ]; do
     --minimum-heartbeat-at-epoch "$launch_started_at_epoch" \
     --manager-json "$manager_receipt" || true)"
   if [ -n "$runtime_assets" ]; then
-    subscription_json="$("$python_bin" -c 'import json,sys; print(json.dumps(json.loads(sys.argv[1])["subscription"], ensure_ascii=False, separators=(",", ":")))' "$runtime_assets")"
+    subscription_json="$("$python_bin" -P -c 'import json,sys; print(json.dumps(json.loads(sys.argv[1])["subscription"], ensure_ascii=False, separators=(",", ":")))' "$runtime_assets")"
     if evidence_receipt="$("$python_bin" "$evidence_helper" \
       --workflow-id "$WORKFLOW_ID" \
       --field monitor_event_subscription \
@@ -177,5 +178,5 @@ if [ -z "$runtime_assets" ] || [ -z "$evidence_receipt" ]; then
   exit 1
 fi
 
-receipt="$("$python_bin" -c 'import json,sys; print(json.dumps(json.loads(sys.argv[1])["receipt"], ensure_ascii=False, separators=(",", ":")))' "$runtime_assets")"
+receipt="$("$python_bin" -P -c 'import json,sys; print(json.dumps(json.loads(sys.argv[1])["receipt"], ensure_ascii=False, separators=(",", ":")))' "$runtime_assets")"
 printf '%s\n' "$receipt"

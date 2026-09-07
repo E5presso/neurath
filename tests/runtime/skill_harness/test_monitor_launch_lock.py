@@ -359,6 +359,12 @@ class MonitorLaunchLockTest(TestCase):
 
             worktree = root / "worktree"
             subprocess.run(("git", "init", "-q", str(worktree)), check=True)
+            # The real shell starter's inline imports must ignore target modules,
+            # while file-based helper imports continue using their own directory.
+            for module in ("uuid", "json"):
+                (worktree / f"{module}.py").write_text(
+                    "raise RuntimeError('PROJECT_MODULE_EXECUTED')\n", encoding="utf-8"
+                )
             evidence_helper = root / "process-ticket/scripts/process_state_evidence.py"
             evidence_helper.parent.mkdir(parents=True)
             evidence_helper.write_text(FAKE_MONITOR_RUNTIME, encoding="utf-8")

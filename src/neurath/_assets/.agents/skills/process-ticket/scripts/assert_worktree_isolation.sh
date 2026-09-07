@@ -42,6 +42,7 @@ root_status="$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all)"
   || fail "root-dirty mode=$mode status=$(printf '%s' "$root_status" | tr '\n' ';')"
 
 cd "$worktree"
-claim="$("${PYTHON_BIN:-python3}" -m scripts.agent_harness.state_cli worktree claim)" \
+# Keep the target's scripts package behind the bundled engine on PYTHONPATH.
+claim="$("${PYTHON_BIN:-python3}" -P -m scripts.agent_harness.state_cli worktree claim)" \
   || fail "canonical-worktree-claim-rejected"
 printf 'isolation-ok: mode=%s issue=%s claim=%s\n' "$mode" "$issue" "$claim"
