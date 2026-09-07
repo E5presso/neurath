@@ -1,45 +1,48 @@
-# 스킬 목록
+# Skill catalog
+<!-- date: 2026-09-07; synced_from: source and documentation at 3563609329437641570a5e45d87ceb99064e4c02; English and Korean editions updated together -->
 
-스킬은 두 호스트에서 접두어 없이 사용합니다. 역할이 분명한 이름은 유지하고,
-불필요하게 길거나 뜻이 모호했던 이름을 정리했습니다.
+**English** · [한국어](skills.ko.md)
 
-| 스킬 | 하는 일 |
+Skills use unprefixed names in both hosts. Clear names were retained, while unnecessarily long
+or ambiguous names were simplified.
+
+| Skill | Purpose |
 | --- | --- |
-| `plan` | 제품 요구사항을 계획과 이슈 구조로 정리 |
-| `review-spec` | 구현 전 스펙의 누락과 모순 검토 |
-| `create-issue` | 승인된 작업을 GitHub 이슈로 생성 |
-| `implement-issue` | 승인된 이슈 하나를 구현·검증 |
-| `autopilot` | 여러 이슈의 자율 실행 조율 |
-| `create-worktree` | 이슈 작업용 독립 작업 폴더 생성 |
-| `debug` | 오류 재현과 원인 조사 |
-| `explain-code` | 현재 소스에 근거해 코드 설명 |
-| `review-code` | 변경 코드 검토 |
-| `qa` | 실제 클라이언트·API·저장 결과를 연결해 동작 검증 |
-| `design-ui` | 구현 전 UI 방향 탐색과 디자인 승인 |
-| `sync-design` | 디자인 토큰과 컴포넌트 매핑 동기화 |
-| `implement-ui` | 승인된 디자인을 UI로 구현 |
-| `review-ui` | 승인된 디자인과 실행 화면 비교 |
-| `checkpoint` | 되돌릴 수 있는 작업 중간 저장 |
-| `commit` | 검증된 변경 커밋 |
-| `create-pr` | 브랜치를 올리고 PR 생성·갱신 |
-| `review-pr` | 정확한 PR 버전에 대한 검토 결과 처리 |
-| `pr-feedback` | PR 리뷰 의견의 수용·반론 판단과 대응 |
-| `watch-pr` | PR 상태 변화 확인 |
-| `update-status` | 이슈·프로젝트 상태 갱신 |
-| `finish-session` | 세션 검증과 마무리 |
-| `sync-docs` | 문서 갱신 범위 분류와 연결 |
-| `dev-docs` | 개발자 문서 갱신 |
-| `user-docs` | 사용자 문서 갱신 |
-| `audit-deps` | 의존성의 보안·라이선스·관리 상태 점검 |
-| `update-deps` | 의존성 업데이트와 검증 |
-| `test-harness` | 실패 시나리오로 하네스의 실제 강제력 검증 |
-| `optimize-harness` | 동작을 유지하며 지침과 프롬프트 정리 |
-| `memory-to-rules` | 반복해서 확인한 개인 작업 지식을 프로젝트 규칙으로 반영 |
-| `graphify` | 코드·문서 관계를 지식 그래프로 탐색 |
+| `plan` | Turn product requirements into a plan and issue structure |
+| `review-spec` | Review specifications for gaps and contradictions before implementation |
+| `create-issue` | Create GitHub issues for approved work |
+| `implement-issue` | Implement and verify one approved issue |
+| `autopilot` | Coordinate autonomous execution across multiple issues |
+| `create-worktree` | Create an isolated working directory for issue work |
+| `debug` | Reproduce errors and investigate their causes |
+| `explain-code` | Explain code using the current source |
+| `review-code` | Review code changes |
+| `qa` | Verify behavior across actual clients, APIs, and persisted results |
+| `design-ui` | Explore UI direction and obtain design approval before implementation |
+| `sync-design` | Synchronize design tokens and component mappings |
+| `implement-ui` | Implement an approved UI design |
+| `review-ui` | Compare the approved design with the running interface |
+| `checkpoint` | Save a reversible intermediate work checkpoint |
+| `commit` | Commit verified changes |
+| `create-pr` | Push a branch and create or update a PR |
+| `review-pr` | Process review results for an exact PR version |
+| `pr-feedback` | Assess and respond to PR review comments, accepting or disputing them |
+| `watch-pr` | Observe changes in PR status |
+| `update-status` | Update issue and project status |
+| `finish-session` | Verify and close out a session |
+| `sync-docs` | Classify and route documentation updates |
+| `dev-docs` | Update developer documentation |
+| `user-docs` | Update user documentation |
+| `audit-deps` | Audit dependency security, licenses, and maintenance |
+| `update-deps` | Update and verify dependencies |
+| `test-harness` | Test actual harness enforcement with failure scenarios |
+| `optimize-harness` | Refine instructions and prompts while preserving behavior |
+| `memory-to-rules` | Turn repeatedly confirmed personal working knowledge into project rules |
+| `graphify` | Explore code and documentation relationships through a knowledge graph |
 
-## 바뀐 이름
+## Renamed skills
 
-| 이전 이름 | 현재 이름 |
+| Previous name | Current name |
 | --- | --- |
 | `audit-spec` | `review-spec` |
 | `automate-qa` | `qa` |
@@ -59,11 +62,13 @@
 | `update-dependencies` | `update-deps` |
 | `update-project-status` | `update-status` |
 
-설치를 갱신하면 이전 설치 경로를 정리합니다. 이름이 겹치는 사용자 스킬과 직접 수정한
-관리 파일은 덮어쓰지 않습니다. 진행 중인 작업 기록을 계속 읽을 수 있도록 내부 계약
-식별자는 유지합니다. 엔진 명령에는 스킬 본문의 `내장 계약`을 사용하고, 스크립트는
-`.neurath/run skill watch-pr <script>`처럼 현재 이름으로 실행할 수 있습니다.
+Updating an installation removes old managed paths. User skills with conflicting names and
+manually edited managed files are not overwritten. Internal contract identifiers remain stable
+so ongoing work records can still be read. Engine commands use the skill body's built-in contract
+identifier, labeled `내장 계약`; scripts can use the current name, as in
+`.neurath/run skill watch-pr <script>`.
 
 `create-package`, `local-dev`, `onboard`, `refactor-code`, `impact-analysis`,
-`improve-coverage`, `property-test`는 독립 스킬에서 제외했습니다. 일반적인 구현·테스트
-원칙은 공통 지침에서 다루며 디자인 하네스와 QA 검증 절차는 유지합니다.
+`improve-coverage`, and `property-test` are no longer standalone skills. Shared instructions
+cover general implementation and testing principles. The design harness and QA verification
+procedures remain available.

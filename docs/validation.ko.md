@@ -2,7 +2,7 @@
 
 [English](validation.md) · **한국어**
 
-<!-- date: 2026-09-07; synced_from: docs/validation.md at d1f567bf85efb5236d3a9c38cc98d3f5791906bd -->
+<!-- date: 2026-09-07; synced_from: source and documentation at 3563609329437641570a5e45d87ceb99064e4c02; English and Korean editions updated together -->
 
 Neurath는 배포본 무결성, 설치 동작, 런타임 계약, 실제 Codex·Claude Code 호스트에서 발생한
 이벤트를 구분해 검사합니다. `doctor`가 통과했다는 것은 로컬 파일 배치와 프로토콜 검사를

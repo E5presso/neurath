@@ -1,87 +1,100 @@
-# 구조와 실행 경계
+# Architecture and execution boundaries
+<!-- date: 2026-09-07; synced_from: source and documentation at 3563609329437641570a5e45d87ceb99064e4c02; English and Korean editions updated together -->
 
-Neurath는 자체 런타임·계약·배포 목록을 가진 독립 하네스 키트입니다.
-대상 프로젝트의 소스, 스택, 문서 구조, 브랜치명과 개발환경을 내장하지 않습니다.
+**English** · [한국어](architecture.ko.md)
 
-| 위치 | 역할 |
+Neurath is an independent harness kit with its own runtime, contracts, and distribution inventory.
+It does not prescribe the target project's source, stack, documentation layout, branch names, or development environment.
+
+| Location | Responsibility |
 | --- | --- |
-| `src/neurath/_assets/scripts/agent_harness` | 상태·호스트 신원·소유권·행위·독립 평가 엔진 |
-| `src/neurath/_assets/scripts/skill_harness` | 단계·증거 계약과 실행 보고 |
-| `src/neurath/_assets/.agents` | 공통 규칙, 31개 스킬, 29개 실행 계약 |
-| `src/neurath/manifest.json` | 전체 실행 코드와 자산의 SHA-256 목록 |
-| `src/neurath/install/` | 호스트 배치, 병합, 충돌 검사, 저널·복구 |
-| `src/neurath/hosts/` | 실제 호스트 호출과 신원·재개 증명 |
-| `src/neurath/memory/` | 프로젝트 공유 기억, 회고, 실행 전략 학습과 철회 |
-| `src/neurath/agents/` | 동료 메시지, active Newsroom, 호출에 결속된 통신 MCP |
-| `src/neurath/runtime/` | 대상 프로젝트가 지정한 검증 실행 |
-| `tests/runtime` | 키트가 소유하는 상태·계약·권위 회귀 테스트 |
+| `src/neurath/_assets/scripts/agent_harness` | State, host identity, ownership, actions, and independent evaluation |
+| `src/neurath/_assets/scripts/skill_harness` | Phase and evidence contracts, execution reports |
+| `src/neurath/_assets/.agents` | Shared rules, 31 skills, and 29 execution contracts |
+| `src/neurath/manifest.json` | SHA-256 inventory of all runtime code and assets |
+| `src/neurath/install/` | Host placement, merging, conflict checks, journals, and recovery |
+| `src/neurath/hosts/` | Native host calls, identity verification, and resume evidence |
+| `src/neurath/memory/` | Shared project memory, reflection, and execution strategy learning and withdrawal |
+| `src/neurath/agents/` | Peer messages, active Newsroom, and communication MCP bound to individual calls |
+| `src/neurath/runtime/` | Verification commands configured by the target project |
+| `tests/runtime` | Kit-owned regressions for state, contracts, and authority |
 
-공개 명령은 독립 Python 환경에서 `python -I`로 실행합니다. 대상 프로젝트에 같은
-이름의 `scripts` 패키지가 있어도 내장 엔진을 가리지 않습니다. 코드·계약은 배포 자산
-루트에서, 작업 내용은 대상 Git worktree에서 읽습니다. 상태는 Git 공통 control root의
-`.neurath/local/runs`와 `.neurath/local/resources`에 저장합니다. `NEURATH_*` 환경변수와
-`neurath.*` 스키마만 사용합니다. 다른 제품의 상태를 암묵적으로 이어받지 않습니다.
+Public commands run through `python -I` in an isolated Python environment. A package named
+`scripts` in the target project cannot shadow the bundled engine. Code and contracts come from
+the distribution asset root; working content comes from the target Git worktree. State lives in
+`.neurath/local/runs` and `.neurath/local/resources` under the shared Git control root.
+Only `NEURATH_*` environment variables and `neurath.*` schemas are used. State from other
+products is not inherited implicitly.
 
-## 설치 트랜잭션
+## Installation transactions
 
-설치 계획은 대상 경로, 배포 fingerprint, 호스트, 변경 전후 bytes·mode·link를 결속합니다.
-적용 직전에 계획과 현재 파일을 다시 비교하고 Git 디렉터리 잠금 아래 적용합니다.
-각 파일은 임시 파일과 fsync/replace로 기록합니다. 실패·프로세스 중단은 저널로 복구하고,
-동시에 수정된 사용자 파일은 덮어쓰지 않습니다.
+An installation plan binds target paths, the distribution fingerprint, selected hosts, and each
+file's bytes, mode, and link before and after the change. Immediately before applying it, the
+installer compares the plan against current files and applies it under a Git directory lock.
+Files are written through temporary files and fsync/replace. A journal supports recovery after
+failure or process interruption; concurrently edited user files are not overwritten.
 
-기존 지침, hook group, 권한, 모델 설정을 보존합니다. 제거는 설치 전 원문을 복원합니다.
-공유 지침과 `.gitignore`의 관리 블록 밖 편집은 원래 위치에 보존하고 관리 블록 변경은 거부합니다.
-빠른 설치는 배포 내용 지문마다 독립 실행 환경을 만들어 기존 프로젝트의 실행 코드를
-바꾸지 않습니다. 대상 설치 성공 후 전역 명령만 새 환경에 연결하며, 복원을 위해 이전
-환경을 유지합니다. 진단은 현재 실행 중인 배포 지문과 대상 설치 기록도 비교합니다.
-사용자가 편집한 `.neurath/project.json`은 사용자 소유로 남습니다. 설치 상태와 원문이
-포함된 설치 이력은 비공개 로컬 파일이며 외부로 전송하지 않습니다.
+Existing instructions, hook groups, permissions, and model settings are preserved. Uninstallation
+restores the original content. Edits outside managed blocks in shared instructions and `.gitignore`
+remain in their original positions; edits to managed blocks are rejected. Quick setup creates a
+separate runtime environment for each distribution content fingerprint, preserving the runtime
+used by existing projects. Only after target installation succeeds does the global command point
+to the new environment. Previous environments remain available for restoration. Diagnostics also
+compare the running distribution fingerprint with the target installation record.
+An edited `.neurath/project.json` remains user-owned. Installation state and records containing
+original file content stay in private local files and are not transmitted externally.
 
-## 검증과 권위
+## Verification and authority
 
-일반 검증은 명시된 argv/cwd/성공 조건과 timeout을 사용합니다. 실행 전후 Git 파일
-fingerprint가 달라지면 종료 코드 0이어도 실패입니다. typed pytest 검증은 요청한 각
-leaf node의 실제 통과를 확인하며 다른 테스트의 통과나 skip으로 대체하지 않습니다.
+General verification uses explicit argv, cwd, success conditions, and a timeout. A change to the
+Git file fingerprint during execution fails verification even with exit code 0. Typed pytest
+verification confirms that every requested leaf node actually passed; other passing tests or
+skipped tests cannot substitute for it.
 
-배포 무결성, 설치 배치, 테스트 실행, 독립 검토자, 실제 호스트 활성화는 별도 증거입니다.
-`doctor`와 정적 검사기는 호스트의 신뢰 설정이나 부모·자식 관계를 자체 인증하지 않습니다.
-상태 접근, 동시 변경 충돌 방지, 작업 공간 소유권, 변경 작업의 실행 결과, 완료 조건은
-런타임에서 검사합니다. 코드 식별자와의 대응은 [용어 안내](terminology.md)에 정리합니다.
+Distribution integrity, installation placement, test execution, independent review, and actual
+host activation require separate evidence. `doctor` and static checkers cannot authenticate host
+trust or parent–child relationships themselves. The runtime checks state access, concurrent edit
+conflicts, workspace ownership, execution results for mutations, and completion conditions.
+The [terminology guide](terminology.md) maps these concepts to code identifiers.
 
-## 사용자 입력과 실행 상태
+## User input and execution state
 
-루트 `UserPromptSubmit`은 사용자 입력을 전달하는 경계입니다. 상태 갱신이나 기억·메시지
-저장소가 실패해도 입력을 막지 않고 `bookkeeping deferred` 진단을 에이전트에게 전달합니다.
-이 응답은 상태 갱신 성공이나 도구 실행 권한을 뜻하지 않습니다. 다른 세션의 입력은
-상태·공유 기억에 기록하지 않으며, 도구 실행과 소유권 검사는 계속 적용합니다.
+Root `UserPromptSubmit` is the boundary for delivering user input. If state updates or memory
+and message stores fail, input still reaches the agent with a `bookkeeping deferred` diagnostic.
+That response does not imply a successful state update or permission to execute tools. Input from
+another session is not imported into state or shared memory; tool and ownership checks still apply.
 
-Codex의 새 `task_started` 기록은 이전 턴의 미종료 상태를 복구하는 근거입니다.
-재개 훅 없이 새 턴이 시작되거나 같은 문장을 다시 입력해도 새 네이티브 턴으로 처리합니다.
-결과를 관측하지 못한 이전 도구 호출은 `unknown`·`blocked`로 남기며 workflow를 완료하지
-않습니다. 같은 턴의 추가 입력은 수락한 revision과 내용 digest로 구분해 기억에 저장합니다.
+A new Codex `task_started` record provides evidence for recovering an unfinished previous turn.
+A new turn is recognized even without a resume hook or when the user repeats the same sentence.
+Previous tool calls whose results were not observed remain `unknown` or `blocked` and do not
+complete a workflow. Additional input within the same turn is stored in memory with its accepted
+revision and content digest.
 
-## 프로젝트 기억
+## Project memory
 
-Git 공통 control root의 `.neurath/local/memory/project.sqlite3`에 출처가 있는 기록을 저장합니다.
-각 세션의 상태·소유권과 분리하며, SQLite 트랜잭션으로 동시 기록과 재전달을 처리합니다.
-기억은 worktree 사이에서 공유하지만 검증 계약은 실제 실행한 worktree에서 읽습니다.
-기록 선택과 실행 전략의 수명주기는 [기억과 학습](memory.ko.md)에 설명합니다.
+Records with source information live in `.neurath/local/memory/project.sqlite3` under the shared
+Git control root. They are separate from each session's state and ownership. SQLite transactions
+handle concurrent writes and redelivery. Memory is shared across worktrees, while verification
+contracts are read from the worktree where execution actually occurs.
+[Memory and learning](memory.md) explains record selection and the execution strategy lifecycle.
 
 ## Newsroom
 
-기사는 제목·본문·작성자·버전을 저장하고 정정·댓글은 불변 이벤트로 추가합니다.
-발행 트랜잭션에서 active 참여자만 선택해 제목 알림을 넣습니다. 참여는 네이티브 턴의
-generation과 연결되며 비활성화·새 턴·10분 만료 시 이전 알림을 폐기합니다.
-주소록뿐 아니라 SessionKernel의 actor·foreground 상태와 네이티브 프로세스 연결도
-대조합니다. SessionEnd는 논리 세션을 재개 가능하게 남기므로 별도 연결 종료 기록이 필요합니다.
-호스트 훅이 최대 3,000 bytes의 제목·조회 ID를 주입하며 본문은 명시적 조회로만 제공합니다.
-알림 전달 기록은 읽음 확인과 다르고, 에이전트를 깨우는 별도 실행기가 없습니다.
+Articles store a title, body, author, and version; revisions and comments append immutable events.
+The publication transaction queues headline notifications only for active participants. Participation
+is bound to a native turn generation, and old notifications are discarded on deactivation, a new
+turn, or expiry after 10 minutes. Checks compare directory entries with SessionKernel actor and
+foreground state as well as the native process connection. SessionEnd leaves the logical session
+resumable, so a separate connection-closure record is required. Host hooks inject up to 3,000 bytes
+of headlines and lookup IDs; bodies require explicit lookup. Delivery records are separate from
+read acknowledgements, and there is no separate runner that wakes agents.
 
-통신 MCP 서버는 임의 Python·shell·파일 작업을 노출하지 않습니다. 네이티브 PreToolUse가
-확인한 actor·턴·도구 호출·정확한 요청에 임시 토큰을 결속합니다. 요청 변경·신원 변경·만료·
-종료 이후 호출은 거부합니다. PostToolUse는 토큰을 닫으며 동일 호출 내 재시도는 저장된
-결과를 반환합니다. Claude의 read-only worker에는 이 통신 도구만 추가로 허용합니다.
-Codex에는 새 통신 도구만 `tools.agent.approval_mode = "approve"`로 등록합니다.
-네이티브 연결이 종료되면 해당 프로세스의 모든 통신 토큰과 캐시 결과도 폐기합니다.
-설치기는 기존 Codex TOML과 Claude MCP 서버·권한을 보존하고 동명 사용자 설정과 충돌하면
-중단합니다. 제거하면 설치 전 파일을 그대로 복원합니다.
+The communication MCP server exposes no arbitrary Python, shell, or file operations. Native
+PreToolUse binds a temporary token to the verified actor, turn, tool call, and exact request.
+Changed requests, changed identities, expired tokens, and calls after closure are rejected.
+PostToolUse closes the token; retries within the same call return the stored result. Claude
+read-only workers receive only this additional communication tool. Codex registers only the new
+communication tool with `tools.agent.approval_mode = "approve"`. When a native connection closes,
+all communication tokens and cached results for that process are discarded. Installation preserves
+existing Codex TOML and Claude MCP servers and permissions, stopping on conflicting user settings
+with the same name. Uninstallation restores the original files exactly.

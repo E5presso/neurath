@@ -1,4 +1,5 @@
 <p align="center">
+<!-- date: 2026-09-07; synced_from: source and documentation at 3563609329437641570a5e45d87ceb99064e4c02; English and Korean editions updated together -->
   <img src="docs/assets/neurath.png" width="720" alt="Neurath's boat, repaired while still at sea">
 </p>
 

@@ -8,6 +8,45 @@ from urllib.parse import unquote, urlsplit
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def public_document_originals():
+    return [ROOT / name for name in ("README.md", "ONBOARDING.md", "CONTRIBUTING.md")] + [
+        path for path in sorted((ROOT / "docs").rglob("*.md"))
+        if not path.name.endswith(".ko.md")
+    ]
+
+
+def test_public_documents_have_separate_english_and_korean_editions():
+    for original in public_document_originals():
+        translated = original.with_suffix(".ko.md")
+        assert translated.is_file(), f"Missing Korean edition: {translated.relative_to(ROOT)}"
+        for document, counterpart in ((original, translated), (translated, original)):
+            text = document.read_text()
+            targets = re.findall(r"\[[^\]]*\]\(([^)]+)\)|href=\"([^\"]+)\"", text)
+            assert any((left or right) == counterpart.name for left, right in targets), (
+                f"Missing language switch: {document.relative_to(ROOT)}"
+            )
+
+
+def test_document_links_keep_the_selected_language():
+    originals = public_document_originals()
+    documents = originals + [path.with_suffix(".ko.md") for path in originals]
+    known = {path.resolve() for path in documents}
+    for document in documents:
+        korean = document.name.endswith(".ko.md")
+        counterpart = (document.with_name(document.name.removesuffix(".ko.md") + ".md")
+                       if korean else document.with_suffix(".ko.md"))
+        text = re.sub(r"```.*?```", "", document.read_text(), flags=re.DOTALL)
+        for markdown, html in re.findall(r"\[[^\]]*\]\(([^)]+)\)|href=\"([^\"]+)\"", text):
+            parsed = urlsplit(markdown or html)
+            if parsed.scheme or parsed.netloc or not parsed.path:
+                continue
+            target = (document.parent / unquote(parsed.path)).resolve()
+            if target in known and target != counterpart.resolve():
+                assert target.name.endswith(".ko.md") == korean, (
+                    f"Language changes unexpectedly: {document.relative_to(ROOT)} -> {parsed.path}"
+                )
+
+
 def test_public_document_links_resolve_inside_checkout():
     documents = sorted(ROOT.glob("*.md")) + sorted((ROOT / "docs").rglob("*.md"))
     missing = []
@@ -29,7 +68,7 @@ def test_contributing_translations_are_included_in_source_distribution():
 
     config = tomllib.loads((ROOT / "pyproject.toml").read_text())
     included = config["tool"]["hatch"]["build"]["targets"]["sdist"]["include"]
-    for name in ("CONTRIBUTING.md", "CONTRIBUTING.ko.md"):
+    for name in ("CONTRIBUTING.md", "CONTRIBUTING.ko.md", "ONBOARDING.md", "ONBOARDING.ko.md"):
         assert name in included
         assert (ROOT / name).is_file()
 

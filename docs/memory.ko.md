@@ -1,4 +1,5 @@
 # 기억과 학습
+<!-- date: 2026-09-07; synced_from: source and documentation at 3563609329437641570a5e45d87ceb99064e4c02; English and Korean editions updated together -->
 
 Neurath는 Claude Code와 Codex의 대화가 바뀌어도 프로젝트의 작업 기록을 이어줍니다.
 작업에서 얻은 교훈과 검증한 실행 방법은 다음 세션의 작업 지침에 반영합니다.

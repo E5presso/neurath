@@ -1,4 +1,5 @@
 # Developing Neurath
+<!-- date: 2026-09-07; synced_from: source and documentation at 3563609329437641570a5e45d87ceb99064e4c02; English and Korean editions updated together -->
 
 [English](CONTRIBUTING.md) · [한국어](CONTRIBUTING.ko.md)
 
@@ -81,3 +82,11 @@ Generated skills, host settings, and the local launcher are ignored. Keep the pr
 binding and the public instruction files; `./setup --self` recreates the installation in
 a fresh checkout. Installation preserves a byte-exact existing Neurath instruction block
 and rejects conflicting edits. Review the actual hooks in each host before the first run.
+
+## Maintain both documentation editions
+
+Keep every public reader document in separate English (`*.md`) and Korean (`*.ko.md`) files.
+Update both editions together, preserving the same behavior, commands, limits, and verification scope.
+Each edition links to its counterpart for language switching; other links stay in the selected language.
+Include both editions in source distributions. `tests/test_publication.py` checks these conventions.
+Runtime instructions such as `AGENTS.md` and installed skill assets follow their own contracts.
