@@ -36,7 +36,7 @@ def snapshot(source):
         data = path.read_bytes()
         distribution.update(path.relative_to(package).as_posix().encode())
         distribution.update(data)
-    for path in [source / "pyproject.toml", source / "README.md", source / "NOTICE.md", *paths]:
+    for path in [source / "pyproject.toml", source / "README.md", *paths]:
         if path.is_symlink():
             raise ValueError("build input contains a symlink")
         name = path.relative_to(source).as_posix().encode()

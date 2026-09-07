@@ -212,6 +212,5 @@ self-installation. See [CONTRIBUTING.md](CONTRIBUTING.md) for the complete loop.
 | [Project bindings](docs/profiles.md) | Connect documentation and verification commands |
 | [Installation](ONBOARDING.md) | Setup, update, recovery, and uninstall |
 | [Verification](docs/validation.md) | Regression coverage and native host evidence |
-| [Origins](NOTICE.md) | Where Neurath began |
 
 [Harness terminology](docs/terminology.md)

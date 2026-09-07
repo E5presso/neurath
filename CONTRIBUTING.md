@@ -1,5 +1,7 @@
 # Developing Neurath
 
+[English](CONTRIBUTING.md) · [한국어](CONTRIBUTING.ko.md)
+
 Neurath is a Python 3.14 package with an isolated host runtime and kit-owned execution assets.
 Use the committed lockfile to reproduce the development environment.
 

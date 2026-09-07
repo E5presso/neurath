@@ -1,5 +1,7 @@
 # Validation
 
+[English](validation.md) · [한국어](validation.ko.md)
+
 Neurath checks four different boundaries: distribution integrity, installation behavior,
 runtime contracts, and events emitted by real Codex and Claude Code hosts. A successful
 `doctor` result covers local placement and protocol checks; it does not grant host trust.
@@ -21,7 +23,7 @@ runtime contracts, and events emitted by real Codex and Claude Code hosts. A suc
 | Cross-host collaboration | Both directions passed request, reply, acknowledgment, conversation closure, and newsroom article read-back |
 | Learning lifecycle | Codex recovery reached trial guidance; a fresh Claude session reused and activated it; a later native failure automatically withdrew it |
 | Protected-action denial | Claude rejected the protected capability action; Codex failed closed when its outer tool envelope omitted execution-directory metadata |
-| Publication contents | Wheel and source archive checks passed for private-file exclusion, independent imports, NOTICE, and package metadata |
+| Publication contents | Wheel and source archive checks passed for private-file exclusion, independent imports, and package metadata |
 | Repeat self-installation | No changes; project bindings preserved |
 
 The self-installation checks use the packaged tool environment, separate from the development

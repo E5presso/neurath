@@ -31,7 +31,7 @@ def validate(wheel, output):
         env = {
             key: value
             for key, value in os.environ.items()
-            if not key.startswith(("CODEX_", "CLAUDE_", "AMBER_", "NEURATH_", "PYTHON"))
+            if not key.startswith(("CODEX_", "CLAUDE_", "NEURATH_", "PYTHON"))
         }
         env["PATH"] = str(runtime / "bin") + ":/usr/bin:/bin:/usr/sbin:/sbin"
         observations = {}
@@ -91,11 +91,15 @@ def validate(wheel, output):
             assert (root / "AGENTS.md").read_text() == "# Original user instruction\n"
             assert not (root / ".codex/hooks.json").exists()
         code = """import importlib, json, sys
+from pathlib import Path
 from neurath.runtime.engine import activate
 from neurath.resources import BUNDLE
+source_root = Path(sys.argv[1]).resolve()
 def guard(event, args):
-    if event == "open" and isinstance(args[0], str) and ("/projects/amber/" in args[0] or "/projects/neurath/" in args[0]):
-        raise RuntimeError("source checkout access forbidden")
+    if event == "open" and isinstance(args[0], str):
+        target = Path(args[0]).resolve()
+        if target.is_relative_to(source_root) or "projects" in target.parts:
+            raise RuntimeError("source checkout access forbidden")
 sys.addaudithook(guard)
 activate()
 imported=[]
@@ -106,7 +110,7 @@ for path in sorted((BUNDLE / "scripts").rglob("*.py")):
     importlib.import_module(module)
     imported.append(module)
 print(json.dumps({"modules":len(imported),"bundle":str(BUNDLE)}))"""
-        imported = json.loads(run([python, "-I", "-c", code], cwd=area, env=env))
+        imported = json.loads(run([python, "-I", "-c", code, Path(__file__).resolve().parents[1]], cwd=area, env=env))
         report = {
             "status": "passed",
             "wheel": wheel.name,

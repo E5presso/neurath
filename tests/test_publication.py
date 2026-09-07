@@ -24,13 +24,14 @@ def test_public_document_links_resolve_inside_checkout():
     assert not missing, "Unresolvable public documentation links: " + ", ".join(missing)
 
 
-def test_development_origins_are_included_in_source_distribution():
+def test_contributing_translations_are_included_in_source_distribution():
     import tomllib
 
     config = tomllib.loads((ROOT / "pyproject.toml").read_text())
     included = config["tool"]["hatch"]["build"]["targets"]["sdist"]["include"]
-    assert "NOTICE.md" in included
-    assert (ROOT / "NOTICE.md").is_file()
+    for name in ("CONTRIBUTING.md", "CONTRIBUTING.ko.md"):
+        assert name in included
+        assert (ROOT / name).is_file()
 
 
 def test_fresh_checkout_excludes_machine_local_mcp_settings(tmp_path):

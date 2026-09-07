@@ -10,7 +10,7 @@ from neurath.resources import PACKAGE
 
 
 def test_distribution_has_no_source_project_payload_or_namespace():
-    forbidden = (b"amber", b"spakky", b"E5presso/")
+    forbidden = (b"private_project", b"spakky", b"E5presso/")
     violations = []
     for path in PACKAGE.rglob("*"):
         if not path.is_file() or "__pycache__" in path.parts or path.suffix == ".pyc":
@@ -28,7 +28,7 @@ def test_installed_assets_are_project_neutral():
     assert PROFILES == ("generic",)
     assets = asset_files("generic", ["codex", "claude-code"])
     forbidden = (
-        b"amber",
+        b"private_project",
         b"spakky",
         b"E5presso/",
         b"apps/backend/services/",
@@ -76,7 +76,7 @@ def test_runtime_emits_only_kit_namespace(tmp_path):
         check=False,
     )
     assert result.returncode == 0, result.stderr
-    assert "amber" not in (result.stdout + result.stderr).lower()
+    assert "private_project" not in (result.stdout + result.stderr).lower()
     assert "neurath" in result.stdout.lower()
 
 
@@ -103,10 +103,10 @@ def test_integrity_detects_added_and_modified_kit_code(tmp_path):
     assert integrity(tmp_path)["status"] == "failed"
 
 
-def test_old_project_profile_is_rejected_before_changes(tmp_path):
+def test_unknown_project_profile_is_rejected_before_changes(tmp_path):
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     result = subprocess.run(
-        [sys.executable, "-I", "-m", "neurath", "setup", str(tmp_path), "--profile", "amber"],
+        [sys.executable, "-I", "-m", "neurath", "setup", str(tmp_path), "--profile", "private_project"],
         text=True,
         capture_output=True,
         check=False,

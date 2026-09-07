@@ -33,7 +33,7 @@ def validate(source, output):
         env = {
             k: v
             for k, v in os.environ.items()
-            if not k.startswith(("CODEX_", "CLAUDE_", "AMBER_", "NEURATH_", "PYTHON", "UV_"))
+            if not k.startswith(("CODEX_", "CLAUDE_", "NEURATH_", "PYTHON", "UV_"))
         }
         env.update(
             PATH="/usr/bin:/bin:/usr/sbin:/sbin",

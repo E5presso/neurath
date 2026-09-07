@@ -15,7 +15,6 @@ Neurath는 자체 런타임·계약·배포 목록을 가진 독립 하네스 �
 | `src/neurath/agents/` | 동료 메시지, active Newsroom, 호출에 결속된 통신 MCP |
 | `src/neurath/runtime/` | 대상 프로젝트가 지정한 검증 실행 |
 | `tests/runtime` | 키트가 소유하는 상태·계약·권위 회귀 테스트 |
-| `NOTICE.md` | 실행 의존성과 분리된 개발 출처 |
 
 공개 명령은 독립 Python 환경에서 `python -I`로 실행합니다. 대상 프로젝트에 같은
 이름의 `scripts` 패키지가 있어도 내장 엔진을 가리지 않습니다. 코드·계약은 배포 자산

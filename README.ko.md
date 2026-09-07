@@ -6,7 +6,7 @@
 <p align="center"><strong>작업의 맥락을 잇고, 검증된 경험을 쌓다.</strong></p>
 <p align="center">Claude Code와 Codex를 위한 개발 하네스.<br>프로젝트 기억, 에이전트 협업, 실행 검증을 하나의 작업 흐름으로 연결합니다.</p>
 <p align="center"><a href="README.md">English</a> · <strong>한국어</strong></p>
-<p align="center"><a href="#시작하기">시작하기</a> · <a href="#작동-방식">작동 방식</a> · <a href="ONBOARDING.md">설치 안내</a> · <a href="CONTRIBUTING.md">개발 참여</a> · <a href="docs/validation.md">검증 결과</a></p>
+<p align="center"><a href="#시작하기">시작하기</a> · <a href="#작동-방식">작동 방식</a> · <a href="ONBOARDING.md">설치 안내</a> · <a href="CONTRIBUTING.ko.md">개발 참여</a> · <a href="docs/validation.ko.md">검증 결과</a></p>
 
 ---
 
@@ -174,7 +174,7 @@ Neurath 소스 코드가 저절로 바뀌는 기능은 아닙니다. [기억과 
 
 지원 환경은 **macOS 또는 Linux, Git, Claude Code 또는 Codex**입니다.
 Python 3.14는 설치 과정에서 준비합니다. 에이전트별 동작과 지금까지 확인한 범위는
-[호스트 안내](docs/hosts.md)와 [검증 결과](docs/validation.md)에서 볼 수 있습니다.
+[호스트 안내](docs/hosts.md)와 [검증 결과](docs/validation.ko.md)에서 볼 수 있습니다.
 
 ## Neurath 개선하기
 
@@ -188,9 +188,9 @@ uv run --locked python tools/check.py
 
 실행 코드나 설치 자산을 수정한 뒤에는 무결성 검사 목록인 manifest를 갱신하고 검사를 실행하세요.
 그다음 `./setup --self`를 다시 실행하면 이 저장소에도 수정한 하네스가 적용됩니다.
-자세한 절차는 [CONTRIBUTING.md](CONTRIBUTING.md)에 정리했습니다.
+자세한 절차는 [개발 참여 안내](CONTRIBUTING.ko.md)에 정리했습니다.
 
 [기억과 학습](docs/memory.ko.md) · [구조](docs/architecture.md) · [프로젝트 연결](docs/profiles.md) ·
-[설치와 복구](ONBOARDING.md) · [검증](docs/validation.md) · [개발 출처](NOTICE.md)
+[설치와 복구](ONBOARDING.md) · [검증](docs/validation.ko.md)
 
 [하네스 용어 안내](docs/terminology.md)

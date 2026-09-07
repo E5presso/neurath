@@ -92,7 +92,7 @@ def test_unsupported_and_cross_repository_hook_inputs_fail_closed(tmp_path):
     assert code == 2
 
 
-def test_generic_capability_policy_has_no_amber_connector_requirement(tmp_path):
+def test_generic_capability_policy_has_no_project_connector_requirement(tmp_path):
     from neurath.hosts.capabilities import capability_policy
 
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)

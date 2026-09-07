@@ -195,7 +195,7 @@ def _bootstrap_source(tmp_path):
                     ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     (source / "tools").mkdir()
     shutil.copy2(SOURCE / "tools/setup_runtime.py", source / "tools/setup_runtime.py")
-    for name in ("setup", "pyproject.toml", "README.md", "NOTICE.md"):
+    for name in ("setup", "pyproject.toml", "README.md"):
         shutil.copy2(SOURCE / name, source / name)
     return source
 
@@ -264,15 +264,15 @@ def test_bootstrap_other_project_preserves_first_runtime(repo, fake_uv, tmp_path
             assert json.loads(attempted.stdout)["status"] == "planned"
 
 
-def test_bootstrap_packaged_notice_change_uses_a_new_environment(repo, fake_uv, tmp_path):
+def test_bootstrap_packaged_readme_change_uses_a_new_environment(repo, fake_uv, tmp_path):
     env, _ = fake_uv
     env["TEST_NEURATH_REAL"] = "1"
     source = _bootstrap_source(tmp_path)
     first = _bootstrap(source, repo, env, "--json")
     assert first.returncode == 0, first.stderr
     original_runtime = _project_runtime(repo)
-    notice = source / "NOTICE.md"
-    notice.write_bytes(notice.read_bytes() + b"\nUpdated distribution attribution.\n")
+    readme = source / "README.md"
+    readme.write_bytes(readme.read_bytes() + b"\nUpdated package description.\n")
     updated = _bootstrap(source, repo, env, "--json")
     assert updated.returncode == 0, updated.stderr
     assert _project_runtime(repo)[0] != original_runtime[0]
