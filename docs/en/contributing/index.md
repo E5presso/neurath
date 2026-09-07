@@ -21,6 +21,8 @@ setup requirements for users. Human host authentication and trust decisions rema
 [Setup](setup-reference.md) · [Collaboration](agents-reference.md) ·
 [Memory](memory-reference.md) · [Skill compatibility](skills-reference.md)
 
+[Shared task tools and CLI compatibility](task-tools.md)
+
 ## Start with a bounded contribution
 
 Describe the problem and the observable result you want to change. A useful bug report includes

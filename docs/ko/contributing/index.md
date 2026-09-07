@@ -22,6 +22,8 @@ Neurath는 독립된 호스트 실행 환경과 자체 실행 자산을 갖춘 P
 [설치](setup-reference.md) · [협업](agents-reference.md) ·
 [기억](memory-reference.md) · [스킬 호환성](skills-reference.md)
 
+[공통 작업 도구와 CLI 호환성](task-tools.md)
+
 ## 범위가 분명한 기여부터 시작하기
 
 어떤 문제를 해결하고 관찰 가능한 결과를 어떻게 바꿀지 설명합니다. 유용한 버그 보고에는

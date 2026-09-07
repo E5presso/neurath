@@ -23,11 +23,17 @@ MAX_OUTPUT = 8 * 1024 * 1024
 
 def child_environment(environment=None):
     source = os.environ if environment is None else environment
-    excluded = {"CODEX_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "CLAUDECODE", "PYTHONPATH"}
-    return {k: v for k, v in source.items() if k not in excluded and not k.startswith("NEURATH_")}
+    settings = {"CODEX_HOME", "CODEX_API_KEY", "CLAUDE_CONFIG_DIR", "CLAUDE_CODE_OAUTH_TOKEN",
+                "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"}
+    return {k: v for k, v in source.items() if k in settings or (
+        k not in {"CLAUDECODE", "PYTHONPATH"} and not k.startswith(("NEURATH_", "CODEX_", "CLAUDE_CODE_")))}
 
 
 def command(provider, model, *, mode="read-only", native_session=None, root=None):
+    if provider not in ("codex", "claude-code"):
+        raise ValueError("unsupported provider")
+    if mode not in ("read-only", "workspace-write"):
+        raise ValueError("invalid worker mode")
     executable = shutil.which("codex" if provider == "codex" else "claude")
     if not executable:
         raise ValueError(f"{provider} CLI is not installed")
@@ -45,7 +51,8 @@ def command(provider, model, *, mode="read-only", native_session=None, root=None
         "--model",
         model,
         "--output-format",
-        "json",
+        "stream-json",
+        "--verbose",
         "--permission-mode",
         "dontAsk",
     ]
@@ -77,6 +84,7 @@ def parse_result(provider, stdout):
         "actual_model": None,
         "provider_success": False,
         "provider_error": None,
+        "effective_settings": None,
     }
     if provider == "claude-code":
         try:
@@ -84,6 +92,15 @@ def parse_result(provider, stdout):
         except ValueError:
             events = [json.loads(line) for line in stdout.splitlines() if line.strip()]
         events = events if isinstance(events, list) else [events]
+        initial = [e for e in events if isinstance(e, dict)
+                   and e.get("type") == "system" and e.get("subtype") == "init"]
+        if initial:
+            event = initial[-1]
+            result["effective_settings"] = {
+                "approval_policy": event.get("permissionMode"),
+                "model": event.get("model"), "worktree": event.get("cwd"),
+                "tools": event.get("tools"), "source": "system.init",
+            }
         terminal = [e for e in events if isinstance(e, dict) and e.get("type") == "result"]
         if terminal:
             final = terminal[-1]
@@ -213,9 +230,12 @@ def run(
     worktree=None,
     native_session=None,
     resume_of=None,
+    approval_policy="never",
 ):
     if provider not in ("codex", "claude-code"):
         raise ValueError("unsupported provider")
+    if approval_policy != "never":
+        raise ValueError("bounded CLI workers require explicit never approval policy; use a live host for interactive approval")
     bounded(model, "model", 256)
     bounded(assignment, "assignment", 32768)
     if not math.isfinite(timeout) or not 0 < timeout <= 3600:
@@ -223,6 +243,13 @@ def run(
     if not isinstance(context, str) or len(context.encode()) > 262144:
         raise ValueError("context exceeds 256 KiB")
     target = _workspace(store, mode, worktree)
+    if mode == "workspace-write":
+        from neurath.providers.contracts import UnsupportedOperation
+
+        raise UnsupportedOperation(
+            "bounded CLI cannot verify child activation, mode and worktree claim before assignment; "
+            "use a native session with a completed readiness check"
+        )
     argv = command(provider, model, mode=mode, native_session=native_session, root=target)
     run_id = run_id or uuid.uuid4().hex
     bounded(run_id, "run id", 128)
@@ -235,6 +262,8 @@ def run(
         "worktree": str(target),
         "timeout": timeout,
         "resume_of": resume_of,
+        "transport": "cli",
+        "approval_policy": approval_policy,
     }
     with store.connection() as db:
         store._agent(db, owner)
@@ -242,6 +271,16 @@ def run(
             raise ValueError("run id already exists; inspect its result instead of executing twice")
         # Serialize continuation of an exact provider conversation, including chained resumes.
         if native_session:
+            if not resume_of:
+                raise ValueError("resume requires an owned previous provider run")
+            previous = _owned(db, owner, resume_of)
+            previous_request = json.loads(previous["request"])
+            previous_result = json.loads(previous["result"]) if previous["result"] else {}
+            if (previous["status"] not in TERMINAL
+                    or previous_result.get("native_session") != native_session
+                    or any(previous_request.get(key) != request[key]
+                           for key in ("provider", "model", "mode", "worktree"))):
+                raise ValueError("resume does not match its owned provider session and policy")
             for row in db.execute("SELECT request FROM runs WHERE status IN ('queued','running')"):
                 pending = json.loads(row[0])
                 if (
@@ -379,6 +418,24 @@ def run(
         "exit_code": exit_code,
         "diagnostic": clean(diagnostic),
         **parsed,
+    }
+    effective = parsed.get("effective_settings")
+    verification = "unobserved"
+    if provider == "claude-code" and effective:
+        verification = (
+            "verified" if effective.get("approval_policy") == "dontAsk"
+            and effective.get("worktree") == str(target)
+            and effective.get("model") == model else "mismatch"
+        )
+        if verification == "mismatch":
+            result["status"] = outcome = "failed"
+            result["provider_success"] = False
+            result["provider_error"] = "provider effective approval policy, model or workspace differs from request"
+    result["transport"] = "cli"
+    result["execution_policy"] = {
+        "requested": {"mode": mode, "approval_policy": approval_policy, "worktree": str(target)},
+        "effective": effective, "verification": verification,
+        "enforcement": "host permission system; read-only Claude runs restrict tool inventory",
     }
     # Only final public data is stored. The raw event streams are discarded with the temp files.
     result["text"] = clean(result["text"])

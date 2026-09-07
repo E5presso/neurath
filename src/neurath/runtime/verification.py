@@ -42,7 +42,7 @@ def fingerprint(root):
     return digest.hexdigest()
 
 
-def verify(root, config):
+def verify(root, config, *, environment=None):
     root = Path(root).resolve()
     argv = config.get("argv")
     cwd_value = config.get("cwd", ".")
@@ -79,7 +79,7 @@ def verify(root, config):
     from scripts.agent_harness.bounded_process import run_bounded_process
 
     try:
-        result = run_bounded_process(argv, cwd=cwd, timeout_seconds=timeout)
+        result = run_bounded_process(argv, cwd=cwd, timeout_seconds=timeout, environment=environment)
         exit_code = result.returncode
         output = result.stdout + b"\0" + result.stderr
         passed = (

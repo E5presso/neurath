@@ -48,10 +48,11 @@ and Glob. Claude review runs add only Neurath's communication MCP, not arbitrary
 Installed project hooks still run. If a hook requires additional operations that are not allowed,
 the run may fail or time out. Host permissions and hook trust are not bypassed.
 
-To delegate edits, prepare a separate Git worktree in the same project, install Neurath there,
-and specify `--mode workspace-write --worktree /absolute/path/to/worktree`. The worker must
-follow normal worktree ownership and change-recording procedures. Operations not allowed under
-Claude's `dontAsk` are rejected. Write access to the parent's worktree is not transferred.
+For editing, use a native session that can verify installation, activation, effective mode and
+its own worktree claim before receiving the implementation assignment. Bounded CLI write runs
+are rejected before launch because they cannot complete that handshake. Read-only CLI runs
+remain supported. See the [provider transport contract](provider-transports.md) for the native
+routes and their policy limitations.
 
 Results include execution status, exit code, requested model, the provider's session ID, final
 answer, and any reported usage. The actual model is recorded only when the provider reports it.

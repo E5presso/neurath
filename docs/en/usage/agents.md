@@ -10,6 +10,13 @@ Tell your agent what collaboration would help the task. It finds peers, delegate
 work, sends questions, and collects results within the scope you authorize.
 You do not need to operate a messaging console or manage agent addresses.
 
+For example: “Find the earlier decision, ask the relevant peer to confirm it, run the
+project's check, and leave a handoff with the actual result.” The agent prefers available
+structured task tools for history, collaboration and verification. When a tool cannot
+preserve the host's execution mode, the agent runs the registered check through the host.
+It reports installation, native activation, observed mode and ownership separately.
+A fork has its own identity and must establish its own worktree ownership before editing.
+
 ## Request a second opinion
 
 > Ask another agent to review this design. Give it the relevant constraints and return its
@@ -19,8 +26,11 @@ If you want a particular provider or model, name it in the request. The agent us
 provider's existing authentication and model access. If it is unavailable, the agent reports
 the limitation rather than silently substituting a model. Any required login remains your action.
 
-External provider work is read-only by default. Authorized editing uses a separate installed
-worktree of the same project. The agent prepares the relevant context; the entire parent
+External provider work is read-only by default. Before authorized editing, the agent checks
+installation, actual host activation, effective execution mode, and ownership of a separate
+worktree of the same project. A created session alone is not ready to edit. If the chosen
+host cannot apply or report the requested mode, the agent reports that specific limitation.
+The agent prepares the relevant context; the entire parent
 conversation is not copied automatically. A provider report alone does not establish the
 independent review authority required by some workflows.
 
@@ -43,7 +53,9 @@ Delivery states mean different things:
 | Replied | The recipient sent a response |
 
 A stored or submitted message is not proof that the other agent read it. Compatible Codex
-app tools can notify a task immediately; otherwise delivery waits for the recipient's next
+app tools or Claude Code's native peer tools can notify a task immediately. The agent first
+discovers the exact native recipient. Held messages and permission prompts remain pending;
+refused messages are reported as refused. Otherwise delivery waits for the recipient's next
 hook or resume. The agent reports the actual state. Notifications do not automatically wake
 inactive sessions, and this mechanism does not connect separate clones or remote computers.
 

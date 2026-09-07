@@ -380,6 +380,21 @@ class MessageStore:
             if row["status"] in ("received", "replied"):
                 return {"status": row["status"], "message_id": message_id}
             target = self._agent(db, row["recipient"])
+            if target["host"] == "claude-code" and target["is_root"]:
+                return {
+                    "status": "discovery-required", "message_id": message_id,
+                    "transport": "claude-native", "discovery_tool": "ListAgents",
+                    "native_session": target["session"],
+                    "instruction": (
+                        "Use the current host's ListAgents tool and its actual schema to locate "
+                        "this exact native session. SendMessage must use the returned peer address; "
+                        "a display name, background job ID or Neurath address is not a substitute. "
+                        "If no unique verified mapping or no native tool is available, keep the "
+                        "message in the hook inbox. Send only a peer notification to read Neurath "
+                        f"message {message_id}. Preserve the recipient's goal and permissions. "
+                        "Held/refused is not submitted or received. Never resume a live process."
+                    ),
+                }
             if target["host"] != "codex" or not target["is_root"]:
                 return {"status": "queued", "message_id": message_id, "transport": "hook-inbox"}
             prompt = (

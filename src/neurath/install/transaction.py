@@ -365,6 +365,7 @@ def make_plan(root, *, action="install", profile=None, hosts=None, receipt=None,
         elif project in owned:
             desired[project] = owned[project]["installed"]
         from neurath.agents.mcp import server_config
+        from neurath.runtime.task_schema import TASKS
 
         server = server_config(root)
         if "codex" in hosts:
@@ -378,8 +379,9 @@ def make_plan(root, *, action="install", profile=None, hosts=None, receipt=None,
                 addition = ("\n[mcp_servers.neurath_collaboration]\ncommand = "
                             + json.dumps(server["command"], ensure_ascii=False) + "\nargs = "
                             + json.dumps(server["args"], ensure_ascii=False)
-                            + "\nenabled_tools = [\"agent\"]\n"
-                            + "[mcp_servers.neurath_collaboration.tools.agent]\napproval_mode = \"approve\"\n")
+                            + "\nenabled_tools = " + json.dumps([*TASKS, "agent"]) + "\n"
+                            + "".join(f"[mcp_servers.neurath_collaboration.tools.{name}]\napproval_mode = \"approve\"\n"
+                                      for name in (*TASKS, "agent")))
                 tomllib.loads(content + addition)
             except (ValueError, TypeError) as error:
                 raise InstallError(f"MCP settings conflict: {path}") from error

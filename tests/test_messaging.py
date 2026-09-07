@@ -101,7 +101,8 @@ def test_native_transport_is_submission_not_receipt(peers):
     store.acknowledge(a, question["id"])
     assert store.message(b, question["id"])["status"] == "received"
     reply = store.reply(a, question["id"], "OK", key="r")
-    assert store.forward(a, reply["id"])["status"] == "queued"
+    assert store.forward(a, reply["id"])["status"] == "discovery-required"
+    assert store.message(a, reply["id"])["status"] == "queued"
 
 
 def test_hook_delivery_is_bounded_and_does_not_acknowledge(peers):

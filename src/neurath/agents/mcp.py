@@ -1,8 +1,9 @@
 """Shell-free peer communication, authorized by one exact native tool invocation.
 
 The stdio process has no inherited actor identity. Native PreToolUse binds the
-request to an admitted actor; PostToolUse closes that capability. No shell, file,
-delegation or ownership command is exposed by this server.
+request to an admitted actor; PostToolUse closes that capability. No arbitrary shell, file editing, delegation or ownership command is exposed.
+Named verification uses the bounded runner only when the observed native policy
+requires no approval and no sandbox confinement; otherwise it returns a native route.
 """
 
 import argparse
@@ -18,7 +19,10 @@ from neurath.agents.newsroom import Newsroom
 from neurath.agents.store import AgentIdentity, MessageStore
 from neurath.memory.store import canonical
 
+from neurath.runtime.task_schema import TASKS, TaskError, arguments, definitions
+
 TOOL_NAME = "mcp__neurath_collaboration__agent"
+TOOL_NAMES = {TOOL_NAME, *("mcp__neurath_collaboration__" + name for name in TASKS)}
 MAX_FRAME = 131072
 
 
@@ -35,10 +39,23 @@ def _store(root):
             host TEXT NOT NULL, session TEXT NOT NULL, actor TEXT NOT NULL, is_root INTEGER NOT NULL,
             turn TEXT NOT NULL, request TEXT NOT NULL, status TEXT NOT NULL, result TEXT,
             expires REAL NOT NULL)""")
+        columns = {row[1] for row in db.execute("PRAGMA table_info(collaboration_calls)")}
+        if "context" not in columns:
+            db.execute("ALTER TABLE collaboration_calls ADD COLUMN context TEXT NOT NULL DEFAULT '{}'")
     return store
 
 
-def _request(inputs):
+def _request(inputs, name="agent", root=None):
+    if name != "agent":
+        fields = arguments(name, inputs)
+        request = canonical([name, fields])
+        if len(request.encode()) > 65536:
+            raise TaskError("invalid-input", "task request exceeds 64 KiB")
+        if name == "verification_run":
+            # The approved check cannot silently change before execution/replay.
+            config = (Path(root) / ".neurath/project.json").read_bytes()
+            request += hashlib.sha256(config).hexdigest()
+        return hashlib.sha256(request.encode()).hexdigest()
     if not isinstance(inputs, dict) or set(inputs) - {"argv", "_neurath_binding"}:
         raise ValueError("communication request accepts only argv and native binding")
     argv = inputs.get("argv")
@@ -50,6 +67,13 @@ def _request(inputs):
     if len(request.encode()) > 65536:
         raise ValueError("communication request exceeds 64 KiB")
     return hashlib.sha256(request.encode()).hexdigest()
+
+
+def _prompt_receipt(state, actor):
+    turn = state.foreground_turns.get(actor.id)
+    receipt = turn.user_prompt_receipt if turn else None
+    return None if receipt is None else {
+        "turn_revision": receipt.turn_revision, "prompt_digest": receipt.prompt_digest}
 
 
 def bind_call(root, host, payload):
@@ -65,26 +89,39 @@ def bind_call(root, host, payload):
     if not active:
         raise ValueError("communication call requires an active native turn")
     inputs = payload.get("tool_input")
-    request = _request(inputs)
+    tool = payload.get("tool_name", TOOL_NAME)
+    if tool not in TOOL_NAMES:
+        raise TaskError("invalid-input", "unknown native task tool")
+    name = tool.removeprefix("mcp__neurath_collaboration__")
+    request = _request(inputs, name, root)
+    if name in {"verification_run", "provider_run"}:
+        from neurath.runtime.tasks import _verification_owner
+
+        _verification_owner(root, identity)
     invocation = canonical([host, identity.session, identity.actor, payload["tool_use_id"]])
+    context = canonical({"host": host, "session": identity.session, "actor": identity.actor,
+                         "turn": turn, "tool_use_id": payload["tool_use_id"],
+                         "permission_mode": payload.get("permission_mode"),
+                         "user_prompt_receipt": _prompt_receipt(state, actor)})
     store = _store(root)
     with store.connection() as db:
         old = db.execute("SELECT * FROM collaboration_calls WHERE invocation=?", (invocation,)).fetchone()
         if old:
-            if old["request"] != request or old["turn"] != turn or old["status"] == "closed":
+            if (old["request"] != request or old["turn"] != turn or old["status"] == "closed"
+                    or old["context"] != context):
                 raise ValueError("native communication invocation changed or closed")
             token = old["token"]
         else:
             token = secrets.token_hex(32)
-            db.execute("INSERT INTO collaboration_calls VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            db.execute("INSERT INTO collaboration_calls VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
                        (token, invocation, str(Path(root).resolve()), host, identity.session,
                         identity.actor, int(identity.is_root), turn, request, "issued", None,
-                        time.time() + 300))
+                        time.time() + 300, context))
     store.register(identity)
     Newsroom(store).pulse(identity.address, active=True, turn=turn)
     return {"hookSpecificOutput": {"hookEventName": "PreToolUse",
                                    "permissionDecision": "allow",
-                                   "permissionDecisionReason": "Exact native-bound project communication tool",
+                                   "permissionDecisionReason": "Exact native-bound project task tool; execution policy is checked separately",
                                    "updatedInput": {**inputs, "_neurath_binding": token}}}
 
 
@@ -129,13 +166,14 @@ def _execute(root, argv, identity):
     return (newsroom_cli if args.command == "newsroom" else cli).run(root, args, identity=identity)
 
 
-def call_tool(root, inputs):
+def call_tool(root, inputs, *, name="agent"):
     from neurath.hosts.identity import _state, active_connection
 
-    request = _request(inputs)
+    request = _request(inputs, name, root)
     token = inputs.get("_neurath_binding")
     if not isinstance(token, str) or len(token) != 64:
-        raise ValueError("communication call must be bound by the native PreToolUse hook")
+        raise TaskError("native-binding-required", "communication call must be bound by the native PreToolUse hook",
+                        next_action="Check installation and native hook activation; start a new native invocation after recovery. Never supply a binding yourself.")
     store = _store(root)
     with store.connection() as db:
         row = db.execute("SELECT * FROM collaboration_calls WHERE token=?", (token,)).fetchone()
@@ -154,12 +192,37 @@ def call_tool(root, inputs):
         actor = state.actors.get(ActorId(identity.actor))
         if actor is None or participation(state, actor) != (True, row["turn"]):
             raise ValueError("communication binding no longer has its active native turn")
+        context = json.loads(row["context"])
+        if ("user_prompt_receipt" not in context
+                or context["user_prompt_receipt"] != _prompt_receipt(state, actor)):
+            raise TaskError("native-prompt-changed", "task binding no longer has its native user prompt",
+                            next_action="Start a new native tool invocation for the current user input.")
         if row["status"] == "complete":
             return json.loads(row["result"])
+        if row["status"] == "failed":
+            details = json.loads(row["result"])
+            raise TaskError(**details)
         if row["status"] != "issued":
-            raise ValueError("communication call is already running; retry with a new native invocation")
+            raise TaskError("outcome-unknown", "task call is already running or was interrupted",
+                            state="running-or-interrupted",
+                            next_action="Inspect the task result before any new invocation. For keyed writes reuse the same key and content; do not automatically rerun verification.")
         db.execute("UPDATE collaboration_calls SET status='running' WHERE token=?", (token,))
-    result = _execute(root, inputs["argv"], identity)
+    try:
+        if name == "agent":
+            result = _execute(root, inputs["argv"], identity)
+        else:
+            from neurath.runtime.tasks import execute
+
+            result = execute(root, name, inputs, identity=identity, expected_turn=row["turn"],
+                             verified_policy_evidence=context)
+    except Exception as error:
+        failure = error if isinstance(error, TaskError) else TaskError(
+            "operation-failed", str(error), state="failed-or-partial",
+            next_action="Inspect the current task state. Correct the cause; for a keyed write reuse the same key and content. Do not automatically rerun verification.")
+        with store.connection() as db:
+            db.execute("UPDATE collaboration_calls SET status='failed',result=? WHERE token=? AND status='running'",
+                       (canonical(failure.details), token))
+        raise failure from error
     with store.connection() as db:
         db.execute("UPDATE collaboration_calls SET status='complete',result=? WHERE token=? AND status='running'",
                    (canonical(result), token))
@@ -170,7 +233,7 @@ TOOL = {
     "name": "agent",
     "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False},
     "description": (
-        "Communicate as the current native agent. Pass CLI-style argv, never shell code. "
+        "Compatibility adapter for existing workflows. Prefer named task tools when available. Communicate as the current native agent. Pass CLI-style argv, never shell code. "
         "Newsroom: ['newsroom','publish','--title',TITLE,'--body',BODY,'--key',KEY]; titles <=30 "
         "characters are pushed only to active peers. Use ['newsroom','headlines'] and "
         "['newsroom','read',ARTICLE_ID] for the current body only; add --history to explicitly "
@@ -203,16 +266,40 @@ def response(root, request):
     elif method == "ping":
         result = {}
     elif method == "tools/list":
-        result = {"tools": [TOOL]}
-    elif method == "tools/call" and params.get("name") == "agent":
+        result = {"tools": [*definitions(), TOOL]}
+    elif method == "tools/call" and params.get("name") in {"agent", *TASKS}:
         try:
-            value = call_tool(root, params.get("arguments"))
+            name = params["name"]
+            value = call_tool(root, params.get("arguments"), name=name)
+            failed = ((name == "verification_run" and value.get("status") != "passed")
+                      or (name == "provider_run" and value.get("status") != "completed"))
+            if name != "agent":
+                value = {"ok": not failed, "operation": name, "result": value}
+                if failed:
+                    value["error"] = {"code": "verification-failed", "message": "The registered check failed",
+                        "state": "completed", "retryable": False,
+                        "next_action": "Inspect the verification result and fix the cause before starting another check."}
+                    if name == "verification_run" and value["result"].get("status") == "caller-authority-changed":
+                        value["error"] = {"code": "verification-authority-changed",
+                            "message": "The check finished but its caller authority changed or could not be observed",
+                            "state": "finished-without-current-authority", "retryable": False,
+                            "next_action": value["result"]["next_action"]}
+                    if name == "provider_run":
+                        value["error"] = {"code": "provider-run-incomplete", "message": "The native provider run did not complete successfully",
+                            "state": "failed-or-partial", "retryable": False,
+                            "next_action": "Inspect the returned native session, readiness and outcome before any new run."}
             result = {"content": [{"type": "text", "text": canonical(value)}],
-                      "structuredContent": value, "isError": False}
+                      "structuredContent": value, "isError": failed}
         except Exception as error:
             from neurath.memory.store import clean
 
-            result = {"content": [{"type": "text", "text": clean(str(error))}], "isError": True}
+            details = (error.details if isinstance(error, TaskError) else
+                       {"code": "binding-or-operation-error", "message": str(error), "state": "not-started",
+                        "retryable": False, "next_action": "Inspect native activation, current turn, worktree ownership and the input before retrying."})
+            details = {**details, "message": clean(details["message"])}
+            value = {"ok": False, "operation": params["name"], "error": details}
+            result = {"content": [{"type": "text", "text": canonical(value)}],
+                      "structuredContent": value, "isError": True}
     else:
         return envelope | {"error": {"code": -32601, "message": "Method or tool not found"}}
     return envelope | {"result": result}

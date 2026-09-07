@@ -191,8 +191,12 @@ def test_child_environment_keeps_auth_but_not_parent_authority():
             "CODEX_HOME": "/configured",
             "ANTHROPIC_API_KEY": "secret",
             "CODEX_THREAD_ID": "parent",
+            "CODEX_APP_TOOLS_PIPE_PATH": "/parent/tool-control",
+            "CODEX_ACTOR_ID": "parent-actor",
             "CLAUDE_CODE_SESSION_ID": "parent",
             "CLAUDECODE": "1",
+            "CLAUDE_CODE_MESSAGING_SOCKET": "/parent/socket",
+            "CLAUDE_CODE_MESSAGING_TOKEN": "parent-peer-authority",
             "NEURATH_TOOL_BINDING": "parent-receipt",
             "NEURATH_TARGET_ROOT": "/parent",
             "PYTHONPATH": "/injected",
@@ -205,6 +209,28 @@ def test_child_environment_keeps_auth_but_not_parent_authority():
         k in env for k in ("CODEX_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "CLAUDECODE", "PYTHONPATH")
     )
     assert not any(k.startswith("NEURATH_") for k in env)
+    assert "CLAUDE_CODE_MESSAGING_SOCKET" not in env
+    assert "CLAUDE_CODE_MESSAGING_TOKEN" not in env
+    assert "CODEX_APP_TOOLS_PIPE_PATH" not in env
+    assert "CODEX_ACTOR_ID" not in env
+
+
+def test_claude_init_retains_observed_mode_and_model():
+    output = '\n'.join(json.dumps(event) for event in [
+        {"type": "system", "subtype": "init", "session_id": "session", "cwd": "/work",
+         "model": "selected", "permissionMode": "dontAsk", "tools": ["Read"]},
+        {"type": "result", "session_id": "session", "is_error": False,
+         "subtype": "success", "result": "Done"},
+    ])
+    result = runner.parse_result("claude-code", output)
+    assert result["effective_settings"]["approval_policy"] == "dontAsk"
+    assert result["effective_settings"]["model"] == "selected"
+    assert result["effective_settings"]["worktree"] == "/work"
+
+
+def test_command_rejects_unknown_provider_instead_of_running_claude(worker):
+    with pytest.raises(ValueError, match="unsupported provider"):
+        runner.command("typo", "chosen")
 
 
 def test_unavailable_provider_does_not_fall_back(worker, monkeypatch):
@@ -220,3 +246,30 @@ def test_write_mode_requires_a_separate_installed_worktree(worker):
         runner.run(
             store, owner, provider="codex", model="m", assignment="Task", mode="workspace-write"
         )
+
+
+def test_cli_write_assignment_is_not_dispatched_without_native_readiness(worker, monkeypatch):
+    from neurath.providers.contracts import UnsupportedOperation
+    store, owner, _ = worker
+    monkeypatch.setattr(runner, "_workspace", lambda *_: store.worktree)
+    def forbidden(*args, **kwargs):
+        pytest.fail("provider process was dispatched before readiness")
+    monkeypatch.setattr(runner, "command", forbidden)
+    with pytest.raises(UnsupportedOperation, match="readiness"):
+        runner.run(store, owner, provider="codex", model="m", assignment="Implement", mode="workspace-write")
+    with store.connection() as db:
+        assert db.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 0
+
+
+def test_effective_claude_model_mismatch_is_visible(worker):
+    store, owner, executable = worker
+    events = [
+        {"type": "system", "subtype": "init", "cwd": str(store.worktree),
+         "model": "other", "permissionMode": "dontAsk", "session_id": "native"},
+        {"type": "result", "subtype": "success", "session_id": "native", "result": "OK"},
+    ]
+    executable("print(" + repr("\n".join(json.dumps(event) for event in events)) + ")\n")
+    result = runner.run(store, owner, provider="claude-code", model="chosen", assignment="Read")
+    assert result["status"] == "failed"
+    assert result["execution_policy"]["verification"] == "mismatch"
+    assert result["execution_policy"]["effective"]["model"] == "other"

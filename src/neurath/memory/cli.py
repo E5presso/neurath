@@ -61,23 +61,12 @@ def run(root, args):
                 "authority": "agent-report",
             }
         return engine.status() if args.learning_command == "status" else engine.history(args.lesson)
+    from neurath.runtime.tasks import checkpoint, recall
+    from neurath.agents.identity import current_agent
+
     if args.memory_command == "recall":
-        return memory.recall(args.query, limit=args.limit)
-    host, session = native_session(root)
-    identity = memory.checkpoint(
-        host,
-        session,
-        "checkpoint:" + (args.id or uuid.uuid4().hex),
-        summary=args.summary,
-        decisions=args.decision,
-        next_steps=args.next_step,
-        lessons=args.lesson,
-        status=args.status,
-    )
-    return {
-        "status": "saved",
-        "id": identity,
-        "host": host,
-        "session": session,
-        "authority": "agent-report",
-    }
+        return recall(root, args.query, limit=args.limit)
+    identity = current_agent(root)
+    return checkpoint(root, identity=identity, summary=args.summary,
+                      key=args.id or uuid.uuid4().hex, decisions=args.decision,
+                      next_steps=args.next_step, lessons=args.lesson, status=args.status)

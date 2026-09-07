@@ -114,6 +114,16 @@ def _foreground(state):
     }
 
 
+def _independent_root_source(meta):
+    """App forks are independent roots, never inherited parent authority."""
+    if meta.get("thread_source") in (None, "user"):
+        return True
+    return (meta.get("thread_source") == "agent_forked_thread"
+            and isinstance(meta.get("forked_from_id"), str)
+            and bool(meta["forked_from_id"].strip())
+            and meta["forked_from_id"] != meta.get("id"))
+
+
 def _validate_root_transcript(root, host, payload, path, data):
     """Codex can rotate rollout files while retaining the same native root.
 
@@ -135,7 +145,7 @@ def _validate_root_transcript(root, host, payload, path, data):
                 and meta["id"] == session
                 and meta.get("session_id", session) == session
                 and meta.get("source") in ("vscode", "cli", "exec")
-                and meta.get("thread_source") in (None, "user")
+                and _independent_root_source(meta)
                 and not meta.get("parent_thread_id")
                 and not meta.get("parent_session_id")
                 and not meta.get("agent_id")
@@ -892,7 +902,7 @@ def native_root_turn(root, path, session, turn_id):
         if (record["type"] != "session_meta" or meta["id"] != session
                 or meta.get("session_id", session) != session
                 or meta.get("source") not in ("vscode", "cli", "exec")
-                or meta.get("thread_source") not in (None, "user")
+                or not _independent_root_source(meta)
                 or any(meta.get(k) for k in (
                     "parent_thread_id", "parent_session_id", "agent_id"))
                 or meta.get("agent_path") not in (None, "/root")
@@ -902,6 +912,18 @@ def native_root_turn(root, path, session, turn_id):
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return False
     return True
+
+
+def _native_context_refresh(item, turn_id):
+    """Only host-classified context is not a human prompt; never inspect its text."""
+    metadata = item.get("internal_chat_message_metadata_passthrough")
+    if not isinstance(metadata, dict) or metadata.get("turn_id") != turn_id:
+        return False
+    kinds = metadata.get("content_item_kinds")
+    return (isinstance(kinds, list) and bool(kinds)
+            and all(isinstance(kind, str) and kind in {
+                "agents_md.instructions", "environments.environment_context",
+            } for kind in kinds))
 
 
 def _native_peer_turn(root, path, session, turn_id):
@@ -937,7 +959,8 @@ def _native_peer_turn(root, path, session, turn_id):
                     and isinstance(native, dict) and native.get("type") == "FunctionCallOutput"):
                 completed = delivery(native)
         elif record.get("type") == "response_item":
-            if item.get("type") == "message" and item.get("role") == "user":
+            if (item.get("type") == "message" and item.get("role") == "user"
+                    and not _native_context_refresh(item, turn_id)):
                 return False  # A deferred human prompt still needs its own reconciliation.
             metadata = item.get("internal_chat_message_metadata_passthrough")
             if (item.get("type") == "function_call_output"

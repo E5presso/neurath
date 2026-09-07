@@ -1,6 +1,5 @@
 """Host protocol adapters dispatch into the preserved runtime, without trusting hooks."""
 
-import io
 import json
 import os
 import sys
@@ -20,7 +19,7 @@ MUTATION_TOOLS = {
 SHELL_TOOLS = {"Bash", "bash", "shell", "exec_command", "functions.exec_command", "unified_exec"}
 
 
-def _host_hook(root, host, raw, environment=None):
+def _host_hook(root, host, raw, environment=None, stop_guard=None):
     if host not in HOSTS:
         return 2, {}, "unsupported host"
     try:
@@ -102,9 +101,9 @@ def _host_hook(root, host, raw, environment=None):
             return 2, {}, str(error)
     if event == "PreToolUse":
         tool = payload.get("tool_name")
-        from neurath.agents.mcp import TOOL_NAME, bind_call
+        from neurath.agents.mcp import TOOL_NAMES, bind_call
 
-        if payload.get("agent_id") is not None and tool in MUTATION_TOOLS | SHELL_TOOLS | {TOOL_NAME}:
+        if payload.get("agent_id") is not None and tool in MUTATION_TOOLS | SHELL_TOOLS | TOOL_NAMES:
             from neurath.hosts.lifecycle import ensure_child
 
             if not ensure_child(Path(root), host, payload, env):
@@ -116,7 +115,7 @@ def _host_hook(root, host, raw, environment=None):
                         "shell and write tools cannot run with inherited root authority"
                     ),
                 )
-        if tool == TOOL_NAME:
+        if tool in TOOL_NAMES:
             return 0, bind_call(root, host, payload), ""
         if tool in SHELL_TOOLS:
             from neurath.hosts.capabilities import capability_policy
@@ -143,9 +142,9 @@ def _host_hook(root, host, raw, environment=None):
             return code, output, stderr
         return 0, {}, ""
     if event in {"PostToolUse", "PostToolUseFailure", "PermissionDenied"}:
-        from neurath.agents.mcp import TOOL_NAME, close_call
+        from neurath.agents.mcp import TOOL_NAMES, close_call
 
-        if payload.get("tool_name") == TOOL_NAME:
+        if payload.get("tool_name") in TOOL_NAMES:
             close_call(root, host, payload)
             return 0, {}, ""
         if payload.get("tool_name") not in MUTATION_TOOLS | SHELL_TOOLS:
@@ -167,18 +166,11 @@ def _host_hook(root, host, raw, environment=None):
             "permission-denied" if event == "PermissionDenied" else "post", raw, env, Path(root)
         )
         return result.exit_code, {}, result.stderr
-    from scripts.agent_harness.agent_continuation_hook import AgentContinuationHookCli
+    from scripts.agent_harness.agent_continuation_hook import AgentContinuationHookApplication
 
-    stdout, stderr = io.StringIO(), io.StringIO()
-    code = AgentContinuationHookCli().run(
-        ["--runtime", host],
-        stdin=io.StringIO(raw),
-        stdout=stdout,
-        stderr=stderr,
-        environment=env,
-        cwd=Path(root),
-    )
-    return code, json.loads(stdout.getvalue() or "{}"), stderr.getvalue()
+    result = AgentContinuationHookApplication(runtime=runtime, stop_guard=stop_guard).run(
+        raw, env, Path(root))
+    return result.exit_code, json.loads(result.stdout or "{}"), result.stderr
 
 
 def _bookkeeping_failure(output, event, component, error):
@@ -199,6 +191,20 @@ def _dispatch_hook(root, host, raw, environment=None):
     try:
         request = json.loads(raw)
     except ValueError, TypeError:
+        request = None
+    if (host in HOSTS and isinstance(request, dict)
+            and request.get("hook_event_name") in {"Stop", "SubagentStop"}):
+        from neurath.hosts.stopping import dispatch_stop
+
+        return dispatch_stop(root, host, request,
+                             lambda guard: _dispatch_event(root, host, raw, environment, guard), environment)
+    return _dispatch_event(root, host, raw, environment)
+
+
+def _dispatch_event(root, host, raw, environment=None, stop_guard=None):
+    try:
+        request = json.loads(raw)
+    except ValueError, TypeError:
         request = {}
     readonly = _readonly_root_stop(root, host, request, environment)
     if readonly is not None:
@@ -215,7 +221,8 @@ def _dispatch_hook(root, host, raw, environment=None):
             reason = None
         if reason:
             return 2, {}, reason
-    code, output, diagnostic = _host_hook(root, host, raw, environment)
+    code, output, diagnostic = (_host_hook(root, host, raw, environment, stop_guard)
+                                if stop_guard is not None else _host_hook(root, host, raw, environment))
     if diagnostic:
         diagnostics.append(diagnostic)
     if code == 0:
@@ -289,10 +296,19 @@ def _readonly_root_stop(root, host, request, environment):
         current = bool(data.get("transcript")) and native_root_turn(
             root, path, request["session_id"], turn.vendor_turn_id,
         )
+        requested_current = bool(data.get("transcript")) and native_root_turn(
+            root, path, request["session_id"], request["turn_id"],
+        )
     except (OSError, ValueError, KeyError, TypeError):
         current = False
+        requested_current = False
     if current:
         return 0, {}, "Neurath stale Stop acknowledged; the current native turn is unchanged."
+    if requested_current:
+        return 0, {}, (
+            "Neurath unreconciled native Stop acknowledged without state changes or completion "
+            "authority. Foreground reconciliation remains unresolved; continue with a new user turn."
+        )
     return 2, {}, "Neurath Stop turn mismatch lacks current native proof; state is unchanged."
 
 

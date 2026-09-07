@@ -24,6 +24,9 @@ def test_mcp_install_update_uninstall_preserves_user_configuration(tmp_path):
     settings.write_text(json.dumps({"permissions": permissions}))
     apply_plan(tmp_path, make_plan(tmp_path))
     assert tomllib.loads(codex.read_text())["mcp_servers"]["neurath_collaboration"]["command"]
+    installed = tomllib.loads(codex.read_text())["mcp_servers"]["neurath_collaboration"]
+    assert {"memory_recall", "memory_checkpoint", "verification_run", "agent"} <= set(installed["enabled_tools"])
+    assert all(installed["tools"][name]["approval_mode"] == "approve" for name in installed["enabled_tools"])
     assert tomllib.loads(codex.read_text())["mcp_servers"]["neurath_collaboration"]["tools"]["agent"]["approval_mode"] == "approve"
     assert "# keep comment" in codex.read_text()
     assert json.loads(claude.read_text())["mcpServers"]["other"] == {"command": "other"}

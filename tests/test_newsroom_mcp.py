@@ -22,7 +22,8 @@ def test_stdio_initialization_inventory_and_unbound_rejection(tmp_path):
     replies = [json.loads(line) for line in result.stdout.splitlines()]
     assert [r["id"] for r in replies] == [1, 2, 3]
     assert replies[0]["result"]["protocolVersion"] == "2025-06-18"
-    assert [t["name"] for t in replies[1]["result"]["tools"]] == ["agent"]
+    names = {t["name"] for t in replies[1]["result"]["tools"]}
+    assert {"agent", "memory_recall", "verification_run", "newsroom_publish"} <= names
     assert replies[2]["result"]["isError"]
     assert "bound" in replies[2]["result"]["content"][0]["text"]
 

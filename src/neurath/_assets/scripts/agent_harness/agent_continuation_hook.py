@@ -15,6 +15,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import AbstractContextManager, nullcontext
 from enum import StrEnum
 from pathlib import Path
 from typing import Protocol, TextIO
@@ -946,6 +947,7 @@ class AgentContinuationHookApplication:
         monitor_liveness: MonitorLivenessPort | None = None,
         monitor_recovery: MonitorRecoveryPort | None = None,
         clock: Callable[[], float] = time.time,
+        stop_guard: Callable[[ProcessState, StateHandle], AbstractContextManager[None]] | None = None,
     ) -> None:
         """Runtime-neutral hook application과 외부 read-back port를 구성합니다.
 
@@ -955,6 +957,7 @@ class AgentContinuationHookApplication:
             monitor_liveness: Stop에서 사용하는 optional read-only liveness port입니다.
             monitor_recovery: Non-Stop에서 사용하는 optional recovery port입니다.
             clock: Pure mutation input timestamp를 생성하는 clock입니다.
+            stop_guard: Host adapter가 캡처한 Stop 진입 상태를 검사하는 내부 guard입니다.
         """
         local_monitor = LocalMonitorRuntime(clock=clock)
         self._runtime = runtime
@@ -963,6 +966,7 @@ class AgentContinuationHookApplication:
         self._monitor_recovery = monitor_recovery or local_monitor
         self._clock = clock
         self._identity_resolver = RuntimeEnvironmentResolver()
+        self._stop_guard = stop_guard or (lambda *_: nullcontext())
 
     def run(
         self,
@@ -1573,11 +1577,12 @@ class AgentContinuationHookApplication:
             return
         close_revision = turn.revision
         try:
-            state, abandoned = self._abandon_unobserved_material_action(
-                state,
-                handle,
-                turn.generation,
-            )
+            with self._stop_guard(state, handle):
+                state, abandoned = self._abandon_unobserved_material_action(
+                    state,
+                    handle,
+                    turn.generation,
+                )
             if abandoned:
                 raise AgentContinuationBlocked(
                     "unobserved material invocation was blocked as UNKNOWN; "
@@ -1593,19 +1598,22 @@ class AgentContinuationHookApplication:
             )
             self._validate_monitor_workflows(workflows, environment, cwd)
             try:
-                handle.apply(
-                    ForegroundTurnClosed(
-                        session_id=handle.session_id,
-                        actor_id=handle.actor_id,
-                        expected_turn_revision=close_revision,
-                        idempotency_key=(
-                            f"foreground-turn:close:{handle.actor_id}:{turn.generation}:"
-                            f"{close_revision}"
+                # External Git/monitor readbacks above must not hold the host
+                # lifecycle journal. Recheck only for the short canonical CAS.
+                with self._stop_guard(state, handle):
+                    handle.apply(
+                        ForegroundTurnClosed(
+                            session_id=handle.session_id,
+                            actor_id=handle.actor_id,
+                            expected_turn_revision=close_revision,
+                            idempotency_key=(
+                                f"foreground-turn:close:{handle.actor_id}:{turn.generation}:"
+                                f"{close_revision}"
+                            ),
+                            monitor_transitions=monitor_transitions,
                         ),
-                        monitor_transitions=monitor_transitions,
-                    ),
-                    expected_revision=state.revision,
-                )
+                        expected_revision=state.revision,
+                    )
             except RevisionConflict as error:
                 raise AgentContinuationBlocked(
                     "canonical session state changed during external Stop validation"

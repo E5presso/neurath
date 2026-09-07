@@ -78,8 +78,22 @@ alongside the current native turn. It opens only a foreground continuation of th
 goal and creates no user approval record. Message text, ordinary tool output, or an old delivery
 record alone cannot authorize this path. If a previous turn's Stop arrives late, the current turn's
 verified source allows handling it while preserving state. An unmatched Stop without verifiable
-source is rejected without changing state. Repeated Stop events for an explicitly and permanently
-ended root do nothing and do not restore execution authority.
+source reports a nonblocking error without changing state. Repeated Stop events for an explicitly
+and permanently ended root do nothing and do not restore execution authority.
+
+A host stopping and a workflow completing are separate events. A verified root Stop can request
+one continuation to resolve missing completion prerequisites. If they remain unresolved, Neurath
+returns control with an incomplete-work message. The native `stop_hook_active` flag and a stored
+per-turn delivery budget prevent repeated Stop events from starting a loop. Missing state or an
+internal error never grants a retry, completes work, or transfers ownership. A later verified user
+turn can resume the pending work with its own continuation budget. Normal completion still uses
+the existing workflow and evidence checks.
+
+A Codex app conversation fork starts an independent root. Its native fork metadata and actual
+SessionStart establish that identity; copied conversation text establishes neither identity nor
+workspace ownership. The fork must obtain its own claim for the exact worktree before editing.
+Host execution modes and approvals remain separate from that claim: successful session creation
+alone does not show that a session can perform its assignment.
 
 Related official documentation:
 

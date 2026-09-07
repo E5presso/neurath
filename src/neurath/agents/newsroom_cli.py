@@ -1,8 +1,7 @@
 """The same explicit article operations for native shells and the scoped MCP tool."""
 
 from neurath.agents.identity import current_agent
-from neurath.agents.newsroom import Newsroom
-from neurath.agents.store import MessageStore
+from neurath.runtime.tasks import newsroom
 
 
 def add_commands(commands):
@@ -29,10 +28,8 @@ def add_commands(commands):
 
 def run(root, args, *, identity=None):
     identity = identity or current_agent(root)
-    room = Newsroom(MessageStore(root))
     fields = vars(args).copy()
     action = fields.pop("newsroom_command")
     for name in ("command", "root"):
         fields.pop(name, None)
-    result = getattr(room, action)(identity.address, **fields)
-    return {action: result} if isinstance(result, list) else result
+    return newsroom(root, action, fields, identity=identity)

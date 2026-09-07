@@ -181,7 +181,8 @@ def checkpoint_request(root, host, payload):
     if Learning(memory).pending(host, session):
         return (
             "Neurath needs a durable handoff before this turn ends. Automatic learning has unvalidated recovery evidence. "
-            "Run the project-bound .neurath/run verify check now, then record the actual outcome in a memory checkpoint. "
+            "Prefer verification_run(check='check') when available and authorized, then memory_checkpoint for the actual outcome. "
+            "If the task tool is unavailable or cannot preserve native execution policy, use the host shell's project-bound .neurath/run verify check. "
             "This is routine harness maintenance; no separate user request to learn or verify is required. "
             "If the current user explicitly forbids further checks, or the check cannot run with existing permissions and tools, "
             'record the concrete reason with .neurath/run learning defer --reason "..." and leave the candidate unvalidated. '
@@ -192,10 +193,11 @@ def checkpoint_request(root, host, payload):
         return None
     return (
         "Neurath needs a durable handoff before this turn ends. Save the actual result, decisions, remaining work, "
-        "and useful lessons from failures or user feedback with .neurath/run memory checkpoint "
+        "and useful lessons from failures or user feedback with memory_checkpoint(summary, key, decisions, next_steps, lessons, status). "
+        "Use the task tool when available; otherwise run .neurath/run memory checkpoint "
         '--summary "..." --decision "..." --next-step "..." --lesson "..." '
         "--status active|paused|completed|blocked (omit unused repeatable options). "
         "Use concise factual text; do not store secrets, reasoning traces, or claim tests you did not run. "
-        "If command recovery candidates exist, run the project-bound .neurath/run verify check to validate them. "
+        "If command recovery candidates exist, prefer verification_run(check='check'); use .neurath/run verify check through the host shell when unavailable or unsupported. "
         "This checkpoint records a report; it never completes a workflow or transfers ownership. Then finish the response."
     )

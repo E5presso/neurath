@@ -14,6 +14,18 @@ def emit(value):
     print(json.dumps(value, indent=2, ensure_ascii=False))
 
 
+def _native_or_terminal(root):
+    import os
+    from neurath.agents.identity import current_agent
+
+    try:
+        return current_agent(root)
+    except (ValueError, RuntimeError):
+        if any(os.environ.get(key) for key in ("CODEX_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "NEURATH_TOOL_BINDING")):
+            raise  # Failed native identity never becomes terminal authority.
+        return None
+
+
 def main(arguments=None):
     parser = argparse.ArgumentParser(prog="neurath")
     parser.add_argument("--version", action="version", version=__version__)
@@ -69,6 +81,25 @@ def main(arguments=None):
     verify = commands.add_parser("verify")
     verify.add_argument("name")
     commands.add_parser("profile-check")
+    commands.add_parser("session-status")
+    provider = commands.add_parser("provider").add_subparsers(dest="provider_command", required=True)
+    capabilities = provider.add_parser("capabilities")
+    capabilities.add_argument("provider", choices=HOSTS)
+    route = provider.add_parser("route")
+    route.add_argument("provider", choices=HOSTS)
+    route.add_argument("operation", choices=("create", "discover", "connect", "status", "message", "resume", "cancel", "peer"))
+    for field in ("native-session", "model", "project-id", "message-id"):
+        route.add_argument("--" + field, default="")
+    route.add_argument("--requested-json", default="{}")
+    provider_run = provider.add_parser("run")
+    provider_run.add_argument("--worktree", required=True)
+    provider_run.add_argument("--assignment", required=True)
+    provider_run.add_argument("--model", default="")
+    provider_run.add_argument("--mode", choices=("read-only", "workspace-write"), default="read-only")
+    provider_run.add_argument("--approval-policy", choices=("never", "on-request", "untrusted"), default="never")
+    provider_run.add_argument("--approvals-reviewer", choices=("user", "auto_review"), default="")
+    provider_run.add_argument("--collaboration-mode", choices=("default", "plan"), default="")
+    provider_run.add_argument("--timeout", type=float, default=300)
     delegate = commands.add_parser("delegate")
     delegate_commands = delegate.add_subparsers(dest="delegate_command", required=True)
     prepare = delegate_commands.add_parser("prepare")
@@ -113,6 +144,29 @@ def main(arguments=None):
             )
             return 0
         root = repository((args.target or args.root) if args.command == "setup" else args.root)
+        if args.command == "provider":
+            if args.provider_command == "run":
+                from neurath.runtime.provider_execution import run
+
+                fields = {name: getattr(args, name) for name in ("worktree", "assignment", "model",
+                    "mode", "approval_policy", "approvals_reviewer", "collaboration_mode", "timeout")}
+                result = run(root, fields, identity=_native_or_terminal(root))
+                emit(result)
+                return 0 if result["status"] == "completed" else 1
+            from neurath.runtime.tasks import provider_task
+
+            fields = {"provider": args.provider}
+            if args.provider_command == "route":
+                fields.update({name: getattr(args, name) for name in (
+                    "operation", "native_session", "model", "project_id", "message_id")})
+                fields["requested"] = json.loads(args.requested_json)
+            emit(provider_task("provider_" + args.provider_command, fields))
+            return 0
+        if args.command == "session-status":
+            from neurath.runtime.tasks import session_status
+
+            emit(session_status(root))
+            return 0
         if args.command == "newsroom":
             from neurath.agents.newsroom_cli import run as run_newsroom
 
@@ -216,31 +270,9 @@ def main(arguments=None):
 
             return run_skill(root, args.name, args.script, args.args)
         elif args.command == "verify":
-            from neurath.runtime.verification import VerificationError, verify
-
-            config = json.loads((root / ".neurath/project.json").read_text())
-            binding = config.get("verification", {}).get(args.name)
-            if binding is None:
-                raise VerificationError(
-                    f"unbound verifier: {args.name}; configure project.json verification"
-                )
-            result = verify(root, binding)
-            if args.name == "check":
-                from neurath.memory.cli import native_session
-                from neurath.memory.learning import Learning
-                from neurath.memory.store import ProjectMemory
-
-                try:
-                    host, session = native_session(root)
-                except (ValueError, RuntimeError):
-                    pass  # A standalone check grants no host-attested learning result.
-                else:
-                    from neurath.hosts.identity import snapshot
-                    from neurath.memory.transcript import synchronize
-
-                    memory = ProjectMemory(root)
-                    synchronize(memory, root, host, session, snapshot(root, session))
-                    Learning(memory).verified(host, session, result)
+            from neurath.runtime.tasks import verification
+            identity = _native_or_terminal(root)
+            result = verification(root, args.name, identity=identity, require_owner=identity is not None)
             emit(result)
             return 0 if result["status"] == "passed" else 1
         elif args.command == "profile-check":

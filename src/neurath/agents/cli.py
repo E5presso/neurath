@@ -1,7 +1,6 @@
 """Tools shared by both hosts; the sender is always resolved from native identity."""
 
 import sys
-import time
 import uuid
 from pathlib import Path
 
@@ -70,67 +69,20 @@ def add_commands(commands, delegate_commands):
 
 
 def run(root, args, *, identity=None):
-    store = MessageStore(root)
-    if args.command == "agent" and args.agent_command == "discover":
-        return {"agents": store.discover(args.query, args.limit)}
-    identity = identity or current_agent(root)
-    store.register(identity)
-    actor = identity.address
     if args.command == "delegate":
+        identity = identity or current_agent(root)
+        store = MessageStore(root)
+        store.register(identity)
         return delegate(store, identity, args)
-    action = args.agent_command
-    if action == "register":
-        return store.register(identity, name=args.name, summary=args.summary)
-    if action == "send":
-        return store.send(
-            actor,
-            args.to,
-            args.message,
-            key=args.key,
-            kind=args.kind,
-            max_messages=args.max_messages,
-            ttl=args.ttl,
-        )
-    if action == "reply":
-        return store.reply(actor, args.message_id, args.message, key=args.key)
-    if action == "ack":
-        return store.acknowledge(actor, args.message_id)
-    if action in ("message", "forward"):
-        return getattr(store, action)(actor, args.message_id)
-    if action == "submitted":
-        return store.submitted(actor, args.message_id, transport=args.transport)
-    if action in ("conversation", "close"):
-        return getattr(store, action)(actor, args.conversation)
-    if action in ("subscribe", "unsubscribe"):
-        return store.subscribe(actor, args.to, enabled=action == "subscribe")
-    if action == "publish":
-        return {"messages": store.publish(actor, args.message, key=args.key)}
-    if action in ("inbox", "wait"):
-        timeout = args.timeout if action == "wait" else 0
-        if not 0 <= timeout <= 60:
-            raise ValueError("wait timeout must be between 0 and 60 seconds")
-        if args.conversation:
-            store.conversation(actor, args.conversation)
-        deadline = time.monotonic() + timeout
-        while True:
-            messages = store.inbox(
-                actor,
-                limit=args.limit,
-                include_read=getattr(args, "include_read", False),
-                conversation=args.conversation,
-            )
-            if messages or time.monotonic() >= deadline:
-                return {
-                    "address": actor,
-                    "status": "ready" if messages else ("timed-out" if action == "wait" else "empty"),
-                    "messages": messages,
-                }
-            if args.conversation:
-                conversation = store.conversation(actor, args.conversation)
-                if conversation["status"] != "open" or conversation["expires"] <= time.time():
-                    return {"address": actor, "status": "closed", "messages": []}
-            time.sleep(min(0.25, max(0, deadline - time.monotonic())))
-    raise ValueError("unknown agent operation")
+    from neurath.runtime.tasks import peer
+
+    fields = vars(args).copy()
+    action = fields.pop("agent_command")
+    for name in ("command", "root"):
+        fields.pop(name, None)
+    if action != "discover":
+        identity = identity or current_agent(root)
+    return peer(root, action, fields, identity=identity)
 
 
 def delegate(store, identity, args):

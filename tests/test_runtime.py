@@ -43,7 +43,8 @@ print('contract-and-monitor-import-passed')
     assert (tmp_path / ".agents/skills/contracts.json").read_text() == '{"skills":{}}'
 
 
-def test_generic_verification_uses_configured_command_without_uv(tmp_path):
+@pytest.mark.parametrize("native_variable", [None, "CODEX_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "NEURATH_TOOL_BINDING"])
+def test_generic_verification_uses_configured_command_without_uv(tmp_path, native_variable):
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     apply_plan(tmp_path, make_plan(tmp_path))
     (tmp_path / ".neurath/project.json").write_text(
@@ -59,6 +60,12 @@ def test_generic_verification_uses_configured_command_without_uv(tmp_path):
             }
         )
     )
+    # This is a standalone terminal fixture; the test runner's host session is
+    # not an admitted session in this disposable project.
+    environment = {key: value for key, value in os.environ.items()
+                   if not key.startswith(("CODEX_", "CLAUDE_", "NEURATH_"))}
+    if native_variable:
+        environment[native_variable] = "unadmitted-fixture-session"
     result = subprocess.run(
         [
             str(tmp_path / ".neurath/run"),
@@ -66,10 +73,15 @@ def test_generic_verification_uses_configured_command_without_uv(tmp_path):
             "scripts.agent_harness.verification_runner",
             "check",
         ],
+        env=environment,
         capture_output=True,
         text=True,
         check=False,
     )
+    if native_variable:
+        assert result.returncode != 0
+        assert '"status": "passed"' not in result.stdout
+        return
     assert result.returncode == 0, result.stderr
     receipt = json.loads(result.stdout)
     assert receipt["status"] == "passed"

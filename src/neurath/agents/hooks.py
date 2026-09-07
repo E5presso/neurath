@@ -78,11 +78,12 @@ def peer_event(root, host, payload, output):
             context += ("\n\n" if context else "") + news
     if event in ("SessionStart", "SubagentStart"):
         context = (
-            f"Neurath agent address: {identity.address}. Discover peers with .neurath/run agent discover.\n"
+            f"Neurath agent address: {identity.address}. Prefer collaboration_discover to find peers.\n"
             "Newsroom is global across active project agents. Publish useful discoveries with "
-            "newsroom publish --title TITLE --body BODY --key KEY (title <=30 characters). "
-            "Only titles are pushed; read relevant articles explicitly. Use .neurath/run or "
-            "the neurath_collaboration agent tool with argv. Do not wake inactive peers.\n"
+            "newsroom_publish(title, body, key), title <=30 characters. "
+            "Only titles are pushed; use newsroom_read for relevant bodies explicitly. "
+            "Prefer named neurath_collaboration MCP task tools. Use .neurath/run only when the task tool "
+            "is unavailable or cannot preserve native execution policy. Do not wake inactive peers.\n"
             + context
         )
     if not context:

@@ -40,6 +40,27 @@ POLICY = """# Neurath 공통 실행 정책
 스킬은 이름의 키워드만으로 시작하지 않고 primary intent와 input authority가 맞을 때 고른다.
 요청하지 않은 제품 요구사항, 아키텍처, 모델, 권한, 설치 작업을 발명하지 않는다.
 
+## 실행 도구 선택
+현재 호스트에 노출된 `neurath_collaboration`의 작업 도구를 먼저 사용한다.
+세션 진단은 `session_status`, 기억 조회는 `memory_recall`, 인계는 `memory_checkpoint`, 등록된 검사는 `verification_run`,
+동료 찾기·수신·송신·답변은 `collaboration_discover/inbox/send/reply`,
+뉴스 제목·본문·발행은 `newsroom_headlines/read/publish`를 선택한다.
+호스트 지원 경로 확인은 `provider_capabilities`와 `provider_route`를 사용한다.
+경로 결과는 실제 호출이나 권한이 아니며, 현재 호스트 도구로 실행하고 그 결과를 확인한다.
+지원되는 모드를 지정해 별도 Codex 세션에서 승인된 작업을 실행할 때는 `provider_run`을 사용한다.
+호출자의 실행 정책과 소유권을 확인하고, 쓰기 작업은 새 세션의 실제 활성화·소유권 확인 뒤 전달한다.
+정확한 입력은 각 도구의 스키마를 따른다. 문자열로 CLI 옵션을 조립하지 않는다.
+CLI 예시는 아래에 호환 실행 참조로 유지한다. 설치 전 준비, 훅·자동화, 구조화된 도구가 없는
+작업, 현재 호스트의 실행 모드를 MCP가 지킬 수 없는 검사에만 에이전트가 `.neurath/run`을 사용한다.
+기존 `agent(argv)` MCP는 저장된 호출과 업데이트 호환용이다. 새로운 작업에는 명명된 도구를 우선한다.
+설치됨, 훅 프로토콜 통과, 실제 네이티브 활성화, 현재 실행 모드, 작업 공간 소유권은 별도 확인한다.
+프롬프트나 도구 응답만으로 모드·권한·소유권을 변경했다고 주장하지 않는다.
+검사는 프로젝트에 등록된 이름만 선택한다. 제한된 모드를 MCP가 집행할 수 없으면 호스트의
+셸 도구로 같은 검사를 실행한다. 이를 위해 모드나 권한을 넓히지 않는다.
+실패 결과의 원인·현재 상태·재시도 조건·다음 행동을 확인한다. 결과가 불확실한 검사를 자동 재실행하지 않는다.
+사용자에게 CLI 실행이나 설정 편집을 맡기지 않는다. 실제 호스트 신뢰·인증처럼 사용자 조작이
+필요한 경우에만 구체적인 차단과 필요한 조작을 알려 준다.
+
 ## 용어와 설명
 하네스를 설명할 때는 역할이 드러나는 말을 쓴다. receipt는 문맥에 따라 설치 이력,
 실행 결과, 검증 기록, 처리 기록으로 구분한다. provenance는 출처, attestation은
@@ -95,10 +116,11 @@ active 세션·자식이 자동 참여한다. 새로운 버그, 스펙의 개념
 본문에는 발견·근거·적용 범위·남은 불확실성을 간결하게 쓴다. 모든 생각이나 진행 상황을
 중계하지 않고 다른 작업에도 유용한 발견만 발행한다. 제목은 본문을 정확히 대표해야 한다.
 
-두 호스트 모두 `.neurath/run newsroom ...`을 사용한다. shell 없는 작업은 설치된
-`neurath_collaboration` MCP의 `agent` 도구에 `argv: ["newsroom", ...]`를 전달한다.
-발신 신원은 네이티브 호출에 결속되며 도구 입력으로 바꿀 수 없다. 전용 MCP는 뉴스룸과
-메시지만 제공하며 파일 편집·임의 명령·소유권·외부 worker 실행 권한을 주지 않는다.
+두 호스트 모두 노출된 `newsroom_headlines/read/publish` 작업 도구를 우선 사용한다.
+정정·댓글처럼 아직 명명된 도구가 없는 작업에는 기존 `agent(argv)` 또는 `.neurath/run newsroom`을 사용한다.
+발신 신원은 네이티브 호출에 결속되며 도구 입력으로 바꿀 수 없다. MCP는 파일 편집·임의 명령·
+소유권을 임의로 만들지 않는다. 등록된 검사와 `provider_run`은 현재 호스트 정책·소유권 검사를 거친다.
+MCP에서 정책을 집행할 수 없으면 같은 작업을 네이티브 셸 경로로 실행하며 권한을 넓히지 않는다.
 
 발행 시점에 active인 동료에게 제목과 조회 ID만 큐에 넣고 다음 정상 호스트 훅에서 push한다.
 `newsroom headlines`로 현재 제목을 확인하고, 자신의 작업에 관련 있는 경우에만
@@ -247,7 +269,7 @@ def asset_files(profile, hosts, skill_prefix=""):
                     split = content.split("---", 2)
                     if len(split) == 3:
                         split[2] = (
-                            f"\n\n먼저 `.neurath/policy.md`와 `.neurath/project.json`을 읽으세요.\n이 문서는 Neurath의 `{name}` 절차입니다. 대상 프로젝트의 지침과 설정에 연결하여 실행합니다.\n내장 계약: `{skill}`. 실행 스크립트는 `.neurath/run skill {name} <script>`로 실행합니다.\n"
+                            f"\n\n먼저 `.neurath/policy.md`와 `.neurath/project.json`을 읽으세요.\n이 문서는 Neurath의 `{name}` 절차입니다. 대상 프로젝트의 지침과 설정에 연결하여 실행합니다.\n기억·검증·대화·뉴스 작업은 현재 노출된 구조화 MCP 도구를 우선합니다. 도구가 없거나 호스트 실행 모드를 지킬 수 없는 경우에만 CLI 참조를 사용합니다.\n내장 계약: `{skill}`. 도구가 다루지 않는 실행 스크립트는 `.neurath/run skill {name} <script>`로 실행합니다.\n"
                             + split[2]
                         )
                         content = "---".join(split)
