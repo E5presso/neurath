@@ -1,5 +1,5 @@
 # Developing Neurath
-<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
+<!-- date: 2026-09-07; synced_from: source and documentation at e1487a1718056b37b999d1343a1007b7e25f5c8c; English and Korean editions updated together -->
 
 [Usage](../usage/index.md) · [Contributing](index.md)
 
@@ -9,7 +9,17 @@
 Neurath is a Python 3.14 package with an isolated host runtime and kit-owned execution assets.
 This guide is for changing Neurath itself: its documentation, installer, host adapters, skills,
 or execution rules. To use the harness in another project, start with the
-[usage guide](../usage/index.md). Run the development commands below from the Neurath source checkout.
+[usage guide](../usage/index.md). The agent runs the development commands below from the Neurath source checkout.
+
+## Agent execution reference
+
+Contribute by describing the desired change, constraints, and acceptance conditions to your
+coding agent. The agent performs the development commands and Neurath operations in this guide.
+Command blocks document reproducible execution for agents and reviewers; they are not manual
+setup requirements for users. Human host authentication and trust decisions remain with you.
+
+[Setup](setup-reference.md) · [Collaboration](agents-reference.md) ·
+[Memory](memory-reference.md) · [Skill compatibility](skills-reference.md)
 
 ## Start with a bounded contribution
 

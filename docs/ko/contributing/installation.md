@@ -2,12 +2,22 @@
 
 [English](../../en/contributing/installation.md) · **한국어**
 
-<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
+<!-- date: 2026-09-07; synced_from: source and documentation at e1487a1718056b37b999d1343a1007b7e25f5c8c; English and Korean editions updated together -->
 
 [사용 안내](../usage/index.md) · [기여자 안내](index.md)
 
 
 설치기를 수정·검증하거나 에이전트 통합을 관리하고 검증 연결 계약을 시험할 때 읽는 참조 문서입니다. 일반적인 프로젝트 설치에는 [사용자 설치 안내](../usage/installation.md)를 사용하세요. 빌드 명령은 Neurath 소스 저장소에서, 설치 명령은 명시한 임시 대상이나 사용자가 지정한 프로젝트에서 실행합니다.
+
+## 에이전트 실행 참조
+
+코딩 에이전트에게 원하는 변경, 제약과 완료 조건을 전달해 기여할 수 있습니다.
+이 문서의 개발 명령과 Neurath 작업은 에이전트가 수행합니다.
+명령 예제는 에이전트와 검토자가 실행을 재현하기 위한 참조이며,
+사용자에게 수동 설정을 요구하는 절차가 아닙니다. 호스트 인증과 신뢰 결정은 사용자가 담당합니다.
+
+[설치](setup-reference.md) · [협업](agents-reference.md) ·
+[기억](memory-reference.md) · [스킬 호환성](skills-reference.md)
 
 ## 에이전트 설치 절차
 

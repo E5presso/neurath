@@ -2,12 +2,22 @@
 
 **English** · [한국어](../../ko/contributing/installation.md)
 
-<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
+<!-- date: 2026-09-07; synced_from: source and documentation at e1487a1718056b37b999d1343a1007b7e25f5c8c; English and Korean editions updated together -->
 
 [Usage](../usage/index.md) · [Contributing](index.md)
 
 
 Use this reference when changing or validating the installer, maintaining an agent integration, or testing the verification binding contract. For ordinary project installation, use the [user installation guide](../usage/installation.md). Run build commands only in the Neurath source checkout and installation commands against an explicit disposable or user-designated target.
+
+## Agent execution reference
+
+Contribute by describing the desired change, constraints, and acceptance conditions to your
+coding agent. The agent performs the development commands and Neurath operations in this guide.
+Command blocks document reproducible execution for agents and reviewers; they are not manual
+setup requirements for users. Human host authentication and trust decisions remain with you.
+
+[Setup](setup-reference.md) · [Collaboration](agents-reference.md) ·
+[Memory](memory-reference.md) · [Skill compatibility](skills-reference.md)
 
 ## Installation procedure for agents
 

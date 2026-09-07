@@ -1,5 +1,5 @@
 <p align="center">
-<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
+<!-- date: 2026-09-07; synced_from: source and documentation at e1487a1718056b37b999d1343a1007b7e25f5c8c; English and Korean editions updated together -->
   <img src="docs/assets/neurath.png" width="720" alt="항해를 이어가며 선체를 고치는 노이라트의 배">
 </p>
 
@@ -18,6 +18,7 @@
 **노이라트(Neurath)는 이 과정을 프로젝트 안에서 관리하는 개발 하네스입니다.**
 하네스는 에이전트의 작업 절차와 실행을 관리하는 계층입니다. 노이라트는 Claude Code와 Codex에
 공통 스킬, 실행 훅, 상태 관리를 연결해 작업의 맥락과 근거가 다음 단계까지 이어지도록 합니다.
+사용자는 원하는 결과를 요청하고, 에이전트가 설치·프로젝트 연결·검증·기억·협업을 처리합니다.
 기존 Git 프로젝트에 설치하며, 프로젝트가 사용하는 언어·프레임워크·검사 도구에 맞춰 동작합니다.
 
 ## 목적에 맞는 안내 찾기
@@ -84,49 +85,30 @@ flowchart LR
     F -. 다음 세션 .-> A
 ```
 
-프로젝트 문서와 검사 명령은 `.neurath/project.json`에 연결합니다.
+에이전트가 프로젝트의 실제 문서와 검사 절차를 찾아 연결합니다.
 계획 수립, 오류 분석, 코드 검토 등 개별 스킬의 용도는 [스킬 안내](docs/ko/usage/skills.md)에 정리했습니다.
 
 ## 시작하기
 
-이 저장소를 복제하거나 내려받은 뒤, 하네스를 사용할 Git 저장소 경로를 지정하세요.
+Codex 또는 Claude Code에서 프로젝트를 열고 다음과 같이 요청하세요.
 
-```sh
-./setup /absolute/path/to/your-project
-```
+> https://github.com/E5presso/neurath 의 설치 실행 참조를 읽고 이 프로젝트에 Neurath를
+> 설치해주세요. 기존 지침·훅·권한·스킬·의존성을 보존하고 실제 문서와 검사를 연결해주세요.
+> 결과와 제가 직접 해야 할 호스트 설정을 알려주세요.
 
-설치에 필요한 Python 3.14와 Neurath 전용 실행 환경은 uv로 자동 준비합니다.
-프로젝트에 하네스를 설치한 뒤 정상적으로 설치됐는지 확인합니다.
-기존 프로젝트의 의존성과 `.venv`는 그대로 두며, Claude Code와 Codex를 모두 설정합니다.
-다른 프로젝트를 설치하거나 갱신해도 이 프로젝트의 실행 환경은 바뀌지 않습니다.
+에이전트가 Python 3.14와 Neurath 전용 실행 환경을 준비하고, 하네스를 설치한 뒤 검사합니다.
+프로젝트의 의존성과 개발 환경은 보존합니다.
+사용자가 직접 해야 하는 호스트 로그인과 신뢰 결정은 안내에 따라 진행하고,
+필요하면 새 세션을 시작하세요.
 
-기존 스킬과 이름이 겹치면 `./setup /path/to/project --skill-prefix neurath-`로 설치하세요.
-Neurath 스킬을 `/neurath-debug`처럼 호출하며, 기존 스킬을 보존합니다.
-업데이트할 때는 설치 시 선택한 접두어를 유지합니다.
+이후 에이전트에게 작업을 요청하면 됩니다.
 
-설치한 프로젝트의 에이전트에게 다음과 같이 요청하세요.
+> 작업 기록 내보내기를 재시도하면 행이 중복됩니다. 문제를 재현하고 내보내기 형식을
+> 바꾸지 않으면서 수정·검증해주세요. 달라진 점과 아직 검증하지 못한 부분을 알려주세요.
 
-> `.neurath/policy.md`와 `.neurath/project.json`을 읽고, 이 프로젝트의 실제 문서와
-> 검증 명령을 연결해주세요. 설치된 훅을 확인하고 Neurath로 첫 작업을 시작해주세요.
-
-사용하는 에이전트에서 설치된 훅을 확인한 뒤 새 세션을 시작하세요.
-Codex에서는 `/hooks`를 열어 Neurath 훅을 신뢰하도록 설정해야 합니다.
-한쪽 에이전트에만 설치하거나, 설치 내용을 미리 보고 싶다면 [설치 안내](docs/ko/usage/installation.md)를 참고하세요.
-업데이트와 제거 방법도 함께 설명합니다.
-
-<details>
-<summary>설치 후 자주 쓰는 명령</summary>
-
-```sh
-neurath setup /path/to/another-project
-neurath setup --dry-run
-.neurath/run doctor --protocol
-.neurath/run verify check   # 프로젝트의 check 명령을 연결한 뒤 실행
-```
-
-`neurath` 명령을 찾을 수 없다고 나오면, 설치가 끝날 때 안내된 실행 파일의 전체 경로를 사용하세요.
-
-</details>
+**Neurath 명령을 실행하거나 스킬을 직접 고를 필요는 없습니다.** 에이전트가 절차를 관리합니다.
+일상적인 요청은 [사용 안내](docs/ko/usage/index.md)에,
+업데이트와 복구는 [설치와 유지 관리](docs/ko/usage/installation.md)에 정리했습니다.
 
 ## 다른 에이전트와 함께 작업하기
 
@@ -134,15 +116,11 @@ neurath setup --dry-run
 있습니다. 독립 작업과 서브에이전트가 각자의 주소로 질문·답변하고 변경 소식을 구독합니다.
 메시지는 중단 뒤에도 남으며 연결된 worktree에서도 공유합니다.
 
-```sh
-.neurath/run delegate run --provider claude-code --model claude-fable-5-1 \
-  --assignment "이 설계의 문제점과 대안을 검토해주세요"
-.neurath/run agent discover
-```
+> 다른 에이전트에게 이 설계를 검토하도록 맡기고, 코드를 바꾸기 전에 결과를 알려주세요.
 
-두 호스트에서 같은 명령을 사용합니다. 호스트의 메시지 도구가 있으면 즉시 알리고, 그 외에는
+위임과 메시지 처리는 에이전트가 수행합니다. 호스트의 메시지 도구가 있으면 즉시 알리고, 그 외에는
 수신자의 다음 훅이나 재개 때 전달합니다. 각 작업은 자신의 목표와 권한을 유지합니다.
-[Provider 선택과 작업 간 대화](docs/ko/usage/agents.md)에 명령·전달 상태·지원 범위를 정리했습니다.
+[Provider 선택과 작업 간 대화](docs/ko/usage/agents.md)에 요청 방법·전달 상태·지원 범위를 정리했습니다.
 
 예를 들어 API를 구현하던 에이전트가 재시도 시 중복 저장되는 조건을 발견했다면,
 Newsroom에 재현 근거와 함께 발행할 수 있습니다. 같은 프로젝트의 다른 활성 에이전트는
@@ -163,10 +141,7 @@ Newsroom에 재현 근거와 함께 발행할 수 있습니다. 같은 프로젝
 시험 적용합니다. 다른 세션에서 재사용하고 검사까지 통과하면 유지하고, 이후 실패하면 철회합니다.
 명령 출력에 “성공”이라고 적혀 있다는 이유만으로 통과 처리하지 않습니다.
 
-```sh
-.neurath/run memory recall --query "작업 기록 내보내기"
-.neurath/run learning status
-```
+> 작업 기록 내보내기의 이전 결정과 남은 검증을 요약해주세요.
 
 기억은 훅이 활성화된 같은 로컬 저장소에서 공유합니다. 별도로 복제한 저장소나 다른 컴퓨터까지
 동기화하지는 않으며, 저장하기 전에 사라진 내용은 복구할 수 없습니다. 과거 대화 전체를 매번
@@ -189,17 +164,10 @@ Python 3.14는 설치 과정에서 준비합니다. 에이전트별 동작과 �
 
 ## Neurath 개선하기
 
-Neurath를 개발할 때도 이 하네스를 사용합니다. 개발용 환경과 하네스 실행 환경은 따로 관리합니다.
-
-```sh
-uv sync --locked
-uv run --locked python tools/check.py
-./setup --self
-```
-
-실행 코드나 설치 자산을 수정한 뒤에는 무결성 검사 목록인 manifest를 갱신하고 검사를 실행하세요.
-그다음 `./setup --self`를 다시 실행하면 이 저장소에도 수정한 하네스가 적용됩니다.
-자세한 절차는 [개발 참여 안내](docs/ko/contributing/index.md)에 정리했습니다.
+Neurath를 개발할 때도 이 하네스를 사용합니다. 에이전트에게 개선할 내용과 완료 조건을
+전달하면 개발 환경 준비, 원본 수정, 관련 검사와 필요한 자기 설치 갱신을 수행합니다.
+개발 환경과 설치된 하네스 환경은 따로 유지합니다.
+[개발 참여 안내](docs/ko/contributing/index.md)는 소스 구성, 검증 기준과 에이전트 실행 참조를 제공합니다.
 
 [기억과 학습](docs/ko/usage/memory.md) · [구조](docs/ko/contributing/architecture.md) · [프로젝트 연결](docs/ko/usage/profiles.md) ·
 [설치와 복구](docs/ko/usage/installation.md) · [검증](docs/ko/contributing/validation.md)

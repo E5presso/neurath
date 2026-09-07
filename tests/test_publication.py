@@ -87,6 +87,20 @@ def test_documentation_layout_and_source_distribution_includes():
     assert (ROOT / bindings['decisions']).is_file()
 
 
+def test_user_guides_do_not_require_manual_cli_or_configuration():
+    documents = [ROOT / 'README.md', ROOT / 'README.ko.md']
+    documents += sorted((ROOT / 'docs/en/usage').glob('*.md'))
+    documents += sorted((ROOT / 'docs/ko/usage').glob('*.md'))
+    for document in documents:
+        text = document.read_text()
+        assert not re.search(r'^```(?:sh|bash|shell|console|json)\b', text, re.MULTILINE), (
+            f'Put executable/configuration examples in agent references: {document.relative_to(ROOT)}'
+        )
+        assert not re.search(r'\.neurath/run\s|\./setup\b|\bneurath\s+(?:setup|wizard|--root)\b', text), (
+            f'User guides must describe requests to the agent: {document.relative_to(ROOT)}'
+        )
+
+
 def test_fresh_checkout_excludes_machine_local_mcp_settings(tmp_path):
     import subprocess
 

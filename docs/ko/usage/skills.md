@@ -1,16 +1,15 @@
 # 스킬 목록
-<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
+<!-- date: 2026-09-07; synced_from: source and documentation at e1487a1718056b37b999d1343a1007b7e25f5c8c; English and Korean editions updated together -->
 
 [사용 안내](index.md) · [기여자 안내](../contributing/index.md)
 
 
 [English](../../en/usage/skills.md) · **한국어**
 
-스킬은 두 호스트에서 기본적으로 접두어 없이 사용합니다. 설치 접두어를 지정했다면
-`/neurath-debug`처럼 호출 이름이 바뀝니다. 재현되는 오류는 `/debug`, 새 요구사항은 `/plan`,
-변경 검토는 `/review-code`에서 시작할 수 있습니다. 전달할 내용과 결과 확인 방법은
-[사용 안내](index.md)에 설명합니다. 역할이 분명한 이름은 유지하고,
-불필요하게 길거나 뜻이 모호했던 이름을 정리했습니다.
+에이전트가 요청의 목적, 근거와 권한에 맞춰 스킬을 선택합니다.
+원하는 결과를 평소 쓰는 말로 전달하면 되며, 스킬을 직접 호출하거나 이름을 외울 필요는 없습니다.
+“이 오류를 재현하고 수정해주세요”는 오류 조사로, “이 변경을 검토해주세요”는 코드 검토로
+이어집니다. 아래 목록은 에이전트가 사용할 수 있는 절차를 설명합니다.
 
 | 스킬 | 하는 일 |
 | --- | --- |
@@ -46,33 +45,4 @@
 | `memory-to-rules` | 반복해서 확인한 개인 작업 지식을 프로젝트 규칙으로 반영 |
 | `graphify` | 코드·문서 관계를 지식 그래프로 탐색 |
 
-## 바뀐 이름
-
-| 이전 이름 | 현재 이름 |
-| --- | --- |
-| `audit-spec` | `review-spec` |
-| `automate-qa` | `qa` |
-| `create-ticket` | `create-issue` |
-| `dependency-audit` | `audit-deps` |
-| `evaluate-harness` | `test-harness` |
-| `explore-ui` | `design-ui` |
-| `investigate` | `debug` |
-| `monitor-pr` | `watch-pr` |
-| `plan-issues` | `plan` |
-| `pr-review` | `review-pr` |
-| `process-ticket` | `implement-issue` |
-| `promote-memory` | `memory-to-rules` |
-| `sync-dev-docs` | `dev-docs` |
-| `sync-user-docs` | `user-docs` |
-| `triage-comments` | `pr-feedback` |
-| `update-dependencies` | `update-deps` |
-| `update-project-status` | `update-status` |
-
-설치를 갱신하면 이전 설치 경로를 정리합니다. 이름이 겹치는 사용자 스킬과 직접 수정한
-관리 파일은 덮어쓰지 않습니다. 진행 중인 작업 기록을 계속 읽을 수 있도록 내부 계약
-식별자는 유지합니다. 엔진 명령에는 스킬 본문의 `내장 계약`을 사용하고, 스크립트는
-`.neurath/run skill watch-pr <script>`처럼 현재 이름으로 실행할 수 있습니다.
-
-`create-package`, `local-dev`, `onboard`, `refactor-code`, `impact-analysis`,
-`improve-coverage`, `property-test`는 독립 스킬에서 제외했습니다. 일반적인 구현·테스트
-원칙은 공통 지침에서 다루며 디자인 하네스와 QA 검증 절차는 유지합니다.
+설치 이름과 호환성의 상세 내용은 [스킬 실행 참조](../contributing/skills-reference.md)에 정리했습니다.

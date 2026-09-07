@@ -1,16 +1,15 @@
 # Skill catalog
-<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
+<!-- date: 2026-09-07; synced_from: source and documentation at e1487a1718056b37b999d1343a1007b7e25f5c8c; English and Korean editions updated together -->
 
 [Usage](index.md) · [Contributing](../contributing/index.md)
 
 
 **English** · [한국어](../../ko/usage/skills.md)
 
-Skills use unprefixed names in both hosts by default; an installation prefix changes the invocation
-name, for example `/neurath-debug`. Start with `/debug` for a reproducible error, `/plan` for new
-requirements, or `/review-code` for a change review. The [usage guide](index.md) explains what
-to provide and how to assess the result. Clear names were retained, while unnecessarily long
-or ambiguous names were simplified.
+The agent selects skills from your task's purpose, evidence, and authorization. Describe the
+outcome in ordinary language; you do not need to invoke a skill or memorize its name.
+For example, “Reproduce and fix this error” leads to debugging, and “Review this change”
+leads to code review. This catalog explains the procedures available to the agent.
 
 | Skill | Purpose |
 | --- | --- |
@@ -46,35 +45,4 @@ or ambiguous names were simplified.
 | `memory-to-rules` | Turn repeatedly confirmed personal working knowledge into project rules |
 | `graphify` | Explore code and documentation relationships through a knowledge graph |
 
-## Renamed skills
-
-| Previous name | Current name |
-| --- | --- |
-| `audit-spec` | `review-spec` |
-| `automate-qa` | `qa` |
-| `create-ticket` | `create-issue` |
-| `dependency-audit` | `audit-deps` |
-| `evaluate-harness` | `test-harness` |
-| `explore-ui` | `design-ui` |
-| `investigate` | `debug` |
-| `monitor-pr` | `watch-pr` |
-| `plan-issues` | `plan` |
-| `pr-review` | `review-pr` |
-| `process-ticket` | `implement-issue` |
-| `promote-memory` | `memory-to-rules` |
-| `sync-dev-docs` | `dev-docs` |
-| `sync-user-docs` | `user-docs` |
-| `triage-comments` | `pr-feedback` |
-| `update-dependencies` | `update-deps` |
-| `update-project-status` | `update-status` |
-
-Updating an installation removes old managed paths. User skills with conflicting names and
-manually edited managed files are not overwritten. Internal contract identifiers remain stable
-so ongoing work records can still be read. Engine commands use the skill body's built-in contract
-identifier, labeled `내장 계약`; scripts can use the current name, as in
-`.neurath/run skill watch-pr <script>`.
-
-`create-package`, `local-dev`, `onboard`, `refactor-code`, `impact-analysis`,
-`improve-coverage`, and `property-test` are no longer standalone skills. Shared instructions
-cover general implementation and testing principles. The design harness and QA verification
-procedures remain available.
+Installation naming and compatibility details are in the [skill execution reference](../contributing/skills-reference.md).

@@ -1,5 +1,5 @@
 <p align="center">
-<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
+<!-- date: 2026-09-07; synced_from: source and documentation at e1487a1718056b37b999d1343a1007b7e25f5c8c; English and Korean editions updated together -->
   <img src="docs/assets/neurath.png" width="720" alt="Neurath's boat, repaired while still at sea">
 </p>
 
@@ -24,8 +24,9 @@ responsibilities, and checking completion reports against actual changes, tests,
 **Neurath manages that work inside your project.** It is a development harness: a layer
 that governs how agents carry out tasks. It connects shared skills, execution hooks, and
 state management to Claude Code and Codex so that context and evidence carry through each
-stage of the work. Install it into an existing Git project and bind it to your own
-documentation and tools, regardless of language or framework.
+stage of the work. You describe the outcome; the agent handles installation, project bindings,
+checks, memory, and collaboration. It works with your existing Git project, documentation,
+and tools, regardless of language or framework.
 
 ## Choose your path
 
@@ -97,49 +98,30 @@ flowchart LR
     F -. Next session .-> A
 ```
 
-Connect project documents and check commands in `.neurath/project.json`.
+The agent connects the project’s existing documents and check procedure.
 The [skill guide](docs/en/usage/skills.md) covers individual tasks such as planning, debugging,
 and code review.
 
 ## Start here
 
-Clone or download this repository, then install into an existing Git project:
+Open your project in Codex or Claude Code and ask:
 
-```sh
-./setup /absolute/path/to/your-project
-```
+> Install Neurath from https://github.com/E5presso/neurath in this project. Read its installation
+> reference, preserve our existing instructions, hooks, permissions, skills, and dependencies,
+> and connect our actual documentation and checks. Report the results and any host action I must take.
 
-The installer prepares Python 3.14 and an isolated Neurath tool environment using uv,
-applies the harness, and checks the installation. Your project's dependencies and `.venv`
-are preserved. Both Claude Code and Codex are enabled by default.
-Each project keeps its installed runtime until you explicitly update that project.
+The agent prepares Python 3.14 and an independent Neurath environment, installs the integration,
+and checks it. Your project's dependencies and development environment are preserved.
+You complete any host login or trust decision that requires you and start a new session if needed.
 
-If the project already has skills with the same names, use
-`./setup /path/to/project --skill-prefix neurath-` to call Neurath skills as
-`/neurath-debug`, for example. Existing skills are preserved; updates retain the chosen prefix.
+Then give the agent a task:
 
-Then, in your coding agent:
+> Retrying work log export creates duplicate rows. Reproduce it, fix it without changing the
+> export format, and verify the result. Tell me what changed and what remains unverified.
 
-> Read `.neurath/policy.md` and `.neurath/project.json`. Connect this project's actual
-> documentation and verification commands, check the installed hooks, and help me start
-> a task with Neurath.
-
-Review hooks in your host — Codex uses `/hooks` for hook trust — and start a new session.
-[The installation guide](docs/en/usage/installation.md) covers host selection, previews, updates, and removal.
-
-<details>
-<summary>Already installed? A few useful commands</summary>
-
-```sh
-neurath setup /path/to/another-project
-neurath setup --dry-run
-.neurath/run doctor --protocol
-.neurath/run verify check   # after binding your project's check command
-```
-
-Use the absolute executable path printed by the installer if `neurath` is not on your PATH.
-
-</details>
+**You do not need to run Neurath commands or select skills.** The agent manages those steps.
+The [usage guide](docs/en/usage/index.md) covers everyday requests, and
+[installation and maintenance](docs/en/usage/installation.md) covers updates and recovery.
 
 ## Work with other agents
 
@@ -147,16 +129,12 @@ Ask Claude Code or Codex to consult a specific provider and model, or contact an
 already working in the same project. Peer messages persist across interruptions and linked
 worktrees. Agents can reply, wait for answers, and subscribe to another task's updates.
 
-```sh
-.neurath/run delegate run --provider claude-code --model claude-fable-5-1 \
-  --assignment "Review this design and explain the tradeoffs"
-.neurath/run agent discover
-```
+> Ask another agent to review this design and return its findings before changing the code.
 
-Both hosts use the same commands. Native messaging tools can notify compatible tasks
+The agent handles delegation and messaging. Native messaging tools can notify compatible tasks
 immediately; otherwise messages wait for the recipient's next hook or resume. Each task
 keeps its own goal and permissions. [Provider and peer messaging guide](docs/en/usage/agents.md)
-documents the commands, delivery states, and local scope.
+explains requests, delivery states, and local scope.
 
 For example, an agent implementing an API might discover that retries can create duplicate
 records. It can publish the finding and reproduction evidence to Newsroom. Other active
@@ -179,10 +157,7 @@ stricter feedback loop: observed failure → successful alternative for the same
 project check → trial in another session → active guidance. A later failure withdraws it.
 The learner never treats a command's printed “success” as its exit status.
 
-```sh
-.neurath/run memory recall --query "work log export"
-.neurath/run learning status
-```
+> Summarize our previous decisions on work log export and the verification that remains.
 
 Memory covers installed, active hooks in the same local repository. It does not synchronize
 separate clones or computers, recover text that was never saved, or load every past message
@@ -205,16 +180,11 @@ prepared by the quick installer. [Host behavior and limits](docs/en/contributing
 
 ## Work on Neurath
 
-Neurath uses its own harness. The development environment and the installed harness stay separate.
-
-```sh
-uv sync --locked
-uv run --locked python tools/check.py
-./setup --self
-```
-
-After changing runtime code or assets, regenerate the manifest, run the checks, then refresh
-self-installation. See the [contributor guide](docs/en/contributing/index.md) for the complete loop.
+Neurath uses its own harness. Describe the improvement and acceptance conditions to your coding
+agent; it prepares the development environment, edits the source, runs the relevant checks,
+and refreshes self-installation when needed. The development environment and installed harness
+stay separate. The [contributor guide](docs/en/contributing/index.md) provides source maps,
+verification requirements, and execution references for the agent.
 
 | Read more | |
 | --- | --- |
