@@ -1,7 +1,10 @@
 # Architecture and execution boundaries
-<!-- date: 2026-09-07; synced_from: source and documentation at 3563609329437641570a5e45d87ceb99064e4c02; English and Korean editions updated together -->
+<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
 
-**English** · [한국어](architecture.ko.md)
+[Usage](../usage/index.md) · [Contributing](index.md)
+
+
+**English** · [한국어](../../ko/contributing/architecture.md)
 
 Neurath is an independent harness kit with its own runtime, contracts, and distribution inventory.
 It does not prescribe the target project's source, stack, documentation layout, branch names, or development environment.
@@ -46,6 +49,12 @@ original file content stay in private local files and are not transmitted extern
 
 ## Verification and authority
 
+Of the 31 skills, `explain-code` and `graphify` are helpers without state-owning phase contracts;
+the other 29 have phase and evidence contracts. Skill selection requires matching primary intent
+and input authority. The `test-harness` kit regression matrix runs against kit development source,
+while target project changes use that project's verification bindings. Product-specific profile
+names and state namespaces are not supported.
+
 General verification uses explicit argv, cwd, success conditions, and a timeout. A change to the
 Git file fingerprint during execution fails verification even with exit code 0. Typed pytest
 verification confirms that every requested leaf node actually passed; other passing tests or
@@ -55,7 +64,7 @@ Distribution integrity, installation placement, test execution, independent revi
 host activation require separate evidence. `doctor` and static checkers cannot authenticate host
 trust or parent–child relationships themselves. The runtime checks state access, concurrent edit
 conflicts, workspace ownership, execution results for mutations, and completion conditions.
-The [terminology guide](terminology.md) maps these concepts to code identifiers.
+The [terminology guide](../terminology.md) maps these concepts to code identifiers.
 
 ## User input and execution state
 
@@ -76,7 +85,7 @@ Records with source information live in `.neurath/local/memory/project.sqlite3` 
 Git control root. They are separate from each session's state and ownership. SQLite transactions
 handle concurrent writes and redelivery. Memory is shared across worktrees, while verification
 contracts are read from the worktree where execution actually occurs.
-[Memory and learning](memory.md) explains record selection and the execution strategy lifecycle.
+[Memory and learning](../usage/memory.md) explains record selection and the execution strategy lifecycle.
 
 ## Newsroom
 

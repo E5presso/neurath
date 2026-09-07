@@ -35,4 +35,4 @@ line-length = 100
 exclude = ["src/neurath/_assets", ".validation", ".agents", ".neurath"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "tests", "tools", "docs", "README.md", "README.ko.md", "ONBOARDING.md", "ONBOARDING.ko.md", "CONTRIBUTING.md", "CONTRIBUTING.ko.md", "AGENTS.md", "pyproject.toml", "uv.lock", "setup", ".python-version", ".neurath/project.json"]
+include = ["src", "tests", "tools", "docs", "README.md", "README.ko.md", "CONTRIBUTING.md", "CONTRIBUTING.ko.md", "AGENTS.md", "pyproject.toml", "uv.lock", "setup", ".python-version", ".neurath/project.json"]

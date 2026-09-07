@@ -1,7 +1,10 @@
 # Validation
-<!-- date: 2026-09-07; synced_from: source and documentation at 3563609329437641570a5e45d87ceb99064e4c02; English and Korean editions updated together -->
+<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
 
-[English](validation.md) · [한국어](validation.ko.md)
+[Usage](../usage/index.md) · [Contributing](index.md)
+
+
+[English](validation.md) · [한국어](../../ko/contributing/validation.md)
 
 Neurath checks four different boundaries: distribution integrity, installation behavior,
 runtime contracts, and events emitted by real Codex and Claude Code hosts. A successful
@@ -81,7 +84,7 @@ a checkpoint and a subsequent Stop succeeds. Arbitrary admission failures remain
 Cross-host recall was checked against visible assistant answers, excluding tool output and
 thinking blocks. The interruption test confirmed that the source session had no checkpoint.
 The command-learning test checked the persistent transition history, not just a model's
-claim that it learned. The supported learning scope is described in [Memory and learning](memory.md).
+claim that it learned. The supported learning scope is described in [Memory and learning](../usage/memory.md).
 
 ## Reproduce the package checks
 

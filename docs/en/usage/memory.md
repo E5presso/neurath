@@ -1,7 +1,10 @@
 # Memory and learning
-<!-- date: 2026-09-07; synced_from: source and documentation at 3563609329437641570a5e45d87ceb99064e4c02; English and Korean editions updated together -->
+<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
 
-[한국어](memory.ko.md)
+[Usage](index.md) · [Contributing](../contributing/index.md)
+
+
+[한국어](../../ko/usage/memory.md)
 
 Neurath keeps project knowledge across native Claude Code and Codex conversations.
 It also changes the guidance supplied to later sessions based on observed work.

@@ -1,9 +1,15 @@
 # Skill catalog
-<!-- date: 2026-09-07; synced_from: source and documentation at 3563609329437641570a5e45d87ceb99064e4c02; English and Korean editions updated together -->
+<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
 
-**English** · [한국어](skills.ko.md)
+[Usage](index.md) · [Contributing](../contributing/index.md)
 
-Skills use unprefixed names in both hosts. Clear names were retained, while unnecessarily long
+
+**English** · [한국어](../../ko/usage/skills.md)
+
+Skills use unprefixed names in both hosts by default; an installation prefix changes the invocation
+name, for example `/neurath-debug`. Start with `/debug` for a reproducible error, `/plan` for new
+requirements, or `/review-code` for a change review. The [usage guide](index.md) explains what
+to provide and how to assess the result. Clear names were retained, while unnecessarily long
 or ambiguous names were simplified.
 
 | Skill | Purpose |

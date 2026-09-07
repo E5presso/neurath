@@ -1,7 +1,10 @@
 # Harness terminology
-<!-- date: 2026-09-07; synced_from: source and documentation at 3563609329437641570a5e45d87ceb99064e4c02; English and Korean editions updated together -->
+<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
 
-**English** · [한국어](terminology.ko.md)
+[Usage](usage/index.md) · [Contributing](contributing/index.md)
+
+
+**English** · [한국어](../ko/terminology.md)
 
 Neurath documentation uses terms that explain what an operation does. English and Korean
 express the same concepts; a single legacy name is not applied indiscriminately to different roles.

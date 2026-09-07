@@ -2,7 +2,7 @@
   "schema": 1,
   "documents": {
     "intent": "README.md",
-    "decisions": "docs/architecture.md"
+    "decisions": "docs/en/contributing/architecture.md"
   },
   "verification": {
     "check": {

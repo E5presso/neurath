@@ -1,5 +1,5 @@
 <p align="center">
-<!-- date: 2026-09-07; synced_from: source and documentation at 3563609329437641570a5e45d87ceb99064e4c02; English and Korean editions updated together -->
+<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
   <img src="docs/assets/neurath.png" width="720" alt="항해를 이어가며 선체를 고치는 노이라트의 배">
 </p>
 
@@ -7,7 +7,7 @@
 <p align="center"><strong>작업의 맥락을 잇고, 검증된 경험을 쌓다.</strong></p>
 <p align="center">Claude Code와 Codex를 위한 개발 하네스.<br>프로젝트 기억, 에이전트 협업, 실행 검증을 하나의 작업 흐름으로 연결합니다.</p>
 <p align="center"><a href="README.md">English</a> · <strong>한국어</strong></p>
-<p align="center"><a href="#시작하기">시작하기</a> · <a href="#작동-방식">작동 방식</a> · <a href="ONBOARDING.ko.md">설치 안내</a> · <a href="CONTRIBUTING.ko.md">개발 참여</a> · <a href="docs/validation.ko.md">검증 결과</a></p>
+<p align="center"><a href="#시작하기">시작하기</a> · <a href="#작동-방식">작동 방식</a> · <a href="docs/ko/usage/installation.md">설치 안내</a> · <a href="docs/ko/contributing/index.md">개발 참여</a> · <a href="docs/ko/contributing/validation.md">검증 결과</a></p>
 
 ---
 
@@ -19,6 +19,16 @@
 하네스는 에이전트의 작업 절차와 실행을 관리하는 계층입니다. 노이라트는 Claude Code와 Codex에
 공통 스킬, 실행 훅, 상태 관리를 연결해 작업의 맥락과 근거가 다음 단계까지 이어지도록 합니다.
 기존 Git 프로젝트에 설치하며, 프로젝트가 사용하는 언어·프레임워크·검사 도구에 맞춰 동작합니다.
+
+## 목적에 맞는 안내 찾기
+
+| 하려는 일 | 시작할 문서 |
+| --- | --- |
+| 자신의 프로젝트에서 Neurath 사용 | [사용 안내](docs/ko/usage/index.md): 설치, 첫 작업, 검증, 작업 이어가기와 문제 해결 |
+| Neurath 자체 개선 | [기여자 안내](docs/ko/contributing/index.md): 소스 구성, 개발 환경, 변경별 검사와 리뷰 준비 |
+
+상세 문서는 `docs/en/`과 `docs/ko/`에 같은 `usage/`·`contributing/` 경로로 관리합니다.
+각 문서에서 번역판으로 이동할 수 있습니다.
 
 ## 노이라트를 사용하는 이유
 
@@ -75,7 +85,7 @@ flowchart LR
 ```
 
 프로젝트 문서와 검사 명령은 `.neurath/project.json`에 연결합니다.
-계획 수립, 오류 분석, 코드 검토 등 개별 스킬의 용도는 [스킬 안내](docs/skills.ko.md)에 정리했습니다.
+계획 수립, 오류 분석, 코드 검토 등 개별 스킬의 용도는 [스킬 안내](docs/ko/usage/skills.md)에 정리했습니다.
 
 ## 시작하기
 
@@ -101,7 +111,7 @@ Neurath 스킬을 `/neurath-debug`처럼 호출하며, 기존 스킬을 보존�
 
 사용하는 에이전트에서 설치된 훅을 확인한 뒤 새 세션을 시작하세요.
 Codex에서는 `/hooks`를 열어 Neurath 훅을 신뢰하도록 설정해야 합니다.
-한쪽 에이전트에만 설치하거나, 설치 내용을 미리 보고 싶다면 [설치 안내](ONBOARDING.ko.md)를 참고하세요.
+한쪽 에이전트에만 설치하거나, 설치 내용을 미리 보고 싶다면 [설치 안내](docs/ko/usage/installation.md)를 참고하세요.
 업데이트와 제거 방법도 함께 설명합니다.
 
 <details>
@@ -132,7 +142,7 @@ neurath setup --dry-run
 
 두 호스트에서 같은 명령을 사용합니다. 호스트의 메시지 도구가 있으면 즉시 알리고, 그 외에는
 수신자의 다음 훅이나 재개 때 전달합니다. 각 작업은 자신의 목표와 권한을 유지합니다.
-[Provider 선택과 작업 간 대화](docs/agents.ko.md)에 명령·전달 상태·지원 범위를 정리했습니다.
+[Provider 선택과 작업 간 대화](docs/ko/usage/agents.md)에 명령·전달 상태·지원 범위를 정리했습니다.
 
 예를 들어 API를 구현하던 에이전트가 재시도 시 중복 저장되는 조건을 발견했다면,
 Newsroom에 재현 근거와 함께 발행할 수 있습니다. 같은 프로젝트의 다른 활성 에이전트는
@@ -161,7 +171,7 @@ Newsroom에 재현 근거와 함께 발행할 수 있습니다. 같은 프로젝
 기억은 훅이 활성화된 같은 로컬 저장소에서 공유합니다. 별도로 복제한 저장소나 다른 컴퓨터까지
 동기화하지는 않으며, 저장하기 전에 사라진 내용은 복구할 수 없습니다. 과거 대화 전체를 매번
 불러오는 대신 관련 기록을 고릅니다. 학습으로 달라지는 것은 에이전트의 작업 지침과 실행 전략이며,
-Neurath 소스 코드가 저절로 바뀌는 기능은 아닙니다. [기억과 학습 안내](docs/memory.ko.md)에 동작 범위를 정리했습니다.
+Neurath 소스 코드가 저절로 바뀌는 기능은 아닙니다. [기억과 학습 안내](docs/ko/usage/memory.md)에 동작 범위를 정리했습니다.
 
 ## 설치와 지원 범위
 
@@ -175,7 +185,7 @@ Neurath 소스 코드가 저절로 바뀌는 기능은 아닙니다. [기억과 
 
 지원 환경은 **macOS 또는 Linux, Git, Claude Code 또는 Codex**입니다.
 Python 3.14는 설치 과정에서 준비합니다. 에이전트별 동작과 지금까지 확인한 범위는
-[호스트 안내](docs/hosts.ko.md)와 [검증 결과](docs/validation.ko.md)에서 볼 수 있습니다.
+[호스트 안내](docs/ko/contributing/hosts.md)와 [검증 결과](docs/ko/contributing/validation.md)에서 볼 수 있습니다.
 
 ## Neurath 개선하기
 
@@ -189,9 +199,9 @@ uv run --locked python tools/check.py
 
 실행 코드나 설치 자산을 수정한 뒤에는 무결성 검사 목록인 manifest를 갱신하고 검사를 실행하세요.
 그다음 `./setup --self`를 다시 실행하면 이 저장소에도 수정한 하네스가 적용됩니다.
-자세한 절차는 [개발 참여 안내](CONTRIBUTING.ko.md)에 정리했습니다.
+자세한 절차는 [개발 참여 안내](docs/ko/contributing/index.md)에 정리했습니다.
 
-[기억과 학습](docs/memory.ko.md) · [구조](docs/architecture.ko.md) · [프로젝트 연결](docs/profiles.ko.md) ·
-[설치와 복구](ONBOARDING.ko.md) · [검증](docs/validation.ko.md)
+[기억과 학습](docs/ko/usage/memory.md) · [구조](docs/ko/contributing/architecture.md) · [프로젝트 연결](docs/ko/usage/profiles.md) ·
+[설치와 복구](docs/ko/usage/installation.md) · [검증](docs/ko/contributing/validation.md)
 
-[하네스 용어 안내](docs/terminology.ko.md)
+[하네스 용어 안내](docs/ko/terminology.md)

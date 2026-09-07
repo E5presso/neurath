@@ -1,7 +1,10 @@
 # Codex와 Claude Code
-<!-- date: 2026-09-07; synced_from: source and documentation at 3563609329437641570a5e45d87ceb99064e4c02; English and Korean editions updated together -->
+<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
 
-[English](hosts.md) · **한국어**
+[사용 안내](../usage/index.md) · [기여자 안내](index.md)
+
+
+[English](../../en/contributing/hosts.md) · **한국어**
 
 공식 문서를 2026-09-06에 읽고 schema를 확인했습니다. Context7의 Claude Code 및
 ChatGPT Learn 문서도 함께 대조했습니다.
@@ -31,7 +34,7 @@ input 거부를 검증했다는 뜻입니다. 실제 호스트가 hook을 신뢰
 `host_activation=unverified`는 별도의 실제 호스트 실행 근거가 필요하다는 뜻입니다.
 doctor는 외부 호스트 실행 기록을 읽지 않으며, 설치가 trust를 대신하지 않습니다.
 2026-09-06의 Codex·Claude Code 기본 흐름과 보호 파일 삭제 차단 검증 결과는
-[검증 범위](validation.ko.md)를 참고하세요.
+[검증 범위](validation.md)를 참고하세요.
 세션·턴·자식 에이전트의 출처를 확인할 수 없으면 미확인 상태(`UNATTESTED`)로 두고
 실행 상태를 변경할 권한을 부여하지 않습니다.
 원시 parent id 또는 agent id로 독립 검토자 완료 권한을 만들지 않습니다.
@@ -63,7 +66,7 @@ typed 복구 절차를 실행합니다. 명시적 kernel `SessionEnded`는 여�
 중단된 foreground를 재개한 경우에는 호스트의 resume와 다음 root prompt를 확인하고
 이전 턴만 닫습니다. 미완료 workflow·delegation·소유권은 그대로 보존하여 typed 복구를
 이어갑니다. 영구 종료된 session은 새 SessionStart로 되살리지 않습니다.
-최신 실제 실행 결과는 [검증 기록](validation.ko.md)에 있습니다.
+최신 실제 실행 결과는 [검증 기록](validation.md)에 있습니다.
 
 Codex 앱에서 다른 작업의 메시지가 새 턴으로 들어오고 UserPromptSubmit이 생략되는 경우,
 등록된 루트 transcript의 실제 메시지 전달·완료 기록과 현재 native 턴을 함께 확인합니다.

@@ -1,8 +1,11 @@
 # 검증
 
-[English](validation.md) · **한국어**
+[English](../../en/contributing/validation.md) · **한국어**
 
-<!-- date: 2026-09-07; synced_from: source and documentation at 3563609329437641570a5e45d87ceb99064e4c02; English and Korean editions updated together -->
+<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
+
+[사용 안내](../usage/index.md) · [기여자 안내](index.md)
+
 
 Neurath는 배포본 무결성, 설치 동작, 런타임 계약, 실제 Codex·Claude Code 호스트에서 발생한
 이벤트를 구분해 검사합니다. `doctor`가 통과했다는 것은 로컬 파일 배치와 프로토콜 검사를
@@ -87,7 +90,7 @@ Linux에서는 빌드한 소스 아카이브를 Python 3.14로 실행했습니�
 호스트 간 기억 조회는 도구 출력과 추론 블록을 제외하고, 사용자에게 보이는 에이전트의
 답변을 기준으로 확인했습니다. 중단 테스트에서는 원래 세션에 인계 기록이 없었음을
 확인했습니다. 명령 학습 테스트는 모델의 학습 주장뿐 아니라 저장된 상태 전환 이력도
-확인했습니다. 지원하는 학습 범위는 [기억과 학습](memory.ko.md)에 설명합니다.
+확인했습니다. 지원하는 학습 범위는 [기억과 학습](../usage/memory.md)에 설명합니다.
 
 ## 패키지 검사 재현하기
 

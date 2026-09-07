@@ -1,5 +1,5 @@
 <p align="center">
-<!-- date: 2026-09-07; synced_from: source and documentation at 3563609329437641570a5e45d87ceb99064e4c02; English and Korean editions updated together -->
+<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
   <img src="docs/assets/neurath.png" width="720" alt="Neurath's boat, repaired while still at sea">
 </p>
 
@@ -13,7 +13,7 @@
   <img alt="No Python runtime dependencies" src="https://img.shields.io/badge/runtime_dependencies-0-936585?style=flat-square">
 </p>
 <p align="center"><strong>English</strong> · <a href="README.ko.md">한국어</a></p>
-<p align="center"><a href="#start-here">Get started</a> · <a href="#how-it-works">How it works</a> · <a href="ONBOARDING.md">Installation guide</a> · <a href="CONTRIBUTING.md">Contributing</a> · <a href="docs/validation.md">Verification</a></p>
+<p align="center"><a href="#start-here">Get started</a> · <a href="#how-it-works">How it works</a> · <a href="docs/en/usage/installation.md">Installation guide</a> · <a href="docs/en/contributing/index.md">Contributing</a> · <a href="docs/en/contributing/validation.md">Verification</a></p>
 
 ---
 
@@ -26,6 +26,16 @@ that governs how agents carry out tasks. It connects shared skills, execution ho
 state management to Claude Code and Codex so that context and evidence carry through each
 stage of the work. Install it into an existing Git project and bind it to your own
 documentation and tools, regardless of language or framework.
+
+## Choose your path
+
+| Your goal | Start here |
+| --- | --- |
+| Use Neurath in your own project | [Usage guide](docs/en/usage/index.md): installation, first task, verification, continuity, and troubleshooting |
+| Improve Neurath itself | [Contributor guide](docs/en/contributing/index.md): source layout, development setup, change-specific checks, and review preparation |
+
+Detailed documentation lives in `docs/en/` and `docs/ko/`, with matching `usage/` and
+`contributing/` paths. Each guide links to its translation.
 
 ## Why Neurath
 
@@ -88,7 +98,7 @@ flowchart LR
 ```
 
 Connect project documents and check commands in `.neurath/project.json`.
-The [skill guide](docs/skills.md) covers individual tasks such as planning, debugging,
+The [skill guide](docs/en/usage/skills.md) covers individual tasks such as planning, debugging,
 and code review.
 
 ## Start here
@@ -115,7 +125,7 @@ Then, in your coding agent:
 > a task with Neurath.
 
 Review hooks in your host — Codex uses `/hooks` for hook trust — and start a new session.
-[The installation guide](ONBOARDING.md) covers host selection, previews, updates, and removal.
+[The installation guide](docs/en/usage/installation.md) covers host selection, previews, updates, and removal.
 
 <details>
 <summary>Already installed? A few useful commands</summary>
@@ -145,7 +155,7 @@ worktrees. Agents can reply, wait for answers, and subscribe to another task's u
 
 Both hosts use the same commands. Native messaging tools can notify compatible tasks
 immediately; otherwise messages wait for the recipient's next hook or resume. Each task
-keeps its own goal and permissions. [Provider and peer messaging guide](docs/agents.md)
+keeps its own goal and permissions. [Provider and peer messaging guide](docs/en/usage/agents.md)
 documents the commands, delivery states, and local scope.
 
 For example, an agent implementing an API might discover that retries can create duplicate
@@ -177,7 +187,7 @@ The learner never treats a command's printed “success” as its exit status.
 Memory covers installed, active hooks in the same local repository. It does not synchronize
 separate clones or computers, recover text that was never saved, or load every past message
 into every prompt. Learned guidance improves how agents work; it does not rewrite Neurath's
-source code by itself. [Memory and learning](docs/memory.md) explains the lifecycle and limits.
+source code by itself. [Memory and learning](docs/en/usage/memory.md) explains the lifecycle and limits.
 
 ## Installation and support
 
@@ -190,8 +200,8 @@ source code by itself. [Memory and learning](docs/memory.md) explains the lifecy
 | Verification | Distribution integrity, installation state, test execution, independent review, and native host activation are checked separately. |
 
 Supported environment: **macOS or Linux, Git, and Claude Code or Codex**. Python 3.14 is
-prepared by the quick installer. [Host behavior and limits](docs/hosts.md) and
-[verification coverage](docs/validation.md) describe what has actually been tested.
+prepared by the quick installer. [Host behavior and limits](docs/en/contributing/hosts.md) and
+[verification coverage](docs/en/contributing/validation.md) describe what has actually been tested.
 
 ## Work on Neurath
 
@@ -204,14 +214,14 @@ uv run --locked python tools/check.py
 ```
 
 After changing runtime code or assets, regenerate the manifest, run the checks, then refresh
-self-installation. See [CONTRIBUTING.md](CONTRIBUTING.md) for the complete loop.
+self-installation. See the [contributor guide](docs/en/contributing/index.md) for the complete loop.
 
 | Read more | |
 | --- | --- |
-| [Architecture](docs/architecture.md) | How the package and runtime fit together |
-| [Memory and learning](docs/memory.md) | What persists, what is recalled, and how guidance evolves |
-| [Project bindings](docs/profiles.md) | Connect documentation and verification commands |
-| [Installation](ONBOARDING.md) | Setup, update, recovery, and uninstall |
-| [Verification](docs/validation.md) | Regression coverage and native host evidence |
+| [Architecture](docs/en/contributing/architecture.md) | How the package and runtime fit together |
+| [Memory and learning](docs/en/usage/memory.md) | What persists, what is recalled, and how guidance evolves |
+| [Project bindings](docs/en/usage/profiles.md) | Connect documentation and verification commands |
+| [Installation](docs/en/usage/installation.md) | Setup, update, recovery, and uninstall |
+| [Verification](docs/en/contributing/validation.md) | Regression coverage and native host evidence |
 
-[Harness terminology](docs/terminology.md)
+[Harness terminology](docs/en/terminology.md)

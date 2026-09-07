@@ -1,7 +1,10 @@
 # 구조와 실행 경계
-<!-- date: 2026-09-07; synced_from: source and documentation at 3563609329437641570a5e45d87ceb99064e4c02; English and Korean editions updated together -->
+<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
 
-[English](architecture.md) · **한국어**
+[사용 안내](../usage/index.md) · [기여자 안내](index.md)
+
+
+[English](../../en/contributing/architecture.md) · **한국어**
 
 Neurath는 자체 런타임·계약·배포 목록을 가진 독립 하네스 키트입니다.
 대상 프로젝트의 소스, 스택, 문서 구조, 브랜치명과 개발환경을 내장하지 않습니다.
@@ -42,6 +45,12 @@ Neurath는 자체 런타임·계약·배포 목록을 가진 독립 하네스 �
 
 ## 검증과 권위
 
+31개 스킬 중 `explain-code`와 `graphify`는 상태를 소유하는 단계 계약이 없는 보조 스킬이며,
+나머지 29개에는 단계와 증거 계약이 있습니다. 스킬을 선택할 때는 작업의 주된 목적과 입력의
+권한·근거가 맞아야 합니다. `test-harness`의 키트 회귀 검사표는 키트 개발 소스에서 실행하고,
+대상 프로젝트 변경에는 해당 프로젝트의 검증 연결을 사용합니다. 제품별 프로필 이름과
+상태 이름 공간은 지원하지 않습니다.
+
 일반 검증은 명시된 argv/cwd/성공 조건과 timeout을 사용합니다. 실행 전후 Git 파일
 fingerprint가 달라지면 종료 코드 0이어도 실패입니다. typed pytest 검증은 요청한 각
 leaf node의 실제 통과를 확인하며 다른 테스트의 통과나 skip으로 대체하지 않습니다.
@@ -49,7 +58,7 @@ leaf node의 실제 통과를 확인하며 다른 테스트의 통과나 skip으
 배포 무결성, 설치 배치, 테스트 실행, 독립 검토자, 실제 호스트 활성화는 별도 증거입니다.
 `doctor`와 정적 검사기는 호스트의 신뢰 설정이나 부모·자식 관계를 자체 인증하지 않습니다.
 상태 접근, 동시 변경 충돌 방지, 작업 공간 소유권, 변경 작업의 실행 결과, 완료 조건은
-런타임에서 검사합니다. 코드 식별자와의 대응은 [용어 안내](terminology.ko.md)에 정리합니다.
+런타임에서 검사합니다. 코드 식별자와의 대응은 [용어 안내](../terminology.md)에 정리합니다.
 
 ## 사용자 입력과 실행 상태
 
@@ -68,7 +77,7 @@ Codex의 새 `task_started` 기록은 이전 턴의 미종료 상태를 복구�
 Git 공통 control root의 `.neurath/local/memory/project.sqlite3`에 출처가 있는 기록을 저장합니다.
 각 세션의 상태·소유권과 분리하며, SQLite 트랜잭션으로 동시 기록과 재전달을 처리합니다.
 기억은 worktree 사이에서 공유하지만 검증 계약은 실제 실행한 worktree에서 읽습니다.
-기록 선택과 실행 전략의 수명주기는 [기억과 학습](memory.ko.md)에 설명합니다.
+기록 선택과 실행 전략의 수명주기는 [기억과 학습](../usage/memory.md)에 설명합니다.
 
 ## Newsroom
 

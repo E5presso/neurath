@@ -1,7 +1,10 @@
 # Provider 선택과 작업 간 대화
-<!-- date: 2026-09-07; synced_from: source and documentation at 3563609329437641570a5e45d87ceb99064e4c02; English and Korean editions updated together -->
+<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
 
-[English](agents.md) · **한국어**
+[사용 안내](index.md) · [기여자 안내](../contributing/index.md)
+
+
+[English](../../en/usage/agents.md) · **한국어**
 
 Codex와 Claude Code에서 원하는 provider·model로 작업을 맡기고, 독립된 작업 세션끼리
 질문·답변·변경 소식을 주고받을 수 있습니다. 같은 로컬 Git 프로젝트와 연결된 worktree가

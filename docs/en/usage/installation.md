@@ -1,7 +1,12 @@
 # Installing Neurath
-<!-- date: 2026-09-07; synced_from: source and documentation at 3563609329437641570a5e45d87ceb99064e4c02; English and Korean editions updated together -->
+<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
 
-**English** · [한국어](ONBOARDING.ko.md)
+[Usage](index.md) · [Contributing](../contributing/index.md)
+
+
+This guide covers installing and maintaining Neurath in a target project. Start with the [usage guide](index.md) for your first task. Package builds, agent integration steps, and typed verification are covered in [installation development](../contributing/installation.md).
+
+**English** · [한국어](../../ko/usage/installation.md)
 
 This guide is for both people and installation agents. The supported runtime is macOS/Linux,
 Git, and Python `>=3.14,<3.15`. The target project can use any language. Quick setup provisions
@@ -82,61 +87,10 @@ does not automatically delete existing hooks.
 Replace the source path with its actual location and send this request to Codex or Claude Code
 in the target project:
 
-> Read `/path/to/neurath/ONBOARDING.md` and install Neurath in this project.
+> Read `/path/to/neurath/docs/en/usage/installation.md` and install Neurath in this project.
 > Preserve existing instructions, hooks, permissions, and dependencies, and use the default generic profile.
 > After installation, bind the actual document paths and verification commands in `.neurath/project.json`.
 > Ask me only for unknown information, then report local diagnostics and the hook trust steps I need to perform.
-
-## Installation procedure for agents
-
-1. Inspect the user-designated target repository's Git root and existing `AGENTS.md`, `CLAUDE.md`,
-   `.agents/skills`, `.claude/settings.json`, `.codex/config.toml`, and `.codex/hooks.json`.
-   Do not ask for the same installation approval again when it has already been granted.
-2. Use the `generic` profile and both Codex and Claude Code by default. Product-specific profiles
-   and framework policies are not included.
-3. If a separate change preview is needed, inspect paths with the source
-   `setup /target/Git-root --dry-run` or an installed `neurath setup /target/Git-root --dry-run`.
-   Use the `plan`/`apply` route below only when an original-content comparison is needed.
-   Plan JSON contains existing file contents: store it privately and keep it out of version control.
-4. With downloaded source, run that source's `setup /target/Git-root`. If the tool is already
-   available, use `neurath setup /target/Git-root` for installation and diagnostics. Do not use
-   the target project's `.venv` or run `uv sync` in that project.
-5. `setup` applies changes through the same `make_plan`/`apply_plan` engine. On a conflict,
-   preserve the file and explain the cause. Do not resolve it by overwriting files, using
-   `--force`, or bypassing permissions.
-6. Bind the target repository's document slots and actual verification commands in
-   `.neurath/project.json`. Do not invent missing documents. Ask only for information that is needed.
-7. Review the diagnostics from `setup`. With a separate `apply` flow, run `doctor --protocol`.
-   This does not prove host trust or live actor/evaluator identity.
-8. In Codex, the user must trust the project and review the exact hooks through `/hooks`.
-   In Claude Code, check project settings and hook loading through `/hooks`.
-   The installer must not modify or bypass trust settings.
-
-## Build a wheel and run individual steps
-
-This advanced path is for building a wheel yourself or reviewing changes separately.
-It need not be repeated after quick setup.
-
-```sh
-# Build only in the Neurath source repository
-uv sync --locked
-.venv/bin/python tools/build_manifest.py
-.venv/bin/python -m build
-
-# Use a new absolute path per distribution; do not reinstall or move existing environments
-uv venv --python 3.14 /absolute/path/to/new-neurath-runtime
-uv pip install --python /absolute/path/to/new-neurath-runtime/bin/python /absolute/path/to/neurath/dist/neurath-0.1.0-py3-none-any.whl
-
-# For a new project, first run git init in the user-designated directory
-/absolute/path/to/new-neurath-runtime/bin/neurath --root /absolute/path/to/project plan --output /private/path/neurath-plan.json
-/absolute/path/to/new-neurath-runtime/bin/neurath --root /absolute/path/to/project apply /private/path/neurath-plan.json
-/absolute/path/to/project/.neurath/run doctor --protocol
-```
-
-Place `--root` before the CLI subcommand. The launcher uses the Python path from the independent
-tool environment, and hooks locate the launcher in the current Git worktree. If the tool environment
-has moved, review an update plan. `neurath install` is the explicit installation command that
-creates and applies a plan in one operation.
 
 ## Interactive wizard
 
@@ -185,9 +139,6 @@ change during execution.
 
 ```sh
 .neurath/run verify check
-.neurath/run engine scripts.agent_harness.state_cli --help
-.neurath/run engine scripts.skill_harness.phase_runner --help
-.neurath/run skill watch-pr monitor_runtime_readback.py --help
 ```
 
 ## Updates and recovery
@@ -223,33 +174,10 @@ file has been edited, update/uninstall stops with a conflict. Review before/afte
 There is no forced removal that discards original content. Empty directories and change history
 may remain.
 
-## Verification and repository conventions
-
-`generic` is the only profile. Verification commands are not selected automatically merely
-because a tool is present. For Python verification of exact test nodes, set
-`verification.pytest.argv` to the executable in the project's test environment, such as
-`["python", "-m", "pytest"]`. Do not include selectors (`-k`, `-m`), other test paths, or
-configuration overrides in this binding. Use `verify <name>` for general verification and
-the following command for typed phase verification:
-
-```sh
-.neurath/run engine scripts.agent_harness.verification_runner pytest --node tests/test_example.py::test_example
-```
-
-GitHub metadata requires no particular language or prefix by default. Projects that need these
-conventions can set `metadata.language` to `"ko"`, or set `metadata.require_title_issue_prefix`
-and `metadata.require_commit_subject_issue_prefix` to `true` as appropriate. Follow the target
-project's instructions for branch and worktree paths. Cleanup requires an explicitly verified
-`--base-branch` and `--remote-ref`.
-
-The kit's fixed regression matrix runs through `tools/run_core_regressions.py` in Neurath's
-development source. Target project verification cannot replace regression evidence for changes
-to the kit itself.
-
 ## Skill names and updates
 
 Skills are invoked without a prefix, such as `/debug`, `/qa`, and `/review-code`. See the
-[full skill catalog](docs/skills.md) for names and purposes. Updating an existing installation
+[full skill catalog](skills.md) for names and purposes. Updating an existing installation
 moves old Neurath-managed paths to their new locations and removes retired skills. If a user
 skill has the same name or a managed file has been edited manually, installation stops and
 preserves the content. Resolve the name or installation target before retrying; do not overwrite

@@ -1,9 +1,15 @@
 # 스킬 목록
-<!-- date: 2026-09-07; synced_from: source and documentation at 3563609329437641570a5e45d87ceb99064e4c02; English and Korean editions updated together -->
+<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
 
-[English](skills.md) · **한국어**
+[사용 안내](index.md) · [기여자 안내](../contributing/index.md)
 
-스킬은 두 호스트에서 접두어 없이 사용합니다. 역할이 분명한 이름은 유지하고,
+
+[English](../../en/usage/skills.md) · **한국어**
+
+스킬은 두 호스트에서 기본적으로 접두어 없이 사용합니다. 설치 접두어를 지정했다면
+`/neurath-debug`처럼 호출 이름이 바뀝니다. 재현되는 오류는 `/debug`, 새 요구사항은 `/plan`,
+변경 검토는 `/review-code`에서 시작할 수 있습니다. 전달할 내용과 결과 확인 방법은
+[사용 안내](index.md)에 설명합니다. 역할이 분명한 이름은 유지하고,
 불필요하게 길거나 뜻이 모호했던 이름을 정리했습니다.
 
 | 스킬 | 하는 일 |

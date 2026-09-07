@@ -1,7 +1,10 @@
 # 독립 실행 자산
-<!-- date: 2026-09-07; synced_from: source and documentation at 3563609329437641570a5e45d87ceb99064e4c02; English and Korean editions updated together -->
+<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
 
-[English](extraction.md) · **한국어**
+[사용 안내](../usage/index.md) · [기여자 안내](index.md)
+
+
+[English](../../en/contributing/assets.md) · **한국어**
 
 Neurath는 자체 런타임, 호스트 어댑터, 계약, 설치기를 관리합니다.
 다른 저장소를 빌드 입력이나 실행 의존성으로 사용하지 않습니다.

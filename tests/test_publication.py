@@ -1,48 +1,51 @@
 """The public checkout must contain the files its documentation promises."""
 
+import json
+import os
 import re
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def public_document_originals():
-    return [ROOT / name for name in ("README.md", "ONBOARDING.md", "CONTRIBUTING.md")] + [
-        path for path in sorted((ROOT / "docs").rglob("*.md"))
-        if not path.name.endswith(".ko.md")
-    ]
+def public_document_pairs():
+    pairs = [(ROOT / name, ROOT / name.replace('.md', '.ko.md'))
+             for name in ('README.md', 'CONTRIBUTING.md')]
+    en = ROOT / 'docs/en'
+    ko = ROOT / 'docs/ko'
+    assert en.is_dir() and ko.is_dir(), 'Documentation must have both locale directories'
+    assert {p.relative_to(en) for p in en.rglob('*.md')} == {
+        p.relative_to(ko) for p in ko.rglob('*.md')
+    }, 'English and Korean document inventories differ'
+    return pairs + [(p, ko / p.relative_to(en)) for p in sorted(en.rglob('*.md'))]
 
 
 def test_public_documents_have_separate_english_and_korean_editions():
-    for original in public_document_originals():
-        translated = original.with_suffix(".ko.md")
+    for original, translated in public_document_pairs():
         assert translated.is_file(), f"Missing Korean edition: {translated.relative_to(ROOT)}"
         for document, counterpart in ((original, translated), (translated, original)):
             text = document.read_text()
             targets = re.findall(r"\[[^\]]*\]\(([^)]+)\)|href=\"([^\"]+)\"", text)
-            assert any((left or right) == counterpart.name for left, right in targets), (
+            relative = os.path.relpath(counterpart, document.parent)
+            assert any((left or right) == relative for left, right in targets), (
                 f"Missing language switch: {document.relative_to(ROOT)}"
             )
 
 
 def test_document_links_keep_the_selected_language():
-    originals = public_document_originals()
-    documents = originals + [path.with_suffix(".ko.md") for path in originals]
-    known = {path.resolve() for path in documents}
-    for document in documents:
-        korean = document.name.endswith(".ko.md")
-        counterpart = (document.with_name(document.name.removesuffix(".ko.md") + ".md")
-                       if korean else document.with_suffix(".ko.md"))
+    pairs = public_document_pairs()
+    languages = {p.resolve(): locale for pair in pairs for locale, p in zip(('en', 'ko'), pair)}
+    counterparts = {p: q for en, ko in pairs for p, q in ((en, ko), (ko, en))}
+    for document, counterpart in counterparts.items():
         text = re.sub(r"```.*?```", "", document.read_text(), flags=re.DOTALL)
         for markdown, html in re.findall(r"\[[^\]]*\]\(([^)]+)\)|href=\"([^\"]+)\"", text):
             parsed = urlsplit(markdown or html)
             if parsed.scheme or parsed.netloc or not parsed.path:
                 continue
             target = (document.parent / unquote(parsed.path)).resolve()
-            if target in known and target != counterpart.resolve():
-                assert target.name.endswith(".ko.md") == korean, (
+            if target in languages and target != counterpart.resolve():
+                assert languages[target] == languages[document.resolve()], (
                     f"Language changes unexpectedly: {document.relative_to(ROOT)} -> {parsed.path}"
                 )
 
@@ -52,7 +55,9 @@ def test_public_document_links_resolve_inside_checkout():
     missing = []
     for document in documents:
         text = re.sub(r"```.*?```", "", document.read_text(), flags=re.DOTALL)
-        for target in re.findall(r"\[[^\]]*\]\(([^)]+)\)", text):
+        targets = re.findall(r'\[[^\]]*\]\(([^)]+)\)|(?:href|src)="([^"]+)"', text)
+        for markdown, html in targets:
+            target = markdown or html
             target = target.split(maxsplit=1)[0].strip("<>")
             parsed = urlsplit(target)
             if parsed.scheme or parsed.netloc or not parsed.path:
@@ -63,14 +68,23 @@ def test_public_document_links_resolve_inside_checkout():
     assert not missing, "Unresolvable public documentation links: " + ", ".join(missing)
 
 
-def test_contributing_translations_are_included_in_source_distribution():
+def test_documentation_layout_and_source_distribution_includes():
     import tomllib
 
     config = tomllib.loads((ROOT / "pyproject.toml").read_text())
     included = config["tool"]["hatch"]["build"]["targets"]["sdist"]["include"]
-    for name in ("CONTRIBUTING.md", "CONTRIBUTING.ko.md", "ONBOARDING.md", "ONBOARDING.ko.md"):
+    for name in ('README.md', 'README.ko.md', 'CONTRIBUTING.md', 'CONTRIBUTING.ko.md', 'docs'):
         assert name in included
-        assert (ROOT / name).is_file()
+        assert (ROOT / name).exists()
+    assert not list((ROOT / 'docs').glob('*.md')), 'Reader documents belong in locale folders'
+    for locale in ('en', 'ko'):
+        for entry in ('usage/index.md', 'usage/installation.md', 'contributing/index.md'):
+            assert (ROOT / 'docs' / locale / entry).is_file()
+        readme = ROOT / ('README.ko.md' if locale == 'ko' else 'README.md')
+        for audience in ('usage', 'contributing'):
+            assert f'docs/{locale}/{audience}/index.md' in readme.read_text()
+    bindings = json.loads((ROOT / '.neurath/project.json').read_text())['documents']
+    assert (ROOT / bindings['decisions']).is_file()
 
 
 def test_fresh_checkout_excludes_machine_local_mcp_settings(tmp_path):

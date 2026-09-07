@@ -1,7 +1,10 @@
 # Provider selection and conversations between tasks
-<!-- date: 2026-09-07; synced_from: source and documentation at 3563609329437641570a5e45d87ceb99064e4c02; English and Korean editions updated together -->
+<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
 
-**English** · [한국어](agents.ko.md)
+[Usage](index.md) · [Contributing](../contributing/index.md)
+
+
+**English** · [한국어](../../ko/usage/agents.md)
 
 In Codex and Claude Code, you can delegate work to a chosen provider and model, and exchange
 questions, answers, and updates between independent task sessions. Communication is scoped to

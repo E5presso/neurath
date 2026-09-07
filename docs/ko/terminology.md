@@ -1,7 +1,10 @@
 # 하네스 용어 안내
-<!-- date: 2026-09-07; synced_from: source and documentation at 3563609329437641570a5e45d87ceb99064e4c02; English and Korean editions updated together -->
+<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
 
-[English](terminology.md) · **한국어**
+[사용 안내](usage/index.md) · [기여자 안내](contributing/index.md)
+
+
+[English](../en/terminology.md) · **한국어**
 
 Neurath의 문서와 사용자 설명은 어떤 작업을 하는지 드러나는 표현을 사용합니다.
 영어도 한국어도 같은 의미를 유지하며, 하나의 옛 이름을 여러 개념에 일괄 적용하지 않습니다.
