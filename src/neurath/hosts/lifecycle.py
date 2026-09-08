@@ -108,6 +108,7 @@ def ensure_child(root, host, payload, environment):
         ActorId,
         ActorLineageAssurance,
         ActorStatus,
+        ForegroundTurnStatus,
         SessionId,
         SessionKernel,
     )
@@ -124,14 +125,18 @@ def ensure_child(root, host, payload, environment):
             return False
         state = kernel.inspect(session)
     actor = state.actors.get(actor_id)
-    if actor is not None and actor.status is ActorStatus.STOPPED:
+    turn = state.foreground_turns.get(actor_id)
+    if actor is not None and (actor.status is ActorStatus.STOPPED
+            or host == "codex" and actor.status is ActorStatus.ACTIVE and turn is not None
+                and turn.status is ForegroundTurnStatus.CLOSED):
         from neurath.hosts.identity import resume_child
         from scripts.agent_harness.session_kernel import TransitionRejected
 
         try:
-            if resume_child(root, host, payload, environment):
-                state = kernel.inspect(session)
-                actor = state.actors.get(actor_id)
+            if not resume_child(root, host, payload, environment):
+                return False
+            state = kernel.inspect(session)
+            actor = state.actors.get(actor_id)
         except (ValueError, OSError, KeyError, TransitionRejected):
             return False
     verified = (

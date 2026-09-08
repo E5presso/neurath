@@ -9,6 +9,12 @@
 Neurath is an independent harness kit with its own runtime, contracts, and distribution inventory.
 It does not prescribe the target project's source, stack, documentation layout, branch names, or development environment.
 
+The accepted [provider collaboration contract](collaboration-contract.md) defines provider-neutral
+permission inheritance, process-owned supervision and at-least-once delivery. The accompanying
+[model planning and MCP contract](model-planning-mcp.md) defines the next agent-facing control
+surface. These contracts distinguish target requirements from the implementation below; app
+membership and user observation are not prerequisites for the new collaboration design.
+
 | Location | Responsibility |
 | --- | --- |
 | `src/neurath/_assets/scripts/agent_harness` | State, host identity, ownership, actions, and independent evaluation |

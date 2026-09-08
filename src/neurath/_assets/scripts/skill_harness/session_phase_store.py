@@ -350,6 +350,8 @@ class SessionPhaseStateStore:
         self,
         expected_kind: str,
         reviewed_head_sha: str,
+        *,
+        delegation_id: str | None = None,
     ) -> tuple[ConsumedDelegationEvidenceSnapshot, FinalReviewVerification]:
         """Exact workflow의 consumed review result를 단일 shared policy로 검증합니다.
 
@@ -366,6 +368,7 @@ class SessionPhaseStateStore:
         ).read(
             kind=expected_kind,
             reviewed_head_sha=reviewed_head_sha,
+            delegation_id=delegation_id,
         )
         verification = FinalReviewEvidencePolicy().verify(
             snapshot,
@@ -753,6 +756,8 @@ class SessionPhaseRunnerStore(PhaseRunStore):
         self,
         expected_kind: str,
         reviewed_head_sha: str,
+        *,
+        delegation_id: str | None = None,
     ) -> tuple[ConsumedDelegationEvidenceSnapshot, FinalReviewVerification]:
         """Exact workflow의 consumed review artifact를 shared policy로 검증합니다.
 
@@ -763,7 +768,9 @@ class SessionPhaseRunnerStore(PhaseRunStore):
         Returns:
             Immutable delegation snapshot과 canonical C01-C14 verification입니다.
         """
-        return self._store.read_review_evidence(expected_kind, reviewed_head_sha)
+        return self._store.read_review_evidence(
+            expected_kind, reviewed_head_sha, delegation_id=delegation_id
+        )
 
     def read_consumed_delegation_evidence(
         self,

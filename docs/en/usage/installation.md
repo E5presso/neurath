@@ -26,6 +26,11 @@ a prefix, it can install Neurath skills under distinct names while preserving ex
 A prefix resolves names; overlapping responsibilities with another harness still require review.
 The agent explains any unresolved conflict before proceeding.
 
+During initial setup, the agent asks whether common harness defects and improvements may be
+reported to Neurath's public issue tracker. No answer keeps reporting disabled. Your choice
+persists across updates; project-specific contributions always need separate approval of the
+exact public proposal. See [harness reporting](reporting.md).
+
 ## Connect your existing project
 
 > Use this project's existing requirements, architecture decisions, and tests. Find the relevant
@@ -50,6 +55,18 @@ or trust decision in the host, following the agent's explanation. A new session 
 to load the installed integration. Local diagnostics alone do not prove host activation.
 
 ## Update, remove, or recover
+
+During normal work, the agent occasionally checks the official repository for a new stable
+release. It briefly presents your installed version, the available version, and the main changes.
+You can accept, decline, or say “later.” Only explicit agreement to the prepared update changes
+this project's installation. Silence leaves it unchanged. Declining or postponing suppresses
+further suggestions for that version, even if its release asset changes. To resume, say
+“Review the postponed Neurath update.” Choices persist for this worktree across sessions.
+
+The agent checks at most daily unless you request another check. Network failures do not stop
+your work. Hooks perform local bookkeeping only; checks do not create new sessions. Updates
+preserve reporting consent and approvals of individual contribution drafts. See the
+[release execution reference](../contributing/releases-reference.md) for eligibility and recovery.
 
 | Your goal | Request to the agent |
 | --- | --- |

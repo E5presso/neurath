@@ -2,7 +2,7 @@
 
 **English** · [한국어](../../ko/usage/agents.md)
 
-<!-- date: 2026-09-07; synced_from: source and documentation at e1487a1718056b37b999d1343a1007b7e25f5c8c; English and Korean editions updated together -->
+<!-- date: 2026-09-08; synced_from: current implementation and accepted collaboration contract; English and Korean editions updated together -->
 
 [Usage](index.md) · [Contributing](../contributing/index.md)
 
@@ -19,14 +19,24 @@ A fork has its own identity and must establish its own worktree ownership before
 
 ## Request a second opinion
 
+To request independent implementation, say: “Fix this issue in a separate session. Run the
+approved work without asking for manual command approval each time, keeping current global permissions.”
+The agent inherits the immediate creator's execution mode, checks its actual application in the new
+session, and then delivers the work. If that route cannot apply or verify them, it reports the
+blocker. It distinguishes preparation, waiting for approval or input, work delivery, and evidence
+of execution. A generic request to open a conversation keeps its normal approval behavior.
+
 > Ask another agent to review this design. Give it the relevant constraints and return its
 > findings before changing the code.
 
 If you want a particular provider or model, name it in the request. The agent uses that
 provider's existing authentication and model access. If it is unavailable, the agent reports
-the limitation rather than silently substituting a model. Any required login remains your action.
+the limitation rather than silently substituting a model. The agent performs supported sign-in
+recovery and requests your intervention only for account information or authentication it cannot complete.
 
-External provider work is read-only by default. Before authorized editing, the agent checks
+New provider work inherits the current permission mode. The agent plans the model from task
+difficulty, available models and your constraints, including explicit use of the native default.
+Before authorized editing, the agent checks
 installation, actual host activation, effective execution mode, and ownership of a separate
 worktree of the same project. A created session alone is not ready to edit. If the chosen
 host cannot apply or report the requested mode, the agent reports that specific limitation.
@@ -52,12 +62,14 @@ Delivery states mean different things:
 | Received | The recipient acknowledged the message |
 | Replied | The recipient sent a response |
 
-A stored or submitted message is not proof that the other agent read it. Compatible Codex
-app tools or Claude Code's native peer tools can notify a task immediately. The agent first
-discovers the exact native recipient. Held messages and permission prompts remain pending;
-refused messages are reported as refused. Otherwise delivery waits for the recipient's next
-hook or resume. The agent reports the actual state. Notifications do not automatically wake
-inactive sessions, and this mechanism does not connect separate clones or remote computers.
+A stored or submitted message is not proof that the other agent read it. An owned provider
+connection delivers reports even after the issuer's previous turn ends. Unacknowledged messages
+remain stored and are retried with the same identity; duplicates can be recognized by that key.
+Permission/input waits remain visible. If a provider process dies, messages remain available
+for supported recovery of its recorded execution. The issuer reads the body, acknowledges it,
+and remains responsible for the follow-up. No completion polling or receiver-only agent is needed.
+User presence and remote observation are outside the harness execution contract. This local
+message store does not connect separate clones or computers automatically.
 
 ## Share useful discoveries
 

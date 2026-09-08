@@ -768,6 +768,8 @@ class PhaseRunStore(ABC):
         self,
         expected_kind: str,
         reviewed_head_sha: str,
+        *,
+        delegation_id: str | None = None,
     ) -> tuple[ConsumedDelegationEvidenceSnapshot, FinalReviewVerification]:
         """Consumed delegation과 canonical review verification을 함께 읽습니다.
 
@@ -1552,8 +1554,14 @@ class PhaseRunner:
         if self._evidence_value(categories, "verified") != REVIEW_CODE_ROW_COUNT_TEXT:
             failures.append("review_categories.verified")
 
+        selected_delegation_id = self._evidence_value(transition, "delegation_id")
+        if not selected_delegation_id:
+            failures.append("delegate_transition_receipt.identity")
+            return failures
         try:
-            snapshot, verification = store.read_review_evidence("review-code", head_sha)
+            snapshot, verification = store.read_review_evidence(
+                "review-code", head_sha, delegation_id=selected_delegation_id
+            )
         except DelegationEvidenceError:
             failures.append("delegation_evidence.readback")
             return failures

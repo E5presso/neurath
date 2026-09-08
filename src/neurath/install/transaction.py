@@ -151,11 +151,51 @@ def _shared_span(path, content):
     return start, end
 
 
+def _rebase_codex_config(record, current):
+    """Keep user TOML bytes while replacing only the unchanged Neurath server.
+
+    Text removal is deliberately conservative. Parse both sides and verify every
+    remaining value so table-like text inside strings cannot silently lose data.
+    """
+    try:
+        installed = tomllib.loads(bytes_of(record["installed"]).decode())
+        live = bytes_of(current).decode()
+        parsed = tomllib.loads(live)
+        expected_server = installed["mcp_servers"]["neurath_collaboration"]
+        if parsed["mcp_servers"]["neurath_collaboration"] != expected_server:
+            raise ValueError("managed server changed")
+        output, owned, found = [], False, False
+        for line in live.splitlines(keepends=True):
+            stripped = line.strip()
+            if stripped.startswith("["):
+                owned = re.fullmatch(r"\[mcp_servers\.neurath_collaboration(?:\.[A-Za-z0-9_]+)*\]\s*(?:#.*)?", stripped) is not None
+                found |= owned
+            if not owned or not stripped or stripped.startswith("#"):
+                output.append(line)
+            elif "#" in line:
+                # Do not discard user comments attached to an owned assignment.
+                raise ValueError("inline comment in managed server")
+        restored = "".join(output)
+        actual = tomllib.loads(restored)
+        del parsed["mcp_servers"]["neurath_collaboration"]
+        for value in (parsed, actual):
+            if value.get("mcp_servers") == {}:
+                value.pop("mcp_servers")
+        if not found or actual != parsed:
+            raise ValueError("cannot isolate managed server without changing user values")
+        return {"original": file_value(restored.encode(), current["mode"]), "installed": current}
+    except (ValueError, KeyError, TypeError, UnicodeError) as error:
+        raise InstallError("modified managed config conflict: .codex/config.toml") from error
+
+
 def rebase_shared(path, record, current):
     """Preserve edits outside one unchanged owned block without writing state."""
     installed = record["installed"]
     if current == installed:
         return record
+    if (path == ".codex/config.toml" and current is not None
+            and current.get("kind") == installed.get("kind") == "file"):
+        return _rebase_codex_config(record, current)
     if (path not in {"AGENTS.md", "CLAUDE.md", ".gitignore"}
             or current is None or current.get("kind") != "file"
             or installed.get("kind") != "file"):
@@ -293,10 +333,15 @@ def make_plan(root, *, action="install", profile=None, hosts=None, receipt=None,
             desired[path] = file_value(data, old["mode"] if old else 0o644)
 
         block = f"\n{MARKER}\n## Neurath\n\nRead `.neurath/policy.md` and `.neurath/project.json` for the {profile} profile.\nUse the skills in `.agents/skills`; execute through `.neurath/run`.\n<!-- /neurath:managed -->\n"
+        old_block = block
         legacy_block = block.replace("Use the skills", "Use the `neurath-` skills")
+        block = block.replace("execute through `.neurath/run`.",
+            "use the named MCP task tools. Consult `.neurath/policy.md` for explicit native execution exceptions.")
+        legacy_blocks = [old_block, legacy_block]
         if skill_prefix:
             block = block.replace("Use the skills", f"Use the `{skill_prefix}` skills")
-        managed_text("AGENTS.md", block, legacy=(legacy_block,))
+            legacy_blocks.append(old_block.replace("Use the skills", f"Use the `{skill_prefix}` skills"))
+        managed_text("AGENTS.md", block, legacy=tuple(legacy_blocks))
         if "claude-code" in hosts:
             claude = original("CLAUDE.md")
             if claude and claude["kind"] == "symlink":

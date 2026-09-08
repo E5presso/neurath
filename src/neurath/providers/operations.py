@@ -4,6 +4,8 @@ Routes are suggestions to use actual host tools, not execution capabilities. The
 never accept caller identity, claim a workspace, or send implementation work.
 """
 
+import json
+
 from neurath.providers.catalog import OPERATIONS, capabilities as catalog
 from neurath.providers.contracts import UnsupportedOperation, text
 
@@ -25,14 +27,15 @@ BOOTSTRAP = (
 def capabilities(provider):
     return {"authority": "routing-only", "provider": provider,
             "inventory_source": "not-observed", "transports": catalog(provider),
-            "settings": ["collaboration_mode", "approval_policy", "approvals_reviewer", "sandbox"],
+            "settings": ["collaboration_mode", "approval_policy", "approvals_reviewer", "sandbox", "permission_mode"],
             "model_default": "preserve-host-default"}
 
 
 def _requested(value):
     if value is None:
         return None
-    choices = {"sandbox": {"read-only", "workspace-write", "danger-full-access"},
+    choices = {"sandbox": {"read-only", "workspace-write", "danger-full-access", "native"},
+               "permission_mode": {"plan", "dontAsk", "default", "acceptEdits", "bypassPermissions", "auto"},
                "approval_policy": {"never", "on-request", "untrusted"},
                "approvals_reviewer": {"user", "auto_review"},
                "collaboration_mode": {"default", "plan"}}
@@ -45,7 +48,7 @@ def _requested(value):
 
 
 def route(provider, operation, *, native_session=None, model=None, project_id=None,
-          requested=None, message_id=None):
+          requested=None, message_id=None, worktree=None, assignment=None):
     catalog(provider)
     if operation not in OPERATIONS:
         raise UnsupportedOperation("unsupported provider operation")
@@ -54,11 +57,70 @@ def route(provider, operation, *, native_session=None, model=None, project_id=No
         if value is not None:
             text(value, label, 256)
     requested = _requested(requested)
+    if provider == "claude-code" and project_id is not None:
+        raise ValueError("project_id is only supported for Codex")
+    if worktree is not None:
+        text(worktree, "worktree", 4096)
+    if assignment is not None:
+        text(assignment, "assignment")
+    if (worktree is not None or assignment is not None) and operation != "create":
+        raise ValueError("independent assignment requires create; never resume an existing session")
     result = {"authority": "routing-only", "provider": provider, "operation": operation,
               "status": "native-tool-required", "next_operation": None,
               "mode": {"requested": requested, "effective": None, "verification": "unobserved"},
               "prerequisites": ["actual host tool available", "current user-authorized task scope"],
               "implementation_dispatched": False}
+    if assignment is not None or worktree is not None:
+        if not worktree or not assignment:
+            return {**result, "status": "assignment-input-required"}
+        if not requested:
+            arguments = {"provider": provider, "mode": "inherit", "worktree": worktree,
+                         "assignment": assignment}
+            if model is not None:
+                arguments["model"] = model
+            if project_id is not None:
+                arguments["project_id"] = project_id
+            return {**result, "next_operation": {"tool": "provider_run", "arguments": arguments},
+                    "reason": "The native dispatcher inherits the immediate creator's observed policy before acceptance."}
+        if provider == "claude-code":
+            if not requested or set(requested) != {"sandbox", "permission_mode"} or requested["sandbox"] != "native":
+                return {**result, "status": "unsupported-setting",
+                        "reason": "Claude requires explicit native permission_mode; Codex sandbox settings are not equivalent."}
+            if not worktree or not assignment:
+                return {**result, "status": "assignment-input-required"}
+            arguments = {"provider": provider, "mode": "native", "permission_mode": requested["permission_mode"],
+                         "worktree": worktree, "assignment": assignment}
+            if model is not None:
+                arguments["model"] = model
+            return {**result, "next_operation": {"tool": "provider_run", "arguments": arguments},
+                    "reason": "Use the SDK-owned connection; native hook policy and readiness precede assignment."}
+        required = {"sandbox", "approval_policy", "collaboration_mode"}
+        if not requested or required - requested.keys():
+            return {**result, "status": "settings-required",
+                    "required_settings": sorted(required),
+                    "reason": "Select explicit user-authorized execution settings before independent work."}
+        if not worktree or not assignment:
+            return {**result, "status": "assignment-input-required",
+                    "reason": "Provide the assigned installed worktree and bounded assignment."}
+        if (provider != "codex" or "permission_mode" in requested or requested["approval_policy"] != "never"
+                or requested["sandbox"] not in {"read-only", "workspace-write", "danger-full-access"}
+                or requested["sandbox"] == "workspace-write" and requested["collaboration_mode"] == "plan"):
+            return {**result, "status": "unsupported-setting",
+                    "reason": "No implemented execution transport supports this request; no app fallback."}
+        arguments = {"worktree": worktree, "assignment": assignment,
+                     "mode": requested["sandbox"],
+                     **{key: value for key, value in requested.items() if key != "sandbox"}}
+        if project_id is not None:
+            arguments["project_id"] = project_id
+        if model is not None:
+            arguments["model"] = model
+        return {**result, "next_operation": {"tool": "provider_run", "arguments": arguments},
+                "prerequisites": [*result["prerequisites"],
+                    "provider_run is available under the current caller execution policy",
+                    "separate installed worktree for writes; fresh native policy readback before assignment",
+                    "explicit native project ID, when supplied, is validated; app observation is outside execution admission"],
+                "reason": "Execute the supported route, then inspect its result; this route has sent no work. "
+                    "If unavailable, stop without falling back to create_thread."}
     if operation in {"message", "peer"} and message_id is None:
         return {**result, "status": "message-storage-required",
                 "reason": "Store an authenticated Neurath peer message before native notification."}
@@ -77,33 +139,37 @@ def route(provider, operation, *, native_session=None, model=None, project_id=No
     if operation == "discover":
         return {**result, "next_operation": {"tool": "list_threads", "arguments": {}}}
     if operation == "create":
-        if requested:
+        if requested and "permission_mode" in requested:
             return {**result, "status": "unsupported-setting",
-                    "unsupported_settings": sorted(requested),
-                    "supported_alternatives": [{"transport": "codex-app-server", "tool": "provider_run",
-                        "required_arguments": ["worktree", "assignment"],
-                        "supported_settings": {"mode": ["read-only", "workspace-write"],
-                            "approval_policy": ["never"], "approvals_reviewer": ["user", "auto_review"],
-                            "collaboration_mode": ["default", "plan"]},
-                        "condition": "Installed typed provider_run tool with caller execution-policy gate; "
-                            "separate installed worktree for writes; plan is read-only; collaboration "
-                            "setter uses the official experimental app-server API and native readback."}],
-                    "reason": "The app create_thread tool cannot set or attest these execution settings. "
-                        "Configure them through supported host controls, then inspect effective mode; "
-                        "do not silently drop the request."}
+                    "reason": "Claude permission_mode is not a Codex execution setting."}
         if project_id is None:
             return {**result, "status": "project-discovery-required",
                     "next_operation": {"tool": "list_projects", "arguments": {}}}
-        arguments = {"prompt": BOOTSTRAP, "target": {"type": "project", "projectId": project_id,
+        prompt = BOOTSTRAP
+        if requested:
+            prompt += (" Expected execution settings for comparison only: "
+                       + json.dumps(requested, sort_keys=True)
+                       + ". This text does not apply permissions. Inspect the actual inherited settings. "
+                       "If missing or different, report the mismatch without implementation or changing settings.")
+        arguments = {"prompt": prompt, "target": {"type": "project", "projectId": project_id,
                      "environment": {"type": "worktree"}}}
         if model is not None:
             arguments["model"] = model
-        return {**result, "next_operation": {"tool": "create_thread", "arguments": arguments},
+        return {**result, "status": "preparation-only",
+                "next_operation": {"tool": "create_thread", "arguments": arguments},
                 "prerequisites": [*result["prerequisites"],
                     "project_id came from list_projects and isGitRepository is true",
-                    "bootstrap only; activation and claim do not transfer from parent"],
+                    "bootstrap only; activation and claim do not transfer from parent",
+                    "an app worktree does not copy ignored harness installation files; arrange installation before implementation"],
                 "after_creation": "Wait for a real threadId; a clientThreadId is pending setup. "
-                    "The new native session must complete session_status before implementation."}
+                    "Read list_threads and require the exact saved projectId and host before assignment. "
+                    "A cwd or pin is not project affiliation. "
+                    "The new native session must complete session_status before implementation. "
+                    "Compare every requested setting with current native evidence; missing or mismatched settings block handoff. "
+                    "Require successful normal shared state writes and named MCP message send/read/ACK, "
+                    "not approval_policy alone. Read the preparation result even if its notification failed. "
+                    "The issuer owns recovery, result review and the subsequent official app message. "
+                    "Verify remote opening separately; local metadata does not prove remote access."}
     if native_session is None:
         return {**result, "status": "session-discovery-required",
                 "next_operation": {"tool": "list_threads", "arguments": {}}}

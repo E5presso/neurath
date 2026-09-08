@@ -135,6 +135,49 @@ def test_child_address_is_distinct_from_root():
     )
 
 
+def test_peer_lifecycle_reports_error_and_disconnect_for_only_accepted_turn(sessions):
+    from neurath.agents.hooks import native_turn
+    from neurath.agents.lifecycle import TaskLifecycle
+
+    root, invoke = sessions
+    store = MessageStore(root)
+    tasks = TaskLifecycle(store)
+    worker = AgentIdentity("claude-code", "ui", "claude-code:session:ui")
+    task = tasks.bind("codex:api", worker.address, key="work", transport="peer-assignment")
+    tasks.accept(worker.address, task["id"], native_turn(root, worker))
+    code, _, error = invoke("claude-code", "ui", "PostToolUseFailure",
+                             tool_name="Read", tool_use_id="failed-read", tool_input={})
+    assert code == 0, error
+    assert tasks.read("codex:api", task["id"])["state"] == "error"
+    assert invoke("claude-code", "ui", "SessionEnd")[0] == 0
+    assert tasks.read("codex:api", task["id"])["state"] == "disconnected"
+    assert invoke("claude-code", "ui", "SessionStart", source="resume")[0] == 0
+    assert invoke("claude-code", "ui", "UserPromptSubmit", prompt="Unrelated work", turn_id="different")[0] == 0
+    assert invoke("claude-code", "ui", "PermissionDenied", tool_name="Read",
+                  tool_use_id="new-denial", tool_input={})[0] == 0
+    assert tasks.read("codex:api", task["id"])["state"] == "disconnected"
+
+
+def test_named_report_cannot_finish_an_unaccepted_or_unrelated_turn(sessions):
+    from neurath.agents.lifecycle import TaskLifecycle
+    from neurath.runtime.tasks import execute
+
+    root, invoke = sessions
+    tasks = TaskLifecycle(MessageStore(root))
+    worker = AgentIdentity("claude-code", "ui", "claude-code:session:ui")
+    task = tasks.bind("codex:api", worker.address, key="bound-turn", transport="peer-assignment")
+    report = {"task_id": task["id"], "state": "completed", "key": "done"}
+    with pytest.raises(ValueError, match="accepted native turn"):
+        execute(root, "collaboration_report", report, identity=worker)
+    execute(root, "collaboration_accept", {"task_id": task["id"]}, identity=worker)
+    assert invoke("claude-code", "ui", "SessionEnd")[0] == 0
+    assert invoke("claude-code", "ui", "SessionStart", source="resume")[0] == 0
+    assert invoke("claude-code", "ui", "UserPromptSubmit", prompt="A different request", turn_id="other-turn")[0] == 0
+    with pytest.raises(ValueError, match="accepted native turn"):
+        execute(root, "collaboration_report", report, identity=worker)
+    assert tasks.read("codex:api", task["id"])["state"] == "disconnected"
+
+
 def test_newsroom_hooks_join_active_turns_and_push_only_titles(sessions):
     from neurath.agents.newsroom import Newsroom
 

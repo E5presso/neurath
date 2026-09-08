@@ -24,7 +24,14 @@ def next_steps(hosts, skill_prefix=""):
     return steps
 
 
-def setup_project(root, *, profile=None, hosts=None, dry_run=False, skill_prefix=None):
+def setup_project(root, *, profile=None, hosts=None, dry_run=False, skill_prefix=None,
+                  auto_report=None):
+    from neurath.reporting import Reporting
+
+    if auto_report is not None and type(auto_report) is not bool:
+        raise ValueError("auto_report must be an explicit boolean user decision")
+    reporting = Reporting(root)
+    reporting.status()  # Reject corrupt preferences before installation changes.
     if diagnostics.integrity()["status"] != "passed":
         raise InstallError("distribution integrity failed; obtain an intact Neurath distribution")
     plan = make_plan(root, profile=profile, hosts=hosts, skill_prefix=skill_prefix)
@@ -33,6 +40,7 @@ def setup_project(root, *, profile=None, hosts=None, dry_run=False, skill_prefix
         "profile": plan["profile"],
         "hosts": plan["hosts"],
         "skill_prefix": plan["skill_prefix"],
+        "reporting": reporting.status(),
         "changes": [
             {"path": item["path"], "action": "remove" if item["after"] is None else "write"}
             for item in plan["changes"]
@@ -41,9 +49,14 @@ def setup_project(root, *, profile=None, hosts=None, dry_run=False, skill_prefix
     if dry_run:
         return {**result, "status": "planned"}
     result["receipt"] = apply_plan(root, plan)
+    if auto_report is not None:
+        result["reporting"] = reporting.consent(auto_report)
     result["doctor"] = diagnostics.doctor(root, protocol=True)
     result["status"] = "passed" if diagnostics.passed(result["doctor"]) else "failed"
     result["next_steps"] = next_steps(plan["hosts"], plan["skill_prefix"])
+    if result["reporting"]["consent_required"]:
+        result["next_steps"].insert(0, "에이전트가 최초 설정에서 사용자에게 동의를 확인합니다: "
+                                     + result["reporting"]["question"])
     return result
 
 
@@ -60,6 +73,9 @@ def show_setup(result):
             print(f"  {item['action']}: {item['path']}")
         return
     print(f"설치 적용: {result['receipt']['changed']}개 경로 변경")
+    consent = result["reporting"]["auto_report"]
+    print("Neurath 자동 보고: " + ("켜짐" if consent is True else
+                                     "꺼짐" if consent is False else "동의 대기 (보고 안 함)"))
     report = result["doctor"]
     for label, key in (("배포본 무결성", "distribution"), ("파일 배치", "placement")):
         print(f"{label}: {report[key]['status']}")

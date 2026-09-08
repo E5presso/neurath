@@ -6,6 +6,10 @@
 
 [사용 안내](../usage/index.md) · [기여자 안내](index.md)
 
+구현 계약: [프로바이더 협업](collaboration-contract.md) ·
+[동적 모델 계획과 MCP 운용](model-planning-mcp.md).
+목표 동작과 수용 시나리오를 기록한 문서이며, 구현 전환이 끝났다는 뜻은 아닙니다.
+
 
 Neurath는 독립된 호스트 실행 환경과 자체 실행 자산을 갖춘 Python 3.14 패키지입니다.
 이 안내는 문서, 설치기, 호스트 어댑터, 스킬과 실행 규칙 등 Neurath 자체를 수정하는

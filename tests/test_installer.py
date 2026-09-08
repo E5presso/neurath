@@ -103,6 +103,34 @@ def test_modified_managed_file_blocks_update_and_uninstall(repo):
             make_plan(repo, action=action)
 
 
+def test_codex_update_preserves_settings_added_after_install_and_uninstall(repo):
+    import tomllib
+
+    apply_plan(repo, make_plan(repo))
+    path = repo / ".codex/config.toml"
+    managed = path.read_text().replace(" = ", "=")
+    user = '# Keep my model settings\nmodel_verbosity="low"\n'
+    extra = '\n[agents]\nmax_threads=4\n[mcp_servers.external]\ncommand="existing-server"\n'
+    path.write_text(user + managed + extra)
+    expected = tomllib.loads(user + extra)
+    apply_plan(repo, make_plan(repo, action="update"))
+    current = tomllib.loads(path.read_text())
+    current["mcp_servers"].pop("neurath_collaboration")
+    assert current == expected
+    assert "# Keep my model settings" in path.read_text()
+    apply_plan(repo, make_plan(repo, action="uninstall"))
+    assert tomllib.loads(path.read_text()) == expected
+    assert extra in path.read_text()
+
+
+def test_codex_managed_permission_change_is_still_a_conflict(repo):
+    apply_plan(repo, make_plan(repo))
+    path = repo / ".codex/config.toml"
+    path.write_text(path.read_text().replace('approval_mode = "approve"', 'approval_mode = "deny"', 1))
+    with pytest.raises(InstallError, match="conflict"):
+        make_plan(repo, action="update")
+
+
 def test_host_selection_update_and_restore(repo):
     apply_plan(repo, make_plan(repo))
     receipt = apply_plan(repo, make_plan(repo, action="update", hosts=["codex"]))

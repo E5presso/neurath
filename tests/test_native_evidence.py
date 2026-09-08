@@ -321,3 +321,51 @@ def test_checkpoint_stop_requires_actual_same_session_save_and_successful_retry(
         evidence.codex_turn(
             [gate, saved, hook("completed"), ending()], "thread", "turn", checkpoint=True
         )
+
+
+def mcp_checkpoint_events():
+    def hook(status, text=""):
+        return {"method": "hook/completed", "params": {"threadId": "thread", "turnId": "turn",
+            "run": {"eventName": "stop", "status": status,
+                    "entries": [{"kind": "feedback", "text": text}]}}}
+    return [hook("blocked", "Neurath needs a durable handoff before this turn ends."),
+        item("mcpToolCall", server="neurath_collaboration", tool="memory_checkpoint",
+             status="completed", error=None, result={"structuredContent": {
+                 "ok": True, "operation": "memory_checkpoint", "result": {
+                     "status": "saved", "host": "codex", "session": "thread",
+                     "authority": "agent-report", "id": "a" * 64}}}),
+        hook("completed"), ending()]
+
+
+def test_checkpoint_stop_accepts_actual_named_mcp_save():
+    assert evidence.codex_turn(mcp_checkpoint_events(), "thread", "turn", checkpoint=True)["checkpoints"] == 1
+
+
+@pytest.mark.parametrize("invalid", ["server", "tool", "status", "error", "isError", "ok", "operation",
+    "session", "host", "authority", "id", "receipt-type", "missing-result", "other-turn", "before-gate", "no-retry"])
+def test_checkpoint_stop_rejects_wrong_or_failed_mcp_receipts(invalid):
+    events = mcp_checkpoint_events()
+    call = events[1]["params"]["item"]
+    value = call["result"]["structuredContent"]
+    if invalid in {"server", "tool", "status", "error"}:
+        call[invalid] = "wrong"
+    elif invalid == "isError":
+        call["result"]["isError"] = True
+    elif invalid == "ok":
+        value["ok"] = False
+    elif invalid == "operation":
+        value["operation"] = "other"
+    elif invalid in {"session", "host", "authority", "id"}:
+        value["result"][invalid] = "z" * 64 if invalid == "id" else "wrong"
+    elif invalid == "receipt-type":
+        value["result"] = []
+    elif invalid == "missing-result":
+        del call["result"]
+    elif invalid == "other-turn":
+        events[1]["params"]["turnId"] = "other"
+    elif invalid == "before-gate":
+        events[0], events[1] = events[1], events[0]
+    else:
+        del events[2]
+    with pytest.raises(AssertionError):
+        evidence.codex_turn(events, "thread", "turn", checkpoint=True)

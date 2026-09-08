@@ -24,5 +24,5 @@ Neurath는 기술 스택과 독립적인 Claude Code/Codex 하네스 설치 패�
 ## Neurath
 
 Read `.neurath/policy.md` and `.neurath/project.json` for the generic profile.
-Use the skills in `.agents/skills`; execute through `.neurath/run`.
+Use the skills in `.agents/skills`; use the named MCP task tools. Consult `.neurath/policy.md` for explicit native execution exceptions.
 <!-- /neurath:managed -->

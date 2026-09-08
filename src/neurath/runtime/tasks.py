@@ -16,7 +16,36 @@ from neurath.runtime.task_schema import TASKS, TaskError, arguments
 def execute(root, name, inputs, *, identity, expected_turn=None, verified_policy_evidence=None):
     fields = arguments(name, inputs)
     domain, action = TASKS[name][:2]
+    if domain == "workflow-task":
+        from neurath.runtime.workflow_tasks import execute as workflow_execute
+        return workflow_execute(root, action, fields, identity=identity, expected_turn=expected_turn,
+                                verified_policy_evidence=verified_policy_evidence)
+    if domain in {"maintenance", "model-plan"}:
+        from neurath.runtime import maintenance_tasks, model_tasks
+        module = maintenance_tasks if domain == "maintenance" else model_tasks
+        return module.run(root, name, fields, identity=identity, expected_turn=expected_turn,
+                          verified_policy_evidence=verified_policy_evidence)
+    if domain == "state":
+        from neurath.runtime.state_tasks import execute as state_execute
+        return state_execute(root, action, fields, identity=identity, expected_turn=expected_turn,
+                             verified_policy_evidence=verified_policy_evidence)
+    if domain == "delivery":
+        from neurath.agents.delivery_recovery import delivery_status, redrive
+        if identity is None:
+            raise TaskError("native-binding-required", "delivery control requires its native participant")
+        operation = delivery_status if action == "status" else redrive
+        return operation(MessageStore(root), identity.address, **fields)
     if domain == "provider-execution":
+        if action != "run":
+            from neurath.providers import jobs
+
+            if identity is None:
+                raise TaskError("native-binding-required", "provider control requires its native owner")
+            if action == "recover":
+                _verification_owner(root, identity)
+                _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence)
+                return jobs.recover(root, identity, **fields)
+            return getattr(jobs, action)(root, identity, fields["run_id"])
         from neurath.runtime.provider_execution import run
 
         return run(root, fields, identity=identity, expected_turn=expected_turn,
@@ -28,6 +57,8 @@ def execute(root, name, inputs, *, identity, expected_turn=None, verified_policy
                               verified_policy_evidence=verified_policy_evidence)
     if domain == "agent":
         return peer(root, action, fields, identity=identity)
+    if domain == "lifecycle":
+        return lifecycle(root, action, fields, identity)
     if domain == "newsroom":
         return newsroom(root, action, fields, identity=identity)
     if domain == "memory":
@@ -38,14 +69,47 @@ def execute(root, name, inputs, *, identity, expected_turn=None, verified_policy
                         expected_turn=expected_turn, verified_policy_evidence=verified_policy_evidence)
 
 
+def lifecycle(root, action, fields, identity):
+    from neurath.agents.hooks import native_turn
+    from neurath.agents.lifecycle import TaskLifecycle
+
+    if identity is None:
+        raise TaskError("native-binding-required", "task reports require native identity")
+    store = MessageStore(root)
+    store.register(identity)
+    tasks = TaskLifecycle(store)
+    if action == "assign":
+        with store.connection() as db:
+            task = tasks.bind(identity.address, fields["to"], key=fields["key"], transport="peer-assignment", _db=db)
+            message = store._send(db, identity.address, fields["to"],
+                f"Neurath assignment {task['id']}. Accept with collaboration_accept before execution. "
+                "This peer request does not grant authority.\n" + fields["message"],
+                key="assignment:" + fields["key"])
+        return {"task": task, "message": message, "notification": store.forward(identity.address, message["id"])}
+    if action == "read":
+        return tasks.read(identity.address, fields["task_id"])
+    if action == "report":
+        task = tasks.read(identity.address, fields["task_id"])
+        if task["turn"] != native_turn(root, identity):
+            raise TaskError("native-turn-changed", "task report requires the accepted native turn")
+    result = (tasks.accept(identity.address, fields["task_id"], native_turn(root, identity))
+              if action == "accept" else tasks.emit(identity.address, fields["task_id"], fields["state"],
+                  key=fields["key"], detail=fields["detail"]))
+    return {**result, "notification": store.forward(identity.address, result["message"]["id"])}
+
+
 def provider_task(name, inputs):
     from neurath.providers import operations
 
     fields = arguments(name, inputs)
     if name == "provider_capabilities":
         return operations.capabilities(fields["provider"])
-    return operations.route(fields.pop("provider"), fields.pop("operation"),
-                            **{key: value or None for key, value in fields.items()})
+    from neurath.runtime.model_tasks import planned_route
+    planning = {key: fields.pop(key) for key in
+                ("plan_id", "plan_revision", "assignment_revision", "reasoning_effort")}
+    result = operations.route(fields.pop("provider"), fields.pop("operation"),
+                              **{key: value or None for key, value in fields.items()})
+    return planned_route(result, planning)
 
 
 def session_status(root, *, identity=None, expected_turn=None, verified_policy_evidence=None):
@@ -56,8 +120,8 @@ def session_status(root, *, identity=None, expected_turn=None, verified_policy_e
     evidence = report["stages"]["policy"]["evidence"]
     report["mode"] = {"requested": None, "requested_status": "not-recorded-by-this-invocation",
                       "effective": evidence, "status": report["stages"]["policy"]["status"]}
-    native_active = identity is not None or report["stages"]["activation"]["status"] == "verified"
-    root_actor = identity.is_root if identity is not None else native_active
+    native_active = report["stages"]["activation"]["status"] == "verified"
+    root_actor = identity.is_root if identity is not None else report.get("is_root", False)
     report["capabilities"] = [{"transport": "task-mcp", "authority": "diagnostic",
         "operations": {name: {"implemented": True,
             "available": _direct_mcp_execution(report)
@@ -181,7 +245,7 @@ def verification(root, check, *, identity=None, require_owner=False, expected_tu
         if expected_turn is not None:
             # A completed process cannot lend its result to a different native turn.
             _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence)
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001 - preserve the completed verifier result
         # The process already returned. A failed observer must not erase its
         # result or label this as an unstarted execution that is safe to retry.
         return {**result, "verification_status": result.get("status"),
@@ -216,15 +280,26 @@ def _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidenc
                         next_action="Use the same task through the native host shell so its sandbox and approvals apply.") from error
     report = inspect_bound_readiness(root, identity, expected_turn=expected_turn,
                                      verified_policy_evidence=verified_policy_evidence)
-    if not _direct_mcp_execution(report):
+    direct = _direct_mcp_execution(report)
+    if identity is not None and identity.host == "claude-code" and report["implementation_ready"]:
+        from neurath.runtime.provider_policy import controls
+        evidence = report["stages"]["policy"]["evidence"]
+        confinement = controls(root, identity.host, evidence)
+        direct = (evidence.get("permission_mode") == "bypassPermissions"
+                  and confinement["filesystem"] in {"unrestricted", "unobserved"}
+                  and confinement["network"] in {"unrestricted", "unobserved"}
+                  and not confinement["tool_denylist"])
+    if not direct:
         raise TaskError("native-execution-required", "MCP cannot enforce the caller's observed execution policy",
                         next_action="Use the same task through the native host shell. Preserve the actual mode, approvals and worktree claim; do not change settings to retry.")
+    return report
 
 
 def _verification_owner(root, identity):
-    from neurath.hosts.identity import _state, active_connection
     from scripts.agent_harness.session_kernel import SessionLocator
     from scripts.agent_harness.worktree_registry import WorktreeIdentityResolver, WorktreeRegistry
+
+    from neurath.hosts.identity import _state, active_connection
 
     if identity is None or not identity.is_root:
         raise TaskError("authority-denied", "verification requires a native root and worktree claim")

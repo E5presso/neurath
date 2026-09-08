@@ -231,6 +231,8 @@ def _dispatch_event(root, host, raw, environment=None, stop_guard=None):
         for module, name, component in (
             ("neurath.memory.hooks", "project_event", "memory"),
             ("neurath.agents.hooks", "peer_event", "mailbox"),
+            ("neurath.reporting", "reporting_event", "reporting"),
+            ("neurath.updates", "update_event", "updates"),
         ):
             try:
                 enrich = getattr(importlib.import_module(module), name)

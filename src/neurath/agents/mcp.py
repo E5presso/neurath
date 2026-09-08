@@ -272,7 +272,8 @@ def response(root, request):
             name = params["name"]
             value = call_tool(root, params.get("arguments"), name=name)
             failed = ((name == "verification_run" and value.get("status") != "passed")
-                      or (name == "provider_run" and value.get("status") != "completed"))
+                      or (name == "provider_run" and value.get("status") not in
+                          {"accepted", "starting", "started", "waiting", "completed"}))
             if name != "agent":
                 value = {"ok": not failed, "operation": name, "result": value}
                 if failed:

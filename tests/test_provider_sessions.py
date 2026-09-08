@@ -10,13 +10,15 @@ from neurath.providers.catalog import capabilities
 class Host:
     def __init__(self):
         self.calls = []
-        self.thread = {"id": "native-id", "cwd": "/work", "status": {"type": "idle"}, "turns": []}
+        self.thread = {"id": "native-id", "projectId": "saved", "cwd": "/work", "status": {"type": "idle"}, "turns": []}
         self.approval = "never"
         self.sandbox = {"type": "readOnly", "networkAccess": False}
         self.model = "chosen-model"
 
     def request(self, method, params):
         self.calls.append((method, params))
+        if method == "project/list":
+            return {"data": [{"id": "saved", "roots": [{"path": "/work"}]}]}
         if method in ("thread/start", "thread/resume"):
             return {"thread": self.thread.copy(), "model": self.model, "cwd": "/work",
                     "approvalPolicy": self.approval, "sandbox": self.sandbox}
@@ -36,6 +38,7 @@ def test_create_verifies_effective_policy_before_any_prompt():
     session = CodexSessions(host).create("/work", "chosen-model", ExecutionPolicy())
     assert session.native_session == "native-id"
     assert session.policy["verification"] == "verified"
+    assert host.calls[0][0] == "thread/start"
     assert host.calls[0][1]["approvalPolicy"] == "never"
     assert host.calls[0][1]["sandbox"] == "read-only"
     assert all(method != "turn/start" for method, _ in host.calls)
@@ -199,7 +202,12 @@ def test_shared_state_root_is_minimal_and_applied_before_bootstrap(monkeypatch):
     host.sandbox = {"type": "workspaceWrite", "networkAccess": False,
                     "writableRoots": ["/main/.neurath/local"]}
     session = CodexSessions(host).create("/work", policy=ExecutionPolicy("workspace-write"))
-    assert host.calls[0][1]["config"] == {"sandbox_workspace_write.writable_roots": ["/main/.neurath/local"]}
+    assert host.calls[0][1]["config"] == {
+        "sandbox_workspace_write.writable_roots": ["/main/.neurath/local"],
+        "sandbox_workspace_write.network_access": False,
+        "sandbox_workspace_write.exclude_tmpdir_env_var": False,
+        "sandbox_workspace_write.exclude_slash_tmp": False,
+    }
     assert session.policy["verification"] == "verified"
     host.sandbox["writableRoots"] = ["/main"]
     with pytest.raises(ValueError, match="mismatch"):

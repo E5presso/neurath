@@ -206,7 +206,7 @@ def test_unregistered_child_prompt_waits_for_proof_without_root_authority(runtim
     assert code != 0 and "child-identity-unverified" in diagnostic
 
 
-def stopped_native_child(runtime):
+def stopped_native_child(runtime, *, stop_actor=True):
     from scripts.agent_harness import session_kernel as k
 
     root, storage, _, send = runtime
@@ -241,9 +241,10 @@ def stopped_native_child(runtime):
         session_id=state.session.id, actor_id=actor,
         expected_turn_revision=state.foreground_turns[actor].revision,
         idempotency_key="close-child-first"))
-    kernel.apply(k.ActorStopped(session_id=state.session.id, actor_id=actor,
-                               terminal_status=k.ActorStatus.STOPPED,
-                               idempotency_key="stop-child-first"))
+    if stop_actor:
+        kernel.apply(k.ActorStopped(session_id=state.session.id, actor_id=actor,
+                                   terminal_status=k.ActorStatus.STOPPED,
+                                   idempotency_key="stop-child-first"))
     with child.open("a") as file:
         file.write(json.dumps({"type": "event_msg", "payload": {
             "type": "task_complete", "turn_id": "child-first"}}) + "\n")
@@ -264,6 +265,27 @@ def test_native_child_followup_reopens_same_actor_with_new_turn(runtime):
     assert state.actors[actor].status is k.ActorStatus.ACTIVE
     assert state.foreground_turns[actor].vendor_turn_id == "child-followup"
     assert state.foreground_turns[actor].generation == before.foreground_turns[actor].generation + 1
+    assert state.to_payload()["delegations"] == before.to_payload()["delegations"]
+    assert state.material_actions == before.material_actions
+
+
+def test_child_followup_tool_reopens_closed_turn_without_user_prompt_hook(runtime):
+    from neurath.agents import mcp
+    from scripts.agent_harness import session_kernel as k
+
+    child, kernel, actor = stopped_native_child(runtime, stop_actor=False)
+    before = kernel.inspect(k.SessionId("root"))
+    native_turn_started(child, "child-followup")
+    code, output, diagnostic = runtime[3]("codex", "PreToolUse", agent_id="child",
+        transcript_path=str(child), turn_id="child-followup",
+        tool_name="mcp__neurath_collaboration__session_status", tool_use_id="followup-status", tool_input={})
+    assert code == 0, diagnostic
+    report = mcp.call_tool(runtime[0], output["hookSpecificOutput"]["updatedInput"], name="session_status")
+    assert report["stages"]["activation"]["status"] == "verified"
+    state = kernel.inspect(k.SessionId("root"))
+    assert state.foreground_turns[actor].vendor_turn_id == "child-followup"
+    assert state.foreground_turns[actor].generation == before.foreground_turns[actor].generation + 1
+    assert state.foreground_turns[actor].user_prompt_receipt is None
     assert state.to_payload()["delegations"] == before.to_payload()["delegations"]
     assert state.material_actions == before.material_actions
 
@@ -300,10 +322,11 @@ def test_native_child_resume_race_reuses_only_same_attested_turn(runtime, monkey
 
 
 @pytest.mark.parametrize("invalid", ["replayed", "foreign", "retired", "parent-closed"])
-def test_child_followup_rejects_replayed_or_foreign_native_turn(runtime, invalid):
+@pytest.mark.parametrize("stop_actor", [True, False])
+def test_child_followup_rejects_replayed_or_foreign_native_turn(runtime, invalid, stop_actor):
     from scripts.agent_harness import session_kernel as k
 
-    child, kernel, actor = stopped_native_child(runtime)
+    child, kernel, actor = stopped_native_child(runtime, stop_actor=stop_actor)
     if invalid != "replayed":
         native_turn_started(child, "child-followup")
     if invalid == "foreign":

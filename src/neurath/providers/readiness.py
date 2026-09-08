@@ -70,6 +70,10 @@ def _codex_policy(path, native_turn, root):
             "turn_id", "cwd", "approval_policy", "approvals_reviewer", "sandbox_policy")}
         collaboration = context.get("collaboration_mode")
         evidence["collaboration_mode"] = collaboration.get("mode") if isinstance(collaboration, dict) else None
+        evidence["model"] = context.get("model")
+        evidence["reasoning_effort"] = context.get("effort") or (
+            collaboration.get("settings", {}).get("reasoning_effort")
+            if isinstance(collaboration, dict) else None)
         return _stage("verified", evidence=evidence)
     return _stage("unobserved", "policy-unobservable")
 
@@ -99,7 +103,9 @@ def inspect_bound_readiness(root, identity, *, expected_turn, requested_policy=N
     """
     activate(root)
     from neurath.hosts.identity import _transcript, active_connection, native_root_turn, snapshot
-    from scripts.agent_harness.session_kernel import SessionId, SessionKernel, SessionLocator
+    from scripts.agent_harness.session_kernel import (
+        ActorLineageAssurance, SessionId, SessionKernel, SessionLocator,
+    )
     from scripts.agent_harness.worktree_registry import WorktreeIdentityResolver, WorktreeRegistry
 
     root = Path(root).resolve()
@@ -110,20 +116,31 @@ def inspect_bound_readiness(root, identity, *, expected_turn, requested_policy=N
               "policy": _stage("unobserved", "policy-unobservable"),
               "ownership": _stage("unobserved", "claim-unobserved")}
     result = {"provider": identity.host, "native_session": identity.session,
-              "actor": identity.actor, "worktree": str(root)}
+              "actor": identity.actor, "is_root": identity.is_root, "worktree": str(root)}
     try:
         locator = SessionLocator.from_worktree(root)
         kernel = SessionKernel(locator)
         state = kernel.inspect(SessionId(identity.session))
         actor = state.actors.get(identity.actor)
         turn = state.foreground_turns.get(identity.actor)
-        if (not identity.is_root or state.session.runtime.value != identity.host
-                or state.session.root_actor_id != identity.actor or actor is None
-                or actor.parent_actor_id is not None or actor.status.value != "active"
+        if (state.session.runtime.value != identity.host or actor is None
+                or actor.status.value != "active"
                 or state.session.status.value != "active" or turn is None
                 or turn.status.value != "active"
                 or canonical([turn.generation, turn.vendor_turn_id]) != expected_turn):
             raise ValueError("native session/actor/foreground binding differs or is inactive")
+        if identity.is_root:
+            if state.session.root_actor_id != actor.id or actor.parent_actor_id is not None:
+                raise ValueError("native root identity differs")
+        else:
+            parent = state.actors.get(state.session.root_actor_id)
+            parent_turn = state.foreground_turns.get(state.session.root_actor_id)
+            if (actor.id == state.session.root_actor_id
+                    or actor.parent_actor_id != state.session.root_actor_id
+                    or actor.lineage_assurance is not ActorLineageAssurance.HOST_ATTESTED
+                    or parent is None or parent.status.value != "active"
+                    or parent_turn is None or parent_turn.status.value != "active"):
+                raise ValueError("native child lacks an active host-attested direct parent")
         if verified_policy_evidence is not None and not _prompt_matches(verified_policy_evidence, turn):
             raise ValueError("native user prompt changed after invocation binding")
         data = snapshot(root, identity.session)
@@ -132,14 +149,18 @@ def inspect_bound_readiness(root, identity, *, expected_turn, requested_policy=N
             raise ValueError("native lifecycle connection is not verified")
         # Do not obtain a transcript from arbitrary caller input or project config.
         path = _transcript(identity.host, data["transcript"], os.environ)
-        if identity.host == "codex":
+        if identity.host == "codex" and identity.is_root:
             if not native_root_turn(root, path, identity.session, turn.vendor_turn_id):
                 raise ValueError("native root turn is not current")
             stages["policy"] = _codex_policy(path, turn.vendor_turn_id, root)
-        else:
+        elif identity.host == "claude-code":
             # Only the core's verified current native invocation can supply this.
             # permission_mode is distinct from OS sandbox confinement.
             stages["policy"] = _claude_policy(verified_policy_evidence, identity, expected_turn)
+        else:
+            # The registered root transcript does not attest the child's mode.
+            # Its current bound invocation and kernel lineage do attest activity.
+            stages["policy"] = _stage("unobserved", "child-policy-unobservable")
         stages["activation"] = _stage("verified", evidence={
             "native_session": identity.session, "actor": identity.actor,
             "native_turn": turn.vendor_turn_id, "generation": turn.generation,
@@ -170,7 +191,10 @@ def inspect_bound_readiness(root, identity, *, expected_turn, requested_policy=N
             stages["activation"] = _stage("failed", "observation-changed")
     except (OSError, ValueError, RuntimeError, KeyError, TypeError) as error:
         stages["activation"] = _stage("failed", "activation-failed", {"error": str(error)})
-    return {**result, **_assess(stages)}
+    assessment = _assess(stages)
+    # Diagnostics include children; provider/verification execution stays root-only.
+    assessment["implementation_ready"] = assessment["implementation_ready"] and identity.is_root
+    return {**result, **assessment}
 
 
 def inspect_readiness(root, *, requested_policy=None):
@@ -217,13 +241,17 @@ def inspect_owned_session(session):
         actor = state.session.root_actor_id
         turn = state.foreground_turns[actor]
         requested = session.policy["requested"]
-        return inspect_bound_readiness(root,
+        report = inspect_bound_readiness(root,
             AgentIdentity(session.provider, session.native_session, str(actor), True),
             expected_turn=canonical([turn.generation, turn.vendor_turn_id]),
             requested_policy=ExecutionPolicy(requested["mode"], requested["approval_policy"],
                 requested.get("approvals_reviewer"), requested.get("collaboration_mode")))
     except (OSError, ValueError, RuntimeError, KeyError) as error:
-        return _assess({"installation": _installation(root),
+        report = _assess({"installation": _installation(root),
                         "activation": _stage("failed", "activation-failed", {"error": str(error)}),
                         "policy": _stage("unobserved", "policy-unobservable"),
                         "ownership": _stage("unobserved", "claim-unobserved")})
+    # The standalone app-server has no supported observation of Desktop saved
+    # project membership or remote usability. Do not infer it from projectId.
+    report["app_access"] = _stage("unverified", "owning-app-bridge-unavailable")
+    return report

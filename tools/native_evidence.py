@@ -47,6 +47,35 @@ def _exact_command(actual, expected):
     return bool(required) and _standalone_argv(actual) == required
 
 
+def _checkpoint_saved(item, thread):
+    """Accept a native CLI or named MCP receipt, never a model's save claim."""
+    if (item.get("type") == "commandExecution"
+            and _standalone_argv(item.get("command", ""))[:3] == (".neurath/run", "memory", "checkpoint")
+            and item.get("exitCode") == 0):
+        try:
+            receipt = json.loads(item.get("aggregatedOutput", ""))
+        except (ValueError, TypeError):
+            return False
+    elif (item.get("type") == "mcpToolCall" and item.get("server") == "neurath_collaboration"
+            and item.get("tool") == "memory_checkpoint" and item.get("status") == "completed"
+            and not item.get("error")):
+        result = item.get("result")
+        if not isinstance(result, dict) or result.get("isError"):
+            return False
+        body = result.get("structuredContent")
+        if (not isinstance(body, dict) or body.get("ok") is not True
+                or body.get("operation") != "memory_checkpoint"):
+            return False
+        receipt = body.get("result")
+    else:
+        return False
+    return (isinstance(receipt, dict) and receipt.get("status") == "saved"
+            and receipt.get("host") == "codex" and receipt.get("session") == thread
+            and receipt.get("authority") == "agent-report"
+            and isinstance(receipt.get("id"), str) and len(receipt["id"]) == 64
+            and all(char in "0123456789abcdef" for char in receipt["id"]))
+
+
 def codex_turn(
     events, thread, turn, commands=(), *, compact=False, protected_denial=False, checkpoint=False
 ):
@@ -88,25 +117,7 @@ def codex_turn(
             saved = False
             for later in scoped[index + 1 :]:
                 if later.get("method") == "item/completed":
-                    command = later["params"]["item"]
-                    if (
-                        command.get("type") == "commandExecution"
-                        and _standalone_argv(command.get("command", ""))[:3]
-                        == (".neurath/run", "memory", "checkpoint")
-                        and command.get("exitCode") == 0
-                    ):
-                        try:
-                            receipt = json.loads(command.get("aggregatedOutput", ""))
-                        except (ValueError, TypeError):
-                            continue
-                        saved = (
-                            isinstance(receipt, dict)
-                            and receipt.get("status") == "saved"
-                            and receipt.get("host") == "codex"
-                            and receipt.get("session") == thread
-                            and receipt.get("authority") == "agent-report"
-                            and len(receipt.get("id", "")) == 64
-                        )
+                    saved = saved or _checkpoint_saved(later["params"]["item"], thread)
                 if saved and later.get("method") == "hook/completed":
                     retry = later["params"]["run"]
                     if (

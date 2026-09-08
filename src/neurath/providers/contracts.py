@@ -30,7 +30,7 @@ class ExecutionPolicy:
     collaboration_mode: str | None = None
 
     def __post_init__(self):
-        if self.mode not in ("read-only", "workspace-write"):
+        if self.mode not in ("read-only", "workspace-write", "danger-full-access"):
             raise ValueError("unsupported access mode")
         if self.approval not in ("never", "on-request", "untrusted"):
             raise ValueError("unsupported approval policy")

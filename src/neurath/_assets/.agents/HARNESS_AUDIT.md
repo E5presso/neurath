@@ -68,45 +68,45 @@ Skill entry 외 필수 reference, path rule, hook protocol, name/path wrapper는
 
 | Surface | Declared acquisition | Source bytes |
 |---|---|---:|
-| Neurath policy + common rules | Claude native source proxy | 51704 |
-| Neurath policy + behavioral | Codex explicit base | 14423 |
+| Neurath policy + common rules | Claude native source proxy | 62649 |
+| Neurath policy + behavioral | Codex explicit base | 25368 |
 | Skill descriptions | Native discovery source | 4828 |
 
 ## Skill entry measurements
 
 | Skill | Entry bytes | Description bytes | Codex base + entry bytes |
 |---|---:|---:|---:|
-| `audit-spec` | 1541 | 112 | 15964 |
-| `automate-qa` | 4527 | 131 | 18950 |
-| `autopilot` | 4234 | 122 | 18657 |
-| `checkpoint` | 1191 | 67 | 15614 |
-| `commit` | 1266 | 86 | 15689 |
-| `create-pr` | 3005 | 70 | 17428 |
-| `create-ticket` | 11314 | 106 | 25737 |
-| `create-worktree` | 1992 | 64 | 16415 |
-| `dependency-audit` | 1235 | 86 | 15658 |
-| `evaluate-harness` | 12189 | 113 | 26612 |
-| `explain-code` | 8189 | 506 | 22612 |
-| `explore-ui` | 3000 | 190 | 17423 |
-| `finish-session` | 3260 | 392 | 17683 |
-| `graphify` | 8944 | 134 | 23367 |
-| `implement-ui` | 2745 | 146 | 17168 |
-| `investigate` | 2791 | 78 | 17214 |
-| `monitor-pr` | 9776 | 111 | 24199 |
-| `optimize-harness` | 3474 | 315 | 17897 |
-| `plan-issues` | 11960 | 307 | 26383 |
-| `pr-review` | 7689 | 92 | 22112 |
-| `process-ticket` | 9040 | 114 | 23463 |
-| `promote-memory` | 2676 | 522 | 17099 |
-| `review-code` | 17854 | 139 | 32277 |
-| `review-ui` | 1795 | 150 | 16218 |
-| `sync-design` | 2030 | 155 | 16453 |
-| `sync-dev-docs` | 984 | 93 | 15407 |
-| `sync-docs` | 2924 | 88 | 17347 |
-| `sync-user-docs` | 972 | 92 | 15395 |
-| `triage-comments` | 10869 | 110 | 25292 |
-| `update-dependencies` | 1639 | 74 | 16062 |
-| `update-project-status` | 953 | 63 | 15376 |
+| `audit-spec` | 1541 | 112 | 26909 |
+| `automate-qa` | 4527 | 131 | 29895 |
+| `autopilot` | 4234 | 122 | 29602 |
+| `checkpoint` | 1191 | 67 | 26559 |
+| `commit` | 1266 | 86 | 26634 |
+| `create-pr` | 3005 | 70 | 28373 |
+| `create-ticket` | 11314 | 106 | 36682 |
+| `create-worktree` | 1992 | 64 | 27360 |
+| `dependency-audit` | 1235 | 86 | 26603 |
+| `evaluate-harness` | 12189 | 113 | 37557 |
+| `explain-code` | 8189 | 506 | 33557 |
+| `explore-ui` | 3000 | 190 | 28368 |
+| `finish-session` | 3260 | 392 | 28628 |
+| `graphify` | 8944 | 134 | 34312 |
+| `implement-ui` | 2745 | 146 | 28113 |
+| `investigate` | 2791 | 78 | 28159 |
+| `monitor-pr` | 9776 | 111 | 35144 |
+| `optimize-harness` | 3474 | 315 | 28842 |
+| `plan-issues` | 11960 | 307 | 37328 |
+| `pr-review` | 7689 | 92 | 33057 |
+| `process-ticket` | 9040 | 114 | 34408 |
+| `promote-memory` | 2676 | 522 | 28044 |
+| `review-code` | 17854 | 139 | 43222 |
+| `review-ui` | 1795 | 150 | 27163 |
+| `sync-design` | 2030 | 155 | 27398 |
+| `sync-dev-docs` | 984 | 93 | 26352 |
+| `sync-docs` | 2924 | 88 | 28292 |
+| `sync-user-docs` | 972 | 92 | 26340 |
+| `triage-comments` | 10869 | 110 | 36237 |
+| `update-dependencies` | 1639 | 74 | 27007 |
+| `update-project-status` | 953 | 63 | 26321 |
 
 ## Join diagnostics
 

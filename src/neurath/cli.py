@@ -34,6 +34,12 @@ def main(arguments=None):
     from neurath.memory.cli import add_commands
 
     add_commands(commands)
+    from neurath.reporting_cli import add_commands as add_report_commands
+
+    add_report_commands(commands)
+    from neurath.updates_cli import add_commands as add_release_commands
+
+    add_release_commands(commands)
     setup = commands.add_parser("setup", help="프로젝트 설치와 진단을 한 번에 실행")
     setup.add_argument("target", nargs="?", type=Path, help="대상 Git root (기본: 현재 폴더)")
     setup.add_argument("--profile", choices=PROFILES)
@@ -42,6 +48,8 @@ def main(arguments=None):
         "--dry-run", action="store_true", help="대상 파일을 쓰지 않고 변경 목록 확인"
     )
     setup.add_argument("--json", action="store_true", help="자동화용 JSON 결과")
+    setup.add_argument("--auto-report", choices=("yes", "no"),
+                       help="사용자가 동의한 Neurath 자동 보고 설정; 생략하면 기존 선택 유지")
     plan = commands.add_parser("plan")
     plan.add_argument(
         "--action", choices=["install", "update", "uninstall", "restore"], default="install"
@@ -88,18 +96,27 @@ def main(arguments=None):
     route = provider.add_parser("route")
     route.add_argument("provider", choices=HOSTS)
     route.add_argument("operation", choices=("create", "discover", "connect", "status", "message", "resume", "cancel", "peer"))
-    for field in ("native-session", "model", "project-id", "message-id"):
+    for field in ("native-session", "model", "project-id", "message-id", "worktree", "assignment"):
         route.add_argument("--" + field, default="")
     route.add_argument("--requested-json", default="{}")
     provider_run = provider.add_parser("run")
     provider_run.add_argument("--worktree", required=True)
+    provider_run.add_argument("--project-id", default="")
     provider_run.add_argument("--assignment", required=True)
+    provider_run.add_argument("--provider", choices=("codex", "claude-code"), default="codex")
     provider_run.add_argument("--model", default="")
-    provider_run.add_argument("--mode", choices=("read-only", "workspace-write"), default="read-only")
-    provider_run.add_argument("--approval-policy", choices=("never", "on-request", "untrusted"), default="never")
+    provider_run.add_argument("--mode", choices=("inherit", "read-only", "workspace-write", "danger-full-access", "native"), default="inherit")
+    provider_run.add_argument("--permission-mode", choices=("plan", "dontAsk", "default", "acceptEdits", "bypassPermissions", "auto"), default="")
+    provider_run.add_argument("--plan-id", default="")
+    provider_run.add_argument("--plan-revision", type=int, default=1)
+    provider_run.add_argument("--assignment-revision", type=int, default=1)
+    provider_run.add_argument("--reasoning-effort", default="")
+    provider_run.add_argument("--approval-policy", choices=("never", "on-request", "untrusted"), default="")
     provider_run.add_argument("--approvals-reviewer", choices=("user", "auto_review"), default="")
     provider_run.add_argument("--collaboration-mode", choices=("default", "plan"), default="")
-    provider_run.add_argument("--timeout", type=float, default=300)
+    provider_run.add_argument("--key", default="")
+    for operation in ("status", "cancel"):
+        provider.add_parser(operation).add_argument("run_id")
     delegate = commands.add_parser("delegate")
     delegate_commands = delegate.add_subparsers(dest="delegate_command", required=True)
     prepare = delegate_commands.add_parser("prepare")
@@ -144,21 +161,39 @@ def main(arguments=None):
             )
             return 0
         root = repository((args.target or args.root) if args.command == "setup" else args.root)
+        if args.command == "releases":
+            from neurath.updates_cli import run as run_releases
+
+            emit(run_releases(root, args))
+            return 0
+        if args.command == "report":
+            from neurath.reporting_cli import run as run_report
+
+            result = run_report(root, args)
+            emit(result)
+            return 1 if isinstance(result, dict) and result.get("status") == "uncertain" else 0
         if args.command == "provider":
+            if args.provider_command in ("status", "cancel"):
+                from neurath.runtime.tasks import execute
+
+                emit(execute(root, "provider_" + args.provider_command, {"run_id": args.run_id},
+                             identity=_native_or_terminal(root)))
+                return 0
             if args.provider_command == "run":
                 from neurath.runtime.provider_execution import run
 
                 fields = {name: getattr(args, name) for name in ("worktree", "assignment", "model",
-                    "mode", "approval_policy", "approvals_reviewer", "collaboration_mode", "timeout")}
+                    "provider", "mode", "permission_mode", "approval_policy", "approvals_reviewer", "collaboration_mode", "project_id", "key",
+                    "plan_id", "plan_revision", "assignment_revision", "reasoning_effort")}
                 result = run(root, fields, identity=_native_or_terminal(root))
                 emit(result)
-                return 0 if result["status"] == "completed" else 1
+                return 0 if result["status"] in {"accepted", "starting", "completed"} else 1
             from neurath.runtime.tasks import provider_task
 
             fields = {"provider": args.provider}
             if args.provider_command == "route":
                 fields.update({name: getattr(args, name) for name in (
-                    "operation", "native_session", "model", "project_id", "message_id")})
+                    "operation", "native_session", "model", "project_id", "message_id", "worktree", "assignment")})
                 fields["requested"] = json.loads(args.requested_json)
             emit(provider_task("provider_" + args.provider_command, fields))
             return 0
@@ -189,10 +224,17 @@ def main(arguments=None):
             return 0
         if args.command == "setup":
             from neurath.install.setup import setup_project, show_setup
+            from neurath.reporting import Reporting, QUESTION
+
+            decision = None if args.auto_report is None else args.auto_report == "yes"
+            if (decision is None and not args.dry_run and not args.json and sys.stdin.isatty()
+                    and Reporting(root).status()["consent_required"]):
+                answer = input(QUESTION + " [y/N]: ").strip().lower()
+                decision = answer in {"y", "yes"}
 
             result = setup_project(
                 root, profile=args.profile, hosts=args.hosts, dry_run=args.dry_run,
-                skill_prefix=args.skill_prefix,
+                skill_prefix=args.skill_prefix, auto_report=decision,
             )
             emit(result) if args.json else show_setup(result)
             return 1 if result["status"] == "failed" else 0

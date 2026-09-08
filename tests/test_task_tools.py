@@ -23,7 +23,25 @@ def test_inventory_is_task_shaped_and_preserves_legacy():
     tools = {tool["name"]: tool for tool in result["result"]["tools"]}
     assert set(tools) == {"agent", "session_status", "provider_capabilities", "provider_route", "provider_run", "memory_recall", "memory_checkpoint", "verification_run",
         "collaboration_discover", "collaboration_inbox", "collaboration_send",
-        "collaboration_reply", "newsroom_headlines", "newsroom_read", "newsroom_publish"}
+        "collaboration_reply", "newsroom_headlines", "newsroom_read", "newsroom_publish",
+        "provider_status", "provider_cancel", "collaboration_assign", "collaboration_accept",
+        "collaboration_report", "collaboration_task", "collaboration_message", "collaboration_ack",
+        "collaboration_forward", "collaboration_submitted",
+        "session_inspect", "turn_inspect", "worktree_inspect", "worktree_claim", "worktree_release",
+        "material_prepare", "material_read", "material_resolve", "material_abandon",
+        "delivery_status", "delivery_redrive", "provider_recover",
+        "provider_models", "provider_plan", "provider_plan_read",
+        "workflow_start", "workflow_advance", "workflow_finalize", "phase_start", "phase_current",
+        "phase_complete", "phase_finalize", "adaptive_read", "adaptive_preflight", "adaptive_replace",
+        "adaptive_override_goal", "delegation_prepare", "delegation_assign", "evaluation_prepare",
+        "evaluation_read", "evaluation_execute", "evaluation_report", "evaluation_consume",
+        "learning_status", "learning_history", "learning_pending", "learning_defer",
+        "releases_status", "releases_check", "releases_notice", "releases_prepare", "releases_apply",
+        "releases_recover", "releases_choose", "reporting_status", "reporting_list", "reporting_read",
+        "reporting_prepare", "reporting_submit", "reporting_reconcile", "reporting_consent", "reporting_approve",
+        "collaboration_register", "collaboration_conversation", "collaboration_close", "collaboration_subscribe",
+        "collaboration_unsubscribe", "collaboration_publish", "newsroom_revise", "newsroom_comment",
+        "newsroom_peers", "newsroom_seen", "maintenance_choice_prepare", "maintenance_choice_read"}
     for name, tool in tools.items():
         if name != "agent":
             assert "argv" not in tool["inputSchema"]["properties"]
@@ -190,6 +208,9 @@ def test_structured_and_legacy_messaging_share_conversation(sessions):
     legacy = bound_call(sessions, "agent", {"argv": ["agent", "send", "--to", inputs["to"],
         "--message", inputs["message"], "--key", inputs["key"]]}, invocation="legacy")
     assert mcp.call_tool(root, legacy) == sent
+    lookup = bound_call(sessions, "collaboration_message", {"message_id": sent["id"]},
+                        invocation="body", host="claude-code", session="ui")
+    assert mcp.call_tool(root, lookup, name="collaboration_message")["body"] == inputs["message"]
     reply = bound_call(sessions, "collaboration_reply", {"message_id": sent["id"], "message": "Reviewed", "key": "answer"},
                        invocation="reply", host="claude-code", session="ui")
     result = mcp.call_tool(root, reply, name="collaboration_reply")
@@ -326,8 +347,9 @@ def test_provider_task_route_shares_cli_and_never_creates_a_session(sessions, mo
     bound = bound_call(sessions, "provider_route", inputs)
     report = mcp.call_tool(root, bound, name="provider_route")
     assert report["authority"] == "routing-only"
-    assert report["status"] == "unsupported-setting"
-    assert report["next_operation"] is None and report["implementation_dispatched"] is False
+    assert report["status"] == "preparation-only"
+    assert report["next_operation"]["tool"] == "create_thread"
+    assert report["mode"]["effective"] is None and report["implementation_dispatched"] is False
     emitted = []
     monkeypatch.setattr("neurath.cli.emit", emitted.append)
     assert main(["--root", str(root), "provider", "route", "codex", "create",

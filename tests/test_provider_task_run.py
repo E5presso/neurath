@@ -14,7 +14,8 @@ def test_provider_run_exposes_structured_creation_inputs():
     tools = mcp.response(None, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})["result"]["tools"]
     tool = next(item for item in tools if item["name"] == "provider_run")
     fields = tool["inputSchema"]["properties"]
-    assert {"worktree", "assignment", "mode", "approval_policy", "timeout"} <= fields.keys()
+    assert {"worktree", "assignment", "mode", "approval_policy", "key"} <= fields.keys()
+    assert "timeout" not in fields
     assert not {"actor", "session", "argv", "available_tools"} & fields.keys()
 
 
@@ -28,7 +29,7 @@ def test_provider_run_never_uses_missing_caller_policy_as_permission(sessions, m
         mcp.call_tool(root, bound, name="provider_run")
 
 
-@pytest.mark.parametrize("status", ["completed", "timed-out"])
+@pytest.mark.parametrize("status", ["accepted", "failed"])
 def test_provider_run_cli_and_mcp_share_results(sessions, monkeypatch, status):
     from neurath.cli import main
 
@@ -37,6 +38,11 @@ def test_provider_run_cli_and_mcp_share_results(sessions, monkeypatch, status):
     native = mcp.AgentIdentity("codex", "api", "codex:session:api")
     monkeypatch.setattr("neurath.agents.identity.current_agent", lambda root: native)
     monkeypatch.setattr("neurath.runtime.tasks._mcp_execution_policy", lambda *a: None)
+    # This adapter-parity fixture substitutes the separately tested admission
+    # boundary, not the native-policy failure test above.
+    monkeypatch.setattr("neurath.runtime.model_tasks.observed_policy", lambda *a: {})
+    monkeypatch.setattr("neurath.runtime.model_tasks.admitted_request", lambda root, identity, fields, policy: fields)
+    monkeypatch.setattr("neurath.runtime.provider_policy.resolve_policy", lambda root, identity, fields, policy: fields)
     calls = []
     report = {"status": status, "created": {"native_session": "provider-owned-fixture"}}
 
@@ -44,15 +50,16 @@ def test_provider_run_cli_and_mcp_share_results(sessions, monkeypatch, status):
         calls.append((args, kwargs))
         return report
 
-    monkeypatch.setitem(sys.modules, "neurath.providers.execution", SimpleNamespace(run=run))
+    monkeypatch.setattr("neurath.providers.jobs.start", run)
     emitted = []
     monkeypatch.setattr("neurath.cli.emit", emitted.append)
     assert main(["--root", str(root), "provider", "run", "--worktree", str(root),
-                 "--assignment", "Read only"]) == (0 if status == "completed" else 1)
+                 "--assignment", "Read only"]) == (0 if status == "accepted" else 1)
     bound = bound_call(sessions, "provider_run", {"worktree": str(root), "assignment": "Read only"})
     result = mcp.response(root, {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
         "params": {"name": "provider_run", "arguments": bound}})["result"]
     assert result["structuredContent"]["result"] == emitted[-1] == report
-    assert result["isError"] is (status != "completed")
+    assert result["isError"] is (status != "accepted")
     assert calls[0] == calls[1]
-    assert calls[0][1]["model"] is None
+    assert calls[0][0][2]["model"] is None
+    assert calls[0][0][2]["project_id"] is None

@@ -185,7 +185,7 @@ def checkpoint_request(root, host, payload):
             "If the task tool is unavailable or cannot preserve native execution policy, use the host shell's project-bound .neurath/run verify check. "
             "This is routine harness maintenance; no separate user request to learn or verify is required. "
             "If the current user explicitly forbids further checks, or the check cannot run with existing permissions and tools, "
-            'record the concrete reason with .neurath/run learning defer --reason "..." and leave the candidate unvalidated. '
+            'record the concrete reason with learning_defer(reason="...", key=STABLE_KEY) and leave the candidate unvalidated. '
             "Do not change permissions or weaken the check. A failed check is recorded without automatic retry for the same evidence. "
             "After the check or deferral, save the handoff and finish the response."
         )

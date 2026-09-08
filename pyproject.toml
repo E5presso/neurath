@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Portable, evidence-preserving agent harness for Codex and Claude Code"
 readme = "README.md"
 requires-python = ">=3.14,<3.15"
-dependencies = []
+dependencies = ["claude-agent-sdk>=0.2.152,<0.3"]
 classifiers = ["Operating System :: POSIX :: Linux", "Operating System :: MacOS"]
 
 [dependency-groups]

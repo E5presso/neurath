@@ -23,6 +23,10 @@ setup requirements for users. Human host authentication and trust decisions rema
 
 [Shared task tools and CLI compatibility](task-tools.md)
 
+Implementation contracts: [Provider collaboration](collaboration-contract.md) ·
+[Dynamic model planning and MCP operation](model-planning-mcp.md).
+These record the target behavior and acceptance scenarios; they do not claim the migration is complete.
+
 ## Start with a bounded contribution
 
 Describe the problem and the observable result you want to change. A useful bug report includes

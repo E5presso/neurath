@@ -624,11 +624,20 @@ def prepare_delegation(root, delegation_id, assignment, environment=None):
         os.environ if environment is None else environment
     )
     handle = StateHandle.attach(_locator(root), binding)
-    if not binding.is_root:
+    return prepare_bound_delegation(root, handle, delegation_id, assignment)
+
+
+def prepare_bound_delegation(root, handle, delegation_id, assignment):
+    """Native-bound core operation; no environment or caller identity input."""
+    from scripts.agent_harness.session_kernel import DelegationId
+    DelegationId(delegation_id)
+    if len(delegation_id) > 128 or not assignment.strip() or len(assignment.encode()) > 8192:
+        raise ValueError("delegation id or assignment exceeds its bounds")
+    if handle.actor_id != handle.inspect().session.root_actor_id:
         raise ValueError("only the current root can prepare a direct-child delegation")
     state = handle.inspect()
     foreground = _foreground(state)
-    with journal(root, str(binding.session_id)) as data:
+    with journal(root, str(handle.session_id)) as data:
         intents = data.setdefault("intents", {})
         candidate = {"assignment": assignment, "foreground": foreground, "call_id": None}
         existing = intents.get(delegation_id)
@@ -644,7 +653,7 @@ def prepare_delegation(root, delegation_id, assignment, environment=None):
     return {
         "status": "prepared",
         "delegation_id": delegation_id,
-        "session_id": str(binding.session_id),
+        "session_id": str(handle.session_id),
     }
 
 
@@ -780,7 +789,7 @@ def resume_child(root, host, payload, environment):
         return False
     from scripts.agent_harness.session_kernel import (
         ActorId, ActorLineageAssurance, ActorResumed, ActorStatus,
-        ForegroundTurnStatus, RevisionConflict, SessionKernel,
+        ForegroundTurnPrompted, ForegroundTurnStatus, RevisionConflict, SessionKernel,
     )
 
     session, child = payload["session_id"], payload["agent_id"]
@@ -824,14 +833,23 @@ def resume_child(root, host, payload, environment):
 
     if native_turn == turn.vendor_turn_id:
         return already_resumed(state)
+    if actor.status is ActorStatus.ACTIVE:
+        if (turn.status is not ForegroundTurnStatus.CLOSED
+                or actor.lineage_assurance is not ActorLineageAssurance.HOST_ATTESTED
+                or actor.parent_actor_id != state.session.root_actor_id):
+            return False
+        # Some native follow-ups deliver PreToolUse without UserPromptSubmit.
+        # The fresh host turn reopens execution, not human prompt authority.
+        event = ForegroundTurnPrompted(
+            session_id=state.session.id, actor_id=actor_id, vendor_turn_id=native_turn,
+            prompt_digest=None, authority_context=None,
+            idempotency_key=f"native-child-followup:{child}:{native_turn}")
+    else:
+        event = ActorResumed(session_id=state.session.id, actor_id=actor_id,
+            parent_actor_id=state.session.root_actor_id, expected_turn_revision=turn.revision,
+            vendor_turn_id=native_turn, idempotency_key=f"native-child-resume:{child}:{native_turn}")
     try:
-        SessionKernel(_locator(root)).apply(
-            ActorResumed(session_id=state.session.id, actor_id=actor_id,
-                         parent_actor_id=state.session.root_actor_id,
-                         expected_turn_revision=turn.revision, vendor_turn_id=native_turn,
-                         idempotency_key=f"native-child-resume:{child}:{native_turn}"),
-            expected_revision=state.revision,
-        )
+        SessionKernel(_locator(root)).apply(event, expected_revision=state.revision)
     except RevisionConflict:
         return already_resumed(_state(root, session), turn.generation + 1)
     return True

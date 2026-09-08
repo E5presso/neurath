@@ -57,10 +57,14 @@ def test_conversation_scope_budget_and_close(peers):
     first = store.send(a, b, "Question", key="one", max_messages=2)
     with pytest.raises(ValueError, match="participant"):
         store.conversation(c, first["conversation"])
+    store.message(b, first["id"])
     answer = store.reply(b, first["id"], "Answer", key="two")
+    store.message(a, answer["id"])
     with pytest.raises(ValueError, match="budget"):
         store.reply(a, answer["id"], "Again", key="three")
-    store.close(b, first["conversation"])
+    assert store.close(b, first["conversation"])["status"] == "pending"
+    store.acknowledge(a, answer["id"])
+    assert store.close(b, first["conversation"])["status"] == "closed"
     with pytest.raises(ValueError, match="closed"):
         store.reply(a, answer["id"], "Again", key="four")
 
@@ -132,6 +136,8 @@ def test_targeted_inbox_filters_before_limit_and_closed_conversation_cannot_wake
         store.send(a, b, "Earlier", key=f"earlier-{i}")
     last = store.send(a, b, "Targeted", key="targeted")
     assert store.inbox(b, limit=1, conversation=last["conversation"])[0]["id"] == last["id"]
+    assert store.close(b, last["conversation"])["status"] == "pending"
+    store.acknowledge(b, last["id"])
     store.close(b, last["conversation"])
     with pytest.raises(ValueError, match="closed"):
         store.forward(a, last["id"])

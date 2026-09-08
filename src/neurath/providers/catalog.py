@@ -45,6 +45,6 @@ def capabilities(provider, *, available_tools=()):
                        "claude agents --json; short job ID differs from native session UUID; policy unobserved"),
                    row("claude-desktop", set(),
                        "no documented external Desktop session-control API implemented", external=False),
-                   row("claude-agent-sdk", set(),
-                       "official SDK exists but is not installed or implemented by this adapter")]
+                   row("claude-agent-sdk", {"create", "message", "status", "cancel"},
+                       "installed official SDK; owned streaming client; explicit native permission mode and native hook readiness; OS sandbox remains separately observed")]
     return result

@@ -122,3 +122,98 @@ for line in sys.stdin:
             host.event(lambda _: True, timeout=0.01)
         assert host.request("read", {}) == {}
         assert not host._uncertain
+
+
+def test_control_request_completes_while_native_event_reader_is_idle(server):
+    import threading
+
+    body = '''
+for line in sys.stdin:
+    request = json.loads(line)
+    if 'id' not in request:
+        continue
+    print(json.dumps({'id': request['id'], 'result': {}}), flush=True)
+    if request['method'] == 'turn/steer':
+        print(json.dumps({'method': 'message/submitted', 'params': {}}), flush=True)
+'''
+    with server(body) as host:
+        entered, finished = threading.Event(), threading.Event()
+        observed = []
+        original = host._next
+        def waiting(*args, **kwargs):
+            entered.set()
+            return original(*args, **kwargs)
+        host._next = waiting
+        def listen():
+            try:
+                observed.append(host.event(lambda _: True, timeout=None))
+            except BaseException as error:
+                observed.append(error)
+        listener = threading.Thread(target=listen, daemon=True)
+        listener.start()
+        assert entered.wait(1)
+        def steer():
+            try:
+                host.request("turn/steer", {})
+            finally:
+                finished.set()
+        sender = threading.Thread(target=steer, daemon=True)
+        sender.start()
+        assert finished.wait(1), "an idle event consumer blocked the steering request"
+        listener.join(1)
+        assert observed[0]["method"] == "message/submitted"
+
+
+def test_close_wakes_idle_event_consumer_and_future_reads_fail(server):
+    import threading
+
+    body = '''
+for line in sys.stdin:
+    request = json.loads(line)
+    if 'id' in request:
+        print(json.dumps({'id': request['id'], 'result': {}}), flush=True)
+'''
+    host = server(body)
+    errors = []
+    def consume():
+        try:
+            host.event(lambda _: True, timeout=None)
+        except EOFError as error:
+            errors.append(error)
+    reader = threading.Thread(target=consume, daemon=True)
+    reader.start()
+    host.close()
+    reader.join(1)
+    assert not reader.is_alive() and len(errors) == 1
+    with pytest.raises(EOFError):
+        host.event(lambda _: True, timeout=None)
+
+
+def test_rpc_deadline_includes_a_server_that_stops_reading_stdin(server):
+    import threading
+
+    body = '''
+request = json.loads(sys.stdin.readline())
+print(json.dumps({'id': request['id'], 'result': {}}), flush=True)
+time.sleep(30)
+'''
+    host = server(body)
+    host.timeout = .2
+    failures, finished = [], threading.Event()
+    def write():
+        try:
+            host.request("turn/start", {"input": "x" * (2 * 1024 * 1024)})
+        except BaseException as error:
+            failures.append(error)
+        finally:
+            finished.set()
+    sender = threading.Thread(target=write, daemon=True)
+    sender.start()
+    try:
+        assert finished.wait(2), "pipe write escaped the RPC deadline"
+        assert isinstance(failures[0], TimeoutError)
+        assert host._uncertain
+    finally:
+        host.close()
+        sender.join(1)
+    assert host.process.poll() is not None

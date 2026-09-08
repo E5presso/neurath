@@ -351,12 +351,14 @@ class ConsumedDelegationEvidenceReader:
         *,
         kind: str,
         reviewed_head_sha: str | None = None,
+        delegation_id: str | None = None,
     ) -> ConsumedDelegationEvidenceSnapshot:
         """Selector와 일치하는 unique consumed evidence를 exact session에서 읽습니다.
 
         Args:
             kind: Assignment에 기록된 exact delegation kind입니다.
             reviewed_head_sha: Review kind를 좁힐 optional full lowercase commit SHA입니다.
+            delegation_id: 명시한 consumed review 하나를 선택합니다. 생략하면 unique selector를 요구합니다.
 
         Returns:
             Workflow projection, assignment, artifact가 결합된 immutable snapshot입니다.
@@ -388,17 +390,43 @@ class ConsumedDelegationEvidenceReader:
             raise DelegationEvidenceInvalid("workflow payload is missing skill_state")
         self._canonical_json(skill_state, "skill_state")
 
+        selected_id = None if delegation_id is None else DelegationId(
+            self._nonblank(delegation_id, "delegation_id")
+        )
+        if selected_id is not None:
+            selected = state.delegations.get(selected_id)
+            if selected is None:
+                raise DelegationEvidenceNotFound(f"delegation is missing: {selected_id}")
+            candidates = (selected,)
+        else:
+            candidates = tuple(state.delegations.values())
+
         matches: list[tuple[DelegationRecord, Mapping[str, object]]] = []
-        for delegation in state.delegations.values():
+        for delegation in candidates:
             if delegation.owner_actor_id != self._handle.actor_id:
+                if selected_id is not None:
+                    raise DelegationEvidenceInvalid("selected delegation has a different owner")
                 continue
+            if selected_id is None:
+                # Generic/native assignments are not review evidence. Select
+                # candidates before applying the strict review-assignment codec.
+                try:
+                    selector = json.loads(delegation.assignment)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(selector, dict) or (
+                    selector.get("workflow_id") != str(self._workflow_id)
+                    or selector.get("kind") != selected_kind
+                    or selector.get("reviewed_head_sha") != reviewed_head_sha
+                ):
+                    continue
             assignment = self._assignment(delegation)
-            if assignment.get("workflow_id") != str(self._workflow_id):
-                continue
-            if assignment.get("kind") != selected_kind:
-                continue
-            if assignment.get("reviewed_head_sha") != reviewed_head_sha:
-                continue
+            if (
+                assignment.get("workflow_id") != str(self._workflow_id)
+                or assignment.get("kind") != selected_kind
+                or assignment.get("reviewed_head_sha") != reviewed_head_sha
+            ):
+                raise DelegationEvidenceInvalid("selected delegation does not match workflow/kind/head")
             matches.append((delegation, assignment))
 
         if not matches:

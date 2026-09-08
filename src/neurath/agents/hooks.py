@@ -7,11 +7,57 @@ from neurath.agents.store import AgentIdentity, MessageStore
 from neurath.memory.store import canonical
 
 
+def native_turn(root, identity):
+    from scripts.agent_harness.session_kernel import ActorId, SessionId, SessionKernel
+
+    from neurath.hosts.identity import _locator
+
+    state = SessionKernel(_locator(root)).inspect(SessionId(identity.session))
+    turn = state.foreground_turns.get(ActorId(identity.actor))
+    if turn is None or turn.status.value != "active":
+        raise ValueError("task acceptance requires an active native turn")
+    return canonical([turn.generation, turn.vendor_turn_id])
+
+
+def lifecycle_event(store, identity, state, actor, payload):
+    from neurath.agents.lifecycle import TaskLifecycle
+
+    tasks = TaskLifecycle(store)
+    event = payload.get("hook_event_name")
+    turn = state.foreground_turns.get(actor.id)
+    turn_key = canonical([turn.generation, turn.vendor_turn_id]) if turn else ""
+    if not identity.is_root and actor.parent_actor_id is not None and turn:
+        parent = state.actors.get(actor.parent_actor_id)
+        if parent is not None:
+            issuer = AgentIdentity(identity.host, identity.session, str(parent.id),
+                                   parent.id == state.session.root_actor_id)
+            # Parent lineage was attested by the host before this hook was admitted.
+            store.register(issuer, status="active" if participation(state, parent)[0] else "idle")
+            task = tasks.bind(issuer.address, identity.address,
+                key=f"native:{identity.actor}:{turn.generation}", transport="native-subagent")
+            if task["state"] == "assigned" and event not in {"SubagentStop", "SessionEnd"}:
+                tasks.accept(identity.address, task["id"], turn_key)
+    target_state = {"Stop": "completed", "SubagentStop": "completed", "SessionEnd": "disconnected",
+                    "PermissionDenied": "waiting", "PostToolUseFailure": "error"}.get(event)
+    if not target_state:
+        return
+    for task in tasks.active(identity.address):
+        if task["transport"] not in {"native-subagent", "peer-assignment"} or task["turn"] != turn_key:
+            continue
+        tasks.emit(identity.address, task["id"], target_state,
+                   key=canonical([event, turn_key, payload.get("tool_use_id")]),
+                   detail="Observed native " + event + "; implementation correctness is not attested.")
+
+
 def native_peer(root, host, payload):
-    from neurath.hosts.identity import _locator, snapshot
     from scripts.agent_harness.session_kernel import (
-        ActorId, ActorLineageAssurance, SessionId, SessionKernel,
+        ActorId,
+        ActorLineageAssurance,
+        SessionId,
+        SessionKernel,
     )
+
+    from neurath.hosts.identity import _locator, snapshot
 
     session = payload.get("session_id")
     if not session:
@@ -25,9 +71,9 @@ def native_peer(root, host, payload):
     ):
         return None
     # Only the already registered native transcript may refresh the root endpoint.
-    if payload.get("transcript_path") and not payload.get("agent_id"):
-        if str(Path(payload["transcript_path"]).resolve()) != registered["transcript"]:
-            return None
+    if (payload.get("transcript_path") and not payload.get("agent_id")
+            and str(Path(payload["transcript_path"]).resolve()) != registered["transcript"]):
+        return None
     actor_id = (
         ActorId(f"{host}:{payload['agent_id']}")
         if payload.get("agent_id")
@@ -60,6 +106,7 @@ def peer_event(root, host, payload, output):
     event = payload.get("hook_event_name")
     status = {"Stop": "idle", "SubagentStop": "paused", "SessionEnd": "paused"}.get(event, "active")
     store.register(identity, status=status)
+    lifecycle_event(store, identity, state, actor, payload)
     active, turn = participation(state, actor)
     if event == "SessionStart" and payload.get("source") != "compact":
         active = False  # A resumed process has not yet accepted its new prompt.
