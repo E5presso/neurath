@@ -1,6 +1,6 @@
 # Neurath harness architecture
 
-<!-- date: 2026-09-08; synced_from: 5e8d761c276ceb8ddc05dcf239bb2d020f4b0da5; scope: source architecture, not live-host certification -->
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
 
 **English** · [한국어](../../ko/contributing/architecture.md)
 
@@ -9,6 +9,45 @@
 Neurath is an **independent harness kit connecting coding-agent work to project context, actual host authority, and verifiable execution records**. While the agent decides its next action, the harness tracks who acts in which worktree, what evidence exists, and whether it permits the next transition.
 
 This documentation describes the current source. Implemented behavior, properties covered by tests, and behavior observed on installed hosts are distinct evidence scopes. Diagrams summarize principal responsibilities and flows rather than every function call or database schema.
+
+## CLI foundation and MCP agent interface
+
+![The stdio MCP interface and shared CLI foundation](../../assets/stdio-mcp-en.svg)
+
+Neurath cannot assume that a model was pretrained on its CLI syntax. Discovering subcommands and flags
+through help over several turns adds exploration calls and tokens, while string assembly creates opportunities
+for invalid options and argument combinations. The CLI and shared domain services therefore remain the
+execution foundation, while **every agent-facing harness capability is exposed as a named MCP operation
+with typed inputs, constraints and structured results**.
+
+Wrapping the same command string in `agent(argv)` does not achieve this design. Agents choose operations
+such as `phase_current`, `phase_evidence_prepare` and `monitor_start`, then provide structured arguments.
+Internal adapters invoke the existing kernel, installation and verification services. Tool count alone does
+not establish efficiency gains: help exploration, invalid inputs, retries and total tokens require measurement.
+
+```mermaid
+flowchart TB
+    A[Agent selects an operation] --> S[Tool name and JSON input schema]
+    S --> I[stdin: JSON-RPC request]
+    I --> M[stdio MCP server]
+    H[Native hook binds caller and exact input] --> M
+    M --> P[Input, policy and ownership checks]
+    P --> D[Shared domain services]
+    C[CLI: execution foundation and compatibility] --> D
+    D --> R[Structured result or error]
+    R --> O[stdout: JSON-RPC responses only]
+    O --> A
+    M -. Diagnostics .-> E[stderr]
+```
+
+The transport is **stdio**: requests arrive on stdin and responses leave on stdout. Only protocol frames
+belong on stdout; diagnostics go to stderr. Initial bootstrap, server process startup and host event callbacks
+are execution infrastructure, distinct from the agent interface for everyday harness operations.
+Project source editing, Git and builds continue to use the host's existing tools.
+
+Migration covers implementation, installed policy and skills, notifications and recovery guidance, and public
+documentation together. Operations whose current host restrictions cannot be enforced return a specific
+unsupported result. A named schema is not evidence of successful execution, and CLI replay is not a recovery bypass.
 
 ## Reading paths
 

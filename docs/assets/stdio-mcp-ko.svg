@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
+<title id="title">에이전트는 도구 계약으로 호출합니다</title><desc id="desc">CLI와 공통 서비스는 기반으로 유지하고, 명명된 stdio MCP가 사용 표면을 제공합니다.</desc>
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#52657c"/></marker></defs>
+<rect width="1200" height="560" rx="20" fill="#f4f7fc"/>
+<g font-family="Arial, 'Apple SD Gothic Neo', sans-serif" fill="#152d4a">
+<text x="48" y="57" font-size="29" font-weight="700">에이전트는 도구 계약으로 호출합니다</text>
+<text x="48" y="92" font-size="17" fill="#52657c">CLI와 공통 서비스는 기반으로 유지하고, 명명된 stdio MCP가 사용 표면을 제공합니다.</text>
+<rect x="48" y="150" width="288" height="155" rx="16" fill="#e3edf9" stroke="#8bacd3"/>
+<text x="72" y="188" font-size="21" font-weight="700">에이전트</text><text x="72" y="228" font-size="17">목적에 맞는 도구 선택</text><text x="72" y="260" font-size="16">이름 · 타입 · 필수 필드</text>
+<rect x="448" y="150" width="288" height="155" rx="16" fill="#d7f2e8" stroke="#74b59d"/>
+<text x="472" y="188" font-size="21" font-weight="700">stdio MCP</text><text x="472" y="228" font-size="16">실제 호출자 · 정책 검사</text><text x="472" y="260" font-size="16">JSON-RPC 요청과 결과</text>
+<rect x="848" y="150" width="304" height="155" rx="16" fill="#e9e2f6" stroke="#ac98c9"/>
+<text x="872" y="188" font-size="18" font-weight="700">공통 도메인 서비스</text><text x="872" y="228" font-size="15">상태 · 검증 · 설치 · 협업</text><text x="872" y="260" font-size="16">기존 계약과 권위 유지</text>
+<path d="M340 204H438" stroke="#52657c" stroke-width="2" marker-end="url(#arrow)"/><text x="346" y="191" font-size="12">stdin: 요청</text>
+<path d="M440 272H342" stroke="#52657c" stroke-width="2" marker-end="url(#arrow)"/><text x="343" y="291" font-size="12">stdout: 응답</text>
+<path d="M742 224H838" stroke="#52657c" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="848" y="358" width="304" height="119" rx="16" fill="#fff0da" stroke="#cda972"/>
+<text x="872" y="393" font-size="20" font-weight="700">CLI 기반</text><text x="872" y="427" font-size="15">내부 실행과 저장 호출 호환</text><text x="872" y="454" font-size="14">에이전트의 argv 탐색 경로 아님</text>
+<path d="M1000 353V314" stroke="#52657c" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M592 312V371" stroke="#52657c" stroke-width="2" stroke-dasharray="5 5" marker-end="url(#arrow)"/>
+<text x="505" y="404" font-size="17">stderr: 진단 로그</text>
+<text x="48" y="520" font-size="18" fill="#52657c">하나의 실행 기반 · 구조화된 호출 · 관측한 결과로 판단</text>
+</g></svg>

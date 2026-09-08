@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Protocol
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
@@ -944,11 +946,11 @@ class GitHubSnapshotClient:
         return nodes if isinstance(nodes, list) else []
 
     def _json_command(self, command: list[str]) -> object:
-        result = subprocess.run(command, check=True, capture_output=True, text=True)
+        result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=30)
         return json.loads(result.stdout)
 
     def _text_command(self, command: list[str]) -> str:
-        result = subprocess.run(command, check=True, capture_output=True, text=True)
+        result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=30)
         return result.stdout.strip()
 
 
@@ -2033,6 +2035,7 @@ class LocalPrMonitor:
         launcher: str = "process",
         resume_unavailable_reason: str = "",
         resume_probe_output: str = "",
+        resume_adapter: ResumeAdapter | None = None,
     ) -> None:
         """Runtime authority와 canonical local observation path에 monitor를 고정합니다.
 
@@ -2048,6 +2051,7 @@ class LocalPrMonitor:
             launcher: Observation receipt에 기록할 실제 process manager 종류입니다.
             resume_unavailable_reason: Collector-only fallback을 설명하는 typed reason입니다.
             resume_probe_output: Resume capability probe의 제한된 진단 receipt입니다.
+            resume_adapter: Authenticated service adapter supplied by the MCP automation boundary.
 
         Raises:
             ValueError: Monitor runtime identity가 비어 있을 때 발생합니다.
@@ -2071,7 +2075,7 @@ class LocalPrMonitor:
         self._workflow_state = MonitorWorkflowState(handle, workflow_id)
         self._delegations = MonitorDelegationReader(handle, workflow_id)
         self._classifier = EventClassifier()
-        self._resume_adapter = ResumeAdapter(resume_command)
+        self._resume_adapter = resume_adapter if resume_adapter is not None else ResumeAdapter(resume_command)
         self._instance_id = uuid.uuid4().hex
         self._runtime_signature = self._runtime_source_signature()
 
@@ -2630,11 +2634,11 @@ class LocalPrMonitor:
         }
         if self._resume_unavailable_reason:
             state["resume_unavailable_reason"] = self._resume_unavailable_reason
-        elif self._resume_adapter._command:
+        elif self._resume_adapter.available:
             state.pop("resume_unavailable_reason", None)
         if self._resume_probe_output:
             state["resume_probe_output"] = self._resume_probe_output
-        elif self._resume_adapter._command:
+        elif self._resume_adapter.available:
             state.pop("resume_probe_output", None)
         if not isinstance(state.get("last_observed"), Mapping):
             last_seen = state.get("last_seen")
@@ -2642,8 +2646,8 @@ class LocalPrMonitor:
         return state
 
     def _resume_adapter_state(self) -> str:
-        if self._resume_adapter._command:
-            return "command"
+        if self._resume_adapter.available:
+            return "command" if self._resume_adapter._command else "app-server"
         if self._resume_unavailable_reason:
             return "unavailable"
         return "unconfigured"
@@ -2692,6 +2696,7 @@ class LocalPrMonitorApplication:
         parser.add_argument("--resume-unavailable-reason", default="")
         parser.add_argument("--resume-probe-output", default="")
         parser.add_argument("--once", action="store_true")
+        parser.add_argument("--mcp-launch-id", default="", help=argparse.SUPPRESS)
         return parser
 
     def run(
@@ -2717,6 +2722,9 @@ class LocalPrMonitorApplication:
             WorktreeRegistryError: Current cwd가 canonical worktree로 해석되지 않을 때 발생합니다.
         """
         namespace = self.parser().parse_args(tuple(arguments))
+        if namespace.mcp_launch_id:
+            from neurath.runtime.monitor_runtime import worker
+            return worker(cwd, namespace.mcp_launch_id, namespace)
         locator = SessionLocator.from_worktree(cwd)
         worktree = self._worktree_resolver.resolve(cwd)
         if locator.control_root.resolve() != worktree.repository_control_root.resolve():

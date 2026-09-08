@@ -1,6 +1,6 @@
 # Capability, source, and verification map
 
-<!-- date: 2026-09-08; synced_from: 5e8d761c276ceb8ddc05dcf239bb2d020f4b0da5; scope: package domains and all 31 public skills -->
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
 
 **English** · [한국어](../../ko/contributing/capability-map.md)
 
@@ -55,7 +55,7 @@ A common task surface does not merge authority, stores, or completion semantics.
 
 ## Named task surface
 
-The current registry defines 88 named operations. [Task tools](task-tools.md) lists every exact name; [task_schema.py](../../../src/neurath/runtime/task_schema.py) owns schemas. These groups provide navigation.
+The current registry defines 132 named operations. [Task tools](task-tools.md) lists every exact name; [task_schema.py](../../../src/neurath/runtime/task_schema.py) owns schemas. These groups provide navigation.
 
 | Group | Representative tasks | Boundary |
 | --- | --- | --- |

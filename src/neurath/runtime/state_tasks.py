@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 def definitions():
-    from neurath.runtime.task_schema import choice, count, text_field
+    from neurath.runtime.task_schema import choice, count, document_field, text_field
 
     expectation = {"type": "object", "additionalProperties": False,
         "required": ["observable_id", "expected_delta"], "properties": {
@@ -20,6 +20,10 @@ def definitions():
     # Revisions are mandatory; count's default is inappropriate for CAS input.
     batch["expected_revision"].pop("default")
     entries = {
+        "artifact_put": ("Store a bounded JSON document in this native session and return its content reference. Does not grant evaluation authority or edit a caller-selected path.", {
+            "document": document_field(), "key": text_field(512)}, False),
+        "artifact_read": ("Read a content-addressed artifact from this native session. Reference data is not caller or evaluator authority.", {
+            "reference": text_field(71)}, True),
         "session_inspect": ("Inspect this native caller's session kernel.", {}, True),
         "turn_inspect": ("Inspect this native caller's foreground turn.", {}, True),
         "worktree_inspect": ("Read the canonical current worktree claim without acquiring it.", {}, True),
@@ -95,6 +99,14 @@ def execute(root, name, fields, *, identity, expected_turn, verified_policy_evid
     root = Path(root).resolve()
     handle = _handle(root, identity, expected_turn, verified_policy_evidence)
     state = handle.inspect()
+    if name in {"artifact_put", "artifact_read"}:
+        from scripts.agent_harness.artifact_store import SessionArtifactStore
+        artifacts = SessionArtifactStore(handle)
+        if name == "artifact_read":
+            return {"reference": fields["reference"], "document": artifacts.read_json(fields["reference"])}
+        _reserve_key(root, identity, name, fields)
+        receipt = artifacts.put_json(fields["document"])
+        return {"reference": receipt.reference, "media_type": receipt.media_type, "size_bytes": receipt.size_bytes}
     if name == "session_inspect":
         return state.to_payload()
     if name == "turn_inspect":

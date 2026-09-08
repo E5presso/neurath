@@ -1,7 +1,7 @@
 # 기억 실행 참조
 
 **대상 독자: 코딩 에이전트와 기여자.** 아래 명령은 승인된 작업을 수행하는 에이전트의 실행 참조입니다. 사용자는 [사용 안내](../usage/index.md)에 따라 목표를 요청하며, 이 명령을 직접 실행할 필요가 없습니다.
-<!-- date: 2026-09-07; synced_from: source and documentation at e1487a1718056b37b999d1343a1007b7e25f5c8c; English and Korean editions updated together -->
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
 
 [사용 안내](../usage/index.md) · [기여자 안내](index.md)
 
@@ -24,7 +24,7 @@ Neurath는 Claude Code와 Codex의 대화가 바뀌어도 프로젝트의 작업
 철회했던 전략도 다시 후보로 삼아 검증할 수 있습니다.
 
 현재 사용자가 검사를 금지했거나 기존 권한·도구로 실행할 수 없다면 에이전트가
-`learning defer --reason "구체적 사유"`로 미검증 상태와 사유를 남깁니다. 검사를 통과한 것으로
+`learning_defer` (현재 구조화 입력 스키마 사용)로 미검증 상태와 사유를 남깁니다. 검사를 통과한 것으로
 처리하지 않습니다. 검사 명령이 연결되지 않은 경우에도 후보로 남습니다. 학습을 시작하기 위해
 매번 허락을 구하거나, 검사를 느슨하게 바꾸거나, 권한을 넓히지는 않습니다.
 
@@ -43,11 +43,9 @@ Neurath는 Claude Code와 Codex의 대화가 바뀌어도 프로젝트의 작업
 작성을 요청합니다. 컨텍스트 압축 전과 세션 종료 때에도 마지막으로 확인할 수 있는
 사용자에게 보여 준 답변과 작업 상태를 보관합니다.
 
-```sh
-.neurath/run memory recall --query "작업 기록 내보내기"
-.neurath/run memory checkpoint --summary "CSV 완료, PDF 미구현" \
-  --decision "파일명은 UTF-8 유지" --next-step "PDF 내보내기 구현" \
-  --lesson "프로젝트 도구 환경에서 검사를 실행할 것" --status paused
+```text
+명명 MCP 도구 memory_recall (현재 입력 스키마 사용)
+명명 MCP 도구 memory_checkpoint (현재 입력 스키마 사용)
 ```
 
 강제로 중단해도 이미 저장한 기록은 남습니다. 다만 관측하거나 저장하기 전에 사라진 내용은
@@ -79,10 +77,10 @@ Neurath는 Claude Code와 Codex의 대화가 바뀌어도 프로젝트의 작업
 않으며, 전달할 전략도 최대 12개, 6,000바이트로 제한합니다. 철회한 전략은 더 이상 학습 지침으로
 제공하지 않습니다. 과거 보고는 과거 이력으로 남습니다.
 
-```sh
-.neurath/run verify check
-.neurath/run learning status
-.neurath/run learning history <lesson-id>
+```text
+명명 MCP 도구 verification_run (현재 입력 스키마 사용) {"check": "check"}
+명명 MCP 도구 learning_status (현재 입력 스키마 사용)
+명명 MCP 도구 learning_history (현재 입력 스키마 사용)
 ```
 
 검증은 실제 실행 결과, 검사 설정, 변경 전후 저장소의 일치 여부를 확인합니다. 명령의

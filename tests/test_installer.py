@@ -55,6 +55,16 @@ def test_stale_plan_refused_without_partial_mutation(repo):
     assert not (repo / ".codex/hooks.json").exists()
 
 
+def test_monitor_runtime_is_ignored_without_changing_user_ignore(repo):
+    original = "# user ignores\nmy-cache/\n"
+    (repo / ".gitignore").write_text(original)
+    apply_plan(repo, make_plan(repo))
+    assert (repo / ".gitignore").read_text().startswith(original)
+    probe = subprocess.run(["git", "check-ignore", "--no-index", ".monitor-pr/monitor-state.json"],
+                           cwd=repo, capture_output=True, text=True)
+    assert probe.returncode == 0
+
+
 def test_conflicting_owned_skill_refused(repo):
     p = repo / ".agents/skills/debug"
     p.mkdir(parents=True)

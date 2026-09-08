@@ -1,5 +1,7 @@
 # Provider collaboration contract
 
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
+
 **English** · [한국어](../../ko/contributing/collaboration-contract.md)
 
 [Architecture](architecture.md) · [Transport implementation](provider-transports.md)

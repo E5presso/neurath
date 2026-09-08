@@ -4,7 +4,7 @@
 이 문서는 canonical rule/skill metadata와 contract join의 full audit projection입니다.
 권한의 정본이 아니며 ordinary planned-path lookup에는 `.agents/HARNESS_INDEX.md`를
 사용합니다. 두 문서 모두
-`uv run python -m scripts.skill_harness.harness_catalog --check`로 drift를 검사합니다.
+설치된 투영의 drift는 `diagnostics_project` MCP로 검사합니다. 소스 생성은 `tools/build_manifest.py`가 담당합니다.
 
 - Rules: 8
 - Skills: 31
@@ -68,45 +68,45 @@ Skill entry 외 필수 reference, path rule, hook protocol, name/path wrapper는
 
 | Surface | Declared acquisition | Source bytes |
 |---|---|---:|
-| Neurath policy + common rules | Claude native source proxy | 62649 |
-| Neurath policy + behavioral | Codex explicit base | 25368 |
+| Neurath policy + common rules | Claude native source proxy | 62887 |
+| Neurath policy + behavioral | Codex explicit base | 25702 |
 | Skill descriptions | Native discovery source | 4828 |
 
 ## Skill entry measurements
 
 | Skill | Entry bytes | Description bytes | Codex base + entry bytes |
 |---|---:|---:|---:|
-| `audit-spec` | 1541 | 112 | 26909 |
-| `automate-qa` | 4527 | 131 | 29895 |
-| `autopilot` | 4234 | 122 | 29602 |
-| `checkpoint` | 1191 | 67 | 26559 |
-| `commit` | 1266 | 86 | 26634 |
-| `create-pr` | 3005 | 70 | 28373 |
-| `create-ticket` | 11314 | 106 | 36682 |
-| `create-worktree` | 1992 | 64 | 27360 |
-| `dependency-audit` | 1235 | 86 | 26603 |
-| `evaluate-harness` | 12189 | 113 | 37557 |
-| `explain-code` | 8189 | 506 | 33557 |
-| `explore-ui` | 3000 | 190 | 28368 |
-| `finish-session` | 3260 | 392 | 28628 |
-| `graphify` | 8944 | 134 | 34312 |
-| `implement-ui` | 2745 | 146 | 28113 |
-| `investigate` | 2791 | 78 | 28159 |
-| `monitor-pr` | 9776 | 111 | 35144 |
-| `optimize-harness` | 3474 | 315 | 28842 |
-| `plan-issues` | 11960 | 307 | 37328 |
-| `pr-review` | 7689 | 92 | 33057 |
-| `process-ticket` | 9040 | 114 | 34408 |
-| `promote-memory` | 2676 | 522 | 28044 |
-| `review-code` | 17854 | 139 | 43222 |
-| `review-ui` | 1795 | 150 | 27163 |
-| `sync-design` | 2030 | 155 | 27398 |
-| `sync-dev-docs` | 984 | 93 | 26352 |
-| `sync-docs` | 2924 | 88 | 28292 |
-| `sync-user-docs` | 972 | 92 | 26340 |
-| `triage-comments` | 10869 | 110 | 36237 |
-| `update-dependencies` | 1639 | 74 | 27007 |
-| `update-project-status` | 953 | 63 | 26321 |
+| `audit-spec` | 1541 | 112 | 27243 |
+| `automate-qa` | 4527 | 131 | 30229 |
+| `autopilot` | 4234 | 122 | 29936 |
+| `checkpoint` | 1191 | 67 | 26893 |
+| `commit` | 1266 | 86 | 26968 |
+| `create-pr` | 3005 | 70 | 28707 |
+| `create-ticket` | 11314 | 106 | 37016 |
+| `create-worktree` | 1992 | 64 | 27694 |
+| `dependency-audit` | 1235 | 86 | 26937 |
+| `evaluate-harness` | 12189 | 113 | 37891 |
+| `explain-code` | 8189 | 506 | 33891 |
+| `explore-ui` | 3000 | 190 | 28702 |
+| `finish-session` | 3260 | 392 | 28962 |
+| `graphify` | 8944 | 134 | 34646 |
+| `implement-ui` | 2745 | 146 | 28447 |
+| `investigate` | 2791 | 78 | 28493 |
+| `monitor-pr` | 9776 | 111 | 35478 |
+| `optimize-harness` | 3474 | 315 | 29176 |
+| `plan-issues` | 11960 | 307 | 37662 |
+| `pr-review` | 7689 | 92 | 33391 |
+| `process-ticket` | 9040 | 114 | 34742 |
+| `promote-memory` | 2676 | 522 | 28378 |
+| `review-code` | 17854 | 139 | 43556 |
+| `review-ui` | 1795 | 150 | 27497 |
+| `sync-design` | 2030 | 155 | 27732 |
+| `sync-dev-docs` | 984 | 93 | 26686 |
+| `sync-docs` | 2924 | 88 | 28626 |
+| `sync-user-docs` | 972 | 92 | 26674 |
+| `triage-comments` | 10930 | 110 | 36632 |
+| `update-dependencies` | 1639 | 74 | 27341 |
+| `update-project-status` | 953 | 63 | 26655 |
 
 ## Join diagnostics
 

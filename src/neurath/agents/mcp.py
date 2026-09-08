@@ -266,7 +266,7 @@ def response(root, request):
     elif method == "ping":
         result = {}
     elif method == "tools/list":
-        result = {"tools": [*definitions(), TOOL]}
+        result = {"tools": definitions()}
     elif method == "tools/call" and params.get("name") in {"agent", *TASKS}:
         try:
             name = params["name"]
@@ -307,6 +307,8 @@ def response(root, request):
 
 
 def main():
+    from contextlib import redirect_stdout
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", required=True, type=Path)
     args = parser.parse_args()
@@ -319,7 +321,9 @@ def main():
         if len(line) > MAX_FRAME or not line.endswith(b"\n"):
             return 1
         try:
-            reply = response(root, json.loads(line))
+            # Backend diagnostics are not JSON-RPC frames on a stdio transport.
+            with redirect_stdout(sys.stderr):
+                reply = response(root, json.loads(line))
         except (ValueError, TypeError, AttributeError):
             reply = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}
         if reply is not None:

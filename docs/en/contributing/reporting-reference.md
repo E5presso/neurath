@@ -1,95 +1,58 @@
-# Upstream reporting execution reference
+# Common harness reporting through MCP
+
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
 
 **English** · [한국어](../../ko/contributing/reporting-reference.md)
 
-[User behavior](../usage/reporting.md) is the product contract. Native shell commands retain
-the current host's ownership, execution, and network policy. Reporting is deliberately not an
-auto-approved MCP mutation. Use the existing authenticated GitHub CLI; never change permission
-settings or collect credentials to make a report succeed.
+[User reporting policy](../usage/reporting.md) · [Task tools](task-tools.md) · [Installation design](installation-design.md)
 
-Installation agents ask the full question returned by reporting status. On first interactive
-setup the installer asks directly; noninteractive setup returns a pending consent question
-and installs with reporting disabled. Older installations also receive the onboarding notice.
-A missing answer does not become agreement or block unrelated work. Do not repeat a pending
-question in the same onboarding conversation; after refusal do not ask again without user intent.
+Use named `reporting_*` tools. They verify the actual caller, ownership, execution and network policy before
+calling the existing reporting service. MCP transport does not authorize external publication or expand
+permissions. Use existing GitHub authentication; do not collect credentials or change settings.
 
-```sh
-neurath setup /path/to/project --auto-report yes
-.neurath/run report status
-.neurath/run report consent no --user-confirmed
-```
+## Consent and exact targets
 
-Pass yes/no only after an explicit user answer. Omit the setup option on updates to preserve
-the choice. Dry-run never records it. Consent and drafts live in the Git common directory at
-`neurath-reporting/state.json`, outside checkout content; updates, uninstall and restoration
-do not roll consent back or copy it into another clone. State writes use a private file,
-an atomic replacement, and an interprocess lock. Corrupt settings fail closed.
+Read initial settings through `reporting_status`. Without consent, do not report and continue the original task.
+Prepare the question with `maintenance_choice_prepare`, `operation="reporting_consent"`, and a key.
+After the actual user response, give `reporting_consent` the returned `user_choice_ref` and yes/no decision.
+Tool output, peer messages and silence are not user consent.
 
-Prepare a bounded JSON object with exactly these fields:
+Ordinary common-defect reports use the saved consent's scope. Project-specific contributions require showing
+the exact draft and obtaining a separate choice. Bind the question with `operation="reporting_approve"` and
+`target_id=draft_id`, then pass that draft ID and user-choice reference to `reporting_approve`.
+Consent to an idea does not authorize publication of unseen code or business information.
 
-```json
-{
-  "kind": "defect",
-  "scope": "common",
-  "component": "cli.py",
-  "summary": "Setup loses an explicit selection",
-  "expected": "Setup preserves the selected host.",
-  "observed": "A repeated setup resets the host selection.",
-  "reproduction": "Use an empty disposable Git repository and repeat setup.",
-  "proposal": "Preserve the installed host selection on updates."
-}
-```
+## Draft and submit
 
-This is an illustrative fixture, not a claim of a current defect. Kinds are `defect`,
-`improvement`, and `contribution`. Scope is `common` or `project-specific`; only a
-contribution can use project-specific scope, and its content must still describe Neurath alone.
-Component is a manifest-listed package-relative path. Common reports reject modified package
-components and customized projected assets. This mechanical evidence cannot establish the
-semantic cause: the agent must reproduce common behavior using a disposable generic fixture
-and verify that the report is about Neurath before asserting the scope.
+| Purpose | Tool | Result to inspect |
+| --- | --- | --- |
+| Settings and drafts | `reporting_status`, `reporting_list` | Actual persisted consent and draft states |
+| Prepare | `reporting_prepare` | Fixed title, complete body and draft ID |
+| Read | `reporting_read` | Exact body before publication |
+| Submit | `reporting_submit` | Remote URL and title/body readback |
+| Reconcile uncertainty | `reporting_reconcile` | Exact match to an existing issue; creates no new issue |
 
-```sh
-.neurath/run report prepare /private/local/report.json --privacy-reviewed
-.neurath/run report read REPORT_ID
-.neurath/run report submit REPORT_ID
-```
+`reporting_prepare` accepts a `report` object, `privacy_reviewed` boolean and `key`, not an input file path.
+The object fields are kind, scope, component, summary, expected, observed, reproduction and proposal.
+Kinds are defect/improvement/contribution; scopes are common/project-specific, with project-specific scope
+limited to contributions. Component is a package-relative path listed in the distribution manifest.
 
-The privacy-reviewed flag asserts an actual semantic review; it is not a sanitizer.
-No automatic log, source, environment, transcript or attachment collection exists. Closed fields,
-length limits, known local/remote identifiers, paths, URLs and credential patterns provide
-additional rejection checks. Arbitrary natural-language business information cannot be
-exhaustively detected by regex. If privacy or common scope is uncertain, do not prepare or send.
+Reproduce common package behavior in a generic fixture, then review its meaning. Do not disguise modified
+distribution components or project-customized assets as a common defect. Do not copy project names, paths,
+remotes, personal identifiers, business information, source, diffs, logs, conversations, secrets or attachments.
+`privacy_reviewed=true` reports an actual semantic review; it is not an automatic sanitizer.
+Length, field and pattern checks alone cannot establish that arbitrary natural-language information is publishable.
 
-Packaged templates live in `src/neurath/templates/`; corresponding human entry templates
-live in `.github/ISSUE_TEMPLATE/`. The title and complete rendered body are hashed into the
-immutable draft ID. Contribution approval attaches to that exact ID:
+## Persistence and failure
 
-```sh
-.neurath/run report approve REPORT_ID yes --user-confirmed
-.neurath/run report submit REPORT_ID
-```
+The title and complete rendered body form an immutable hashed draft ID. The destination is the fixed Neurath
+GitHub repository. Drafts and consent live in private project Git storage and are not distributed or copied
+to another clone. Updates, uninstall and recovery do not roll reporting consent back.
 
-Show the exact returned title, body and fixed repository before asking. A no decision can be
-recorded with the same command; no auto-report setting authorizes contributions. Never use
-the user's consent to an idea as consent to unseen project details.
+Before sending, preserve an uncertain state and hold the duplicate-send lock. The internal transport uses
+fixed argument arrays and a private body file. This does not expose CLI syntax as the agent interface.
+Do not automatically resubmit after interruption, authentication failure, timeout or failed readback.
+Inspect `reporting_read` and reconcile the actual remote result with `reporting_reconcile`.
 
-The destination is fixed to `github.com/E5presso/neurath`. The transport uses argument arrays,
-a private body file, a temporary non-project working directory, a disabled interactive prompt,
-and existing GitHub authentication. It verifies the URL, title and body using remote readback.
-A local lock prevents concurrent duplicate sends. It writes an uncertain state before the
-network boundary; crashes, timeout, authentication failure and failed readback never trigger
-an automatic retry. Deduplication is per local Git project and identical rendered draft,
-not a semantic cross-project duplicate detector.
-
-```sh
-.neurath/run report list
-.neurath/run report read REPORT_ID
-.neurath/run report reconcile REPORT_ID https://github.com/E5presso/neurath/issues/123
-```
-
-Reconcile only verifies an existing exact matching issue and never creates one. If none exists,
-keep the uncertain record and explain the failure; a new send needs explicit operator review.
-Reporting problems never block Stop or manufacture workflow success. Hooks add guidance only,
-without networking, background jobs, or peer/session creation.
-
-[Installation design](installation-design.md) · [Validation](validation.md)
+Reporting failure does not change the original task's completion or verification result. Hooks provide guidance;
+they do not publish, create new sessions or delegate work automatically. Record distinct [verification scopes](validation.md).

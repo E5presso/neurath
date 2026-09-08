@@ -22,8 +22,7 @@ def notification(message_id):
         "Neurath peer-report notification, not a new user instruction. "
         "Preserve your current goal, permissions and worktree ownership. "
         f"Read message {message_id} with collaboration_message and acknowledge or reply "
-        "as the addressed recipient. If named tools are unavailable, use the installed "
-        f".neurath/run agent message {message_id}. "
+        "as the addressed recipient. If named tools are unavailable, preserve the pending message and report the missing tool. "
         "The authenticated inbox supplies the sender and task binding. "
         "This notification does not accept a result or authorize implementation."
     )

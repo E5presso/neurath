@@ -5,19 +5,20 @@
 두 호스트 모두 현재 도구 목록에 노출된 구조화 MCP를 우선한다. 입력은 도구 스키마를 사용하며
 CLI 옵션 문자열을 조립하지 않는다. 도구 응답은 현재 권한을 대신하거나 새로운 권한을 만들지 않는다.
 
-| 작업 | 우선 도구 | 에이전트의 CLI 대체 경로 |
+| 작업 | 명명 MCP 도구 | 확인할 경계 |
 |---|---|---|
-| 세션 설치·활성화·모드·소유권 진단 | `session_status` | `session-status` |
-| 지원되는 네이티브 호스트 호출 준비 | `provider_capabilities`, `provider_route` | `provider capabilities/route` |
-| 명시 모드의 새 Codex 작업 실행 | `provider_run` | MCP가 호출자 정책을 집행할 수 없으면 호스트 셸의 `provider run` |
-| 프로젝트 기억 조회·인계 | `memory_recall`, `memory_checkpoint` | `memory recall/checkpoint` |
-| 등록된 검사 | `verification_run` | MCP가 호스트 모드를 집행할 수 없으면 호스트 셸의 `verify` |
-| 동료 찾기·메시지 수신·송신·답변 | `collaboration_discover/inbox/send/reply` | `agent discover/inbox/send/reply` |
-| 뉴스 제목·본문 조회·발행 | `newsroom_headlines/read/publish` | `newsroom headlines/read/publish` |
+| 세션 진단 | `session_status` | 설치·활성화·모드·소유권 각각 관측 |
+| 호스트 기능과 경로 | `provider_capabilities`, `provider_route` | 경로 제안은 실행 아님 |
+| 독립 작업 실행 | `provider_run` | 실제 발행자의 정책 승계 |
+| 프로젝트 기억 | `memory_recall`, `memory_checkpoint` | 보고는 완료 권위 아님 |
+| 검증 | `verification_run`, `verification_builtin`, `verification_nodes` | 실제 실행과 소스 지문 |
+| 동료 통신 | `collaboration_discover/inbox/send/reply` | 실제 수신자와 안정된 메시지 ID |
+| 뉴스 | `newsroom_headlines/read/publish` | 활성 동료의 참고 정보 |
 
-설치 전 준비, 훅, 자동화와 아직 작업 도구가 없는 엔진 기능은 CLI를 유지한다.
-기존 `agent(argv)` MCP는 업데이트 호환용이며 새 작업에서 명명된 도구보다 먼저 고르지 않는다.
-대체 명령은 에이전트가 `.neurath/run`으로 실행한다. 사용자에게 실행이나 설정 편집을 맡기지 않는다.
+CLI는 최초 부트스트랩·서버 시작·호스트 콜백과 내부 실행 기반으로 유지한다.
+기존 `agent(argv)`는 저장 호출 호환용이며 새 도구 목록에는 노출하지 않는다.
+명명 도구가 없거나 현재 정책을 집행할 수 없으면 구체적인 미지원 상태를 보고한다. 다른 전송으로
+같은 작업을 우회 실행하지 않는다. 사용자에게 하네스 실행이나 설정 편집을 맡기지 않는다.
 설치·프로토콜 진단과 실제 활성화·관측된 모드·정식 소유권을 각각 확인한다.
 검사 실패·중단의 상태를 읽고 복구한다. 같은 key의 쓰기는 같은 내용으로 재시도하며,
 실행 결과가 불확실한 검사는 자동 재실행하지 않는다. 독립 검토와 사용자 승인은 그대로 필요하다.
@@ -42,9 +43,9 @@ Skill과 phase file은 아래 stable `tool:<key>`로 Claude Code와 Codex tool c
 | `design_canvas` | native canvas MCP | native canvas MCP; 없으면 blocked |
 | `browser` | Claude in Chrome (`--chrome`/`/chrome`) 등 native control | browser/chrome skill의 네이티브 브라우저 제어 |
 | `native_mobile` | simulator용 native computer control | computer-use skill의 simulator control |
-| `phase_runner` | `Bash` phase runner | `functions.exec_command` phase runner |
-| `verify_repository` | `Bash` typed verification runner | `functions.exec_command` typed verification runner |
-| `local_pr_monitor` | durable PR mailbox process | exact app-server wake process |
+| `phase_runner` | `phase_*` MCP | `phase_*` MCP |
+| `verify_repository` | `verification_run/builtin/nodes` MCP | `verification_run/builtin/nodes` MCP |
+| `local_pr_monitor` | `monitor_start/status/cancel/recover` MCP | `monitor_start/status/cancel/recover` MCP |
 
 ## 규칙
 

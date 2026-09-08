@@ -179,7 +179,8 @@ def test_prefix_projects_calls_links_policy_and_preserves_contract_ids():
         name = public_name(internal, prefix)
         assert f"\nname: {name}\n" in entries[name]
         assert f"내장 계약: `{internal}`" in entries[name]
-        assert f".neurath/run skill {name} <script>" in entries[name]
+        assert "명명 MCP 도구" in entries[name]
+        assert ".neurath/run skill" not in entries[name]
     policy = projected[".neurath/policy.md"][0].decode()
     assert "/neurath-debug" in policy and "/neurath-qa" in policy
     assert "/debug`" not in policy

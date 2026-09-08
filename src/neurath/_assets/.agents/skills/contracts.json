@@ -1659,7 +1659,7 @@
       "ordered_fragments": [],
       "required_fragments": [
         "uv run python -m scripts.skill_harness.phase_runner",
-        "collect_comments.sh",
+        "review_comments",
         "즉시 수신 확인 (판단·작업보다 먼저)",
         "사용자에게 코멘트 처리 방향을 다시 묻지 않는다",
         "Gap Triage",

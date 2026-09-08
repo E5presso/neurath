@@ -1,5 +1,7 @@
 # 프로바이더 세션과 네이티브 전송
 
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
+
 [English](../../en/contributing/provider-transports.md) · **한국어**
 
 [기여 안내](index.md) · [에이전트 협업](agents-reference.md) · [작업 도구](task-tools.md)

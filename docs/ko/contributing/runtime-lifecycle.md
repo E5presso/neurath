@@ -1,6 +1,6 @@
 # 실행 수명주기와 복구
 
-<!-- date: 2026-09-08; synced_from: 5e8d761c276ceb8ddc05dcf239bb2d020f4b0da5; scope: source flows and conceptual diagrams -->
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
 
 [English](../../en/contributing/runtime-lifecycle.md) · **한국어**
 
@@ -201,3 +201,27 @@ flowchart TD
 | maintenance uncertain | 외부 효과가 불확실 | 저장된 요청과 외부 결과 대조 |
 
 이 분류가 문서의 성공 표현을 결정합니다. “기록됨”, “제출됨”, “관측됨”, “검증됨”, “수락됨”을 실제 근거에 맞게 사용하세요.
+
+## 단계와 감시의 MCP 경로
+
+단계는 `phase_start` → `phase_current` → `phase_evidence_prepare` → `phase_complete` →
+`phase_finalize`로 진행합니다. 준비 도구는 현재 단계의 요구 라벨과 정확한 revision을 확인하고,
+Git에서 읽은 사실과 에이전트 보고를 출처별로 표시한 불변 참조를 반환합니다. 임의로 저장한 artifact는
+이 등록 참조를 대신할 수 없습니다. 소유자·워크플로·소스가 바뀌면 이전 근거를 재사용하지 않습니다.
+적응형 목표와 독립 평가는 기존 `adaptive_*`·`evaluation_*`의 실제 권위 검사를 유지합니다.
+
+`monitor_start`는 현재 소유자가 승인한 감시를 접수하고 실행 ID를 반환합니다. 보호된 일회용 시작
+허가가 실제 자식 PID·프로세스 시작 시점·세대·코드와 연결되며 네이티브 에이전트 신원을 새로 만들지
+않습니다. 첫 관측과 실제 readback 이후 시작을 보고합니다. 감시 자체의 수명과 개별 GitHub 요청의
+시간 제한은 구분합니다.
+
+`monitor_cancel`은 영속 취소 요청과 비공개 제어 채널을 사용합니다. 접수만으로 종료를 주장하지
+않습니다. `monitor_recover`는 이전 프로세스의 종료와 남은 잠금을 확인한 뒤 새 세대를 시작합니다.
+재개 전에 소유자의 최신 정책을 확인하고 기존 정책을 덮어쓰는 인자를 보내지 않습니다.
+`monitor_ack`·`monitor_external_wait`·`monitor_handoff`는 각각 이벤트 소비·외부 대기·기존 감시
+인계의 도메인 계약을 유지합니다. 관측 전용 감시는 소유 세션을 재개하지 않습니다.
+
+운영 단계의 마지막 전이는 `phase_complete`에 계약이 허용하는 `terminal_state`를 전달해 같은 상태 변경에서
+종료할 수 있습니다. 이 경우 추가 `phase_finalize`를 호출하지 않습니다. 적응형 워크플로처럼 별도 최종
+권위 확인이 필요한 계약만 분리된 finalize를 사용합니다. 다음 변경에는 직전 결과의 실제 workflow_revision을
+사용하고, 중단 뒤에는 `phase_current`로 현재 상태부터 읽습니다.

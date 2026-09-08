@@ -1,17 +1,19 @@
 # 공통 작업 실행
 
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
+
 [English](../../en/contributing/task-tools.md) · **한국어**
 
 [기여 안내](index.md) · [아키텍처](architecture.md) · [프로바이더 전송](provider-transports.md)
 
-현재 소스의 `runtime/task_schema.py`와 도메인 모듈에는 **명명된 작업 88개**가 등록되어 있습니다.
+현재 소스의 `runtime/task_schema.py`와 도메인 모듈에는 **명명된 작업 132개**가 등록되어 있습니다.
 등록만으로 기존 호스트가 모든 도구를 다시 로드했거나 설치된 실제 호스트에서 모든 경로가
 통과했다는 뜻은 아닙니다. [모델 계획과 MCP 운용](model-planning-mcp.md),
 [프로바이더 협업](collaboration-contract.md)이 요구 동작을 정의합니다.
 
 에이전트는 명명된 MCP 도구로 하네스를 운용합니다. `runtime/tasks.py`는 구조화 입력을 기존
 저장소·커널 서비스에 전달하며 에이전트가 CLI argv를 조립할 필요가 없습니다. 저장된 호출자와
-근거 있는 네이티브 실행 예외를 위해 CLI 호환은 유지합니다. 일반 운용 경로는 아니며 범용
+기존 저장 호출과 내부 실행 기반을 위해 CLI 호환은 유지합니다. 일반 운용 경로는 아니며 범용
 `agent(argv)` 통로만 제공하는 것으로 MCP 전환을 완료했다고 판단하지 않습니다.
 
 ## 소스에 등록된 도구
@@ -19,22 +21,26 @@
 아래 표는 정확한 등록 이름을 묶은 목록입니다. 호출 전 현재 노출된 입력 스키마를 읽습니다.
 같은 그룹의 모든 작업이 동일한 입력이나 권한을 요구하지는 않습니다.
 
-| 영역 | 명명된 작업 |
+| 기능 | 실제 명명 도구 |
 | --- | --- |
-| 준비 진단 | `session_status` |
-| 프로바이더 실행·복구 | `provider_run`, `provider_status`, `provider_cancel`, `provider_recover` |
-| 프로바이더 경로 발견 | `provider_capabilities`, `provider_route` |
-| 기억·인계 | `memory_recall`, `memory_checkpoint` |
-| 등록 검사 | `verification_run` |
-| 동료 메시지·구독 | `collaboration_discover`, `collaboration_inbox`, `collaboration_send`, `collaboration_reply`, `collaboration_message`, `collaboration_ack`, `collaboration_forward`, `collaboration_submitted`, `collaboration_register`, `collaboration_conversation`, `collaboration_close`, `collaboration_subscribe`, `collaboration_unsubscribe`, `collaboration_publish` |
-| 배정 작업 수명 | `collaboration_assign`, `collaboration_accept`, `collaboration_report`, `collaboration_task` |
-| Newsroom | `newsroom_headlines`, `newsroom_read`, `newsroom_publish`, `newsroom_revise`, `newsroom_comment`, `newsroom_peers`, `newsroom_seen` |
-| 상태·소유권·변경 작업 | `session_inspect`, `turn_inspect`, `worktree_inspect`, `worktree_claim`, `worktree_release`, `material_prepare`, `material_read`, `material_resolve`, `material_abandon` |
-| 학습·업데이트·보고 | `learning_status`, `learning_pending`, `releases_status`, `reporting_status`, `reporting_list`, `learning_history`, `learning_defer`, `reporting_read`, `releases_check`, `releases_notice`, `releases_recover`, `releases_prepare`, `releases_apply`, `reporting_prepare`, `reporting_submit`, `reporting_reconcile`, `reporting_consent`, `reporting_approve`, `releases_choose` |
-| 모델 목록·계획 | `provider_models`, `provider_plan`, `provider_plan_read` |
-| 워크플로·단계·위임·평가 | `workflow_start`, `workflow_advance`, `workflow_finalize`, `phase_start`, `phase_current`, `phase_complete`, `phase_finalize`, `adaptive_read`, `adaptive_preflight`, `adaptive_replace`, `adaptive_override_goal`, `delegation_prepare`, `delegation_assign`, `evaluation_prepare`, `evaluation_read`, `evaluation_execute`, `evaluation_report`, `evaluation_consume` |
-| 메시지 재처리 | `delivery_status`, `delivery_redrive` |
-| 정확한 유지보수 선택 | `maintenance_choice_prepare`, `maintenance_choice_read` |
+| 세션 준비 상태 | `session_status` |
+| 독립 실행 | `provider_cancel`, `provider_recover`, `provider_run`, `provider_status` |
+| 프로바이더 탐색 | `provider_capabilities`, `provider_route` |
+| 기억 | `memory_checkpoint`, `memory_recall` |
+| 프로젝트 검사 | `verification_run` |
+| 동료 통신 | `collaboration_ack`, `collaboration_close`, `collaboration_conversation`, `collaboration_discover`, `collaboration_forward`, `collaboration_inbox`, `collaboration_message`, `collaboration_publish`, `collaboration_register`, `collaboration_reply`, `collaboration_send`, `collaboration_submitted`, `collaboration_subscribe`, `collaboration_unsubscribe` |
+| 배정 작업 수명 | `collaboration_accept`, `collaboration_assign`, `collaboration_report`, `collaboration_task` |
+| 뉴스룸 | `newsroom_comment`, `newsroom_headlines`, `newsroom_peers`, `newsroom_publish`, `newsroom_read`, `newsroom_revise`, `newsroom_seen` |
+| 상태·아티팩트·소유권 | `artifact_put`, `artifact_read`, `material_abandon`, `material_prepare`, `material_read`, `material_resolve`, `session_inspect`, `turn_inspect`, `worktree_claim`, `worktree_inspect`, `worktree_release` |
+| 학습·릴리스·보고 | `learning_defer`, `learning_history`, `learning_pending`, `learning_status`, `maintenance_choice_prepare`, `maintenance_choice_read`, `releases_apply`, `releases_check`, `releases_choose`, `releases_notice`, `releases_prepare`, `releases_recover`, `releases_status`, `reporting_approve`, `reporting_consent`, `reporting_list`, `reporting_prepare`, `reporting_read`, `reporting_reconcile`, `reporting_status`, `reporting_submit` |
+| 모델 계획 | `provider_models`, `provider_plan`, `provider_plan_read` |
+| 단계·평가 | `adaptive_override_goal`, `adaptive_preflight`, `adaptive_read`, `adaptive_replace`, `delegation_assign`, `delegation_prepare`, `evaluation_consume`, `evaluation_execute`, `evaluation_prepare`, `evaluation_read`, `evaluation_report`, `phase_complete`, `phase_current`, `phase_evidence_prepare`, `phase_finalize`, `phase_start`, `workflow_advance`, `workflow_finalize`, `workflow_start` |
+| 컨텍스트·보호 기억·평가 루프 | `diagnostics_integrity`, `diagnostics_profile`, `diagnostics_project`, `enclave_delete`, `enclave_read`, `enclave_set`, `evaluation_loop_close`, `evaluation_loop_open`, `evaluation_loop_read`, `evaluation_loop_round`, `turn_yield` |
+| 검증·사고·리뷰 | `diagnostics_continuation`, `incident_escalate`, `incident_record`, `incident_refresh`, `incident_resolve`, `incident_supersede`, `incident_validate`, `review_abort`, `review_begin`, `review_comments`, `review_consume`, `review_publish`, `review_report`, `verification_builtin`, `verification_nodes` |
+| 설치 관리 | `installation_apply`, `installation_plan`, `installation_recover` |
+| 작업 증거·정리 | `process_evidence_record`, `worktree_cleanup`, `worktree_isolation` |
+| PR 감시 | `monitor_ack`, `monitor_cancel`, `monitor_event`, `monitor_external_wait`, `monitor_handoff`, `monitor_readback`, `monitor_recover`, `monitor_start`, `monitor_status` |
+| 전달 복구 | `delivery_redrive`, `delivery_status` |
 
 ## 입력과 권한
 
@@ -112,9 +118,9 @@ ID를 사용합니다. `collaboration_ack`·`collaboration_reply`는 전체 본�
 무제한 접근으로 바꾸지 않습니다. 이는 프로바이더 어댑터가 받는 모드 범위보다 좁습니다.
 스키마가 모드를 받는 것과 MCP가 해당 모드의 모든 제한을 집행하는 것은 다릅니다.
 
-작업이 `native-execution-required`를 반환하면 에이전트는 정책을 유지하면서 같은 승인된 작업의
-지원되는 네이티브 실행 경로를 사용합니다. 작업·도구 노출·사유·실제 결과를 전환 예외로 남깁니다.
-설정을 넓히거나 deny를 우회하지 않습니다. 일반 소스 편집·테스트용 셸과 하네스 운용 명령은 구분합니다.
+`native-execution-required`는 현재 모드에서 해당 작업을 집행할 수 없다는 결과입니다.
+`session_status`로 제약을 확인하고 구체적인 미지원 상태를 보고합니다. 다른 전송으로 재실행하거나
+설정을 넓히지 않습니다. 명명 도구 노출과 실제 실행 성공은 별도로 기록합니다.
 
 불확실한 작업 생성·유지보수·material 효과는 기록된 결과로 대조합니다. CLI로 바꾸는 것은
 그 효과를 재실행할 권한이 아닙니다. 이 처리는 at-least-once 메시지 전달과 별개입니다.
@@ -127,4 +133,35 @@ ID를 사용합니다. `collaboration_ack`·`collaboration_reply`는 전체 본�
 `maintenance_tasks.py`, `user_choices.py`, `model_tasks.py`, `communication_schema.py`입니다. 스키마 검사,
 dispatch·kernel 검사, 패키지 설치, 새 호스트의 도구 선택은 각각 다른 근거입니다. 실제 목록·
 호출·결과·예외를 비공개로 보존합니다. 통합 설치본의 Codex·Claude 자연어 실행, 모델 계획,
-턴 종료 후 보고 왕복은 각각 검증합니다. 등록 수 88만으로 해당 수용 시나리오의 통과를 증명하지 않습니다.
+턴 종료 후 보고 왕복은 각각 검증합니다. 등록 수 132만으로 해당 수용 시나리오의 통과를 증명하지 않습니다.
+
+## 사용 흐름과 새 기능
+
+`artifact_put/read`는 경로 입력 없이 현재 세션의 제한된 JSON 문서를 저장·조회합니다.
+`enclave_read/set/delete`는 실제 턴과 digest를 대조하는 컨텍스트 편집이며, `turn_yield`는 현재 턴의
+명시적 양보입니다. foreground 복구는 호스트 수명 이벤트의 책임입니다.
+
+`phase_evidence_prepare`는 현재 단계 라벨과 revision에 맞춘 증거를 만들며 `phase_complete`는
+반환된 reference를 받습니다. 라벨과 문장만으로 독립 평가 권위를 만들지 않습니다.
+추가 관측은 `supplemental_<name>` 보고로 기록할 수 있으며 기존 최소 증거 개수와 검사를 그대로 유지합니다.
+
+`installation_plan`은 검토 가능한 요약과 불변 계획 참조를 반환하고, `installation_apply`는
+그 등록 계획을 적용합니다. 원래 파일 내용은 비공개로 남깁니다. `installation_recover`는
+실제 저널 복구를 수행하며 손상된 배치와 실행 패키지 자체의 무결성은 구분합니다.
+
+`verification_builtin`은 내장 검사 종류, `verification_nodes`는 정확한 테스트 노드,
+`verification_run`은 프로젝트에 연결된 검사 이름을 받습니다. `incident_*`는 기존 사고 처리와
+회귀 결과를 보존하고, `review_*`는 기존 고정 리뷰 행렬과 결과 소비를 유지합니다.
+`review_comments`는 limit·offset·since·last_seen으로 범위를 제한합니다. offset은 각 요청 시
+현재 원격 목록에 적용되며 고정 스냅샷 커서가 아닙니다.
+
+아래 예제의 `tool`과 `arguments`는 MCP 호출 이름과 인자를 표시하는 문서 표기입니다.
+네이티브 결속 필드는 호스트가 넣으며 에이전트가 작성하지 않습니다.
+
+```json
+{"tool":"phase_current","arguments":{"workflow_id":"current-work"}}
+```
+
+```json
+{"tool":"phase_evidence_prepare","arguments":{"workflow_id":"current-work","expected_revision":0,"labels":["git_status"],"notes":[{"label":"diff_review","text":"현재 변경의 목적과 범위를 검토했습니다."}],"key":"review-current-diff"}}
+```

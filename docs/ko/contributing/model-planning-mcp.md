@@ -1,5 +1,7 @@
 # 동적 모델 계획과 MCP 운용 계약
 
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
+
 [English](../../en/contributing/model-planning-mcp.md) · **한국어**
 
 [아키텍처](architecture.md) · [작업 도구](task-tools.md) · [Provider 전송](provider-transports.md) · [협업 계약](collaboration-contract.md)
@@ -26,22 +28,17 @@
 모델 목록 관측은 provider/host, 출처, 관측 시점, 정확한 모델 ID와 확인된 기능을 기록한다.
 접근·기능·비용의 미확인은 그대로 남긴다. 선택 계획은 작업 revision과 목록에 연결된 에이전트의
 제안이다. 요청 선택은 생성 호출에 전달한 값이고 실제 선택은 provider 세션에서 관측한 값이다.
-네이티브 실행 경로는 호스트 정책을 유지한다. CLI 예외는 명명된 MCP 작업으로 처리할 수 없는
-현재 이유이며 추가 권한을 부여하지 않는다.
+MCP 작업은 현재 호스트 정책을 유지한다. 집행할 수 없는 모드는 구체적인 미지원 상태이며,
+CLI 우회나 추가 권한을 부여하지 않는다.
 
-## 현재 소스와 누락
+## 현재 구현 경계
 
-| 소스 | 현재 동작 | 확장 |
-| --- | --- | --- |
-| providers/operations.py; runtime/task_schema.py | 선택적 모델 문자열, preserve-host-default | 난이도 평가, 목록, 선택 계획 |
-| providers/contracts.py; providers/codex.py; providers/claude_sdk.py | 요청/실제 모델과 생성 불일치 검사 | 기존 검사를 선택 계획에 연결 |
-| runtime/task_schema.py; runtime/tasks.py | 기억·협업·provider·검증·Newsroom 명명 도구 | workflow/소유권/학습/업데이트/보고의 남은 작업 |
-| agents/store.py; providers/codex_delivery.py; providers/operations.py | 생성 알림에 CLI 메시지 조회 안내 | 모든 에이전트용 지시에 MCP 작업 명시 |
-| install/projection.py; _assets/.agents/skills/plan-issues/SKILL.md 및 기타 배포 원본 스킬 | MCP 우선과 engine/skill CLI 강제 지시 공존 | 일관된 작업 매핑과 근거 있는 예외 |
-
-경로는 src/neurath 기준이다. 구현 전에 현재 소스를 다시 읽는다. 여기서 MCP는 에이전트가
-하네스를 제어하는 인터페이스다. 내부 provider CLI 프로세스나 네이티브 실행기 자체가
-에이전트의 CLI 회귀를 뜻하지 않는다.
+현재 명명 도구와 입력은 [작업 도구 목록](task-tools.md)을 기준으로 합니다. 모델 목록·계획,
+상태·소유권·단계·평가, 학습·업데이트·보고, 컨텍스트·설치 관리·리뷰·감시를 같은 MCP 표면으로 연결합니다.
+`runtime/task_schema.py`가 현재 등록부이며 `runtime/*_tasks.py`가 기존 도메인 서비스에 연결합니다.
+`install/mcp_guidance.py`는 설치 지침의 실제 작업을 대조합니다. 내부 CLI와 호스트 콜백은 실행 기반으로
+남으며 에이전트가 도움말을 탐색하는 사용 경로가 아닙니다. 아래 수용 조건은 실제 호스트에서 별도로
+검증해야 하며 소스 구현이나 도구 등록만으로 통과를 주장하지 않습니다.
 
 ## 모델 선택 요구사항
 
@@ -86,11 +83,11 @@ default_observation_revision을 보존한다. 가능하면 생성 전에 정확�
 
 | ID | 계약 |
 | --- | --- |
-| MC-01 | 모든 에이전트용 하네스 작업을 명명된 MCP 도구, 네이티브 실행 경로 또는 명시적 예외에 매핑한다. 정책·스킬·phase/state/worktree·학습·업데이트/보고·알림·오류를 포함한다. 매핑되지 않은 일반 작업은 전환 감사 실패다. |
+| MC-01 | 모든 에이전트용 하네스 작업을 명명된 MCP 도구로 매핑한다. 정책·스킬·상태·검증·알림·오류를 포함하며 일반 작업의 미매핑은 전환 감사 실패다. |
 | MC-02 | 동등한 명명 도구가 노출되고 정책을 보존하면 사용한다. 활성 지시·알림·프롬프트·next_action은 실행할 CLI 대신 MCP 작업을 명시한다. 개발자용 호환 참조는 분리한다. 범용 agent(argv)나 임의 engine/shell 통로는 전환 요건을 충족하지 않는다. |
 | MC-03 | 기존 kernel API 위에 typed phase/state/evaluation과 worktree 작업을 제공한다. 네이티브 신원, 정확한 소유자 fencing, workflow revision, 검토 결과 소비와 완료 조건을 유지한다. 임의 모듈·Python 표현식·파일 쓰기·호출자 신원 입력을 받지 않는다. |
-| MC-04 | typed 학습/업데이트/보고 작업에도 기존 미리보기·동의·복구, 개인정보 검토, 정확한 기여 초안 승인, 불확실한 결과 처리를 유지한다. MCP가 외부 제출을 자동 승인하지 않는다. 집행이 미완성이면 네이티브 경로나 전환 누락으로 남긴다. |
-| MC-05 | CLI 예외는 설치 전 준비, 훅/비에이전트 자동화, 명명 도구 부재/미노출, MCP에서 호스트 정책을 보존할 수 없는 경우로 제한한다. 작업·도구 목록 근거·이유·시도 경로·복구 행동을 기록한다. 편의, 옛 예시, 권한 거부는 우회 근거가 아니다. |
+| MC-04 | typed 학습/업데이트/보고 작업에도 기존 미리보기·동의·복구, 개인정보 검토, 정확한 기여 초안 승인, 불확실한 결과 처리를 유지한다. MCP가 외부 제출을 자동 승인하지 않는다. 집행이 미완성이면 명시적 미지원 상태로 남긴다. |
+| MC-05 | 설치 전 부트스트랩·서버 시작·호스트 콜백은 실행 인프라다. 일반 하네스 작업에 CLI 예외를 두지 않는다. 미노출 도구나 집행 불가 모드는 구체적인 상태와 복구 필요를 보고하며 다른 전송으로 우회하지 않는다. |
 | MC-06 | 접수 전 실패와 접수된/불확실한 부수 효과를 구분한다. 기록된 결과나 관련 이벤트로 복구하며 불확실한 변경을 CLI로 반복하지 않는다. 전송 경로 변경으로 권한 거부를 우회하지 않는다. |
 | MC-07 | 저장된 CLI/기존 MCP 호환은 보존하되 활성 에이전트 지시의 우선순위에서 제거한다. 원본 자산, manifest, 패키지/설치 검사를 갱신하고 자기 설치를 조율한다. 설치된 스킬을 직접 편집하지 않는다. |
 | MC-08 | 새 Codex와 Claude의 자연어 시나리오에서 지원되는 일반 작업은 정당한 이유 없는 CLI/기존 argv 호출 0회로 완료해야 한다. 목록·실제 호출·결과·예외는 비공개로 보존한다. 미지원 사례는 명시적 누락으로 남긴다. |
@@ -140,7 +137,7 @@ actor/session/turn 권위는 네이티브 근거에서만 도출한다.
 | reporting_status, reporting_list, reporting_read | 없음, read는 draft_id | reporting.py 조회 메서드. 정확한 초안과 상태를 공개 제출 없이 읽는다. |
 | reporting_prepare | 기존 닫힌 보고 필드 8개, 개인정보 검토 확인, key | Reporting.prepare의 manifest/공통 범위 및 의미상 개인정보 검사. 검토 확인은 공개 제출 승인이 아니다. |
 | reporting_consent, reporting_approve | decision, 네이티브 사용자 선택 참조, approve는 정확한 draft_id 추가 | 기존 consent/approve 의미. 과거 기억이나 모델의 boolean 값으로 승인을 추론하지 않는다. |
-| reporting_submit, reporting_reconcile | draft_id, reconcile에는 정확한 이슈 URL, key | 기존 고정 목적지 submit/readback/reconcile. 공통보고 동의 또는 정확한 기여 승인, 소유권/네트워크 정책, 불확실한 송신 처리를 강제한다. MCP에서 집행할 수 있을 때까지 네이티브 경로를 사용한다. |
+| reporting_submit, reporting_reconcile | draft_id, reconcile에는 정확한 이슈 URL, key | 기존 고정 목적지 submit/readback/reconcile. 공통보고 동의 또는 정확한 기여 승인, 소유권/네트워크 정책, 불확실한 송신 처리를 강제한다. 현재 모드에서 집행할 수 없으면 미지원 상태를 반환한다. |
 
 기존 API는 _assets/scripts/agent_harness/state_cli.py, worktree_registry.py, state_handle.py,
 _assets/scripts/skill_harness/phase_runner.py, memory/learning.py, updates.py, reporting.py에 있다.
@@ -163,7 +160,7 @@ provider별 목록 조회는 현재 지원되는 네이티브 adapter를 쓰고 
 | S3: 낡은 계획, 요청 변조, 실제 불일치, 별칭 | 결속 검증 전 본 작업 전달 없음, 공식 별칭 해석 | MP-06–07 |
 | S4: 불확실한 생성 후 할당량 실패/범위 변경 | 기존 결과 대조, 미확인 중복 실행 없음 | MP-06–08 |
 | S5: 기억, 발견/송신/조회/답장, Newsroom, 상태 | 알림/오류 복구까지 명명 MCP 호출 | MC-01–02, MC-08 |
-| S6: phase 전이, claim 충돌, 학습 롤백, 업데이트/보고 준비 | typed 상태와 기존 권한 유지, 네이티브 경로 또는 명시적 누락 | MC-03–05 |
+| S6: phase 전이, claim 충돌, 학습 롤백, 업데이트/보고 준비 | typed 상태와 기존 권한 유지, 실제 명명 호출 또는 명시적 미지원 상태 | MC-03–05 |
 | S7: MCP 부재, 제한 정책, 접수 후 중단 | 근거 있는 예외, 권한 확대/중복 변경 없음 | MC-05–06 |
 | S8: 저장된 구 호출과 새 설치 호스트 | 하위 호환, 새 도구의 올바른 선택, 기존 설정 보존 | MC-07–08 |
 

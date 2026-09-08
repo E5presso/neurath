@@ -1,6 +1,6 @@
 # Runtime lifecycle and recovery
 
-<!-- date: 2026-09-08; synced_from: 5e8d761c276ceb8ddc05dcf239bb2d020f4b0da5; scope: source flows and conceptual diagrams -->
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
 
 **English** · [한국어](../../ko/contributing/runtime-lifecycle.md)
 
@@ -201,3 +201,27 @@ Sources: [transaction](../../../src/neurath/install/transaction.py), [updates](.
 | Uncertain maintenance | External effect is uncertain | Recorded request and external reconciliation |
 
 Use “recorded,” “submitted,” “observed,” “verified,” and “accepted” according to the available evidence.
+
+## MCP paths for phases and monitoring
+
+A phase workflow follows `phase_start` → `phase_current` → `phase_evidence_prepare` → `phase_complete` →
+`phase_finalize`. Preparation checks current required labels and exact revision, then returns an immutable
+reference distinguishing Git readback from agent reports. An arbitrary stored artifact cannot substitute for
+this registration. Changed owner, workflow or source invalidates reuse. Adaptive goals and independent
+evaluation retain the real authority checks in `adaptive_*` and `evaluation_*`.
+
+`monitor_start` admits monitoring authorized by the current owner and returns a run ID. A protected single-use
+launch grant binds the actual child PID, process start, generation and code without creating a native agent
+identity. Started is reported after the first observation and actual readback. Monitor lifetime differs from
+the time limit on an individual GitHub request.
+
+`monitor_cancel` uses a durable request and private control channel; admission alone does not establish exit.
+`monitor_recover` verifies prior process termination and remaining leases before starting a new generation.
+Before resume, the worker checks the owner's latest policy and omits arguments that overwrite it.
+`monitor_ack`, `monitor_external_wait` and `monitor_handoff` retain the domain contracts for event consumption,
+external waiting and retirement of prior monitoring. Observe-only monitoring does not resume the owner session.
+
+An operational final phase may pass its contract's `terminal_state` to `phase_complete` for atomic completion.
+Do not call `phase_finalize` again afterward. Contracts requiring separate final authority, including adaptive
+workflows, retain separate finalization. Use the actual workflow_revision returned by the last operation;
+after interruption, inspect `phase_current` before another mutation.

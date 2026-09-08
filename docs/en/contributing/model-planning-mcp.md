@@ -1,5 +1,7 @@
 # Dynamic model planning and MCP operation contract
 
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
+
 **English** · [한국어](../../ko/contributing/model-planning-mcp.md)
 
 [Architecture](architecture.md) · [Task tools](task-tools.md) · [Provider transports](provider-transports.md) · [Collaboration contract](collaboration-contract.md)
@@ -26,23 +28,17 @@ switch the current model, expand permissions or override a user-specified model/
 A model inventory observation records provider/host, source, observation time, exact model IDs and
 known capabilities. Unknown access/capability/cost remains unknown. A selection plan is an
 agent-authored proposal tied to an assignment revision and inventory. Requested selection is what
-creation receives; observed selection comes from the actual provider session. A native execution
-route preserves host policy. A CLI exception explains why a named MCP operation cannot currently
-serve the task; it grants no additional authority.
+creation receives; observed selection comes from the actual provider session. MCP operations preserve current host policy. A mode that cannot be enforced is explicitly unsupported;
+it does not grant additional authority or a CLI bypass.
 
-## Current source and gaps
+## Current implementation boundary
 
-| Source | Existing behavior | Extension |
-| --- | --- | --- |
-| providers/operations.py; runtime/task_schema.py | Optional model string; preserve-host-default | Difficulty assessment, inventory and selection plan |
-| providers/contracts.py; providers/codex.py; providers/claude_sdk.py | Requested/actual model and creation mismatch checks | Link the existing checks to the selected plan |
-| runtime/task_schema.py; runtime/tasks.py | Named memory, collaboration, provider, verification, Newsroom tools | Remaining workflow/ownership/learning/update/reporting operations |
-| agents/store.py; providers/codex_delivery.py; providers/operations.py | Generated notifications contain CLI message lookup | Named MCP actions in all agent-facing instructions |
-| install/projection.py; _assets/.agents/skills/plan-issues/SKILL.md and other bundled skills | MCP preference plus mandatory engine/skill CLI directions | Consistent operation map and evidenced exceptions |
-
-These paths are relative to src/neurath. Current source must be reread before implementation.
-MCP here describes the agent-facing control interface. An internal provider CLI process or native
-host executor is not, by itself, an agent-facing CLI regression.
+Use the [task catalog](task-tools.md) for current names and inputs. Model inventory/plans, state/ownership/phases/
+evaluation, learning/updates/reporting, context/installation/reviews/monitoring share the named MCP surface.
+`runtime/task_schema.py` owns the registry and `runtime/*_tasks.py` connects it to existing domain services.
+`install/mcp_guidance.py` checks actual operations in installed instructions. Internal CLI and host callbacks
+remain execution foundations, not a usage path requiring agent help exploration. Acceptance conditions below
+still require separate actual-host evidence; source implementation and registration alone do not establish a pass.
 
 ## Model selection requirements
 
@@ -88,11 +84,11 @@ cases. The provider_plan selection and provider_run readback retain the three de
 
 | ID | Contract |
 | --- | --- |
-| MC-01 | Map every agent-facing harness operation to a named MCP tool, native execution route or explicit exception. Cover policy, skills, phase/state/worktree, learning, updates/reporting, notifications and errors. Unmapped routine operations fail the migration audit. |
+| MC-01 | Map every agent-facing harness operation to a named MCP tool, including policy, skills, state, verification, notifications and errors. Unmapped routine operations fail migration. |
 | MC-02 | If an equivalent named tool is exposed and preserves policy, use it. Its active instructions, notifications, prompts and next_action must name the MCP action rather than direct executable CLI use. Keep developer compatibility references separate. Generic agent(argv) or an arbitrary engine/shell gateway does not satisfy migration. |
 | MC-03 | Add typed phase/state/evaluation and worktree actions over existing kernel APIs. Preserve native identity, exact-owner fencing, workflow revision, evaluator consumption and completion gates. No arbitrary module, Python expression, file write or caller-identity input. |
-| MC-04 | Add typed learning/update/reporting actions with existing preview/consent/recovery, privacy, exact contribution approval and uncertain-result handling. External submission is not implicitly approved by MCP. Where enforcement is incomplete, retain a native route or explicit migration gap. |
-| MC-05 | CLI exceptions are limited to pre-install bootstrap, hooks/non-agent automation, missing/unexposed named operations, or inability to preserve host policy through MCP. Record operation, inventory evidence, reason, attempted path and recovery action. Convenience, old examples or denial do not justify a bypass. |
+| MC-04 | Add typed learning/update/reporting actions with existing preview/consent/recovery, privacy, exact contribution approval and uncertain-result handling. External submission is not implicitly approved by MCP. Where enforcement is incomplete, retain an explicit unsupported state. |
+| MC-05 | Pre-install bootstrap, server startup and host callbacks are infrastructure. Routine harness operations have no CLI exception. Report unexposed tools or unenforceable modes specifically, without bypass through another transport. |
 | MC-06 | Separate failure before acceptance from accepted/uncertain side effects. Recover from recorded outcome or relevant events; never repeat an uncertain mutation via CLI. Changing transport cannot bypass permission denial. |
 | MC-07 | Preserve saved CLI/legacy MCP compatibility while removing their precedence from active agent instructions. Update source assets, manifest and package/install tests, then coordinate self-install. Do not edit projected skills by hand. |
 | MC-08 | Fresh Codex and Claude natural-language scenarios must complete with zero unjustified CLI/legacy-argv calls for covered routine actions. Record inventories, actual calls, outcomes and exceptions privately. Unsupported cases remain explicit gaps. |
@@ -144,7 +140,7 @@ Targets may identify resources; actor/session/turn authority is derived only fro
 | reporting_status, reporting_list, reporting_read | none; read: draft_id | reporting.py read methods; expose exact draft and status without publishing. |
 | reporting_prepare | the existing eight closed report fields; privacy review assertion; key | Reporting.prepare; manifest/common-scope and semantic privacy checks. Privacy assertion is not publication approval. |
 | reporting_consent, reporting_approve | decision; native user-choice reference; approve additionally exact draft_id | Existing consent/approve semantics; no approval inferred from historical memory or a model boolean. |
-| reporting_submit, reporting_reconcile | draft_id; reconcile additionally exact issue URL; key | Existing fixed-destination submit/readback/reconcile; enforce common-report consent or exact contribution approval, owner/network policy and uncertain-send handling. Use a native route until MCP can enforce those constraints. |
+| reporting_submit, reporting_reconcile | draft_id; reconcile additionally exact issue URL; key | Existing fixed-destination submit/readback/reconcile; enforce common-report consent or exact contribution approval, owner/network policy and uncertain-send handling. Return unsupported when the current mode cannot be enforced. |
 
 Backing APIs are in _assets/scripts/agent_harness/state_cli.py, worktree_registry.py, state_handle.py,
 _assets/scripts/skill_harness/phase_runner.py, memory/learning.py, updates.py and reporting.py.
@@ -167,7 +163,7 @@ use a currently supported native adapter and may return unavailable; no fabricat
 | S3: stale plan, altered request, actual mismatch, alias | No substantive assignment without verified binding; authoritative alias resolution | MP-06–07 |
 | S4: quota failure/changed scope after uncertain create | Earlier outcome reconciled; no unexamined duplicate run | MP-06–08 |
 | S5: recall, discovery/send/read/reply, Newsroom, status | Named MCP calls including notification/error recovery | MC-01–02, MC-08 |
-| S6: phase transition, claim conflict, learning rollback, update/report preparation | Typed state and unchanged authority; native route or explicit gap | MC-03–05 |
+| S6: phase transition, claim conflict, learning rollback, update/report preparation | Typed state and unchanged authority; actual named invocation or explicit unsupported state | MC-03–05 |
 | S7: unavailable MCP, restricted policy, interrupted accepted mutation | Evidenced exception; no privilege expansion or duplicate mutation | MC-05–06 |
 | S8: saved legacy call and fresh installed host | Backward compatibility, correct new tool selection, existing settings preserved | MC-07–08 |
 

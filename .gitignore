@@ -88,6 +88,7 @@ CLAUDE.md
 # <!-- neurath:managed -->
 .agents/runs/
 .agents/worktrees/
+.monitor-pr/
 .neurath/local/
 .neurath/install.json
 .neurath/*plan*.json

@@ -914,6 +914,26 @@ class MergeCleanupApplication:
         locator = SessionLocator.from_worktree(cwd)
         binding = self._runtime_resolver.resolve(environment)
         handle = StateHandle.attach(locator, binding)
+        return self.run_bound(handle=handle, cwd=cwd, workflow_id=workflow_id,
+                              base_branch=base_branch, remote_ref=remote_ref)
+
+    def run_bound(
+        self, *, handle: StateHandle, cwd: Path, workflow_id: WorkflowId,
+        base_branch: str, remote_ref: str,
+    ) -> dict[str, object]:
+        """Use an authenticated CLI/MCP handle while preserving cleanup intent recovery.
+
+        Args:
+            handle: Actual native caller, never a caller-supplied identity.
+            cwd: Canonical current worktree selected by the adapter.
+            workflow_id: Workflow owning the persisted cleanup intent.
+            base_branch: Approved base branch after cleanup.
+            remote_ref: Exact remote reference to verify.
+
+        Returns:
+            Existing cleanup receipt after all ownership and recovery checks.
+        """
+        locator = SessionLocator.from_worktree(cwd)
         registry = WorktreeRegistry(locator)
         state_store = SkillStateStore(handle, workflow_id)
         snapshot = state_store.read()

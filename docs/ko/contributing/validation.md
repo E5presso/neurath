@@ -2,7 +2,7 @@
 
 [English](../../en/contributing/validation.md) · **한국어**
 
-<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
 
 [사용 안내](../usage/index.md) · [기여자 안내](index.md)
 
@@ -111,8 +111,8 @@ Python 저장소, JavaScript 저장소에 설치합니다. 설치, 재설치, �
 
 ```sh
 ./setup --self
-.neurath/run doctor --protocol
-.neurath/run verify check
+명명 MCP 도구 diagnostics_project (현재 입력 스키마 사용)
+명명 MCP 도구 verification_run (현재 입력 스키마 사용) {"check": "check"}
 ```
 
 개발 저장소는 `.neurath/project.json`에서 `check`를 동일한 전체 검사 명령에 연결합니다.

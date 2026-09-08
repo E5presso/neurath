@@ -1,5 +1,5 @@
 # Codex와 Claude Code
-<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
 
 [사용 안내](../usage/index.md) · [기여자 안내](index.md)
 
@@ -51,7 +51,7 @@ Claude shell에는 해당 도구 호출에만 유효한 신원 참조를 전달�
 호스트의 permissionDecision을 allow로 변경하지 않습니다. 직계 자식만 지원하며 중첩 생성은
 명시적으로 거부합니다. 독립 평가 보고와 부모의 보고 소비는 별도의 typed 상태 전이입니다.
 
-부모에서 `.neurath/run delegate prepare --delegation-id <id> --assignment <text>`를 실행하고
+부모에서 `명명 MCP 도구 delegation_prepare (현재 입력 스키마 사용)`를 실행하고
 바로 다음 기본 자식 생성 도구를 호출하면, 확인된 실제 자식에게 그 위임을 연결합니다.
 위임 의도는 현재 foreground에 결속되며 오래된 의도나 중복 자식에 재사용되지 않습니다.
 

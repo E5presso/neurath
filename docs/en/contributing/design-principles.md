@@ -1,6 +1,6 @@
 # Design principles and harness philosophy
 
-<!-- date: 2026-09-08; synced_from: 5e8d761c276ceb8ddc05dcf239bb2d020f4b0da5; scope: explicit policy and source-derived interpretation -->
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
 
 **English** · [한국어](../../ko/contributing/design-principles.md)
 
@@ -122,3 +122,14 @@ These questions help read or change a feature; they do not introduce additional 
 3. Does the report mean accepted for execution, started, observed, accepted as a result, or finalized?
 4. What survives failure, interruption, duplication, or a stale revision?
 5. Which property does the test establish, and what still needs observation on the actual host?
+
+## Reduce discovery cost with explicit tool contracts
+
+Use the current server's tool names and input schemas as the invocation contract instead of injecting long
+CLI manuals for an agent to remember. Names expose intent; enums, required fields, arrays and revisions make
+constraints visible before invocation. Raw state patches and arbitrary command strings are not substitutes
+for shared domain APIs.
+
+This is a design rationale about cost and accuracy. Without measurements, do not claim a token reduction
+percentage. More meaningful than tool count is whether an agent selects the correct operation without help
+exploration, understands its actual result or recovery conditions, and completes the workflow through named calls.

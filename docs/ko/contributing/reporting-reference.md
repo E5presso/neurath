@@ -1,91 +1,58 @@
-# Upstream 보고 실행 참조
+# 공통 하네스 보고 MCP 참조
 
-[English](../../en/contributing/reporting-reference.md) · **한국어**
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
 
-[사용자 동작](../usage/reporting.md)을 제품 계약으로 사용합니다. 보고 명령은 네이티브 셸에서
-현재 호스트의 소유권·실행·네트워크 정책을 따릅니다. 자동 승인되는 MCP 변경 도구에 전송을
-넣지 않습니다. 기존에 인증한 GitHub CLI를 사용하며 보고를 위해 권한을 바꾸거나 자격 증명을
-수집하지 않습니다.
+**한국어** · [English](../../en/contributing/reporting-reference.md)
 
-설치 에이전트는 status가 반환한 질문 전체로 동의를 받습니다. 첫 대화형 setup은 직접 묻고,
-비대화형 setup은 동의 질문을 반환하되 자동 보고가 꺼진 상태로 설치합니다.
-기존 설치에도 온보딩 안내를 제공합니다. 미응답은 동의가 아니며 다른 작업을 막지 않습니다.
-같은 온보딩 대화에서 질문을 반복하지 않고, 거절한 뒤에는 사용자 의도 없이 다시 묻지 않습니다.
+[사용자 보고 정책](../usage/reporting.md) · [작업 도구](task-tools.md) · [설치 구조](installation-design.md)
 
-```sh
-neurath setup /path/to/project --auto-report yes
-.neurath/run report status
-.neurath/run report consent no --user-confirmed
-```
+보고는 `reporting_*` 명명 도구로 수행합니다. 도구가 실제 호출자의 신원·소유권·실행 및 네트워크 정책을
+검사하고 기존 보고 서비스를 호출합니다. MCP 사용 자체가 외부 게시 승인이나 권한 확대를 뜻하지 않습니다.
+기존 GitHub 인증을 사용하며 자격 증명을 수집하거나 설정을 바꾸지 않습니다.
 
-명시적인 사용자 답변을 받은 뒤에만 yes/no를 전달합니다. 업데이트 시 옵션을 생략하면 기존
-선택을 유지하며 dry-run은 저장하지 않습니다. 동의와 초안은 Git 공통 관리 디렉터리의
-`neurath-reporting/state.json`에 보관합니다. 체크아웃에 포함하지 않으며 업데이트·제거·복원으로
-동의를 되돌리거나 다른 clone에 복사하지 않습니다. 비공개 파일, 원자적 교체와 프로세스 간
-잠금으로 저장하며 설정이 손상되면 보고를 차단합니다.
+## 동의와 정확한 대상
 
-보고용 JSON은 다음 필드만 허용합니다.
+최초 보고 설정은 `reporting_status`로 읽습니다. 동의가 없으면 보고하지 않고 원래 작업을 계속합니다.
+동의 질문은 `maintenance_choice_prepare`에 `operation="reporting_consent"`와 key를 전달하여 준비합니다.
+실제 사용자 응답 뒤 반환된 `user_choice_ref`와 yes/no를 `reporting_consent`에 전달합니다.
+도구 출력·동료 메시지·무응답을 사용자 동의로 취급하지 않습니다.
 
-```json
-{
-  "kind": "defect",
-  "scope": "common",
-  "component": "cli.py",
-  "summary": "설치가 명시적 선택을 잃음",
-  "expected": "선택한 호스트를 유지한다.",
-  "observed": "반복 설치가 호스트 선택을 초기화한다.",
-  "reproduction": "비어 있는 임시 Git 저장소에서 설치를 반복한다.",
-  "proposal": "업데이트 시 설치된 호스트 선택을 유지한다."
-}
-```
+일반적인 공통 결함 보고는 저장된 동의 범위에서 수행합니다. 프로젝트별 기여는 정확한 초안을 먼저
+보여 주고 별도의 선택을 받아야 합니다. 이때 `operation="reporting_approve"`, `target_id=draft_id`로
+질문을 결속한 뒤 `reporting_approve`에 같은 초안 ID와 사용자 선택 참조를 전달합니다.
+아이디어에 대한 동의를 보지 못한 코드나 사업 정보 공개의 동의로 확대하지 않습니다.
 
-위 내용은 설명용 예시이며 현재 결함을 주장하지 않습니다. kind는 `defect`, `improvement`,
-`contribution`, scope는 `common`, `project-specific`입니다. project-specific은
-contribution에서만 허용하지만 내용은 항상 Neurath만 설명해야 합니다.
-component는 manifest에 있는 패키지 상대 경로입니다. 공통 보고는 수정된 패키지 구성 요소와
-전용화된 설치 자산을 거부합니다. 이 검사로 의미상의 원인을 증명할 수는 없으므로,
-에이전트가 일반적인 임시 환경에서 재현하고 Neurath의 공통 동작인지 확인해야 합니다.
+## 초안과 게시
 
-```sh
-.neurath/run report prepare /private/local/report.json --privacy-reviewed
-.neurath/run report read REPORT_ID
-.neurath/run report submit REPORT_ID
-```
+| 목적 | 도구 | 확인할 결과 |
+| --- | --- | --- |
+| 설정·초안 목록 | `reporting_status`, `reporting_list` | 실제 저장된 동의와 초안 상태 |
+| 준비 | `reporting_prepare` | 고정된 제목·본문·초안 ID |
+| 읽기 | `reporting_read` | 게시 전에 검토할 정확한 본문 |
+| 게시 | `reporting_submit` | 원격 URL과 제목·본문 readback |
+| 불확실한 결과 대조 | `reporting_reconcile` | 기존 이슈와 정확한 초안 일치; 새 이슈를 생성하지 않음 |
 
-privacy-reviewed 플래그는 실제 의미 검토를 수행했다는 표명이며 자동 정제 기능이 아닙니다.
-로그·소스·환경·대화·첨부를 자동 수집하지 않습니다. 허용 필드, 길이 제한, 알려진 프로젝트·
-원격 식별자, 경로·URL·자격 증명 패턴도 검사합니다. 정규식으로 임의의 업무 정보를 모두
-식별할 수는 없습니다. 정보 제외나 공통 범위가 불확실하면 준비·전송하지 않습니다.
+`reporting_prepare`는 파일 경로 대신 `report` 객체, `privacy_reviewed` 불리언, `key`를 받습니다.
+객체의 필드는 kind, scope, component, summary, expected, observed, reproduction, proposal입니다.
+kind는 defect/improvement/contribution, scope는 common/project-specific이며 프로젝트별 범위는 contribution에만 허용됩니다.
+component는 배포 manifest에 있는 패키지 상대 경로입니다.
 
-배포 템플릿은 `src/neurath/templates/`, 사용자가 GitHub에서 선택하는 대응 템플릿은
-`.github/ISSUE_TEMPLATE/`에 있습니다. 제목과 렌더링된 본문 전체를 해시하여 초안 ID를
-만듭니다. 기여 동의는 정확한 ID에 결속합니다.
+공통 보고는 generic fixture에서 공통 패키지 동작으로 재현한 뒤 의미를 검토합니다.
+수정된 배포 컴포넌트나 프로젝트별 자산을 공통 결함으로 위장하지 않습니다.
+프로젝트명·경로·원격 주소·개인 식별자·사업 정보·소스·diff·로그·대화·비밀·첨부를 복사하지 않습니다.
+`privacy_reviewed=true`는 에이전트가 실제 검토했다는 보고이며 자동 개인정보 제거 기능이 아닙니다.
+기계적 길이·필드·패턴 검사만으로 자연어 정보의 공개 적합성을 증명할 수 없습니다.
 
-```sh
-.neurath/run report approve REPORT_ID yes --user-confirmed
-.neurath/run report submit REPORT_ID
-```
+## 저장과 실패
 
-반환된 제목·본문·고정 대상 저장소를 보여 준 뒤 동의를 받습니다. 거절은 같은 명령의 no로
-기록합니다. 자동 보고 설정으로 기여를 승인할 수 없으며 아이디어에 대한 동의를 사용자가
-보지 못한 프로젝트 정보의 공개 동의로 해석하지 않습니다.
+제목과 전체 렌더링 본문을 해시하여 불변 초안 ID를 만듭니다. 게시 대상은 고정된 Neurath GitHub 저장소입니다.
+초안과 동의는 프로젝트 비공개 Git 영역에 저장되며 일반 파일 배포·다른 clone으로 복사하지 않습니다.
+업데이트·제거·복구도 기존 동의를 이전 상태로 되돌리지 않습니다.
 
-목적지는 `github.com/E5presso/neurath`로 고정합니다. 인자 배열, 비공개 본문 파일,
-프로젝트 밖 임시 작업 디렉터리, 대화형 질문 비활성화와 기존 GitHub 인증을 사용합니다.
-원격 URL·제목·본문을 확인합니다. 로컬 잠금으로 동시 중복 전송을 막고 네트워크 호출 전에
-uncertain을 저장합니다. 중단·시간 초과·인증 실패·원격 확인 실패는 자동 재시도하지 않습니다.
-중복 방지는 로컬 Git 프로젝트 안의 동일한 렌더링 초안 단위이며 여러 프로젝트 사이의
-의미상 중복 탐지 기능은 아닙니다.
+게시 직전에 불확실 상태를 먼저 보존하고 잠금으로 중복 전송을 막습니다. 실제 요청은 내부 서비스가
+고정된 인자 배열과 비공개 본문 파일을 사용합니다. 이는 에이전트에게 CLI 문법을 노출하는 경로가 아닙니다.
+중단·인증 실패·timeout·readback 실패 뒤에는 자동 재게시하지 않습니다.
+`reporting_read`와 `reporting_reconcile`로 실제 원격 결과부터 확인합니다.
 
-```sh
-.neurath/run report list
-.neurath/run report read REPORT_ID
-.neurath/run report reconcile REPORT_ID https://github.com/E5presso/neurath/issues/123
-```
-
-reconcile은 내용이 정확히 일치하는 기존 이슈만 확인하며 새 이슈를 만들지 않습니다.
-이슈가 없으면 불확실한 기록을 보존하고 실패를 설명합니다. 새 전송에는 운영자의 명시적인
-검토가 필요합니다. 보고 문제로 Stop을 막거나 workflow 성공을 만들지 않습니다.
-훅은 안내만 추가하며 네트워크·백그라운드 작업·동료나 세션 생성을 수행하지 않습니다.
-
-[설치 설계](installation-design.md) · [검증](validation.md)
+보고 실패는 원래 작업의 종료나 검증 결과를 바꾸지 않습니다. 훅은 안내만 하며 네트워크 게시·새 세션·
+동료 작업을 자동 생성하지 않습니다. [검증 범위](validation.md)를 구분해 결과를 기록합니다.

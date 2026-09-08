@@ -1,5 +1,7 @@
 # 프로바이더 협업 계약
 
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
+
 **한국어** · [English](../../en/contributing/collaboration-contract.md)
 
 [구조와 실행 경계](architecture.md) · [현재 전송 구현](provider-transports.md)

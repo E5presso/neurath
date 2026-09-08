@@ -73,13 +73,15 @@ provider_run은 실행 ID를 영속 저장하고 즉시 반환한다. 접수는 
 provider_status는 오류 후 진단용이며 주기적으로 호출하거나 완료 감시 자동화를 만들지 않는다.
 취소는 provider_cancel로 요청하고 실제 결과 메시지를 확인한다.
 정확한 입력은 각 도구의 스키마를 따른다. 문자열로 CLI 옵션을 조립하지 않는다.
-CLI 예시는 아래에 호환 실행 참조로 유지한다. 설치 전 준비, 훅·자동화, 구조화된 도구가 없는
-작업, 현재 호스트의 실행 모드를 MCP가 지킬 수 없는 검사에만 에이전트가 `.neurath/run`을 사용한다.
-기존 `agent(argv)` MCP는 저장된 호출과 업데이트 호환용이다. 새로운 작업에는 명명된 도구를 우선한다.
+CLI와 공통 도메인 서비스는 내부 실행 기반이며 에이전트의 하네스 호출 표면은 stdio MCP다.
+새 CLI 문법을 --help로 여러 턴 탐색하거나 argv를 조립하지 않는다. 명명 도구의 입력 스키마와
+구조화된 결과를 사용한다. 설치 전 부트스트랩·서버 시작·호스트 콜백은 실행 인프라다.
+기존 `agent(argv)`는 저장된 호출 호환용으로만 유지하며 새 도구 목록에는 노출하지 않는다.
 설치됨, 훅 프로토콜 통과, 실제 네이티브 활성화, 현재 실행 모드, 작업 공간 소유권은 별도 확인한다.
 프롬프트나 도구 응답만으로 모드·권한·소유권을 변경했다고 주장하지 않는다.
-검사는 프로젝트에 등록된 이름만 선택한다. 제한된 모드를 MCP가 집행할 수 없으면 호스트의
-셸 도구로 같은 검사를 실행한다. 이를 위해 모드나 권한을 넓히지 않는다.
+프로젝트 검사는 `verification_run`, 내장 검사 종류는 `verification_builtin`, 정확한 테스트
+노드는 `verification_nodes`를 사용한다. 현재 모드를 MCP가 집행할 수 없으면 구조화된 사유와
+미지원 상태를 보고한다. 다른 전송으로 재실행하거나 모드·권한을 넓히지 않는다.
 실패 결과의 원인·현재 상태·재시도 조건·다음 행동을 확인한다. 결과가 불확실한 검사를 자동 재실행하지 않는다.
 사용자에게 CLI 실행이나 설정 편집을 맡기지 않는다. 실제 호스트 신뢰·인증처럼 사용자 조작이
 필요한 경우에만 구체적인 차단과 필요한 조작을 알려 준다.
@@ -132,11 +134,12 @@ DECLARED hook은 AVAILABLE host 증명이 아니다. 원시 agent_id는 direct-c
 
 ## Provider 선택과 작업 간 대화
 일반 Codex·Claude 독립 작업은 위의 명명된 provider_run과 네이티브 이벤트 경로를 사용한다.
-기존 제한 시간 실행기는 짧은 읽기 전용 호환 검사에만 남아 있다: `.neurath/run delegate run --provider codex|claude-code
---model <정확한모델ID> --assignment <작업> --id <실행ID>`를 사용한다. 기본은 read-only이며,
-일반 세션 생성·쓰기 위임을 이 호환 검사로 대체하지 않는다.
+새 독립 작업은 `provider_run`을 사용하고 기본 `mode=inherit`로 바로 위 발행자의 실제 정책을 승계한다.
+`provider_status`는 이벤트 후 진단, `provider_cancel`은 취소 요청, `provider_recover`는 실제 종료가
+확인된 소유 연결 복구다. 후속 질문은 발견한 실제 주소에 `collaboration_send` 또는 `collaboration_reply`로
+전달한다. 복구 도구를 새 후속 작업이나 원래 작업의 재실행으로 사용하지 않는다.
+과거 제한 시간 실행기는 저장된 호출의 내부 호환용이다. 새 에이전트 운용 경로로 권하지 않는다.
 실행 결과는 agent-report다. 외부 실행으로 DIRECT_CHILD나 독립 evaluator 권한을 만들지 않는다.
-`delegate status <실행ID>`, `delegate cancel <실행ID>`, `delegate resume <실행ID> --assignment <후속질문>`을 사용한다.
 provider 인증과 모델 접근 권한은 해당 CLI의 기존 설정을 사용하며, 다른 모델로 몰래 대체하지 않는다.
 
 독립 동료에게 승인된 작업을 맡길 때 collaboration_assign으로 발행자와 실제 수신자를 결속한다.
@@ -184,10 +187,10 @@ active 세션·자식이 자동 참여한다. 새로운 버그, 스펙의 개념
 중계하지 않고 다른 작업에도 유용한 발견만 발행한다. 제목은 본문을 정확히 대표해야 한다.
 
 두 호스트 모두 노출된 `newsroom_headlines/read/publish` 작업 도구를 우선 사용한다.
-정정·댓글처럼 아직 명명된 도구가 없는 작업에는 기존 `agent(argv)` 또는 `.neurath/run newsroom`을 사용한다.
+정정·댓글도 `newsroom_revise`와 `newsroom_comment`의 명명된 스키마를 사용한다.
 발신 신원은 네이티브 호출에 결속되며 도구 입력으로 바꿀 수 없다. MCP는 파일 편집·임의 명령·
 소유권을 임의로 만들지 않는다. 등록된 검사와 `provider_run`은 현재 호스트 정책·소유권 검사를 거친다.
-MCP에서 정책을 집행할 수 없으면 같은 작업을 네이티브 셸 경로로 실행하며 권한을 넓히지 않는다.
+MCP에서 정책을 집행할 수 없으면 해당 작업의 미지원 상태와 관측한 제약을 보고한다.
 
 발행 시점에 active인 동료에게 제목과 조회 ID만 큐에 넣고 다음 정상 호스트 훅에서 push한다.
 `newsroom headlines`로 현재 제목을 확인하고, 자신의 작업에 관련 있는 경우에만
@@ -258,10 +261,10 @@ component(패키지 상대 경로), summary, expected, observed, reproduction, p
 자동 보고 플래그는 이 동의를 대신하지 않으며 초안 변경 시 새로운 동의가 필요하다.
 이슈 제안 동의는 전용 코드 공개나 권리 이전 동의가 아니다.
 
-보고 도구는 네이티브 셸로 실행하여 현재 호스트의 실행·네트워크 정책을 유지한다.
+보고 도구는 `reporting_prepare`와 `reporting_submit`의 정책 검사로 현재 실행·네트워크 제약을 유지한다.
 훅은 동의 상태와 발견 시 행동만 안내하며 자동 네트워크 전송이나 작업 생성은 하지 않는다.
 제출 결과의 URL·read-back을 확인한다. uncertain이면 성공이라 하지 않고 재전송하지 않는다.
-`report list/read`로 확인하고 생성된 이슈가 있으면 `report reconcile <ID> <URL>`로 검증한다.
+`reporting_list`와 `reporting_read`로 확인하고 생성된 이슈가 있으면 `reporting_reconcile`로 검증한다.
 인증·네트워크 실패는 현재 작업의 종료를 막지 않는다. 원문 오류를 이슈 본문에 붙이지 않는다.
 
 ## 대상 저장소와 프로필
@@ -368,7 +371,7 @@ def asset_files(profile, hosts, skill_prefix=""):
                     split = content.split("---", 2)
                     if len(split) == 3:
                         split[2] = (
-                            f"\n\n먼저 `.neurath/policy.md`와 `.neurath/project.json`을 읽으세요.\n이 문서는 Neurath의 `{name}` 절차입니다. 대상 프로젝트의 지침과 설정에 연결하여 실행합니다.\n기억·검증·대화·뉴스 작업은 현재 노출된 구조화 MCP 도구를 우선합니다. 도구가 없거나 호스트 실행 모드를 지킬 수 없는 경우에만 CLI 참조를 사용합니다.\n내장 계약: `{skill}`. 도구가 다루지 않는 실행 스크립트는 `.neurath/run skill {name} <script>`로 실행합니다.\n"
+                            f"\n\n먼저 `.neurath/policy.md`와 `.neurath/project.json`을 읽으세요.\n이 문서는 Neurath의 `{name}` 절차입니다. 대상 프로젝트의 지침과 설정에 연결하여 실행합니다.\n하네스 작업은 현재 노출된 명명 MCP 도구와 구조화 입력을 사용합니다. CLI 문법이나 --help를 탐색하지 않습니다. 현재 정책에서 실행할 수 없으면 구체적인 미지원 사유를 보고합니다.\n내장 계약: `{skill}`. `phase_current`로 단계와 근거 요구를 읽고 `phase_evidence_prepare` 및 기존 평가 도구로 근거를 준비합니다.\n"
                             + split[2]
                         )
                         content = "---".join(split)

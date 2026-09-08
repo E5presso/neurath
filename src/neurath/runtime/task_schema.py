@@ -1,6 +1,7 @@
 """Small task vocabulary and its wire schemas; no shell or caller identity fields."""
 
 from copy import deepcopy
+import json
 import math
 
 from neurath.runtime.state_tasks import definitions as state_definitions
@@ -8,6 +9,11 @@ from neurath.runtime.workflow_tasks import definitions as workflow_definitions
 from neurath.runtime.maintenance_tasks import definitions as maintenance_definitions
 from neurath.runtime.model_tasks import definitions as model_definitions
 from neurath.runtime.communication_schema import definitions as communication_definitions
+from neurath.runtime.context_tasks import definitions as context_definitions
+from neurath.runtime.execution_tasks import definitions as execution_definitions
+from neurath.runtime.installation_tasks import definitions as installation_definitions
+from neurath.runtime.process_tasks import definitions as process_definitions
+from neurath.runtime.monitor_tasks import definitions as monitor_definitions
 
 
 class TaskError(ValueError):
@@ -37,6 +43,34 @@ def strings():
 
 def choice(*values):
     return {"type": "string", "enum": list(values)}
+
+
+def document_field():
+    """Bounded JSON data for session artifacts, never arbitrary file/state writes."""
+    return {"type": "object", "additionalProperties": True, "maxProperties": 128,
+            "description": "JSON document data, at most 64 KiB and 16 nesting levels. Stored as a session artifact, not execution authority.",
+            "x-neurath-document": True}
+
+
+def _document(value, depth=0):
+    if depth > 16:
+        raise TaskError("invalid-input", "document nesting exceeds sixteen levels")
+    if isinstance(value, dict):
+        if len(value) > 128 or any(not isinstance(k, str) or "\0" in k for k in value):
+            raise TaskError("invalid-input", "document object keys are outside their bounds")
+        for item in value.values():
+            _document(item, depth + 1)
+    elif isinstance(value, list):
+        if len(value) > 1024:
+            raise TaskError("invalid-input", "document array exceeds its bound")
+        for item in value:
+            _document(item, depth + 1)
+    elif value is not None and type(value) not in (str, bool, int, float):
+        raise TaskError("invalid-input", "document must contain JSON values")
+    elif isinstance(value, str) and "\0" in value:
+        raise TaskError("invalid-input", "document text contains a null byte")
+    elif type(value) is float and not math.isfinite(value):
+        raise TaskError("invalid-input", "document numbers must be finite")
 
 
 # name: domain, operation, description, fields, read-only
@@ -126,6 +160,11 @@ TASKS.update(maintenance_definitions())
 TASKS.update(model_definitions())
 TASKS.update(workflow_definitions())
 TASKS.update(communication_definitions())
+TASKS.update(context_definitions())
+TASKS.update(execution_definitions())
+TASKS.update(installation_definitions())
+TASKS.update(process_definitions())
+TASKS.update(monitor_definitions())
 TASKS.update({
     "delivery_status": ("delivery", "status", "Inspect a participating message's delivery attempts and repair hold. Not a polling monitor.",
         {"message_id": text_field(64)}, True),
@@ -160,6 +199,13 @@ def definitions():
 
 
 def _validate(value, rule, path):
+    if rule.get("x-neurath-document"):
+        if not isinstance(value, dict):
+            raise TaskError("invalid-input", f"{path} must be an object")
+        _document(value)
+        if len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode()) > 65536:
+            raise TaskError("invalid-input", "document exceeds 64 KiB")
+        return
     if "anyOf" in rule:
         for variant in rule["anyOf"]:
             try:

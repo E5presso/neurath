@@ -182,7 +182,7 @@ def checkpoint_request(root, host, payload):
         return (
             "Neurath needs a durable handoff before this turn ends. Automatic learning has unvalidated recovery evidence. "
             "Prefer verification_run(check='check') when available and authorized, then memory_checkpoint for the actual outcome. "
-            "If the task tool is unavailable or cannot preserve native execution policy, use the host shell's project-bound .neurath/run verify check. "
+            "If the named task is unavailable or cannot enforce current policy, preserve that unsupported state and its concrete reason. "
             "This is routine harness maintenance; no separate user request to learn or verify is required. "
             "If the current user explicitly forbids further checks, or the check cannot run with existing permissions and tools, "
             'record the concrete reason with learning_defer(reason="...", key=STABLE_KEY) and leave the candidate unvalidated. '
@@ -194,10 +194,8 @@ def checkpoint_request(root, host, payload):
     return (
         "Neurath needs a durable handoff before this turn ends. Save the actual result, decisions, remaining work, "
         "and useful lessons from failures or user feedback with memory_checkpoint(summary, key, decisions, next_steps, lessons, status). "
-        "Use the task tool when available; otherwise run .neurath/run memory checkpoint "
-        '--summary "..." --decision "..." --next-step "..." --lesson "..." '
-        "--status active|paused|completed|blocked (omit unused repeatable options). "
+        "Use the named MCP task and its current structured input schema. If unavailable, report the missing tool and activation state. "
         "Use concise factual text; do not store secrets, reasoning traces, or claim tests you did not run. "
-        "If command recovery candidates exist, prefer verification_run(check='check'); use .neurath/run verify check through the host shell when unavailable or unsupported. "
+        "If command recovery candidates exist, use verification_run(check='check'); preserve unsupported policy or tool states without replaying through another transport. "
         "This checkpoint records a report; it never completes a workflow or transfers ownership. Then finish the response."
     )

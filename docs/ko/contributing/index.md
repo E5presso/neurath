@@ -5,7 +5,7 @@
 
 [English](../../en/contributing/index.md) · **한국어**
 
-<!-- date: 2026-09-08; synced_from: 5e8d761c276ceb8ddc05dcf239bb2d020f4b0da5; English and Korean editions updated together -->
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
 
 [사용 안내](../usage/index.md) · [기여자 안내](index.md)
 
@@ -82,7 +82,7 @@ uv run --locked python tools/build_manifest.py
 uv run --locked python tools/check.py
 uv run --locked python -m build
 ./setup --self
-.neurath/run doctor --protocol
+명명 MCP 도구 diagnostics_project (현재 입력 스키마 사용)
 ```
 
 새 설치 동작은 먼저 실패하는 테스트로 정의합니다. 기존 지침, 훅, 권한, 의존성과

@@ -1,6 +1,6 @@
 # 설계 원칙과 하네스 철학
 
-<!-- date: 2026-09-08; synced_from: 5e8d761c276ceb8ddc05dcf239bb2d020f4b0da5; scope: explicit policy and source-derived interpretation -->
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
 
 [English](../../en/contributing/design-principles.md) · **한국어**
 
@@ -122,3 +122,13 @@ flowchart LR
 3. 접수·시작·관측·수락·종료 중 어느 상태를 보고하는가?
 4. 실패·중단·중복·오래된 revision에서 무엇이 보존되는가?
 5. 해당 테스트는 어떤 성질을 증명하며, 실제 호스트에서는 무엇을 더 관측해야 하는가?
+
+## 발견 가능한 도구 계약으로 탐색 비용 줄이기
+
+하네스 사용법을 기억하도록 긴 CLI 사용 설명을 주입하는 대신, 현재 서버가 제공하는 도구 이름과 입력
+스키마를 호출 계약으로 사용합니다. 도구명은 목적을 나타내고, enum·필수 필드·배열·revision 같은 제약은
+호출 전에 드러납니다. 원시 상태 패치나 임의 명령 문자열은 공통 도메인 API의 대안이 아닙니다.
+
+이 원칙은 비용·정확도에 대한 설계 의도입니다. 실제 토큰 절감률을 측정하지 않았다면 수치로 주장하지
+않습니다. 검증할 것은 도구 개수보다 에이전트가 도움말 탐색 없이 적절한 작업을 선택하고, 실제 결과나
+복구 조건을 이해하며, 끝까지 같은 명명 호출 경로를 사용할 수 있는지입니다.

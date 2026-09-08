@@ -2,7 +2,7 @@
 
 **English** · [한국어](../../ko/contributing/skills-reference.md)
 
-<!-- date: 2026-09-07; synced_from: source and documentation at e1487a1718056b37b999d1343a1007b7e25f5c8c; English and Korean editions updated together -->
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
 
 [Contributing](index.md) · [User skill catalog](../usage/skills.md)
 
@@ -34,7 +34,7 @@ Updating an installation removes old managed paths. User skills with conflicting
 manually edited managed files are not overwritten. Internal contract identifiers remain stable
 so ongoing work records can still be read. Engine commands use the skill body's built-in contract
 identifier, labeled `내장 계약`; scripts can use the current name, as in
-`.neurath/run skill watch-pr <script>`.
+`currently exposed named Neurath MCP tools`.
 
 `create-package`, `local-dev`, `onboard`, `refactor-code`, `impact-analysis`,
 `improve-coverage`, and `property-test` are no longer standalone skills. Shared instructions

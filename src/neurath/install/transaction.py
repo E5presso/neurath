@@ -447,7 +447,7 @@ def make_plan(root, *, action="install", profile=None, hosts=None, receipt=None,
                                        old["mode"] if old else 0o644)
         managed_text(
             ".gitignore",
-            f"\n{MARKER}\n.agents/runs/\n.agents/worktrees/\n.neurath/local/\n.neurath/install.json\n.neurath/*plan*.json\n<!-- /neurath:managed -->\n".replace(
+            f"\n{MARKER}\n.agents/runs/\n.agents/worktrees/\n.monitor-pr/\n.neurath/local/\n.neurath/install.json\n.neurath/*plan*.json\n<!-- /neurath:managed -->\n".replace(
                 "<!--", "# <!--"
             ).replace("##", "#"),
         )

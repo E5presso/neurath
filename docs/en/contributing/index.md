@@ -1,5 +1,5 @@
 # Developing Neurath
-<!-- date: 2026-09-08; synced_from: 5e8d761c276ceb8ddc05dcf239bb2d020f4b0da5; English and Korean editions updated together -->
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
 
 Harness deep dive: [system architecture](architecture.md) · [design principles and philosophy](design-principles.md) ·
 [runtime lifecycle and recovery](runtime-lifecycle.md) · [capabilities and source map](capability-map.md).
@@ -81,7 +81,7 @@ uv run --locked python tools/build_manifest.py
 uv run --locked python tools/check.py
 uv run --locked python -m build
 ./setup --self
-.neurath/run doctor --protocol
+Named MCP tool diagnostics_project (current input schema)
 ```
 
 Define new installation behavior with a failing test first. Keep existing instructions, hooks,

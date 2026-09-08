@@ -87,7 +87,7 @@ def show_setup(result):
             if check["status"] == "failed" and check.get("diagnostic"):
                 print(f"  {check['diagnostic']}")
     if result["status"] == "failed":
-        print("설치는 적용됐지만 진단에 실패했습니다. .neurath/run doctor --protocol로 확인하세요.")
+        print("설치는 적용됐지만 진단에 실패했습니다. diagnostics_project MCP 도구의 protocol=true로 확인하세요.")
     else:
         print("설치 및 로컬 진단 완료. 실제 호스트 활성화는 아직 확인되지 않았습니다.")
     print("다음 단계:")

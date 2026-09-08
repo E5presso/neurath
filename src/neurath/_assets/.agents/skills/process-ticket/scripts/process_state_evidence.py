@@ -532,38 +532,8 @@ class ProcessStateEvidenceApplication:
             locator = SessionLocator.from_worktree(cwd)
             binding = self._resolver.resolve(environment)
             handle = StateHandle.attach(locator, binding)
-            store = SkillStateStore(handle, workflow_id)
             resources = MonitorRuntimeResources.resolve(cwd=cwd, environment=environment)
-            validator = MonitorSubscriptionValidator(
-                resources=resources,
-                workflow_id=workflow_id,
-            )
-            if field in {"merged", "monitor_event_subscription"}:
-                selected = store.read()
-                mutation = self._mutation(
-                    field,
-                    value,
-                    selected,
-                    validator,
-                )
-                try:
-                    committed = store.compare_and_update(
-                        selected.workflow_revision,
-                        mutation,
-                    )
-                except SkillStateConflict as error:
-                    raise ProcessStateEvidenceConflict(
-                        "workflow changed during external evidence read-back; rerun the command"
-                    ) from error
-            else:
-                mutation = self._mutation(
-                    field,
-                    value,
-                    None,
-                    validator,
-                )
-                committed = store.update(mutation)
-            return self._success(field, committed)
+            return self.apply_bound(handle=handle, workflow_id=workflow_id, resources=resources, field=field, value=value)
         except (
             ProcessStateEvidenceError,
             RuntimeIdentityError,
@@ -580,6 +550,59 @@ class ProcessStateEvidenceApplication:
                 stdout="",
                 stderr=f"repository identity is unavailable: {error}",
             )
+
+    def apply_bound(
+        self, *, handle: StateHandle, workflow_id: WorkflowId,
+        resources: MonitorRuntimeResources, field: str, value: object,
+    ) -> ProcessStateEvidenceResult:
+        """Apply typed evidence using a caller authenticated by the CLI or MCP adapter.
+
+        Args:
+            handle: Actual native caller state handle.
+            workflow_id: Exact workflow owning the evidence.
+            resources: Resources derived from the same native caller and worktree.
+            field: Existing allowlisted evidence field.
+            value: Structured event result, still subject to live domain checks.
+
+        Returns:
+            Existing structured success receipt.
+
+        Raises:
+            ProcessStateEvidenceInputError: The field is not part of the existing contract.
+        """
+        if field not in self._ALLOWED_FIELDS:
+            raise ProcessStateEvidenceInputError("unsupported evidence field")
+        store = SkillStateStore(handle, workflow_id)
+        validator = MonitorSubscriptionValidator(
+            resources=resources,
+            workflow_id=workflow_id,
+        )
+        if field in {"merged", "monitor_event_subscription"}:
+            selected = store.read()
+            mutation = self._mutation(
+                field,
+                value,
+                selected,
+                validator,
+            )
+            try:
+                committed = store.compare_and_update(
+                    selected.workflow_revision,
+                    mutation,
+                )
+            except SkillStateConflict as error:
+                raise ProcessStateEvidenceConflict(
+                    "workflow changed during external evidence read-back; rerun the command"
+                ) from error
+        else:
+            mutation = self._mutation(
+                field,
+                value,
+                None,
+                validator,
+            )
+            committed = store.update(mutation)
+        return self._success(field, committed)
 
     def _mutation(
         self,

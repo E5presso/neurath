@@ -1,107 +1,73 @@
-# Installation development and integration
+# Installation development and MCP integration
+
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
 
 **English** · [한국어](../../ko/contributing/installation.md)
 
-<!-- date: 2026-09-07; synced_from: source and documentation at e1487a1718056b37b999d1343a1007b7e25f5c8c; English and Korean editions updated together -->
+[Contributing](index.md) · [Bootstrap reference](setup-reference.md) · [Task tools](task-tools.md)
 
-[Usage](../usage/index.md) · [Contributing](index.md)
+This reference is for contributors developing installation behavior or validating agent integration.
+Ordinary users request outcomes through the [installation guide](../usage/installation.md).
 
+## Bootstrap and installed administration
 
-Use this reference when changing or validating the installer, maintaining an agent integration, or testing the verification binding contract. For ordinary project installation, use the [user installation guide](../usage/installation.md). Run build commands only in the Neurath source checkout and installation commands against an explicit disposable or user-designated target.
+Before first installation, the target has no Neurath MCP server. The source's
+`./setup /target/Git-root` prepares the independent tool environment and installer as bootstrap infrastructure.
+Use `./setup --self` for the Neurath development repository. Preserve project dependencies and development environments.
 
-## Agent execution reference
+Once the server is installed and active, administer the harness through named MCP tools.
 
-Contribute by describing the desired change, constraints, and acceptance conditions to your
-coding agent. The agent performs the development commands and Neurath operations in this guide.
-Command blocks document reproducible execution for agents and reviewers; they are not manual
-setup requirements for users. Human host authentication and trust decisions remain with you.
+| Purpose | Tool | Observation |
+| --- | --- | --- |
+| Readiness | `session_status` | Installation, activation, actual mode and ownership separately |
+| Plan | `installation_plan` | action, optional hosts/profile/skill_prefix, stable key; summary and plan reference |
+| Apply | `installation_apply` | Returned plan_ref and key; actual application result |
+| Recover interruption | `installation_recover` | Existing journal versus current files |
+| Integrity and placement | `diagnostics_integrity`, `diagnostics_project` | Package contents versus installed locations |
+| Protocol | `diagnostics_project` with protocol=true | Simulated host event checks |
 
-[Setup](setup-reference.md) · [Collaboration](agents-reference.md) ·
-[Memory](memory-reference.md) · [Skill compatibility](skills-reference.md)
+Plan actions are install/update/uninstall/restore. Restore uses the installation_id of an existing application.
+Only registered immutable plans can be applied, and original file contents are not exposed in tool responses.
+Preserve conflicting files and inspect the cause. Do not ask again when existing user authorization already covers the action.
 
-## Installation procedure for agents
+```json
+{"tool":"installation_plan","arguments":{"action":"update","key":"inspect-current-update"}}
+```
 
-1. Inspect the user-designated target repository's Git root and existing `AGENTS.md`, `CLAUDE.md`,
-   `.agents/skills`, `.claude/settings.json`, `.codex/config.toml`, and `.codex/hooks.json`.
-   Do not ask for the same installation approval again when it has already been granted.
-2. Use the `generic` profile and both Codex and Claude Code by default. Product-specific profiles
-   and framework policies are not included.
-3. If a separate change preview is needed, inspect paths with the source
-   `setup /target/Git-root --dry-run` or an installed `neurath setup /target/Git-root --dry-run`.
-   Use the `plan`/`apply` route below only when an original-content comparison is needed.
-   Plan JSON contains existing file contents: store it privately and keep it out of version control.
-4. With downloaded source, run that source's `setup /target/Git-root`. If the tool is already
-   available, use `neurath setup /target/Git-root` for installation and diagnostics. Do not use
-   the target project's `.venv` or run `uv sync` in that project.
-5. `setup` applies changes through the same `make_plan`/`apply_plan` engine. On a conflict,
-   preserve the file and explain the cause. Do not resolve it by overwriting files, using
-   `--force`, or bypassing permissions.
-6. Bind the target repository's document slots and actual verification commands in
-   `.neurath/project.json`. Do not invent missing documents. Ask only for information that is needed.
-7. Review the diagnostics from `setup`. With a separate `apply` flow, run `doctor --protocol`.
-   This does not prove host trust or live actor/evaluator identity.
-8. In Codex, the user must trust the project and review the exact hooks through `/hooks`.
-   In Claude Code, check project settings and hook loading through `/hooks`.
-   The installer must not modify or bypass trust settings.
+The native host may need to reload its catalog after installation. Source changes or successful installation
+do not establish that new tools are available in the current conversation. Verify actual trust, authentication and hook loading.
 
+## Distribution development
 
-## Build a wheel and run individual steps
-
-This advanced path is for building a wheel yourself or reviewing changes separately.
-It need not be repeated after quick setup.
+These commands develop and build Neurath itself; they are distinct from agent-facing harness operations.
 
 ```sh
-# Build only in the Neurath source repository
 uv sync --locked
-.venv/bin/python tools/build_manifest.py
-.venv/bin/python -m build
-
-# Use a new absolute path per distribution; do not reinstall or move existing environments
-uv venv --python 3.14 /absolute/path/to/new-neurath-runtime
-uv pip install --python /absolute/path/to/new-neurath-runtime/bin/python /absolute/path/to/neurath/dist/neurath-0.1.0-py3-none-any.whl
-
-# For a new project, first run git init in the user-designated directory
-/absolute/path/to/new-neurath-runtime/bin/neurath --root /absolute/path/to/project plan --output /private/path/neurath-plan.json
-/absolute/path/to/new-neurath-runtime/bin/neurath --root /absolute/path/to/project apply /private/path/neurath-plan.json
-/absolute/path/to/project/.neurath/run doctor --protocol
+uv run --locked python tools/build_manifest.py
+uv run --locked python tools/check.py
+uv run --locked python -m build
 ```
 
-Place `--root` before the CLI subcommand. The launcher uses the Python path from the independent
-tool environment, and hooks locate the launcher in the current Git worktree. If the tool environment
-has moved, review an update plan. `neurath install` is the explicit installation command that
-creates and applies a plan in one operation.
+Execution asset sources live in `src/neurath/_assets`. `.agents/skills` and `.neurath/rules` are installed outputs.
+Perform manifest generation, package checks, building and self-installation separately. Launchers use isolated
+Python execution so target packages with matching names cannot shadow the bundled engine.
 
+## Project bindings and checks
 
-## Verification and repository conventions
+Only the `generic` profile is supplied. Bind documents and verification in `.neurath/project.json` to the actual
+target's instructions. Do not invent missing documents or select a check merely because a tool exists.
+To run exact pytest nodes, bind the project's test environment through verification.pytest.argv.
+This internal configuration stores an executable array; agents do not reconstruct harness CLI options on every call.
 
-`generic` is the only profile. Verification commands are not selected automatically merely
-because a tool is present. For Python verification of exact test nodes, set
-`verification.pytest.argv` to the executable in the project's test environment, such as
-`["python", "-m", "pytest"]`. Do not include selectors (`-k`, `-m`), other test paths, or
-configuration overrides in this binding. Use `verify <name>` for general verification and
-the following command for typed phase verification:
+`verification_run` accepts a bound project check name, `verification_builtin` a built-in check kind, and
+`verification_nodes` an array of exact test nodes.
 
-```sh
-.neurath/run engine scripts.agent_harness.verification_runner pytest --node tests/test_example.py::test_example
+```json
+{"tool":"verification_nodes","arguments":{"nodes":["tests/test_example.py::test_example"],"key":"check-example"}}
 ```
 
-GitHub metadata requires no particular language or prefix by default. Projects that need these
-conventions can set `metadata.language` to `"ko"`, or set `metadata.require_title_issue_prefix`
-and `metadata.require_commit_subject_issue_prefix` to `true` as appropriate. Follow the target
-project's instructions for branch and worktree paths. Cleanup requires an explicitly verified
-`--base-branch` and `--remote-ref`.
+Metadata language, title conventions and branch rules belong to the target project. Give `worktree_cleanup`
+actually verified `base_branch` and `remote_ref` values. Never edit generated state files or force ownership recovery.
 
-The kit's fixed regression matrix runs through `tools/run_core_regressions.py` in Neurath's
-development source. Target project verification cannot replace regression evidence for changes
-to the kit itself.
-
-## Inspect the internal command interfaces
-
-These commands expose the existing integration interfaces; they are not required for a user
-to start a normal task.
-
-```sh
-.neurath/run engine scripts.agent_harness.state_cli --help
-.neurath/run engine scripts.skill_harness.phase_runner --help
-.neurath/run skill watch-pr monitor_runtime_readback.py --help
-```
+Discover operation usage through the [named catalog and schemas](task-tools.md).
+Distribution integrity, installed placement, protocol fixtures, live activation and model execution are distinct evidence scopes.

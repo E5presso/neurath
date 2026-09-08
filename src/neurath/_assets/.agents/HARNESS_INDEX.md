@@ -3,7 +3,7 @@
 
 이 문서는 planned-path lookup용 canonical rule metadata projection입니다.
 Skill·routing·contract 진단은 `.agents/HARNESS_AUDIT.md`에 있으며 두 문서 모두
-`uv run python -m scripts.skill_harness.harness_catalog --check`로 drift를 검사합니다.
+설치된 투영의 drift는 `diagnostics_project` MCP로 검사합니다. 소스 생성은 `tools/build_manifest.py`가 담당합니다.
 
 - Rules: 8
 - No-path source rules: 6

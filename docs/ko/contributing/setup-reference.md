@@ -1,7 +1,7 @@
 # 설치 실행 참조
 
 **대상 독자: 코딩 에이전트와 기여자.** 아래 명령은 승인된 작업을 수행하는 에이전트의 실행 참조입니다. 사용자는 [사용 안내](../usage/index.md)에 따라 목표를 요청하며, 이 명령을 직접 실행할 필요가 없습니다.
-<!-- date: 2026-09-07; synced_from: source and documentation at e1487a1718056b37b999d1343a1007b7e25f5c8c; English and Korean editions updated together -->
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
 
 [사용 안내](../usage/index.md) · [기여자 안내](index.md)
 
@@ -41,7 +41,7 @@ neurath setup /absolute/path/to/another-project
 ```
 
 `neurath`가 PATH에 없다면 설치 출력의 실행 파일 전체 경로를 사용하세요.
-이미 설치된 프로젝트에서는 `.neurath/run setup`도 사용할 수 있습니다.
+이미 설치된 프로젝트에서는 `installation_plan` → `installation_apply`도 사용할 수 있습니다.
 
 처음 설치할 때는 `generic` 프로필과 양쪽 호스트를 사용합니다.
 재실행하면 기존 호스트·프로필 선택과 사용자 문서·검증 바인딩을 유지합니다.
@@ -128,41 +128,22 @@ neurath --root /absolute/path/to/project wizard --output /private/path/neurath-p
 그 프로젝트에서 이미 승인한 검증 범위여야 합니다. `stdout_contains`로 추가 성공 조건을
 지정할 수 있으며, 종료 코드가 성공이어도 실행 중 저장소 파일이 바뀌면 receipt는 실패합니다.
 
-```sh
-.neurath/run verify check
+```text
+명명 MCP 도구 verification_run (현재 입력 스키마 사용) {"check": "check"}
 ```
 
 ## 업데이트와 복구
 
-새 소스를 받았다면 `./setup /path/to/project`를 다시 실행합니다.
-새 배포 내용에 맞는 별도 도구 환경을 준비하고 해당 프로젝트를 적용·진단합니다.
-다른 프로젝트의 launcher와 실행 환경은 그대로 유지합니다. 다른 프로젝트도 갱신하려면
-`neurath setup /path/to/other-project`를 명시적으로 실행하세요.
-`restore`가 이전 실행 환경까지 되돌릴 수 있도록 기존 환경을 보관합니다.
-준비가 강제로 중단되어 불완전한 환경이 남으면 설치기가 그 경로를 알려주고 멈춥니다.
-사용 중인 환경을 자동 삭제하거나 재설치하지 않습니다.
+공개 릴리스는 `releases_prepare` → 정확한 사용자 선택 → `releases_apply`로 업데이트합니다.
+설치된 배포의 관리 파일은 `installation_plan`에서 update/uninstall/restore 계획을 준비하고,
+반환된 plan_ref로 `installation_apply`를 호출합니다. restore는 기존 installation_id를 사용하며,
+중단된 저널은 `installation_recover`로 복구합니다.
+개발 소스를 새 배포로 교체하는 부트스트랩은 소스의 `./setup /대상/Git-root`로 수행하고,
+설치 후 에이전트 운용에는 명명 MCP 도구를 사용합니다.
 
-```sh
-# 새 배포 환경의 neurath 명령으로 갱신 계획 생성
-neurath --root /project plan --action update --output /private/update-plan.json
-neurath --root /project apply /private/update-plan.json
-
-# 관리한 파일만 원래 내용으로 복구
-neurath --root /project plan --action uninstall --output /private/remove-plan.json
-neurath --root /project apply /private/remove-plan.json
-
-# 직전 적용 결과의 id로 그 트랜잭션을 되돌림
-neurath --root /project restore <installation-id>
-
-# 프로세스 중단으로 남은 저널 복구
-neurath --root /project recover
-```
-
-`AGENTS.md`, 일반 파일인 `CLAUDE.md`, `.gitignore`는 Neurath 관리 블록 밖의 사용자
-편집을 위치와 원문 그대로 보존합니다. 관리 블록 자체나 다른 관리 파일을 수정했다면
-update/uninstall은 충돌로 멈춥니다.
-Git 디렉터리의 `neurath-receipts/<id>.json`에서 before/after를 확인하고 변경을 먼저 조정합니다.
-원문을 손실시키는 강제 제거 기능은 제공하지 않습니다. 빈 디렉터리와 변경 이력은 남을 수 있습니다.
+`AGENTS.md`, 일반 파일 `CLAUDE.md`, `.gitignore`의 관리 블록 밖 사용자 편집은 내용과 위치를
+보존합니다. 관리 블록이나 파일이 수정됐으면 충돌을 보고하고 비공개 설치 기록으로 원문과 현재
+내용을 대조합니다. 강제 삭제나 덮어쓰기로 해결하지 않습니다. 이전 런타임은 복구를 위해 보존합니다.
 
 ## 스킬 이름과 갱신
 

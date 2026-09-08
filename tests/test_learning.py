@@ -268,7 +268,8 @@ def test_autonomous_validation_survives_an_already_saved_checkpoint(memory, monk
     result = checkpoint_request(
         memory.worktree, "codex", {"hook_event_name": "Stop", "session_id": "one"}
     )
-    assert result and ".neurath/run verify check" in result
+    assert result and "verification_run(check='check')" in result
+    assert ".neurath/run" not in result
     assert Learning(memory).pending("codex", "one")
 
 

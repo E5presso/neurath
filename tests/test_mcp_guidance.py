@@ -55,9 +55,9 @@ def test_installed_operation_map_exposes_every_detected_compatibility_gap():
     mapping=json.loads(files[".neurath/reference/task-operation-map.json"][0])
     assert mapping["schema"]==1
     assert mapping["commands"]
-    assert all(r["classification"] in {"named-mcp","missing-named-operation","native-user-choice-evidence-required"}
+    assert all(r["classification"] in {"named-mcp","entrypoint-placeholder","host-lifecycle-callback","legacy-bounded-adapter","native-file-edit"}
                for r in mapping["commands"])
-    assert any(r["classification"]=="missing-named-operation" for r in mapping["commands"])
+    assert not any(r["classification"]=="missing-named-operation" for r in mapping["commands"])
 
 def test_managed_entry_prefers_mcp_and_adopts_only_exact_old_block(tmp_path):
     import subprocess

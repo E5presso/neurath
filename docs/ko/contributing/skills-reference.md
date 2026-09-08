@@ -2,7 +2,7 @@
 
 [English](../../en/contributing/skills-reference.md) · **한국어**
 
-<!-- date: 2026-09-07; synced_from: source and documentation at e1487a1718056b37b999d1343a1007b7e25f5c8c; English and Korean editions updated together -->
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
 
 [기여자 안내](index.md) · [사용자 스킬 목록](../usage/skills.md)
 
@@ -33,7 +33,7 @@
 설치를 갱신하면 이전 설치 경로를 정리합니다. 이름이 겹치는 사용자 스킬과 직접 수정한
 관리 파일은 덮어쓰지 않습니다. 진행 중인 작업 기록을 계속 읽을 수 있도록 내부 계약
 식별자는 유지합니다. 엔진 명령에는 스킬 본문의 `내장 계약`을 사용하고, 스크립트는
-`.neurath/run skill watch-pr <script>`처럼 현재 이름으로 실행할 수 있습니다.
+`현재 노출된 Neurath 명명 MCP 도구`처럼 현재 이름으로 실행할 수 있습니다.
 
 `create-package`, `local-dev`, `onboard`, `refactor-code`, `impact-analysis`,
 `improve-coverage`, `property-test`는 독립 스킬에서 제외했습니다. 일반적인 구현·테스트

@@ -19,20 +19,20 @@ PR에 달린 리뷰 코멘트를 하나씩 검토하여, 수용할지 반론할�
 ## 실행 방법
 
 1. PR 번호를 인자로 받거나, 현재 브랜치의 PR을 자동 탐지한다.
-2. `collect_comments.sh`로 3채널 미처리 코멘트를 수집한다.
+2. `review_comments` MCP 도구로 3채널 미처리 코멘트와 미해결 스레드를 수집한다.
 3. 각 코멘트에 대해 판단 루프를 실행한다.
 4. 결과를 사용자에게 보고하고, 필요한 수정/반론/후속 티켓 생성을 직접 실행한다.
 
 ## 코멘트 수집
 
-`monitor-pr`의 `collect_comments.sh`를 사용하여 미처리 코멘트를 수집한다:
+`review_comments`의 구조화 입력으로 현재 PR의 코멘트를 수집한다:
 
-```bash
-REPO=example/project PR_NUMBER={N} bash {MONITOR_PR_SKILL_DIR}/scripts/collect_comments.sh
+```json
+{"tool":"review_comments","arguments":{"repo":"example/project","pr_number":1,"limit":50}}
 ```
 
-> `{MONITOR_PR_SKILL_DIR}`은 `monitor-pr` 스킬 디렉토리 경로.
-> 동일 `.agents/skills/` 하위이므로 상대 경로로 `$(dirname {SKILL_DIR})/monitor-pr`로 접근.
+`counts`와 채널 배열을 읽고 `truncated`이면 `next_offset`을 사용한다. 필터는 도구 스키마로 전달한다.
+offset은 호출마다 새 원격 목록에 적용된다.
 
 ### 3채널 구조
 
@@ -44,7 +44,7 @@ REPO=example/project PR_NUMBER={N} bash {MONITOR_PR_SKILL_DIR}/scripts/collect_c
 
 CH3의 수신 확인과 최종 답변은 일반 PR 코멘트에 원본 리뷰 링크를 포함해 남긴다.
 
-`TOTAL == 0`이면 처리할 코멘트가 없으므로 즉시 종료한다.
+`counts`의 세 코멘트 채널이 모두 0이면 처리할 코멘트가 없는 상태로 보고한다.
 
 ## 즉시 수신 확인 (판단·작업보다 먼저)
 

@@ -81,13 +81,16 @@ def adaptive_schema():
 
 
 def definitions():
+    from neurath.runtime.phase_evidence import schema as evidence_schema
     from neurath.runtime.task_schema import choice, strings, text_field
     workflow = {"workflow_id": text_field(256)}
     key = {"key": text_field(512)}
     revision = {"expected_revision": {"type": "integer", "minimum": 0, "maximum": 2**53 - 1}}
     phase = {"phase_id": {"type": "integer", "minimum": 0, "maximum": 1000},
         "status": choice("completed", "skipped", "failed", "blocked"),
-        "summary": text_field(), "reason": text_field(default=""), "evidence_refs": {**strings(), "description": "Use adaptive_control_initialized, adaptive_control_receipt, or delegation:<consumed-delegation-id>. The server resolves current authority or the immutable reported phase_evidence artifact; raw evidence strings are rejected."}}
+        "summary": text_field(), "reason": text_field(default=""),
+        "terminal_state": text_field(128, default=""),
+        "evidence_refs": {**strings(), "description": "Use the reference returned by phase_evidence_prepare, adaptive_control_initialized, adaptive_control_receipt, or delegation:<consumed-delegation-id>. The server resolves registered evidence and existing authority; raw evidence strings are rejected."}}
     terminal = {"terminal_state": text_field(128)}
     adaptive = adaptive_schema()
     assignment = _object({**{name: text_field() for name in ("candidate_ref", "goal_fingerprint", "kind", "source_revision", "trajectory_digest", "target_workflow_payload_digest", "workflow_id", "workflow_payload_digest")},
@@ -95,10 +98,11 @@ def definitions():
     entries = {
         "workflow_start": ({**workflow, **key, "kind": text_field(128), "goal": text_field(),
             "initial_state": _object({"run_id": text_field(256)})}, False),
-        "workflow_advance": ({**workflow, **revision, **key, "transition": _object(phase, optional=("reason", "evidence_refs"))}, False),
+        "workflow_advance": ({**workflow, **revision, **key, "transition": _object(phase, optional=("reason", "evidence_refs", "terminal_state"))}, False),
         "workflow_finalize": ({**workflow, **revision, **key, **terminal}, False),
         "phase_start": ({**workflow, **key, "skill": text_field(128), "run_id": text_field(256), "north_star": text_field()}, False),
         "phase_current": (workflow, True),
+        "phase_evidence_prepare": (evidence_schema(), False),
         "phase_complete": ({**workflow, **revision, **key, **phase}, False),
         "phase_finalize": ({**workflow, **revision, **key, **terminal}, False),
         "adaptive_read": (workflow, True),
@@ -135,6 +139,7 @@ def definitions():
         "evaluation_report": "Report as the genuine assigned native evaluator; outcome_ref is an existing detailed result reference. This report does not accept its own result.",
         "evaluation_consume": "Consume a reported delegation as its actual owner; independent evidence is authenticated by existing downstream evaluation gates.",
     }
+    descriptions["phase_evidence_prepare"] = "Prepare immutable evidence for the exact current phase. Select Git facts with labels and provide other contract evidence as explicit agent-report notes. Existing authority validators still apply; preparation is not completion."
     return {name: ("workflow-task", name, descriptions[name], fields, readonly)
         for name, (fields, readonly) in entries.items()}
 
@@ -152,8 +157,14 @@ def execute(root, name, fields, *, identity, expected_turn, verified_policy_evid
         from neurath.runtime.tasks import _mcp_execution_policy
         _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence)
     cached = None
+    if name == "phase_evidence_prepare":
+        # Preparation has no external effect and validates before registering
+        # its immutable result. Invalid input must not poison an execution key.
+        from neurath.runtime.phase_evidence import prepare
+        return prepare(root, handle, fields)
     if "key" in fields:
-        cached = _request(root, identity.address, name, fields)
+        cached = _request(root, identity.address, name, fields,
+                          before_reserve=lambda: _preflight_start(root, name, fields, handle))
         if cached is not None:
             return cached
     result = _dispatch(root, name, fields, handle)
@@ -174,7 +185,7 @@ def _require_owner(root, handle):
         raise TaskError("authority-denied", "this native actor does not own the worktree claim")
 
 
-def _request(root, actor, name, fields):
+def _request(root, actor, name, fields, *, before_reserve=None):
     from neurath.agents.store import MessageStore
     from neurath.memory.store import canonical
     from neurath.runtime.task_schema import TaskError
@@ -191,15 +202,49 @@ def _request(root, actor, name, fields):
                 raise TaskError("outcome-unknown", "previous workflow request needs state inspection", state="failed-or-partial",
                     next_action="Read phase_current, adaptive_read or session_inspect. Reconcile the recorded operation before issuing another mutation.")
             return json.loads(row["result"])
+    # Pure preflight may read other domain stores. Do not hold this write
+    # transaction across those reads; recheck the exact key before reserving.
+    if before_reserve is not None:
+        before_reserve()
+    with MessageStore(root).connection() as db:
+        row = db.execute("SELECT request,result FROM workflow_task_requests WHERE actor=? AND operation=? AND key=?", (actor, name, fields["key"])).fetchone()
+        if row is not None:
+            if row["request"] != request:
+                raise TaskError("idempotency-conflict", "workflow key identifies different input")
+            if row["result"] is None:
+                raise TaskError("outcome-unknown", "concurrent workflow request needs state inspection", state="failed-or-partial")
+            return json.loads(row["result"])
         db.execute("INSERT INTO workflow_task_requests VALUES (?,?,?,?,NULL)", (actor, name, fields["key"], request))
     return None
 
 
-def _save(root, actor, name, key, result):
+def _save(root, actor, name, key, result, *, store=None):
     from neurath.agents.store import MessageStore
     from neurath.memory.store import canonical
-    with MessageStore(root).connection() as db:
+    with (store if store is not None else MessageStore(root)).connection() as db:
         db.execute("UPDATE workflow_task_requests SET result=? WHERE actor=? AND operation=? AND key=?", (canonical(result), actor, name, key))
+
+
+def _preflight_start(root, name, fields, handle):
+    """Reject known pre-creation failures before reserving a side-effect key.
+
+    The actual domain write repeats these checks. Failures after reservation keep
+    their uncertain outcome; an existing completed request still replays first.
+    """
+    if name not in {"phase_start", "workflow_start"}:
+        return
+    from neurath.skill_names import source_id
+    from scripts.agent_harness.evaluation_admission import EvaluationAdmissionPolicy
+    from scripts.skill_harness.phase_runner import PhaseRunState, PhaseRunnerError, SkillContractRepository
+    skill = source_id(fields["skill"] if name == "phase_start" else fields["kind"])
+    run_id = fields["run_id"] if name == "phase_start" else fields["initial_state"]["run_id"]
+    goal = fields["north_star"] if name == "phase_start" else fields["goal"]
+    state = PhaseRunState.initialize(SkillContractRepository(root).get(skill), run_id, goal)
+    if state.adaptive_control_required and EvaluationAdmissionPolicy().inspect(
+            handle.inspect(), handle.actor_id)["status"] == "unavailable":
+        raise PhaseRunnerError("EVALUATOR_UNAVAILABLE",
+            "no current host-attested direct child evaluator; register the native evaluator "
+            "and retry the same request; no workflow was created")
 
 
 def _dispatch(root, name, fields, handle):
@@ -271,13 +316,19 @@ def _phase(root, name, fields, handle):
             result = runner.finalize(store, fields["terminal_state"])
         else:
             transition = fields["transition"] if name == "workflow_advance" else fields
-            evidence = _evidence_refs(handle, workflow_id, transition.get("evidence_refs", []))
+            evidence = _evidence_refs(handle, workflow_id, transition.get("evidence_refs", []), root=root)
+            if transition["status"] == "completed":
+                required = runner.current(store)["required_evidence"]
+                labels = {item.partition(":")[0].strip() for item in evidence}
+                if set(required) - labels:
+                    raise TaskError("invalid-evidence-reference", "each required evidence label needs its own exact structured entry")
             result = runner.complete(store, transition["phase_id"], transition["status"], evidence,
-                transition["summary"], transition.get("reason") or None)
+                transition["summary"], transition.get("reason") or None,
+                terminal_state=transition.get("terminal_state") or None)
     return {**result, "workflow_revision": handle.inspect().workflows[workflow_id].revision}
 
 
-def _evidence_refs(handle, workflow_id, references):
+def _evidence_refs(handle, workflow_id, references, *, root=None):
     from scripts.agent_harness.adaptive_control_store import AdaptiveControlStore
     from scripts.agent_harness.artifact_store import SessionArtifactStore
     from scripts.agent_harness.skill_state_store import SkillStateStore
@@ -285,10 +336,14 @@ def _evidence_refs(handle, workflow_id, references):
     from neurath.runtime.task_schema import TaskError
     result = []
     for reference in references:
+        if reference.startswith("evidence:"):
+            from neurath.runtime.phase_evidence import resolve
+            result.extend(resolve(root, handle, workflow_id, reference))
+            continue
         if reference in {"adaptive_control_initialized", "adaptive_control_receipt"}:
             snapshot = AdaptiveControlStore(SkillStateStore(handle, workflow_id)).read()
             _adaptive_read(handle, workflow_id)  # Validate current external authority before use.
-            result.append(reference + "=" + json.dumps(snapshot.receipt().to_evidence(), sort_keys=True))
+            result.append(reference + ": " + json.dumps(snapshot.receipt().to_evidence(), sort_keys=True))
             continue
         if not reference.startswith("delegation:"):
             raise TaskError("invalid-evidence-reference", "evidence must reference current adaptive authority or a consumed delegation")
@@ -401,7 +456,7 @@ def _evaluation(name, fields, handle, workflow_id):
                 "delegation_id": lineage.delegation_id}}}
 
 
-def _guarded_handle(root, bound, identity, expected_turn, context):
+def _guarded_handle(root, bound, identity, expected_turn, context, *, connection_root=None):
     """Recheck native prompt on domain reads and bind every state write to its CAS revision."""
     from neurath.agents.hooks import participation
     from neurath.agents.mcp import _prompt_receipt
@@ -417,7 +472,7 @@ def _guarded_handle(root, bound, identity, expected_turn, context):
             state = bound.inspect()
             actor = state.actors.get(bound.actor_id)
             if (actor is None or participation(state, actor) != (True, expected_turn)
-                    or not active_connection(root, identity.session)):
+                    or not active_connection(connection_root if connection_root is not None else root, identity.session)):
                 raise TaskError("native-turn-changed", "workflow task lost its native turn")
             if canonical(_prompt_receipt(state, actor)) != canonical(context["user_prompt_receipt"]):
                 raise TaskError("native-prompt-changed", "workflow task lost its native user prompt")

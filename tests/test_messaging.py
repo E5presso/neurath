@@ -179,6 +179,7 @@ def test_install_exposes_peer_tools_without_changing_permissions(tmp_path):
     config.parent.mkdir()
     config.write_text(json.dumps({"permissions": {"deny": ["Bash(rm *)"]}}))
     apply_plan(tmp_path, make_plan(tmp_path))
-    assert "agent send" in (tmp_path / ".neurath/policy.md").read_text()
-    assert "delegate run" in (tmp_path / ".neurath/policy.md").read_text()
+    assert "collaboration_send" in (tmp_path / ".neurath/policy.md").read_text()
+    assert "provider_run" in (tmp_path / ".neurath/policy.md").read_text()
+    assert "delegate run" not in (tmp_path / ".neurath/policy.md").read_text()
     assert json.loads(config.read_text())["permissions"] == {"deny": ["Bash(rm *)"]}

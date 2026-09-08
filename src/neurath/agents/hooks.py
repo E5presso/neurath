@@ -129,8 +129,8 @@ def peer_event(root, host, payload, output):
             "Newsroom is global across active project agents. Publish useful discoveries with "
             "newsroom_publish(title, body, key), title <=30 characters. "
             "Only titles are pushed; use newsroom_read for relevant bodies explicitly. "
-            "Prefer named neurath_collaboration MCP task tools. Use .neurath/run only when the task tool "
-            "is unavailable or cannot preserve native execution policy. Do not wake inactive peers.\n"
+            "Use named neurath_collaboration MCP task tools and their structured inputs. "
+            "Report unavailable tools or unsupported policies without CLI replay. Do not wake inactive peers.\n"
             + context
         )
     if not context:

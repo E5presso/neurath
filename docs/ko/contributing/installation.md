@@ -1,102 +1,74 @@
-# 설치 개발과 에이전트 통합
+# 설치 개발과 MCP 통합
+
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
 
 [English](../../en/contributing/installation.md) · **한국어**
 
-<!-- date: 2026-09-07; synced_from: source and documentation at e1487a1718056b37b999d1343a1007b7e25f5c8c; English and Korean editions updated together -->
+[기여자 안내](index.md) · [최초 설치 참조](setup-reference.md) · [작업 도구](task-tools.md)
 
-[사용 안내](../usage/index.md) · [기여자 안내](index.md)
+이 문서는 설치기를 개발하거나 에이전트 통합을 검증하는 기여자용 참조입니다.
+일반 사용자는 [설치 안내](../usage/installation.md)에 따라 원하는 결과를 요청합니다.
 
+## 최초 준비와 설치 후 관리
 
-설치기를 수정·검증하거나 에이전트 통합을 관리하고 검증 연결 계약을 시험할 때 읽는 참조 문서입니다. 일반적인 프로젝트 설치에는 [사용자 설치 안내](../usage/installation.md)를 사용하세요. 빌드 명령은 Neurath 소스 저장소에서, 설치 명령은 명시한 임시 대상이나 사용자가 지정한 프로젝트에서 실행합니다.
+최초 설치 전에는 대상 프로젝트에 Neurath MCP 서버가 없습니다. 이 부트스트랩은 소스의
+`./setup /대상/Git-root`가 별도 도구 환경과 설치기를 준비하는 실행 인프라입니다.
+Neurath 개발 저장소 자체에는 `./setup --self`를 사용합니다. 프로젝트 의존성과 개발 환경을 보존합니다.
 
-## 에이전트 실행 참조
+서버가 설치·활성화된 뒤의 하네스 관리는 명명 MCP로 수행합니다.
 
-코딩 에이전트에게 원하는 변경, 제약과 완료 조건을 전달해 기여할 수 있습니다.
-이 문서의 개발 명령과 Neurath 작업은 에이전트가 수행합니다.
-명령 예제는 에이전트와 검토자가 실행을 재현하기 위한 참조이며,
-사용자에게 수동 설정을 요구하는 절차가 아닙니다. 호스트 인증과 신뢰 결정은 사용자가 담당합니다.
+| 목적 | 도구 | 확인 |
+| --- | --- | --- |
+| 준비 상태 | `session_status` | 설치·활성화·실제 모드·소유권을 별도 관측 |
+| 계획 | `installation_plan` | action, 필요 시 hosts/profile/skill_prefix, 안정된 key; 요약과 계획 참조 |
+| 적용 | `installation_apply` | 반환된 plan_ref와 key; 실제 적용 결과 |
+| 중단 복구 | `installation_recover` | 기존 저널과 현재 파일 대조 |
+| 무결성·배치 | `diagnostics_integrity`, `diagnostics_project` | 패키지 원문과 설치 위치 구분 |
+| 프로토콜 | `diagnostics_project`의 protocol=true | 모의 호스트 이벤트 검사 |
 
-[설치](setup-reference.md) · [협업](agents-reference.md) ·
-[기억](memory-reference.md) · [스킬 호환성](skills-reference.md)
+계획의 action은 install/update/uninstall/restore입니다. restore에는 기존 적용의 installation_id를 사용합니다.
+등록된 불변 계획만 적용하며, 기존 원문을 도구 응답으로 노출하지 않습니다. 파일 충돌은 보존하고 원인을 확인합니다.
+실제 사용자 승인이 이미 해당 작업을 포함하면 같은 승인을 다시 요청하지 않습니다.
 
-## 에이전트 설치 절차
+```json
+{"tool":"installation_plan","arguments":{"action":"update","key":"inspect-current-update"}}
+```
 
-1. 사용자가 지정한 대상 저장소의 Git root와 기존 `AGENTS.md`, `CLAUDE.md`,
-   `.agents/skills`, `.claude/settings.json`, `.codex/config.toml`, `.codex/hooks.json`을 확인합니다.
-   설치 요청이 이미 승인되었다면 같은 승인을 반복해서 받지 않습니다.
-2. 기본 프로필은 `generic`, 기본 호스트는 Codex와 Claude Code 둘 다입니다.
-   제품별 프로필이나 프레임워크 정책은 포함하지 않습니다.
-3. 별도 변경 검토가 필요하면 먼저 소스의 `setup /대상/Git-root --dry-run` 또는
-   이미 설치된 `neurath setup /대상/Git-root --dry-run`으로 경로 목록을 확인합니다.
-   원문 비교가 필요할 때만 아래 `plan`/`apply` 경로를 사용합니다. 계획 JSON에는
-   기존 원문이 들어 있으므로 비공개 위치에 저장하고 버전 관리에 추가하지 않습니다.
-4. 소스를 받았다면 해당 소스의 `setup /대상/Git-root`를 실행합니다. 도구가 이미 준비되어
-   있다면 `neurath setup /대상/Git-root`로 설치·진단을 진행합니다. 대상 프로젝트 `.venv`를
-   사용하거나 그 프로젝트에서 `uv sync`를 실행하지 않습니다.
-5. `setup`은 같은 `make_plan`/`apply_plan` 엔진으로 적용합니다. 충돌이면 해당 파일을 보존하고
-   원인을 설명합니다. 파일 덮어쓰기, `--force`, 권한 우회로 해결하지 않습니다.
-6. `.neurath/project.json`에 대상 저장소의 문서 슬롯과 실제 검증 명령을 바인딩합니다.
-   없는 문서를 만들어 넣지 않습니다. 필요한 정보만 사용자에게 요청합니다.
-7. `setup`이 실행한 진단을 확인합니다. 별도 `apply` 경로라면 `doctor --protocol`을 실행합니다.
-   이는 호스트 trust 또는 실제 실행 중인 에이전트·검토자 신원 증명이 아닙니다.
-8. Codex에서는 사용자가 프로젝트를 신뢰하고 `/hooks`에서 정확한 훅을 검토해야 합니다.
-   Claude Code에서는 프로젝트 설정 및 `/hooks`의 로딩 상태를 확인합니다.
-   설치기가 trust 설정을 수정하거나 trust를 건너뛰어서는 안 됩니다.
+설치본의 도구 목록은 네이티브 호스트가 다시 로드해야 반영될 수 있습니다. 소스 변경이나 설치 성공만으로
+현재 대화에 새 도구가 노출됐다고 주장하지 않습니다. 호스트 trust·인증·훅 로딩은 실제 결과로 확인합니다.
 
+## 배포본 개발
 
-## wheel 배포본과 개별 단계 사용
-
-직접 wheel을 만들거나 변경 내용을 별도로 검토할 때 사용하는 고급 경로입니다.
-빠른 설치를 사용했다면 다시 수행할 필요가 없습니다.
+아래는 Neurath 자체의 개발·빌드 작업입니다. 에이전트 하네스 운용 API와 구분합니다.
 
 ```sh
-# Neurath 소스 저장소에서만 빌드
 uv sync --locked
-.venv/bin/python tools/build_manifest.py
-.venv/bin/python -m build
-
-# 배포본마다 새로운 절대 경로를 지정하고 기존 환경은 재설치하거나 이동하지 않음
-uv venv --python 3.14 /absolute/path/to/new-neurath-runtime
-uv pip install --python /absolute/path/to/new-neurath-runtime/bin/python /absolute/path/to/neurath/dist/neurath-0.1.0-py3-none-any.whl
-
-# 새 프로젝트라면 사용자가 지정한 폴더에서 먼저 git init을 실행
-/absolute/path/to/new-neurath-runtime/bin/neurath --root /absolute/path/to/project plan --output /private/path/neurath-plan.json
-/absolute/path/to/new-neurath-runtime/bin/neurath --root /absolute/path/to/project apply /private/path/neurath-plan.json
-/absolute/path/to/project/.neurath/run doctor --protocol
+uv run --locked python tools/build_manifest.py
+uv run --locked python tools/check.py
+uv run --locked python -m build
 ```
 
-CLI에서 `--root`는 하위 명령 앞에 둡니다. launcher는 독립 도구 환경의 Python 경로를 사용하고,
-훅은 현재 Git worktree의 launcher를 찾습니다. 도구 환경을 옮긴 경우 update 계획을 검토합니다.
-`neurath install`은 계획 생성과 적용을 한 번에 실행하는 명시적인 설치 명령입니다.
+실행 자산의 원본은 `src/neurath/_assets`입니다. `.agents/skills`와 `.neurath/rules`는 설치 결과입니다.
+manifest 갱신, 패키지 검사, 빌드, 자기 설치를 각각 수행합니다. 대상 프로젝트의 같은 이름 패키지가
+내장 엔진을 가리지 않도록 launcher는 격리된 Python 실행을 사용합니다.
 
+## 프로젝트 바인딩과 검사
 
-## 검증과 저장소 관례
+`generic` 프로필만 제공합니다. `.neurath/project.json`의 documents와 verification은 실제 대상
+저장소의 지침에 연결합니다. 없는 문서나 발견만 한 도구를 검증 계약으로 만들지 않습니다.
+정확한 pytest 노드를 실행하려면 프로젝트 테스트 환경을 verification.pytest.argv에 연결합니다.
+이 내부 설정에는 실행 파일을 배열로 기록하며, 에이전트가 매번 하네스 CLI 옵션을 조립하지 않습니다.
 
-`generic`이 유일한 프로필입니다. 검증 명령은 도구가 발견됐다는 이유로 자동 선택하지 않습니다.
-Python의 정확한 테스트 노드 검증이 필요한 경우 `verification.pytest.argv`에
-`["python", "-m", "pytest"]`처럼 프로젝트 테스트 환경의 실행 파일을 지정하세요.
-선택자(`-k`, `-m`), 다른 테스트 경로와 설정 재정의는 이 바인딩에 넣지 않습니다.
-일반 검증은 `verify <name>`, 단계별 typed 검증은 아래 명령을 사용합니다.
+`verification_run`은 연결된 프로젝트 검사 이름, `verification_builtin`은 내장 검사 종류,
+`verification_nodes`는 정확한 테스트 노드 배열을 받습니다.
 
-```sh
-.neurath/run engine scripts.agent_harness.verification_runner pytest --node tests/test_example.py::test_example
+```json
+{"tool":"verification_nodes","arguments":{"nodes":["tests/test_example.py::test_example"],"key":"check-example"}}
 ```
 
-GitHub metadata는 기본적으로 특정 언어·prefix를 요구하지 않습니다. 필요한 프로젝트만
-`metadata.language`를 `"ko"`로 설정하거나 `metadata.require_title_issue_prefix`,
-`metadata.require_commit_subject_issue_prefix`를 `true`로 설정합니다.
-브랜치와 worktree 경로는 해당 프로젝트의 지침을 따르며 cleanup에는 확인한
-`--base-branch`와 `--remote-ref`를 명시합니다.
+메타데이터 언어·제목 규칙·브랜치 관례는 대상 프로젝트에서 선택합니다.
+작업 공간 정리는 `worktree_cleanup`의 `base_branch`와 `remote_ref`에 실제 확인한 값을 전달합니다.
+자동 생성된 상태 파일을 편집하거나 소유권을 강제로 회수하지 않습니다.
 
-키트 자체의 고정 회귀 검사표는 Neurath 개발 소스의 `tools/run_core_regressions.py`에서
-실행합니다. 대상 프로젝트의 검증 결과를 키트 자체 수정의 회귀 증거로 대신 사용하지 않습니다.
-
-## 내부 명령 인터페이스 확인
-
-기존 통합 인터페이스를 확인하는 명령입니다. 사용자가 일반 작업을 시작할 때 실행할 필요는 없습니다.
-
-```sh
-.neurath/run engine scripts.agent_harness.state_cli --help
-.neurath/run engine scripts.skill_harness.phase_runner --help
-.neurath/run skill watch-pr monitor_runtime_readback.py --help
-```
+도구 사용법은 [현재 명명 도구와 스키마](task-tools.md)에서 확인합니다.
+배포 무결성·설치 배치·프로토콜 fixture·실제 호스트 활성화·모델 실행은 서로 다른 검증 범위입니다.

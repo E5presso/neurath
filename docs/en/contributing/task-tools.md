@@ -1,17 +1,19 @@
 # Shared task execution
 
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
+
 **English** · [한국어](../../ko/contributing/task-tools.md)
 
 [Contributing](index.md) · [Architecture](architecture.md) · [Provider transports](provider-transports.md)
 
-The current source registers **88 named tasks** in `runtime/task_schema.py` and its domain modules.
+The current source registers **132 named tasks** in `runtime/task_schema.py` and its domain modules.
 Registration is not proof that an existing host has reloaded every tool or that all paths have
 passed installed-host acceptance. [Model planning and MCP operation](model-planning-mcp.md) and
 [Provider collaboration](collaboration-contract.md) define the required behavior.
 
 Named MCP tools are the agent-facing interface. `runtime/tasks.py` dispatches their structured
 input to existing stores and kernel services without requiring an agent to assemble CLI argv.
-CLI compatibility remains for saved callers and justified native execution exceptions. It is
+CLI compatibility remains for saved callers and internal execution. It is
 not the normal workflow, and an arbitrary `agent(argv)` gateway does not count as migration.
 
 ## Registered source surface
@@ -19,22 +21,26 @@ not the normal workflow, and an arbitrary `agent(argv)` gateway does not count a
 This inventory groups the exact registered names. Read each exposed input schema before calling;
 not every operation in a group has the same input or authority.
 
-| Domain | Named tasks |
+| Function | Actual named tools |
 | --- | --- |
-| Readiness | `session_status` |
-| Provider execution and recovery | `provider_run`, `provider_status`, `provider_cancel`, `provider_recover` |
-| Provider route discovery | `provider_capabilities`, `provider_route` |
-| Memory and handoff | `memory_recall`, `memory_checkpoint` |
-| Registered checks | `verification_run` |
-| Peer messages and subscriptions | `collaboration_discover`, `collaboration_inbox`, `collaboration_send`, `collaboration_reply`, `collaboration_message`, `collaboration_ack`, `collaboration_forward`, `collaboration_submitted`, `collaboration_register`, `collaboration_conversation`, `collaboration_close`, `collaboration_subscribe`, `collaboration_unsubscribe`, `collaboration_publish` |
-| Assigned task lifecycle | `collaboration_assign`, `collaboration_accept`, `collaboration_report`, `collaboration_task` |
-| Newsroom | `newsroom_headlines`, `newsroom_read`, `newsroom_publish`, `newsroom_revise`, `newsroom_comment`, `newsroom_peers`, `newsroom_seen` |
-| State, ownership and material actions | `session_inspect`, `turn_inspect`, `worktree_inspect`, `worktree_claim`, `worktree_release`, `material_prepare`, `material_read`, `material_resolve`, `material_abandon` |
-| Learning, updates and reporting | `learning_status`, `learning_pending`, `releases_status`, `reporting_status`, `reporting_list`, `learning_history`, `learning_defer`, `reporting_read`, `releases_check`, `releases_notice`, `releases_recover`, `releases_prepare`, `releases_apply`, `reporting_prepare`, `reporting_submit`, `reporting_reconcile`, `reporting_consent`, `reporting_approve`, `releases_choose` |
-| Model inventory and plans | `provider_models`, `provider_plan`, `provider_plan_read` |
-| Workflow, phases, delegation and evaluation | `workflow_start`, `workflow_advance`, `workflow_finalize`, `phase_start`, `phase_current`, `phase_complete`, `phase_finalize`, `adaptive_read`, `adaptive_preflight`, `adaptive_replace`, `adaptive_override_goal`, `delegation_prepare`, `delegation_assign`, `evaluation_prepare`, `evaluation_read`, `evaluation_execute`, `evaluation_report`, `evaluation_consume` |
-| Message repair | `delivery_status`, `delivery_redrive` |
-| Exact maintenance choices | `maintenance_choice_prepare`, `maintenance_choice_read` |
+| Session readiness | `session_status` |
+| Independent execution | `provider_cancel`, `provider_recover`, `provider_run`, `provider_status` |
+| Provider discovery | `provider_capabilities`, `provider_route` |
+| Memory | `memory_checkpoint`, `memory_recall` |
+| Project checks | `verification_run` |
+| Peer communication | `collaboration_ack`, `collaboration_close`, `collaboration_conversation`, `collaboration_discover`, `collaboration_forward`, `collaboration_inbox`, `collaboration_message`, `collaboration_publish`, `collaboration_register`, `collaboration_reply`, `collaboration_send`, `collaboration_submitted`, `collaboration_subscribe`, `collaboration_unsubscribe` |
+| Assigned task lifecycle | `collaboration_accept`, `collaboration_assign`, `collaboration_report`, `collaboration_task` |
+| Newsroom | `newsroom_comment`, `newsroom_headlines`, `newsroom_peers`, `newsroom_publish`, `newsroom_read`, `newsroom_revise`, `newsroom_seen` |
+| State, artifacts and ownership | `artifact_put`, `artifact_read`, `material_abandon`, `material_prepare`, `material_read`, `material_resolve`, `session_inspect`, `turn_inspect`, `worktree_claim`, `worktree_inspect`, `worktree_release` |
+| Learning, releases and reporting | `learning_defer`, `learning_history`, `learning_pending`, `learning_status`, `maintenance_choice_prepare`, `maintenance_choice_read`, `releases_apply`, `releases_check`, `releases_choose`, `releases_notice`, `releases_prepare`, `releases_recover`, `releases_status`, `reporting_approve`, `reporting_consent`, `reporting_list`, `reporting_prepare`, `reporting_read`, `reporting_reconcile`, `reporting_status`, `reporting_submit` |
+| Model planning | `provider_models`, `provider_plan`, `provider_plan_read` |
+| Phases and evaluation | `adaptive_override_goal`, `adaptive_preflight`, `adaptive_read`, `adaptive_replace`, `delegation_assign`, `delegation_prepare`, `evaluation_consume`, `evaluation_execute`, `evaluation_prepare`, `evaluation_read`, `evaluation_report`, `phase_complete`, `phase_current`, `phase_evidence_prepare`, `phase_finalize`, `phase_start`, `workflow_advance`, `workflow_finalize`, `workflow_start` |
+| Context, enclave and evaluation loops | `diagnostics_integrity`, `diagnostics_profile`, `diagnostics_project`, `enclave_delete`, `enclave_read`, `enclave_set`, `evaluation_loop_close`, `evaluation_loop_open`, `evaluation_loop_read`, `evaluation_loop_round`, `turn_yield` |
+| Verification, incidents and reviews | `diagnostics_continuation`, `incident_escalate`, `incident_record`, `incident_refresh`, `incident_resolve`, `incident_supersede`, `incident_validate`, `review_abort`, `review_begin`, `review_comments`, `review_consume`, `review_publish`, `review_report`, `verification_builtin`, `verification_nodes` |
+| Installation administration | `installation_apply`, `installation_plan`, `installation_recover` |
+| Process evidence and cleanup | `process_evidence_record`, `worktree_cleanup`, `worktree_isolation` |
+| PR monitoring | `monitor_ack`, `monitor_cancel`, `monitor_event`, `monitor_external_wait`, `monitor_handoff`, `monitor_readback`, `monitor_recover`, `monitor_start`, `monitor_status` |
+| Delivery recovery | `delivery_redrive`, `delivery_status` |
 
 ## Inputs and authority
 
@@ -116,10 +122,9 @@ controls, and no observed restrictive filesystem/network control. An `unobserved
 is not relabeled unrestricted. This is narrower than the set of modes accepted by the provider adapter;
 supporting a mode in a schema does not prove MCP can enforce every restriction of that mode.
 
-When the task returns `native-execution-required`, the agent must preserve policy and use the
-supported native execution route for the same authorized operation. Record the operation, tool
-availability, reason and actual result as a migration exception. Do not widen settings or evade a
-deny. Ordinary source-edit/test shell work is distinct from agent-operated harness commands.
+`native-execution-required` means this operation cannot enforce the currently observed mode.
+Inspect `session_status` and report the specific unsupported state. Do not replay through another transport
+or widen settings. Named-tool availability and actual execution remain separate observations.
 
 Uncertain task creation, maintenance or material effects are reconciled through recorded outcomes;
 changing to CLI is not permission to execute those effects again. This is separate from at-least-once
@@ -132,5 +137,35 @@ The source modules are `runtime/task_schema.py`, `tasks.py`, `state_tasks.py`, `
 `maintenance_tasks.py`, `user_choices.py`, `model_tasks.py` and `communication_schema.py`. Schema tests, dispatch/kernel
 checks, package installation and fresh-host tool selection are separate evidence. Preserve actual
 inventories/calls/results/exceptions privately. Validate installed Codex/Claude natural-language
-runs, model planning and post-turn report round trips independently; 88 registrations alone do
+runs, model planning and post-turn report round trips independently; 132 registrations alone do
 not establish that these acceptance scenarios have passed.
+
+## Workflows and additional capabilities
+
+`artifact_put/read` stores and reads bounded session JSON without a caller-selected path.
+`enclave_read/set/delete` edits context against the actual turn and digest; `turn_yield` explicitly yields
+the current turn. Foreground recovery belongs to host lifecycle events.
+
+`phase_evidence_prepare` produces evidence for the current labels and revision; `phase_complete` accepts
+the returned reference. Labels and prose cannot create independent evaluation authority.
+Additional observations may use `supplemental_<name>` reports while retaining the existing minimum count and validators.
+
+`installation_plan` returns a reviewable summary and immutable plan reference; `installation_apply` applies
+that registered plan. Original file contents remain private. `installation_recover` uses actual journal recovery,
+distinguishing damaged placement from integrity of the running package.
+
+`verification_builtin` accepts a closed built-in check kind, `verification_nodes` exact test nodes, and
+`verification_run` a project-bound check name. `incident_*` retains incident processing and regression outcomes;
+`review_*` retains frozen review matrices and result consumption. `review_comments` bounds results with
+limit, offset, since and last_seen. Offset applies to the current remote list at each request; it is not a frozen snapshot cursor.
+
+The `tool` and `arguments` wrappers below document MCP call names and arguments. Native binding fields are
+supplied by the host, never authored by the agent.
+
+```json
+{"tool":"phase_current","arguments":{"workflow_id":"current-work"}}
+```
+
+```json
+{"tool":"phase_evidence_prepare","arguments":{"workflow_id":"current-work","expected_revision":0,"labels":["git_status"],"notes":[{"label":"diff_review","text":"Reviewed the purpose and scope of the current change."}],"key":"review-current-diff"}}
+```

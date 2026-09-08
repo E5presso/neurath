@@ -28,7 +28,7 @@ from neurath.providers.contracts import CreationRejected, Session, text
 
 BOOTSTRAP = (
     "Prepare this Neurath session only. Read repository instructions. Use the named "
-    "session_inspect MCP task tool. Use the native CLI compatibility route only if the named tool is unavailable. "
+    "session_inspect MCP task tool. If unavailable, report the missing tool and preparation state. "
     "Call the Neurath session_status MCP task tool so its native hook records the current policy. "
     "Report actual installation, native activation and effective permission mode. "
     "This is only the preparation phase: retain any claim you obtain for the separate assignment "

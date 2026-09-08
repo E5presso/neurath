@@ -29,6 +29,38 @@ def test_named_workflow_inventory_is_closed():
         assert not {"argv", "actor", "session", "payload", "root", "cwd"} & schema["properties"].keys()
 
 
+def test_session_artifacts_roundtrip_without_file_or_identity_input(sessions):
+    document = {"phase_evidence": ["source_evidence: current source"], "details": {"passed": True}}
+    stored = call(sessions, "artifact_put", {"document": document, "key": "report"})
+    assert stored["reference"].startswith("sha256:")
+    assert call(sessions, "artifact_read", {"reference": stored["reference"]})["document"] == document
+    replay = call(sessions, "artifact_put", {"document": document, "key": "report"}, invocation="artifact-replay")
+    assert replay == stored
+    with pytest.raises(ValueError, match="key|different"):
+        call(sessions, "artifact_put", {"document": {"changed": True}, "key": "report"}, invocation="artifact-changed")
+
+
+def test_artifact_schema_bounds_data_without_promoting_it_to_authority():
+    from neurath.runtime.task_schema import arguments
+    with pytest.raises(ValueError):
+        arguments("artifact_put", {"document": {"x": "a" * 70000}, "key": "large"})
+    with pytest.raises(ValueError):
+        arguments("artifact_put", {"document": {}, "key": "path", "path": ".process-state.json"})
+
+
+def test_missing_evaluator_rejection_does_not_poison_initialization_key(sessions):
+    from neurath.agents.store import MessageStore
+    call(sessions, "worktree_claim", {})
+    for invocation in ("missing-first", "missing-second"):
+        with pytest.raises(ValueError, match="evaluator"):
+            call(sessions, "phase_start", {"workflow_id": "unstarted", "skill": "sync-docs",
+                "north_star": "Review documentation", "run_id": "run", "key": "same-key"}, invocation=invocation)
+    with MessageStore(sessions[0]).connection() as db:
+        exists = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='workflow_task_requests'").fetchone()
+        if exists:
+            assert db.execute("SELECT count(*) FROM workflow_task_requests WHERE key='same-key'").fetchone()[0] == 0
+
+
 def start(sessions, *, alias=False, workflow="phase", key="start", skill="commit", host="codex", session="api"):
     if alias:
         return call(sessions, "workflow_start", {"workflow_id": workflow, "kind": skill,

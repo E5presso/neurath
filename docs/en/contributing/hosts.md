@@ -1,5 +1,5 @@
 # Codex and Claude Code
-<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
 
 [Usage](../usage/index.md) · [Contributing](index.md)
 
@@ -52,7 +52,7 @@ parent's identity or change the host's permissionDecision to allow. Only direct 
 supported; nested spawning is explicitly rejected. Independent evaluation reports and their
 consumption by the parent are separate typed state transitions.
 
-Running `.neurath/run delegate prepare --delegation-id <id> --assignment <text>` in the parent,
+Running `Named MCP tool delegation_prepare (current input schema)` in the parent,
 then immediately invoking the native child-spawn tool, binds that delegation to the verified
 actual child. The intent is bound to the current foreground and cannot be reused as a stale
 intent or for duplicate children.

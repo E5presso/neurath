@@ -1,6 +1,6 @@
 # 기능·소스·검증 지도
 
-<!-- date: 2026-09-08; synced_from: 5e8d761c276ceb8ddc05dcf239bb2d020f4b0da5; scope: package domains and all 31 public skills -->
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
 
 [English](../../en/contributing/capability-map.md) · **한국어**
 
@@ -55,7 +55,7 @@ flowchart LR
 
 ## 명명된 작업 표면
 
-현재 등록부는 명명된 작업 88개를 정의합니다. 정확한 전체 이름은 [작업 도구](task-tools.md), 스키마 원본은 [task_schema.py](../../../src/neurath/runtime/task_schema.py)에 있습니다. 다음은 역할별 탐색 경로입니다.
+현재 등록부는 명명된 작업 132개를 정의합니다. 정확한 전체 이름은 [작업 도구](task-tools.md), 스키마 원본은 [task_schema.py](../../../src/neurath/runtime/task_schema.py)에 있습니다. 다음은 역할별 탐색 경로입니다.
 
 | 묶음 | 대표 작업 | 주의할 경계 |
 | --- | --- | --- |

@@ -1,7 +1,7 @@
 # Installation execution reference
 
-**Audience: coding agents and contributors.** The agent executes the commands below as part of an authorized task. Users describe outcomes in the [usage guide](../usage/index.md); they do not need to run these commands.
-<!-- date: 2026-09-07; synced_from: source and documentation at e1487a1718056b37b999d1343a1007b7e25f5c8c; English and Korean editions updated together -->
+**Audience: coding agents and contributors.** Use the named MCP tools and structured inputs below for authorized harness work. Users describe outcomes in the [usage guide](../usage/index.md).
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
 
 [Usage](../usage/index.md) · [Contributing](index.md)
 
@@ -42,7 +42,7 @@ neurath setup /absolute/path/to/another-project
 ```
 
 If `neurath` is not on PATH, use the full executable path printed by the installer.
-In an already installed project, you can also use `.neurath/run setup`.
+In an already installed project, you can also use `installation_plan` → `installation_apply`.
 
 The first installation uses the `generic` profile and both hosts. Subsequent runs preserve the
 selected hosts, profile, and user document and verification bindings. Specify the corresponding
@@ -133,42 +133,21 @@ verification already authorized for that project. Use `stdout_contains` for addi
 conditions. Even with a successful exit code, the verification record fails if repository files
 change during execution.
 
-```sh
-.neurath/run verify check
+```text
+Named MCP tool verification_run (current input schema) {"check": "check"}
 ```
 
 ## Updates and recovery
 
-After obtaining new source, rerun `./setup /path/to/project`. It prepares a separate tool
-environment for the new distribution content, then applies and diagnoses the target installation.
-Other projects retain their launchers and runtime environments. Update another project explicitly
-with `neurath setup /path/to/other-project`. Keep previous environments so `restore` can
-restore the earlier runtime too. If preparation is forcibly interrupted and leaves an incomplete
-environment, the installer reports its path and stops. It does not automatically delete or
-reinstall an environment that may be in use.
+Public release updates follow `releases_prepare` → exact user choice → `releases_apply`.
+Prepare managed-file administration with `installation_plan`, then give `installation_apply` the returned plan_ref.
+Actions include update/uninstall/restore; restore identifies an existing installation_id.
+Use `installation_recover` for an interrupted journal. Replacing development source with a new distribution
+uses the source bootstrap `./setup /target/Git-root`; subsequent agent operations use MCP.
 
-```sh
-# Create an update plan using neurath from the new distribution environment
-neurath --root /project plan --action update --output /private/update-plan.json
-neurath --root /project apply /private/update-plan.json
-
-# Restore only managed files to their original contents
-neurath --root /project plan --action uninstall --output /private/remove-plan.json
-neurath --root /project apply /private/remove-plan.json
-
-# Undo the transaction using the ID returned by its application
-neurath --root /project restore <installation-id>
-
-# Recover a journal left by process interruption
-neurath --root /project recover
-```
-
-For `AGENTS.md`, a regular-file `CLAUDE.md`, and `.gitignore`, user edits outside Neurath's
-managed blocks retain their exact content and positions. If a managed block or another managed
-file has been edited, update/uninstall stops with a conflict. Review before/after content in
-`neurath-receipts/<id>.json` in the Git directory and reconcile the changes first.
-There is no forced removal that discards original content. Empty directories and change history
-may remain.
+For `AGENTS.md`, regular-file `CLAUDE.md`, and `.gitignore`, preserve user edits outside managed blocks
+including their position and content. Edited managed blocks or files produce conflicts. Compare original and
+current content through private installation records; do not force deletion or overwrite. Keep prior runtimes for recovery.
 
 ## Skill names and updates
 

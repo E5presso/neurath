@@ -16,6 +16,26 @@ from neurath.runtime.task_schema import TASKS, TaskError, arguments
 def execute(root, name, inputs, *, identity, expected_turn=None, verified_policy_evidence=None):
     fields = arguments(name, inputs)
     domain, action = TASKS[name][:2]
+    if domain == "monitor":
+        from neurath.runtime.monitor_tasks import execute as monitor_execute
+        return monitor_execute(root, name, fields, identity=identity, expected_turn=expected_turn,
+                               verified_policy_evidence=verified_policy_evidence)
+    if domain == "process":
+        from neurath.runtime.process_tasks import execute as process_execute
+        return process_execute(root, name, fields, identity=identity, expected_turn=expected_turn,
+                               verified_policy_evidence=verified_policy_evidence)
+    if domain == "installation":
+        from neurath.runtime.installation_tasks import execute as installation_execute
+        return installation_execute(root, name, fields, identity=identity, expected_turn=expected_turn,
+                                    verified_policy_evidence=verified_policy_evidence)
+    if domain == "execution":
+        from neurath.runtime.execution_tasks import execute as execution_execute
+        return execution_execute(root, name, fields, identity=identity, expected_turn=expected_turn,
+                                 verified_policy_evidence=verified_policy_evidence)
+    if domain == "context":
+        from neurath.runtime.context_tasks import execute as context_execute
+        return context_execute(root, name, fields, identity=identity, expected_turn=expected_turn,
+                               verified_policy_evidence=verified_policy_evidence)
     if domain == "workflow-task":
         from neurath.runtime.workflow_tasks import execute as workflow_execute
         return workflow_execute(root, action, fields, identity=identity, expected_turn=expected_turn,
@@ -263,25 +283,39 @@ def verification(root, check, *, identity=None, require_owner=False, expected_tu
     return result
 
 
-def _direct_mcp_execution(report):
+def _execution_ready(report, ownership_required=True, placement_required=True):
+    if ownership_required and placement_required:
+        return report["implementation_ready"]
+    # Only a domain with its own persisted ownership-recovery gate may use this.
+    return report.get("is_root", False) and all(
+        report["stages"][stage]["status"] == "verified"
+        for stage in ("activation", "policy", *(("ownership",) if ownership_required else ()),
+                      *(("installation",) if placement_required else ())))
+
+
+def _direct_mcp_execution(report, ownership_required=True, placement_required=True):
     evidence = report["stages"]["policy"]["evidence"]
     # Asking for approval is not evidence that the approval completed.
-    return (report["implementation_ready"]
+    return (_execution_ready(report, ownership_required, placement_required)
             and evidence.get("sandbox_policy", {}).get("type") == "danger-full-access"
             and evidence.get("approval_policy") == "never"
             and evidence.get("approvals_reviewer") in (None, "user"))
 
 
-def _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence=None):
+def _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence=None, *, ownership_required=True, placement_required=True):
     try:
         from neurath.providers.readiness import inspect_bound_readiness
     except ImportError as error:
         raise TaskError("execution-policy-unavailable", "native execution policy observer is unavailable",
-                        next_action="Use the same task through the native host shell so its sandbox and approvals apply.") from error
+                        next_action="Inspect session_status and diagnostics_project. Restore the native policy observer before retrying this named tool; preserve the current permissions.") from error
     report = inspect_bound_readiness(root, identity, expected_turn=expected_turn,
                                      verified_policy_evidence=verified_policy_evidence)
-    direct = _direct_mcp_execution(report)
-    if identity is not None and identity.host == "claude-code" and report["implementation_ready"]:
+    if not placement_required:
+        from neurath.doctor import integrity
+        if integrity()["status"] != "passed":
+            raise TaskError("distribution-integrity-failed", "Recovery requires an intact running harness package")
+    direct = _direct_mcp_execution(report, ownership_required, placement_required)
+    if identity is not None and identity.host == "claude-code" and _execution_ready(report, ownership_required, placement_required):
         from neurath.runtime.provider_policy import controls
         evidence = report["stages"]["policy"]["evidence"]
         confinement = controls(root, identity.host, evidence)
@@ -291,7 +325,7 @@ def _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidenc
                   and not confinement["tool_denylist"])
     if not direct:
         raise TaskError("native-execution-required", "MCP cannot enforce the caller's observed execution policy",
-                        next_action="Use the same task through the native host shell. Preserve the actual mode, approvals and worktree claim; do not change settings to retry.")
+                        next_action="Inspect session_status for the observed policy and report this operation as unsupported in that mode. Preserve permissions and the worktree claim; do not change settings or replay through another transport.")
     return report
 
 

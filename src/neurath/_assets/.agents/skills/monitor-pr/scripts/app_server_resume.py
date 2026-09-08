@@ -771,6 +771,14 @@ def worktree_owner_head_state(worktree: Path, expected_head_sha: object) -> str:
     return "diverged"
 
 
+def resume_params(args: argparse.Namespace) -> dict[str, Any]:
+    """Bound MCP automation preserves the native thread's current policy."""
+    fields: dict[str, Any] = {"threadId": args.thread_id, "cwd": args.cwd}
+    if not getattr(args, "preserve_native_policy", False):
+        fields.update(approvalPolicy="never", sandbox="danger-full-access")
+    return fields
+
+
 def initialize_and_resume_thread(
     client: AppServerClient,
     args: argparse.Namespace,
@@ -794,12 +802,7 @@ def initialize_and_resume_thread(
     client.notify("initialized", {})
     return client.request(
         "thread/resume",
-        {
-            "threadId": args.thread_id,
-            "cwd": args.cwd,
-            "approvalPolicy": "never",
-            "sandbox": "danger-full-access",
-        },
+        resume_params(args),
     )
 
 
@@ -1061,13 +1064,14 @@ def start_params(args: argparse.Namespace, prompt: str) -> dict[str, Any]:
 
     Returns:
         monitor가 저장하거나 read-back할 resume 결과를 반환합니다."""
-    return {
+    fields: dict[str, Any] = {
         "threadId": args.thread_id,
         "cwd": args.cwd,
-        "approvalPolicy": "never",
-        "sandboxPolicy": {"type": "dangerFullAccess"},
         "input": [{"type": "text", "text": prompt}],
     }
+    if not getattr(args, "preserve_native_policy", False):
+        fields.update(approvalPolicy="never", sandboxPolicy={"type": "dangerFullAccess"})
+    return fields
 
 
 def summarize_response(response: dict[str, Any]) -> dict[str, Any]:
@@ -1111,12 +1115,7 @@ def probe_thread(args: argparse.Namespace) -> dict[str, Any]:
         client.notify("initialized", {})
         response = client.request(
             "thread/resume",
-            {
-                "threadId": args.thread_id,
-                "cwd": args.cwd,
-                "approvalPolicy": "never",
-                "sandbox": "danger-full-access",
-            },
+            resume_params(args),
         )
     thread = response.get("thread", {})
     if isinstance(thread, dict):
@@ -1154,12 +1153,7 @@ def inspect_turn(args: argparse.Namespace, turn_id: str) -> dict[str, Any]:
         client.notify("initialized", {})
         client.request(
             "thread/resume",
-            {
-                "threadId": args.thread_id,
-                "cwd": args.cwd,
-                "approvalPolicy": "never",
-                "sandbox": "danger-full-access",
-            },
+            resume_params(args),
         )
         turn = turn_from_list(client, args, turn_id)
     return {
@@ -1198,12 +1192,7 @@ def find_claimed_turn(
         client.notify("initialized", {})
         resumed = client.request(
             "thread/resume",
-            {
-                "threadId": args.thread_id,
-                "cwd": args.cwd,
-                "approvalPolicy": "never",
-                "sandbox": "danger-full-access",
-            },
+            resume_params(args),
         )
         response = client.request(
             "thread/turns/list",

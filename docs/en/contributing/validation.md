@@ -1,5 +1,5 @@
 # Validation
-<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
 
 [Usage](../usage/index.md) · [Contributing](index.md)
 
@@ -105,8 +105,8 @@ installation, repeat installation, local protocols, execution, preservation, and
 
 ```sh
 ./setup --self
-.neurath/run doctor --protocol
-.neurath/run verify check
+Named MCP tool diagnostics_project (current input schema)
+Named MCP tool verification_run (current input schema) {"check": "check"}
 ```
 
 The development repository binds `check` to the same complete check command in

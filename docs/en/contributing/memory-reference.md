@@ -1,7 +1,7 @@
 # Memory execution reference
 
-**Audience: coding agents and contributors.** The agent executes the commands below as part of an authorized task. Users describe outcomes in the [usage guide](../usage/index.md); they do not need to run these commands.
-<!-- date: 2026-09-07; synced_from: source and documentation at e1487a1718056b37b999d1343a1007b7e25f5c8c; English and Korean editions updated together -->
+**Audience: coding agents and contributors.** Use the named MCP tools and structured inputs below for authorized harness work. Users describe outcomes in the [usage guide](../usage/index.md).
+<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
 
 [Usage](../usage/index.md) · [Contributing](index.md)
 
@@ -26,7 +26,7 @@ retried for the same observation. New failure/recovery evidence can reopen a can
 including a previously withdrawn strategy, and must pass validation again.
 
 If the current user forbids the check or existing tools and permissions cannot execute it,
-the agent records the concrete reason with `learning defer --reason "..."`. Deferral leaves
+the agent records the concrete reason with `learning_defer` (current structured input schema). Deferral leaves
 the guidance unvalidated and adds an audit entry; it never substitutes for a passing check.
 A missing check binding also leaves candidates unvalidated. The agent does not request
 permission merely to activate learning, weaken checks, or expand its permissions.
@@ -47,11 +47,9 @@ when the current request has none. `PreCompact`, `Stop`, and `SessionEnd` also r
 latest available user-visible assistant report and workflow references. A forced stop
 retains already committed records; it cannot create a summary of work never observed.
 
-```sh
-.neurath/run memory recall --query "work log export"
-.neurath/run memory checkpoint --summary "CSV works; PDF remains" \
-  --decision "Preserve UTF-8 filenames" --next-step "Implement PDF export" \
-  --lesson "Run checks in the project's tool environment" --status paused
+```text
+Named MCP tool memory_recall (current input schema)
+Named MCP tool memory_checkpoint (current input schema)
 ```
 
 Checkpoint writes derive identity from the actual native root session. Their status is
@@ -61,7 +59,7 @@ transfer by reading another session's memory.
 
 Retrieval ranks query matches, unfinished checkpoints, and recent records. It supplies
 up to 12 selected entries within a 12,000-byte memory budget. More can be retrieved with
-`memory recall`; stored history is not deleted to fit the prompt. Long incoming requests
+`memory_recall` (current structured input schema); stored history is not deleted to fit the prompt. Long incoming requests
 and visible reports are bounded, and transcript collection reads a bounded recent window.
 Neurath does not promise verbatim retention of every conversation or every command output.
 
@@ -104,10 +102,10 @@ an unrelated worktree's different configuration does not invalidate the source r
 The history records each transition and its evidence. Withdrawn rules are no longer supplied
 as learned guidance, although historical reports remain available as history.
 
-```sh
-.neurath/run verify check
-.neurath/run learning status
-.neurath/run learning history <lesson-id>
+```text
+Named MCP tool verification_run (current input schema) {"check": "check"}
+Named MCP tool learning_status (current input schema)
+Named MCP tool learning_history (current input schema)
 ```
 
 A missing check binding leaves recoveries as candidates. Normal execution continues; no
