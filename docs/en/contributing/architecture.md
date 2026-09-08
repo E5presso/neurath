@@ -1,115 +1,127 @@
-# Architecture and execution boundaries
-<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
+# Neurath harness architecture
 
-[Usage](../usage/index.md) · [Contributing](index.md)
-
+<!-- date: 2026-09-08; synced_from: 5e8d761c276ceb8ddc05dcf239bb2d020f4b0da5; scope: source architecture, not live-host certification -->
 
 **English** · [한국어](../../ko/contributing/architecture.md)
 
-Neurath is an independent harness kit with its own runtime, contracts, and distribution inventory.
-It does not prescribe the target project's source, stack, documentation layout, branch names, or development environment.
+[Contributor guide](index.md) · [Design philosophy](design-principles.md) · [Runtime lifecycle](runtime-lifecycle.md) · [Capability map](capability-map.md)
 
-The accepted [provider collaboration contract](collaboration-contract.md) defines provider-neutral
-permission inheritance, process-owned supervision and at-least-once delivery. The accompanying
-[model planning and MCP contract](model-planning-mcp.md) defines the next agent-facing control
-surface. These contracts distinguish target requirements from the implementation below; app
-membership and user observation are not prerequisites for the new collaboration design.
+Neurath is an **independent harness kit connecting coding-agent work to project context, actual host authority, and verifiable execution records**. While the agent decides its next action, the harness tracks who acts in which worktree, what evidence exists, and whether it permits the next transition.
 
-| Location | Responsibility |
+This documentation describes the current source. Implemented behavior, properties covered by tests, and behavior observed on installed hosts are distinct evidence scopes. Diagrams summarize principal responsibilities and flows rather than every function call or database schema.
+
+## Reading paths
+
+| Question | Document |
 | --- | --- |
-| `src/neurath/_assets/scripts/agent_harness` | State, host identity, ownership, actions, and independent evaluation |
-| `src/neurath/_assets/scripts/skill_harness` | Phase and evidence contracts, execution reports |
-| `src/neurath/_assets/.agents` | Shared rules, 31 skills, and 29 execution contracts |
-| `src/neurath/manifest.json` | SHA-256 inventory of all runtime code and assets |
-| `src/neurath/install/` | Host placement, merging, conflict checks, journals, and recovery |
-| `src/neurath/hosts/` | Native host calls, identity verification, and resume evidence |
-| `src/neurath/memory/` | Shared project memory, reflection, and execution strategy learning and withdrawal |
-| `src/neurath/agents/` | Peer messages, active Newsroom, and communication MCP bound to individual calls |
-| `src/neurath/runtime/` | Verification commands configured by the target project |
-| `tests/runtime` | Kit-owned regressions for state, contracts, and authority |
+| What are the major components? | The diagrams and storage boundaries below |
+| Why is the system organized this way? | [Design principles and philosophy](design-principles.md) |
+| How do requests, execution, evaluation, and recovery connect? | [Runtime lifecycle](runtime-lifecycle.md) |
+| Where are the implementation and verification sources for each feature and skill? | [Capability map](capability-map.md) |
+| How do I request everyday work? | [Usage guide](../usage/index.md) |
 
-Public commands run through `python -I` in an isolated Python environment. A package named
-`scripts` in the target project cannot shadow the bundled engine. Code and contracts come from
-the distribution asset root; working content comes from the target Git worktree. State lives in
-`.neurath/local/runs` and `.neurath/local/resources` under the shared Git control root.
-Only `NEURATH_*` environment variables and `neurath.*` schemas are used. State from other
-products is not inherited implicitly.
+## System overview
 
-## Installation transactions
+![Responsibility boundaries between user intent, host, task tools, execution engine, and stores](../../assets/architecture-en.svg)
 
-An installation plan binds target paths, the distribution fingerprint, selected hosts, and each
-file's bytes, mode, and link before and after the change. Immediately before applying it, the
-installer compares the plan against current files and applies it under a Git directory lock.
-Files are written through temporary files and fsync/replace. A journal supports recovery after
-failure or process interruption; concurrently edited user files are not overwritten.
+Vertical placement does not imply a single process or sequential execution.
 
-Existing instructions, hook groups, permissions, and model settings are preserved. Uninstallation
-restores the original content. Edits outside managed blocks in shared instructions and `.gitignore`
-remain in their original positions; edits to managed blocks are rejected. Quick setup creates a
-separate runtime environment for each distribution content fingerprint, preserving the runtime
-used by existing projects. Only after target installation succeeds does the global command point
-to the new environment. Previous environments remain available for restoration. Diagnostics also
-compare the running distribution fingerprint with the target installation record.
-An edited `.neurath/project.json` remains user-owned. Installation state and records containing
-original file content stay in private local files and are not transmitted externally.
+```mermaid
+flowchart TB
+    U[User request and project instructions] --> A[Codex or Claude agent]
+    A --> S[Skills: intent and procedure]
+    A --> H[Host tools and native events]
+    H --> I[Host identity and invocation binding]
+    S --> T[Named MCP tasks]
+    I --> T
+    T --> R[Domain services and execution policy checks]
+    R --> K[SessionKernel · StateHandle]
+    R --> P[PhaseRunner · Independent evaluation]
+    R --> C[Provider · Message delivery]
+    R --> M[Memory · Learning · Maintenance]
+    K --> L[(Private state and ownership)]
+    P --> L
+    C --> D[(Messages and execution records)]
+    M --> Q[(Project memory)]
+    H --> W[Authorized project file operations]
+    K -. Ownership and effect checks .-> W
+    B[Package and manifest] --> X[Conservative installation transaction]
+    X --> S
+    X --> I
+```
 
-## Verification and authority
+## Guidance, enforcement, and continuity
 
-Of the 31 skills, `explain-code` and `graphify` are helpers without state-owning phase contracts;
-the other 29 have phase and evidence contracts. Skill selection requires matching primary intent
-and input authority. The `test-harness` kit regression matrix runs against kit development source,
-while target project changes use that project's verification bindings. Product-specific profile
-names and state namespaces are not supported.
+**Guidance:** policy explains common boundaries and terminology; skills describe procedures selected by primary intent and input authority. Executable contracts specify phases, evidence, and terminal conditions. Reading instructions differs from passing a contract. Public names such as `implement-issue` can map to internal identifiers such as `process-ticket`; `skill_names.py` owns that mapping.
 
-General verification uses explicit argv, cwd, success conditions, and a timeout. A change to the
-Git file fingerprint during execution fails verification even with exit code 0. Typed pytest
-verification confirms that every requested leaf node actually passed; other passing tests or
-skipped tests cannot substitute for it.
+**Enforcement:** host adapters handle session, user-input, and tool events. `SessionKernel` models session, actor, turn, workflow, and delegation state. `StateHandle` binds the actual caller to state access. The worktree registry checks ownership. Host editing and shell tools perform file changes; material-action services connect baselines, invocation outcomes, and post-action observations. `material_prepare` does not edit files.
 
-Distribution integrity, installation placement, test execution, independent review, and actual
-host activation require separate evidence. `doctor` and static checkers cannot authenticate host
-trust or parent–child relationships themselves. The runtime checks state access, concurrent edit
-conflicts, workspace ownership, execution results for mutations, and completion conditions.
-The [terminology guide](../terminology.md) maps these concepts to code identifiers.
+**Continuity:** shared memory supplies relevant goals and decisions to later sessions. Messaging manages delivery and acknowledgment, while providers manage independent runs and reporting through owned connections. Recall does not transfer ownership, and ACK does not approve task completion.
 
-## User input and execution state
+## Source responsibilities
 
-Root `UserPromptSubmit` is the boundary for delivering user input. If state updates or memory
-and message stores fail, input still reaches the agent with a `bookkeeping deferred` diagnostic.
-That response does not imply a successful state update or permission to execute tools. Input from
-another session is not imported into state or shared memory; tool and ownership checks still apply.
+Paths are relative to the repository root. The [capability map](capability-map.md) links implementation and regression tests.
 
-A new Codex `task_started` record provides evidence for recovering an unfinished previous turn.
-A new turn is recognized even without a resume hook or when the user repeats the same sentence.
-Previous tool calls whose results were not observed remain `unknown` or `blocked` and do not
-complete a workflow. Additional input within the same turn is stored in memory with its accepted
-revision and content digest.
+| Source | Responsibility | Boundary |
+| --- | --- | --- |
+| `src/neurath/resources.py`, `src/neurath/manifest.json` | Assets and integrity | Target projects are not build inputs |
+| `src/neurath/install/` | Plans, projection, merging, conflicts, apply, uninstall, recovery | Preserve user files and settings |
+| `src/neurath/hosts/` | Events, native identity, processes, invocations | Payload assertions cannot create authority |
+| `src/neurath/runtime/` | Schemas, dispatch, policy, verification, state, models, maintenance | Defined operations rather than arbitrary shell or state patches |
+| `src/neurath/_assets/scripts/agent_harness/` | Kernel, ownership, effects, adaptive control, evaluation | Check goal, revision, evidence, actor |
+| `src/neurath/_assets/scripts/skill_harness/` | Contracts, phase progression, finalization | Reject completion without required evidence |
+| `src/neurath/_assets/.agents/` | Rule, skill, and contract sources | Distinct from installed copies |
+| `src/neurath/providers/` | Model planning, policy inheritance, runs, cancellation, recovery | Verify actual settings and owners |
+| `src/neurath/agents/` | Messages, reports, delivery, Newsroom, MCP | Separate persistence, submission, receipt, acceptance |
+| `src/neurath/memory/` | Records, selection, learning, rollback | Reference data is not current authority |
+| `src/neurath/updates.py`, `src/neurath/release_install.py`, `src/neurath/reporting.py` | Release notices, updates, reports, contributions | Exact targets, consent, recovery, privacy |
+| `tests/`, `tests/runtime/`, `tools/` | Regressions, contracts, builds, checks | Distinct verification scopes |
 
-## Project memory
+## Distribution root and work root
 
-Records with source information live in `.neurath/local/memory/project.sqlite3` under the shared
-Git control root. They are separate from each session's state and ownership. SQLite transactions
-handle concurrent writes and redelivery. Memory is shared across worktrees, while verification
-contracts are read from the worktree where execution actually occurs.
-[Memory and learning](../usage/memory.md) explains record selection and the execution strategy lifecycle.
+`_assets` contains independent resources owned by the harness. Installation projects content into a target, while the engine explicitly uses the packaged asset root. `runtime/engine.py` checks that modules exist in the bundle and operates in the target root. Public launchers use isolated Python execution so a target package named `scripts` cannot shadow the harness. Project dependencies and the harness tool environment remain separate.
 
-## Newsroom
+```mermaid
+flowchart LR
+    subgraph Distribution[Distribution]
+      P[Python package]
+      A[Independent runtime assets]
+      F[SHA-256 manifest]
+    end
+    subgraph Project[Target worktree]
+      C[User source and development environment]
+      J[project.json bindings]
+      G[Generated skills and host settings]
+    end
+    P --> A
+    F -. Integrity check .-> A
+    A -->|Plan and apply| G
+    J -->|Document and verification bindings| P
+    P -->|Work target| C
+```
 
-Articles store a title, body, author, and version; revisions and comments append immutable events.
-The publication transaction queues headline notifications only for active participants. Participation
-is bound to a native turn generation, and old notifications are discarded on deactivation, a new
-turn, or expiry after 10 minutes. Checks compare directory entries with SessionKernel actor and
-foreground state as well as the native process connection. SessionEnd leaves the logical session
-resumable, so a separate connection-closure record is required. Host hooks inject up to 3,000 bytes
-of headlines and lookup IDs; bodies require explicit lookup. Delivery records are separate from
-read acknowledgements, and there is no separate runner that wakes agents.
+## Storage boundaries
 
-The communication MCP server exposes no arbitrary Python, shell, or file operations. Native
-PreToolUse binds a temporary token to the verified actor, turn, tool call, and exact request.
-Changed requests, changed identities, expired tokens, and calls after closure are rejected.
-PostToolUse closes the token; retries within the same call return the stored result. Claude
-read-only workers receive only this additional communication tool. Codex registers only the new
-communication tool with `tools.agent.approval_mode = "approve"`. When a native connection closes,
-all communication tokens and cached results for that process are discarded. Installation preserves
-existing Codex TOML and Claude MCP servers and permissions, stopping on conflicting user settings
-with the same name. Uninstallation restores the original files exactly.
+| Data | Location and scope |
+| --- | --- |
+| Source, public docs, project bindings | Version-controlled Git worktree |
+| Installation ownership inventory | Target `.neurath/install.json`; restoration records in private Git storage |
+| Kernel execution state and resource ownership | `.neurath/local/runs` and `.neurath/local/resources` beneath the Git common control root |
+| Project memory and learning | `.neurath/local/memory/project.sqlite3` beneath the same control root |
+| Messages and execution records | `.neurath/local/agents` beneath the same control root |
+| Update and reporting choices | Feature-specific private Git state, bound to exact versions, drafts, and targets |
+
+The control root is derived from the Git common directory. Linked worktrees share memory; separate clones and computers are not automatically synchronized. Memory and messaging use SQLite transactions. Kernel state and installation journals are not all stored in that database.
+
+## Separate verifiable claims
+
+| Question | Evidence | What this alone cannot establish |
+| --- | --- | --- |
+| Is distribution content correct? | Manifest and integrity checks | Host hook trust |
+| Are files installed? | Plan, apply, placement checks | Current-session activation |
+| Are event formats handled? | Protocol fixtures | Actual identity and permissions |
+| Are there regressions? | Relevant tests and registered checks | App access and real model round trips |
+| May this actor execute? | Activation, policy, ownership | Material effects and independent evaluation |
+| Is the goal attained? | Goal-specific outcomes, evaluation, evidence consumption | Publication and remote integration |
+
+Observe each question separately. [Validation](validation.md) explains checks, and [runtime lifecycle](runtime-lifecycle.md) explains evidence production and consumption. Read [collaboration](collaboration-contract.md) and [model planning](model-planning-mcp.md) as requirement contracts, and [task tools](task-tools.md) as the current control surface.

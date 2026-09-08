@@ -1,105 +1,127 @@
-# 구조와 실행 경계
-<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
+# Neurath 하네스 아키텍처
 
-[사용 안내](../usage/index.md) · [기여자 안내](index.md)
-
+<!-- date: 2026-09-08; synced_from: 5e8d761c276ceb8ddc05dcf239bb2d020f4b0da5; scope: source architecture, not live-host certification -->
 
 [English](../../en/contributing/architecture.md) · **한국어**
 
-Neurath는 자체 런타임·계약·배포 목록을 가진 독립 하네스 키트입니다.
-대상 프로젝트의 소스, 스택, 문서 구조, 브랜치명과 개발환경을 내장하지 않습니다.
+[기여 안내](index.md) · [설계 철학](design-principles.md) · [실행 수명주기](runtime-lifecycle.md) · [기능 지도](capability-map.md)
 
-확정된 [프로바이더 협업 계약](collaboration-contract.md)은 프로바이더에 독립적인 권한 승계,
-프로세스 소유 연결의 보고 책임, at-least-once 전달을 정의합니다.
-[모델 계획과 MCP 계약](model-planning-mcp.md)은 다음 에이전트용 제어 표면을 정의합니다.
-두 계약의 목표 요구와 아래의 현재 구현은 구분하며, 새 협업 설계에서 앱 소속과 사용자 관측은
-실행의 선행 조건이 아닙니다.
+Neurath는 **코딩 에이전트의 작업을 프로젝트 맥락, 실제 호스트 권한, 검증 가능한 실행 기록에 연결하는 독립 하네스 키트**입니다. 에이전트가 다음 행동을 판단하는 동안 하네스는 누가 어떤 작업 공간에서 실행하는지, 어떤 근거가 남았는지, 그 근거로 다음 단계에 갈 수 있는지를 관리합니다.
 
-| 위치 | 역할 |
+이 문서 묶음은 현재 소스의 구조를 설명합니다. 구현의 존재, 테스트가 확인하는 성질, 설치된 호스트에서 관측한 동작은 서로 다른 근거입니다. 다이어그램은 주요 책임과 흐름을 요약하며 모든 함수 호출이나 데이터베이스 스키마를 표현하지는 않습니다.
+
+## 읽는 순서
+
+| 질문 | 문서 |
 | --- | --- |
-| `src/neurath/_assets/scripts/agent_harness` | 상태·호스트 신원·소유권·행위·독립 평가 엔진 |
-| `src/neurath/_assets/scripts/skill_harness` | 단계·증거 계약과 실행 보고 |
-| `src/neurath/_assets/.agents` | 공통 규칙, 31개 스킬, 29개 실행 계약 |
-| `src/neurath/manifest.json` | 전체 실행 코드와 자산의 SHA-256 목록 |
-| `src/neurath/install/` | 호스트 배치, 병합, 충돌 검사, 저널·복구 |
-| `src/neurath/hosts/` | 실제 호스트 호출과 신원·재개 증명 |
-| `src/neurath/memory/` | 프로젝트 공유 기억, 회고, 실행 전략 학습과 철회 |
-| `src/neurath/agents/` | 동료 메시지, active Newsroom, 호출에 결속된 통신 MCP |
-| `src/neurath/runtime/` | 대상 프로젝트가 지정한 검증 실행 |
-| `tests/runtime` | 키트가 소유하는 상태·계약·권위 회귀 테스트 |
+| 전체는 어떤 부분으로 구성되는가 | 이 문서의 구성도와 저장 경계 |
+| 왜 이런 구조를 택했는가 | [설계 원칙과 철학](design-principles.md) |
+| 요청·실행·평가·복구는 어떻게 이어지는가 | [실행 수명주기](runtime-lifecycle.md) |
+| 각 기능과 스킬의 구현·검증 근거는 무엇인가 | [기능 지도](capability-map.md) |
+| 실제 사용을 어떻게 요청하는가 | [사용 안내](../usage/index.md) |
 
-공개 명령은 독립 Python 환경에서 `python -I`로 실행합니다. 대상 프로젝트에 같은
-이름의 `scripts` 패키지가 있어도 내장 엔진을 가리지 않습니다. 코드·계약은 배포 자산
-루트에서, 작업 내용은 대상 Git worktree에서 읽습니다. 상태는 Git 공통 control root의
-`.neurath/local/runs`와 `.neurath/local/resources`에 저장합니다. `NEURATH_*` 환경변수와
-`neurath.*` 스키마만 사용합니다. 다른 제품의 상태를 암묵적으로 이어받지 않습니다.
+## 전체 구성
 
-## 설치 트랜잭션
+![사용자 의도, 호스트, 작업 도구, 실행 엔진과 저장소의 책임 경계](../../assets/architecture-ko.svg)
 
-설치 계획은 대상 경로, 배포 fingerprint, 호스트, 변경 전후 bytes·mode·link를 결속합니다.
-적용 직전에 계획과 현재 파일을 다시 비교하고 Git 디렉터리 잠금 아래 적용합니다.
-각 파일은 임시 파일과 fsync/replace로 기록합니다. 실패·프로세스 중단은 저널로 복구하고,
-동시에 수정된 사용자 파일은 덮어쓰지 않습니다.
+그림의 세로 배치는 단일 프로세스나 순차 실행을 의미하지 않습니다.
 
-기존 지침, hook group, 권한, 모델 설정을 보존합니다. 제거는 설치 전 원문을 복원합니다.
-공유 지침과 `.gitignore`의 관리 블록 밖 편집은 원래 위치에 보존하고 관리 블록 변경은 거부합니다.
-빠른 설치는 배포 내용 지문마다 독립 실행 환경을 만들어 기존 프로젝트의 실행 코드를
-바꾸지 않습니다. 대상 설치 성공 후 전역 명령만 새 환경에 연결하며, 복원을 위해 이전
-환경을 유지합니다. 진단은 현재 실행 중인 배포 지문과 대상 설치 기록도 비교합니다.
-사용자가 편집한 `.neurath/project.json`은 사용자 소유로 남습니다. 설치 상태와 원문이
-포함된 설치 이력은 비공개 로컬 파일이며 외부로 전송하지 않습니다.
+```mermaid
+flowchart TB
+    U[사용자 요청과 프로젝트 지침] --> A[Codex 또는 Claude 에이전트]
+    A --> S[스킬: 의도와 작업 절차]
+    A --> H[호스트 도구와 네이티브 이벤트]
+    H --> I[호스트 신원과 호출 결속]
+    S --> T[명명된 MCP 작업]
+    I --> T
+    T --> R[도메인 서비스와 실행 정책 검사]
+    R --> K[SessionKernel · StateHandle]
+    R --> P[PhaseRunner · 독립 평가]
+    R --> C[Provider · 메시지 전달]
+    R --> M[기억 · 학습 · 유지보수]
+    K --> L[(비공개 상태와 소유권)]
+    P --> L
+    C --> D[(메시지와 실행 기록)]
+    M --> Q[(프로젝트 기억)]
+    H --> W[승인된 프로젝트 파일 작업]
+    K -. 소유권과 실행 결과 검사 .-> W
+    B[패키지와 manifest] --> X[보존적 설치 트랜잭션]
+    X --> S
+    X --> I
+```
 
-## 검증과 권위
+## 안내·집행·연속성의 세 축
 
-31개 스킬 중 `explain-code`와 `graphify`는 상태를 소유하는 단계 계약이 없는 보조 스킬이며,
-나머지 29개에는 단계와 증거 계약이 있습니다. 스킬을 선택할 때는 작업의 주된 목적과 입력의
-권한·근거가 맞아야 합니다. `test-harness`의 키트 회귀 검사표는 키트 개발 소스에서 실행하고,
-대상 프로젝트 변경에는 해당 프로젝트의 검증 연결을 사용합니다. 제품별 프로필 이름과
-상태 이름 공간은 지원하지 않습니다.
+**안내:** 정책은 공통 실행 경계와 용어를, 스킬은 요청의 주된 목적과 입력 근거에 맞는 절차를 설명합니다. 실행 계약은 필요한 단계·근거·종료 조건을 정의합니다. 문장을 읽는 것과 계약을 통과하는 것은 별개입니다. 공개 스킬 `implement-issue`와 내부 계약 `process-ticket`처럼 이름이 다를 수 있으며 `skill_names.py`가 대응을 관리합니다.
 
-일반 검증은 명시된 argv/cwd/성공 조건과 timeout을 사용합니다. 실행 전후 Git 파일
-fingerprint가 달라지면 종료 코드 0이어도 실패입니다. typed pytest 검증은 요청한 각
-leaf node의 실제 통과를 확인하며 다른 테스트의 통과나 skip으로 대체하지 않습니다.
+**집행:** 호스트 어댑터가 세션·사용자 입력·도구 이벤트를 처리합니다. `SessionKernel`은 세션·actor·턴·workflow·위임의 상태와 전이를, `StateHandle`은 실제 호출자와 상태 접근의 결속을 담당합니다. worktree registry가 소유자를 확인합니다. 파일 변경은 호스트 편집·셸 도구가 수행하고 material action 서비스는 대상의 기준 상태, 도구 실행 결과와 변경 후 관측을 연결합니다. `material_prepare` 자체가 파일을 편집하지는 않습니다.
 
-배포 무결성, 설치 배치, 테스트 실행, 독립 검토자, 실제 호스트 활성화는 별도 증거입니다.
-`doctor`와 정적 검사기는 호스트의 신뢰 설정이나 부모·자식 관계를 자체 인증하지 않습니다.
-상태 접근, 동시 변경 충돌 방지, 작업 공간 소유권, 변경 작업의 실행 결과, 완료 조건은
-런타임에서 검사합니다. 코드 식별자와의 대응은 [용어 안내](../terminology.md)에 정리합니다.
+**연속성:** 공유 기억은 관련 목표와 결정을 다음 세션에 제공합니다. 메시지 저장소는 전달과 수신 확인을, provider 계층은 독립 실행과 소유 연결을 통한 보고를 관리합니다. 기억 조회가 작업 소유권을 넘기거나 ACK가 작업 완료를 승인하지 않습니다.
 
-## 사용자 입력과 실행 상태
+## 소스의 책임 분할
 
-루트 `UserPromptSubmit`은 사용자 입력을 전달하는 경계입니다. 상태 갱신이나 기억·메시지
-저장소가 실패해도 입력을 막지 않고 `bookkeeping deferred` 진단을 에이전트에게 전달합니다.
-이 응답은 상태 갱신 성공이나 도구 실행 권한을 뜻하지 않습니다. 다른 세션의 입력은
-상태·공유 기억에 기록하지 않으며, 도구 실행과 소유권 검사는 계속 적용합니다.
+경로는 저장소 루트 기준입니다. [기능 지도](capability-map.md)에서 구현과 회귀 테스트를 직접 열 수 있습니다.
 
-Codex의 새 `task_started` 기록은 이전 턴의 미종료 상태를 복구하는 근거입니다.
-재개 훅 없이 새 턴이 시작되거나 같은 문장을 다시 입력해도 새 네이티브 턴으로 처리합니다.
-결과를 관측하지 못한 이전 도구 호출은 `unknown`·`blocked`로 남기며 workflow를 완료하지
-않습니다. 같은 턴의 추가 입력은 수락한 revision과 내용 digest로 구분해 기억에 저장합니다.
+| 소스 | 책임 | 경계 |
+| --- | --- | --- |
+| `src/neurath/resources.py`, `src/neurath/manifest.json` | 배포 자산·무결성 | 대상 프로젝트를 빌드 입력으로 삼지 않음 |
+| `src/neurath/install/` | 계획·배치·병합·충돌·적용·제거·복구 | 기존 사용자 파일·설정 보존 |
+| `src/neurath/hosts/` | 이벤트·네이티브 신원·프로세스·호출 | payload 주장만으로 권한 생성 불가 |
+| `src/neurath/runtime/` | 스키마·dispatch·정책·검증·상태·모델·유지보수 | 임의 셸이나 상태 패치 대신 정의된 작업 |
+| `src/neurath/_assets/scripts/agent_harness/` | 커널·소유권·변경 결과·적응 제어·평가 | 목표·revision·근거·actor 대조 |
+| `src/neurath/_assets/scripts/skill_harness/` | 계약·단계 진행·종료 | 필요한 근거 없는 완료 거부 |
+| `src/neurath/_assets/.agents/` | 규칙·스킬·계약 원본 | 설치된 사본과 구분 |
+| `src/neurath/providers/` | 모델 계획·권한 승계·실행·취소·복구 | 실제 설정과 소유자 확인 |
+| `src/neurath/agents/` | 메시지·작업 보고·전달·Newsroom·MCP | 저장·전송·수신·수락 구분 |
+| `src/neurath/memory/` | 기록·맥락 선택·학습·철회 | 참고 정보가 현재 권한이 되지 않음 |
+| `src/neurath/updates.py`, `src/neurath/release_install.py`, `src/neurath/reporting.py` | 버전 안내·업데이트·보고·기여 | 정확한 대상·동의·복구·개인정보 |
+| `tests/`, `tests/runtime/`, `tools/` | 회귀·계약·빌드·검사 | 검증 범위를 구분 |
 
-## 프로젝트 기억
+## 배포 루트와 작업 루트
 
-Git 공통 control root의 `.neurath/local/memory/project.sqlite3`에 출처가 있는 기록을 저장합니다.
-각 세션의 상태·소유권과 분리하며, SQLite 트랜잭션으로 동시 기록과 재전달을 처리합니다.
-기억은 worktree 사이에서 공유하지만 검증 계약은 실제 실행한 worktree에서 읽습니다.
-기록 선택과 실행 전략의 수명주기는 [기억과 학습](../usage/memory.md)에 설명합니다.
+`_assets`는 하네스가 소유하는 독립 자산입니다. 설치기는 필요한 내용을 대상 프로젝트에 배치하지만 엔진은 패키지 자산 루트를 명시적으로 사용합니다. `runtime/engine.py`는 모듈이 번들에 있는지 검사하고 대상 루트에서 작업합니다. 공개 실행기는 격리된 Python 경로를 사용해 대상의 동명 `scripts` 패키지가 하네스를 가리지 않게 합니다. 프로젝트 의존성과 하네스 도구 환경도 분리합니다.
 
-## Newsroom
+```mermaid
+flowchart LR
+    subgraph Distribution[배포본]
+      P[Python 패키지]
+      A[독립 실행 자산]
+      F[SHA-256 manifest]
+    end
+    subgraph Project[대상 worktree]
+      C[사용자 소스와 개발환경]
+      J[project.json 연결 설정]
+      G[생성된 스킬과 호스트 설정]
+    end
+    P --> A
+    F -. 무결성 검사 .-> A
+    A -->|계획과 적용| G
+    J -->|문서와 검증 연결| P
+    P -->|작업 대상| C
+```
 
-기사는 제목·본문·작성자·버전을 저장하고 정정·댓글은 불변 이벤트로 추가합니다.
-발행 트랜잭션에서 active 참여자만 선택해 제목 알림을 넣습니다. 참여는 네이티브 턴의
-generation과 연결되며 비활성화·새 턴·10분 만료 시 이전 알림을 폐기합니다.
-주소록뿐 아니라 SessionKernel의 actor·foreground 상태와 네이티브 프로세스 연결도
-대조합니다. SessionEnd는 논리 세션을 재개 가능하게 남기므로 별도 연결 종료 기록이 필요합니다.
-호스트 훅이 최대 3,000 bytes의 제목·조회 ID를 주입하며 본문은 명시적 조회로만 제공합니다.
-알림 전달 기록은 읽음 확인과 다르고, 에이전트를 깨우는 별도 실행기가 없습니다.
+## 저장 경계
 
-통신 MCP 서버는 임의 Python·shell·파일 작업을 노출하지 않습니다. 네이티브 PreToolUse가
-확인한 actor·턴·도구 호출·정확한 요청에 임시 토큰을 결속합니다. 요청 변경·신원 변경·만료·
-종료 이후 호출은 거부합니다. PostToolUse는 토큰을 닫으며 동일 호출 내 재시도는 저장된
-결과를 반환합니다. Claude의 read-only worker에는 이 통신 도구만 추가로 허용합니다.
-Codex에는 새 통신 도구만 `tools.agent.approval_mode = "approve"`로 등록합니다.
-네이티브 연결이 종료되면 해당 프로세스의 모든 통신 토큰과 캐시 결과도 폐기합니다.
-설치기는 기존 Codex TOML과 Claude MCP 서버·권한을 보존하고 동명 사용자 설정과 충돌하면
-중단합니다. 제거하면 설치 전 파일을 그대로 복원합니다.
+| 데이터 | 위치와 공유 범위 |
+| --- | --- |
+| 소스·공개 문서·프로젝트 연결 | Git worktree의 버전 관리 대상 |
+| 설치 소유 목록 | 대상 `.neurath/install.json`; 원문 복원 기록은 Git 비공개 영역 |
+| 커널 실행 상태·자원 소유권 | Git 공통 control root의 `.neurath/local/runs`, `.neurath/local/resources` |
+| 프로젝트 기억·학습 | 같은 control root의 `.neurath/local/memory/project.sqlite3` |
+| 메시지·실행 기록 | 같은 control root의 `.neurath/local/agents` |
+| 업데이트·보고 선택 | 기능별 Git 비공개 상태; 정확한 버전·초안·대상에 결속 |
+
+control root는 Git 공통 디렉터리를 바탕으로 계산합니다. 연결된 worktree는 기억을 공유하지만 별도 clone이나 다른 컴퓨터를 자동 동기화하지 않습니다. 기억과 메시지는 SQLite 트랜잭션을 사용합니다. 커널 상태와 설치 저널까지 하나의 데이터베이스에 넣는 구조는 아닙니다.
+
+## 검증 가능한 주장으로 나누기
+
+| 질문 | 필요한 근거 | 이것만으로 알 수 없는 것 |
+| --- | --- | --- |
+| 배포 내용이 맞는가 | manifest·무결성 검사 | 호스트의 훅 신뢰 |
+| 파일이 설치됐는가 | 계획·적용·배치 검사 | 현재 세션 활성화 |
+| 이벤트 형식을 처리하는가 | 프로토콜 fixture | 실제 신원·권한 |
+| 회귀가 없는가 | 관련 테스트·등록 검사 | 앱 접근성과 실제 모델 왕복 |
+| 현재 actor가 실행 가능한가 | 활성화·정책·소유권 | 변경 결과·독립 평가 |
+| 목표가 달성됐는가 | 목표별 결과·평가·근거 소비 | 공개 배포·원격 반영 |
+
+각 질문을 따로 관측해야 합니다. [검증 안내](validation.md)는 검사 방법을, [실행 수명주기](runtime-lifecycle.md)는 근거 생성·소비를 설명합니다. 요구 계약은 [협업](collaboration-contract.md)과 [모델 계획](model-planning-mcp.md), 현재 제어 표면은 [작업 도구](task-tools.md)를 기준으로 읽으세요.

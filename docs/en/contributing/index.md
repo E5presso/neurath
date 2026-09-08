@@ -1,5 +1,8 @@
 # Developing Neurath
-<!-- date: 2026-09-07; synced_from: source and documentation at e1487a1718056b37b999d1343a1007b7e25f5c8c; English and Korean editions updated together -->
+<!-- date: 2026-09-08; synced_from: 5e8d761c276ceb8ddc05dcf239bb2d020f4b0da5; English and Korean editions updated together -->
+
+Harness deep dive: [system architecture](architecture.md) · [design principles and philosophy](design-principles.md) ·
+[runtime lifecycle and recovery](runtime-lifecycle.md) · [capabilities and source map](capability-map.md).
 
 [Usage](../usage/index.md) · [Contributing](index.md)
 
@@ -141,7 +144,9 @@ src/neurath/
 ├── resources.py        # Immutable asset lookup
 ├── install/            # Projection, transactions, setup
 ├── hosts/              # Codex/Claude hooks, identity, lifecycle
-├── runtime/            # Engine entry points and verification commands
+├── runtime/            # Named tasks, state, verification, models, maintenance
+├── providers/          # Model plans, policy inheritance, independent runs, recovery
+├── agents/             # Messages, delivery, task reports, Newsroom, MCP
 ├── memory/             # Shared recall, reflection, observed recovery learning
 ├── _assets/            # Runtime engine, skills, rules, contracts
 └── manifest.json       # Complete runtime integrity inventory

@@ -1,8 +1,11 @@
 # Neurath 개발 참여
 
+하네스 심층 해설: [전체 구조](architecture.md) · [설계 원칙과 철학](design-principles.md) ·
+[실행 수명주기와 복구](runtime-lifecycle.md) · [전체 기능과 소스 지도](capability-map.md).
+
 [English](../../en/contributing/index.md) · **한국어**
 
-<!-- date: 2026-09-07; synced_from: source and documentation at e1487a1718056b37b999d1343a1007b7e25f5c8c; English and Korean editions updated together -->
+<!-- date: 2026-09-08; synced_from: 5e8d761c276ceb8ddc05dcf239bb2d020f4b0da5; English and Korean editions updated together -->
 
 [사용 안내](../usage/index.md) · [기여자 안내](index.md)
 
@@ -143,7 +146,9 @@ src/neurath/
 ├── resources.py        # 배포 자산 조회
 ├── install/            # 호스트별 파일 배치·병합·충돌 검사·설치 트랜잭션·복구
 ├── hosts/              # Codex·Claude 훅, 신원 확인, 실행 수명주기
-├── runtime/            # 엔진 진입점과 검증 명령
+├── runtime/            # 명명된 작업·상태·검증·모델·유지보수 연결
+├── providers/          # 모델 계획·권한 승계·독립 실행·복구
+├── agents/             # 메시지·전달·작업 보고·Newsroom·MCP
 ├── memory/             # 공유 기억·회고·관측된 실행 방법의 학습
 ├── _assets/            # 런타임 엔진·스킬·규칙·계약
 └── manifest.json       # 전체 실행 코드와 자산의 무결성 검사 목록
