@@ -19,7 +19,7 @@ from neurath.agents.newsroom import Newsroom
 from neurath.agents.store import AgentIdentity, MessageStore
 from neurath.memory.store import canonical
 
-from neurath.runtime.task_schema import TASKS, TaskError, arguments, definitions
+from neurath.runtime.task_schema import TASKS, SERVER_INSTRUCTIONS, TaskError, arguments, definitions
 
 TOOL_NAME = "mcp__neurath_collaboration__agent"
 TOOL_NAMES = {TOOL_NAME, *("mcp__neurath_collaboration__" + name for name in TASKS)}
@@ -224,8 +224,11 @@ def call_tool(root, inputs, *, name="agent"):
                        (canonical(failure.details), token))
         raise failure from error
     with store.connection() as db:
+        saved = ({key: value for key, value in result.items() if key != "diagnostic_tail"}
+                 if name in {"verification_run", "verification_builtin", "verification_nodes"}
+                 else result)
         db.execute("UPDATE collaboration_calls SET status='complete',result=? WHERE token=? AND status='running'",
-                   (canonical(result), token))
+                   (canonical(saved), token))
     return result
 
 
@@ -262,7 +265,8 @@ def response(root, request):
         supported = ("2025-11-25", "2025-06-18", "2024-11-05")
         version = params.get("protocolVersion")
         result = {"protocolVersion": version if version in supported else supported[0],
-                  "capabilities": {"tools": {}}, "serverInfo": {"name": "neurath_collaboration", "version": "1"}}
+                  "capabilities": {"tools": {}}, "serverInfo": {"name": "neurath_collaboration", "version": "1"},
+                  "instructions": SERVER_INSTRUCTIONS}
     elif method == "ping":
         result = {}
     elif method == "tools/list":
@@ -271,7 +275,8 @@ def response(root, request):
         try:
             name = params["name"]
             value = call_tool(root, params.get("arguments"), name=name)
-            failed = ((name == "verification_run" and value.get("status") != "passed")
+            failed = ((name in {"verification_run", "verification_builtin", "verification_nodes"}
+                       and value.get("status") != "passed")
                       or (name == "provider_run" and value.get("status") not in
                           {"accepted", "starting", "started", "waiting", "completed"}))
             if name != "agent":

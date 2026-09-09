@@ -8,6 +8,49 @@ def test_builtin_verifier_and_continuation_have_closed_named_faces():
     assert arguments("diagnostics_continuation",{}) == {}
     with pytest.raises(ValueError):
         arguments("verification_builtin",{"check":"arbitrary-shell","key":"invalid"})
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_completed_verifier_failure_keeps_diagnostics_but_replay_does_not_rerun(
+        sessions, monkeypatch, changed):
+    from neurath.agents.store import MessageStore
+    from neurath.runtime import tasks
+    from scripts.agent_harness import verification_runner as runner
+    root, _ = sessions
+    call(sessions, "worktree_claim", {})
+    # This test isolates the already-tested policy admission from result handling.
+    monkeypatch.setattr(tasks, "_mcp_execution_policy", lambda *a, **k: None)
+    invoked = []
+
+    def fail(self, request):
+        invoked.append(request)
+        if changed:
+            raise runner.VerificationWorktreeChanged('a' * 64, 'b' * 64)
+        raise runner.VerificationExecutionFailed('test failed', 'a' * 64, 'a' * 64,
+            diagnostic_tail='assert 201 <= 3; password=private-value',
+            output_sha256='c' * 64, exit_code=1)
+
+    monkeypatch.setattr(runner.VerificationRunner, "run", fail)
+    fields = {"check": "check", "key": "known-failure"}
+    first = call(sessions, "verification_builtin", fields)
+    second = call(sessions, "verification_builtin", fields, invocation="failure-replay")
+    assert len(invoked) == 1
+    assert first["status"] == second["status"] == "failed"
+    assert first["worktree_changed"] is changed
+    if not changed:
+        assert 'assert 201 <= 3' in first['diagnostic_tail']
+        assert 'private-value' not in first['diagnostic_tail']
+        assert second['output_sha256'] == 'c' * 64
+    assert "diagnostic_tail" not in second
+    with MessageStore(root).connection() as db:
+        stored = db.execute("SELECT result FROM workflow_task_requests WHERE key=?",
+                            (fields['key'],)).fetchone()[0]
+    assert 'diagnostic_tail' not in stored
+    assert 'private-value' not in stored
+    with MessageStore(root).connection() as db:
+        stored_calls = [r[0] for r in db.execute(
+            "SELECT result FROM collaboration_calls WHERE result IS NOT NULL")]
+    assert all('diagnostic_tail' not in value for value in stored_calls)
 from neurath.runtime.task_schema import arguments
 from tests.test_workflow_tasks import call
 pytest_plugins = ["tests.test_agent_hooks"]

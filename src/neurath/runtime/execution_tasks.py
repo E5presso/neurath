@@ -26,7 +26,8 @@ def definitions():
             "check": choice("pre-commit","check","agent-harness","deployment-harness","e2e-harness","frontend-harness","skill-harness","static-harness","harness-lint","local-surface-harness","package-check","workspace-harness"), **key}, False),
         "diagnostics_continuation": ("Read the installed auto-merge continuation contract against the packaged invariant list. Does not merge, resume or change a workflow.", {}, True),
         "verification_nodes": ("Execute exact public pytest nodes through the existing bounded verifier and source fingerprint checks. This is not an adaptive criterion operation.", {
-            "nodes": {"type": "array", "minItems": 1, "maxItems": 128, "items": text_field(4096)}, **key}, False),
+            "nodes": {"type": "array", "minItems": 1, "maxItems": 128,
+                      "items": {**text_field(4096), "description": "Exact public node, e.g. tests/test_example.py::test_example. A file path alone is not a node."}}, **key}, False),
         "incident_record": ("Record an observed harness incident in the current native session; recording is not resolution.", {
             "rule_id": text_field(256), "symptom": text, **key}, False),
         "incident_validate": ("Validate the current session's incident ledger against current repository evidence.", {}, True),
@@ -91,7 +92,10 @@ def execute(root, name, fields, *, identity, expected_turn, verified_policy_evid
             return previous
     result = _dispatch(root, name, fields, handle)
     if "key" in fields:
-        _save(root, identity.address, name, fields["key"], result)
+        # Diagnostic tails belong to the current response, not durable state.
+        # Persist the completed failure so replay cannot execute the check again.
+        saved = {k: v for k, v in result.items() if k != "diagnostic_tail"}
+        _save(root, identity.address, name, fields["key"], saved)
     return result
 
 
@@ -135,10 +139,24 @@ def _dispatch(root, name, fields, handle):
                 missing.append({"resource":variable,"expected":needle})
         return {"status":"failed" if missing else "passed","checks":len(checks),"missing":missing}
     if name in {"verification_nodes", "verification_builtin"}:
-        from scripts.agent_harness.verification_runner import VerificationKind, VerificationRequest, VerificationRunner
+        from scripts.agent_harness.verification_runner import (
+            VerificationKind, VerificationRequest, VerificationRunner,
+            VerificationExecutionFailed, VerificationWorktreeChanged,
+        )
         request = (VerificationRequest(VerificationKind.PYTEST, tuple(fields["nodes"])) if name == "verification_nodes"
                    else VerificationRequest(VerificationKind(fields["check"])))
-        return dict(VerificationRunner(root).run(request).to_payload())
+        try:
+            return dict(VerificationRunner(root).run(request).to_payload())
+        except (VerificationExecutionFailed, VerificationWorktreeChanged) as error:
+            from neurath.memory.store import clean
+            result = dict(error.to_payload())
+            if "diagnostic_tail" in result:
+                result["diagnostic_tail"] = clean(result["diagnostic_tail"])[-8192:]
+            result["next_action"] = (
+                "Inspect this failure and fix its cause before requesting a new check with a new key. "
+                "The diagnostic tail is transient; replay returns the recorded outcome without rerunning."
+            )
+            return result
     if name.startswith("incident_"):
         from scripts.agent_harness.harness_incident import HarnessIncidentApplication, validate_harness_incidents
         app = HarnessIncidentApplication(handle, root)

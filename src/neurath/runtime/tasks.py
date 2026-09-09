@@ -74,7 +74,7 @@ def execute(root, name, inputs, *, identity, expected_turn=None, verified_policy
         return provider_task(name, fields)
     if domain == "session":
         return session_status(root, identity=identity, expected_turn=expected_turn,
-                              verified_policy_evidence=verified_policy_evidence)
+                              verified_policy_evidence=verified_policy_evidence, **fields)
     if domain == "agent":
         return peer(root, action, fields, identity=identity)
     if domain == "lifecycle":
@@ -132,7 +132,8 @@ def provider_task(name, inputs):
     return planned_route(result, planning)
 
 
-def session_status(root, *, identity=None, expected_turn=None, verified_policy_evidence=None):
+def session_status(root, *, identity=None, expected_turn=None, verified_policy_evidence=None,
+                   detail="full"):
     from neurath.providers.readiness import inspect_bound_readiness, inspect_readiness
 
     report = (inspect_readiness(root) if identity is None else inspect_bound_readiness(
@@ -142,14 +143,15 @@ def session_status(root, *, identity=None, expected_turn=None, verified_policy_e
                       "effective": evidence, "status": report["stages"]["policy"]["status"]}
     native_active = report["stages"]["activation"]["status"] == "verified"
     root_actor = identity.is_root if identity is not None else report.get("is_root", False)
-    report["capabilities"] = [{"transport": "task-mcp", "authority": "diagnostic",
+    if detail == "full":
+        report["capabilities"] = [{"transport": "task-mcp", "authority": "diagnostic",
         "operations": {name: {"implemented": True,
             "available": _direct_mcp_execution(report)
                 if name in {"verification_run", "provider_run"} else native_active and
                 (name != "memory_checkpoint" or root_actor)}
             for name in TASKS}}]
-    if report.get("provider"):
-        report["capabilities"].append(provider_task("provider_capabilities", {"provider": report["provider"]}))
+        if report.get("provider"):
+            report["capabilities"].append(provider_task("provider_capabilities", {"provider": report["provider"]}))
     actions = []
     for stage, instruction in (
         ("installation", "Run the approved installation/update workflow and inspect its result."),
@@ -186,6 +188,8 @@ def peer(root, action, fields, *, identity=None):
     if action == "reply":
         return store.reply(actor, fields["message_id"], fields["message"], key=fields["key"])
     if action == "ack":
+        if fields["message_ids"]:
+            return {"messages": store.acknowledge_many(actor, fields["message_ids"])}
         return store.acknowledge(actor, fields["message_id"])
     if action in ("message", "forward"):
         return getattr(store, action)(actor, fields["message_id"])
@@ -273,13 +277,16 @@ def verification(root, check, *, identity=None, require_owner=False, expected_tu
                 "diagnostic": clean(str(error)),
                 "next_action": "Inspect the completed check before deciding whether the current task needs another execution. No learning authority was recorded."}
     if check == "check" and identity is not None and identity.is_root:
+        from neurath.runtime.verification_obligations import VerificationObligations
+        VerificationObligations(root).verified(identity.host, identity.session, identity.actor, check, result)
         from neurath.hosts.identity import snapshot
         from neurath.memory.learning import Learning
         from neurath.memory.transcript import synchronize
 
         memory = ProjectMemory(root)
         synchronize(memory, root, identity.host, identity.session, snapshot(root, identity.session))
-        Learning(memory).verified(identity.host, identity.session, result)
+        Learning(memory).verified(identity.host, identity.session,
+                                  {k: v for k, v in result.items() if k != "diagnostic_tail"})
     return result
 
 

@@ -93,7 +93,7 @@ def verify(root, config, *, environment=None):
         exit_code, output, passed, timed_out = None, str(exception).encode(), False, False
         error = type(exception).__name__
     after = fingerprint(root)
-    return {
+    receipt = {
         "schema": "neurath.project-verification-receipt.v1",
         "status": "passed" if passed and before == after else "failed",
         "argv": argv,
@@ -107,3 +107,8 @@ def verify(root, config, *, environment=None):
         "timed_out": timed_out,
         "error": error,
     }
+    if receipt["status"] != "passed":
+        from neurath.memory.store import clean
+        receipt["diagnostic_tail"] = clean(output[-32768:].replace(b"\0", b"\n").decode(
+            "utf-8", errors="replace"))[-8192:]
+    return receipt

@@ -15,6 +15,14 @@ def repo(tmp_path):
     return tmp_path
 
 
+def test_codex_mcp_timeout_exceeds_supported_verifier_deadline(repo):
+    import tomllib
+    apply_plan(repo, make_plan(repo))
+    config = tomllib.loads((repo / '.codex/config.toml').read_text())
+    assert config['mcp_servers']['neurath_collaboration'].get('tool_timeout_sec', 0) > 3600
+    assert 'tool_timeout_sec' not in json.loads((repo / '.mcp.json').read_text())['mcpServers']['neurath_collaboration']
+
+
 @pytest.mark.parametrize("project", ["empty", "python", "javascript"])
 def test_both_hosts_preserve_user_files_and_reinstall_is_noop(repo, project):
     original = "# My own rules\nDo useful work.\n"

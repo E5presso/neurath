@@ -212,15 +212,19 @@ def _dispatch_event(root, host, raw, environment=None, stop_guard=None):
     diagnostics = []
     if isinstance(request, dict) and request.get("hook_event_name") == "Stop":
         from neurath.memory.hooks import checkpoint_request
+        from neurath.runtime.verification_obligations import stop_request
 
+        # Completion debt is not optional memory enrichment. Failure to inspect
+        # it must not fall through to a successful foreground close.
+        pending_verification = stop_request(root, host, request)
         try:
             reason = checkpoint_request(root, host, request)
         except Exception as error:
             _, diagnostic = _bookkeeping_failure({}, "Stop", "memory", error)
             diagnostics.append(diagnostic)
             reason = None
-        if reason:
-            return 2, {}, reason
+        if pending_verification or reason:
+            return 2, {}, "\n\n".join(filter(None, (pending_verification, reason)))
     code, output, diagnostic = (_host_hook(root, host, raw, environment, stop_guard)
                                 if stop_guard is not None else _host_hook(root, host, raw, environment))
     if diagnostic:

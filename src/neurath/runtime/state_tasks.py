@@ -12,7 +12,7 @@ def definitions():
 
     expectation = {"type": "object", "additionalProperties": False,
         "required": ["observable_id", "expected_delta"], "properties": {
-            "observable_id": text_field(4096),
+            "observable_id": {**text_field(4096), "description": "Exact file path from targets, relative to the worktree or absolute. Do not add a file: prefix."},
             "expected_delta": choice("created", "changed", "deleted", "unchanged"),
             "expected_digest": text_field(64, default="")}}
     batch = {"batch_id": text_field(256), "expected_revision": count(0, 2**53 - 1, 0),
@@ -154,6 +154,10 @@ def _material(root, worktree, handle, state, name, fields):
               "batch_id": fields["batch_id"], "idempotency_key": "task:" + name + ":" + fields["key"]}
     turn = state.foreground_turns[handle.actor_id]
     if name == "material_prepare":
+        from neurath.runtime.verification_obligations import VerificationObligations, reconcile_material
+        ledger = VerificationObligations(root)
+        # Preserve the previous canonical batch before the latest-only slot is replaced.
+        reconcile_material(ledger, state, handle.actor_id)
         current = state.material_actions.get(handle.actor_id)
         original = current if current is not None and current.batch_id == fields["batch_id"] else None
         targets, expectations = _expectations(root, worktree, fields, original)
@@ -185,6 +189,8 @@ def _material(root, worktree, handle, state, name, fields):
     else:
         raise TaskError("invalid-input", "unsupported state operation")
     committed = handle.apply(event, expected_revision=state.revision)
+    if name == "material_prepare":
+        reconcile_material(ledger, committed, handle.actor_id)
     return committed.material_actions[handle.actor_id].to_payload()
 
 

@@ -424,6 +424,8 @@ def make_plan(root, *, action="install", profile=None, hosts=None, receipt=None,
                 addition = ("\n[mcp_servers.neurath_collaboration]\ncommand = "
                             + json.dumps(server["command"], ensure_ascii=False) + "\nargs = "
                             + json.dumps(server["args"], ensure_ascii=False)
+                            # The verifier allows up to 3600s, plus response/readback time.
+                            + "\ntool_timeout_sec = 3660"
                             + "\nenabled_tools = " + json.dumps([*TASKS, "agent"]) + "\n"
                             + "".join(f"[mcp_servers.neurath_collaboration.tools.{name}]\napproval_mode = \"approve\"\n"
                                       for name in (*TASKS, "agent")))

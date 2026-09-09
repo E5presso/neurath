@@ -9,6 +9,7 @@ import hashlib
 import json
 import re
 import shlex
+from contextlib import nullcontext
 from pathlib import Path
 
 from neurath.memory.store import canonical, clean
@@ -175,9 +176,9 @@ class Learning:
             (identity, status, reason, canonical(evidence)),
         )
 
-    def observe(self, event_id):
+    def observe(self, event_id, *, _db=None):
         verifier = self.verifier_digest()
-        with self.memory.connection() as db:
+        with (self.memory.connection() if _db is None else nullcontext(_db)) as db:
             row = db.execute(
                 "SELECT * FROM events WHERE id=? AND kind=?", (event_id, "tool")
             ).fetchone()

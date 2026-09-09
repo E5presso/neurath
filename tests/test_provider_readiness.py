@@ -158,7 +158,7 @@ def native_child(runtime, request):
         assert code == 0, diagnostic
     code, output, diagnostic = send(host, "PreToolUse", agent_id="child",
         transcript_path=str(transcript), tool_name="mcp__neurath_collaboration__session_status",
-        tool_use_id="child-status", tool_input={}, permission_mode="default")
+        tool_use_id="child-status", tool_input={"detail": "full"}, permission_mode="default")
     assert code == 0, diagnostic
     state = _state(root, "root")
     actor = state.actors[f"{host}:child"]

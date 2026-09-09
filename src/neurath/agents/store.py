@@ -375,16 +375,25 @@ class MessageStore:
             return [self._public(row) for row in rows]
 
     def acknowledge(self, actor, message_id):
+        return self.acknowledge_many(actor, [message_id])[0]
+
+    def acknowledge_many(self, actor, message_ids):
+        """Acknowledge already-read bodies atomically; never mark unseen bodies read."""
+        if (not isinstance(message_ids, list) or not 1 <= len(message_ids) <= 100
+                or any(not isinstance(v, str) or not v or len(v) > 512 for v in message_ids)
+                or len(set(message_ids)) != len(message_ids)):
+            raise ValueError("acknowledgement requires one to 100 unique message IDs")
         with self.connection() as db:
-            row = self._message(db, message_id)
-            if row["recipient"] != actor:
-                raise ValueError("only the recipient can acknowledge")
-            self._require_body(db, actor, row)
-            db.execute(
-                "UPDATE messages SET status='received' WHERE id=? AND status IN ('queued','submitted')",
-                (message_id,),
-            )
-            return self._public(self._message(db, message_id))
+            for message_id in message_ids:
+                row = self._message(db, message_id)
+                if row["recipient"] != actor:
+                    raise ValueError("only the recipient can acknowledge")
+                self._require_body(db, actor, row)
+                db.execute(
+                    "UPDATE messages SET status='received' WHERE id=? AND status IN ('queued','submitted')",
+                    (message_id,),
+                )
+            return [self._public(self._message(db, message_id)) for message_id in message_ids]
 
     @staticmethod
     def _participant(db, actor, conversation):

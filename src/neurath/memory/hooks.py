@@ -187,7 +187,8 @@ def checkpoint_request(root, host, payload):
             "If the current user explicitly forbids further checks, or the check cannot run with existing permissions and tools, "
             'record the concrete reason with learning_defer(reason="...", key=STABLE_KEY) and leave the candidate unvalidated. '
             "Do not change permissions or weaken the check. A failed check is recorded without automatic retry for the same evidence. "
-            "After the check or deferral, save the handoff and finish the response."
+            "After the check or deferral, save the handoff. Continue any remaining authorized work; "
+            "a handoff does not settle implementation verification or workflow prerequisites."
         )
     if not memory.needs_checkpoint(host, session):
         return None
@@ -197,5 +198,7 @@ def checkpoint_request(root, host, payload):
         "Use the named MCP task and its current structured input schema. If unavailable, report the missing tool and activation state. "
         "Use concise factual text; do not store secrets, reasoning traces, or claim tests you did not run. "
         "If command recovery candidates exist, use verification_run(check='check'); preserve unsupported policy or tool states without replaying through another transport. "
-        "This checkpoint records a report; it never completes a workflow or transfers ownership. Then finish the response."
+        "This checkpoint records a report; it never completes a workflow or transfers ownership. "
+        "Continue remaining authorized work; finish only when the task's completion conditions are met "
+        "or a concrete unresolved constraint requires returning control."
     )

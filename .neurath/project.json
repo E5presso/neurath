@@ -22,15 +22,15 @@
     },
     "pytest": {
       "argv": [
-        "uv",
-        "run",
+        ".venv/bin/python",
+        "-m",
         "pytest"
       ],
       "cwd": ".",
       "success_codes": [
         0
       ],
-      "timeout_seconds": 600
+      "timeout_seconds": 1800
     }
   }
 }

@@ -38,3 +38,13 @@ def test_no_shell_or_escaping_cwd(tmp_path):
         verify(tmp_path, {"argv": "echo not-an-argv", "cwd": "."})
     with pytest.raises(VerificationError):
         verify(tmp_path, {"argv": ["echo", "x"], "cwd": ".."})
+
+
+def test_failed_project_check_returns_bounded_sanitized_diagnostics(tmp_path):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    result = verify(tmp_path, {"argv": [sys.executable, "-c",
+        "print('x'*10000); print('assertion failed; password=private-value'); raise SystemExit(1)"]})
+    assert result['status'] == 'failed'
+    assert 'assertion failed' in result['diagnostic_tail']
+    assert 'private-value' not in result['diagnostic_tail']
+    assert len(result['diagnostic_tail']) <= 8192

@@ -7,7 +7,7 @@ import re
 import sqlite3
 import subprocess
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 
 NEWSROOM_NOTICE = "Newsroom operation; article content requires explicit newsroom read."
@@ -98,7 +98,7 @@ class ProjectMemory:
         finally:
             db.close()
 
-    def record(self, host, session, source, kind, content, metadata=None):
+    def record(self, host, session, source, kind, content, metadata=None, *, _db=None):
         if host not in ("codex", "claude-code"):
             raise ValueError("unsupported memory host")
         if not all(
@@ -120,7 +120,7 @@ class ProjectMemory:
             raise ValueError("memory event exceeds 64 KiB field budget")
         identity = hashlib.sha256(canonical([host, session, source]).encode()).hexdigest()
         values = (host, session, source, kind, content, metadata_text)
-        with self.connection() as db:
+        with (self.connection() if _db is None else nullcontext(_db)) as db:
             old = db.execute(
                 "SELECT host,session,source,kind,content,metadata FROM events WHERE id=?",
                 (identity,),

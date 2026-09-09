@@ -104,22 +104,23 @@ def synchronize(memory, root, host, session, registered):
     from neurath.memory.learning import Learning
 
     learning = Learning(memory)
-    for identity, command, code in command_records(path, host, session, root):
-        original = registered.get("tools", {}).get(identity)
-        if original:
-            command = original.get("command", command)
-        if len(command.encode()) > 60000:
-            continue
-        event_id = memory.record(
-            host,
-            session,
-            "native-command:" + identity,
-            "tool",
-            command,
-            {
-                "exit_code": code,
-                "worktree": str(Path(root).resolve()),
-                "authority": "native-process-result",
-            },
-        )
-        learning.observe(event_id)
+    # Read the bounded native tail before taking the database write lock. Recheck
+    # every source on replay; caching IDs alone would hide changed native evidence.
+    completed = list(command_records(path, host, session, root))
+    worktree = str(Path(root).resolve())
+    with memory.connection() as db:
+        for identity, command, code in completed:
+            original = registered.get("tools", {}).get(identity)
+            if original:
+                command = original.get("command", command)
+            if len(command.encode()) > 60000:
+                continue
+            event_id = memory.record(
+                host, session, "native-command:" + identity, "tool", command,
+                {"exit_code": code, "worktree": worktree,
+                 "authority": "native-process-result"},
+                _db=db,
+            )
+            # Persist the event and its ordered observation together. A conflict
+            # rolls back the batch; a later hook may safely replay the same tail.
+            learning.observe(event_id, _db=db)

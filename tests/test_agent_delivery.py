@@ -35,6 +35,25 @@ def accepted(message_id):
     return {"delivery": "submitted", "transport": "fixture-native", "native_turn": message_id[:8]}
 
 
+def test_batch_ack_preserves_recipient_and_body_read_checks_atomically(store):
+    first = message(store, 'batch-first')
+    unread = message(store, 'batch-unread')
+    foreign = message(store, 'batch-foreign', recipient='codex:other')
+    store.message('codex:issuer', first)
+    with pytest.raises(ValueError):
+        store.acknowledge_many('codex:issuer', [first, unread])
+    assert store.message('codex:issuer', first)['status'] == 'queued'
+    with pytest.raises(ValueError):
+        store.acknowledge_many('codex:issuer', [first, foreign])
+    assert store.message('codex:issuer', first)['status'] == 'queued'
+    store.inbox('codex:issuer')
+    result = store.acknowledge_many('codex:issuer', [first, unread])
+    assert [r['status'] for r in result] == ['received', 'received']
+    assert store.acknowledge_many('codex:issuer', [first, unread]) == result
+    with pytest.raises(ValueError):
+        store.acknowledge_many('codex:issuer', [first, first])
+
+
 def test_socket_event_pushes_exact_id_and_marks_only_actual_submission(store):
     calls = []
     def deliver(message_id):

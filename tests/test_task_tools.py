@@ -416,8 +416,43 @@ def test_session_status_diagnoses_each_stage_without_claiming(sessions):
     assert report["stages"]["ownership"]["status"] != "verified"
     assert report["mode"]["requested"] is None
     assert report["next_actions"]
-    assert report["capabilities"]
-    assert all(row["authority"] != "capability" for row in report["capabilities"])
+    assert "capabilities" not in report
+    full = mcp.call_tool(root, bound_call(sessions, "session_status", {"detail": "full"},
+                                        invocation="full-status"), name="session_status")
+    assert all(row["authority"] != "capability" for row in full["capabilities"])
+    assert set(full) - {"capabilities"} == set(report)
+    assert full["implementation_ready"] == report["implementation_ready"]
+    assert {k: v["status"] for k, v in full["stages"].items()} == {
+        k: v["status"] for k, v in report["stages"].items()}
+
+
+def test_mcp_common_instructions_are_advertised_once():
+    from neurath.runtime.task_schema import definitions
+    reply = mcp.response(None, {"jsonrpc": "2.0", "id": 1, "method": "initialize"})
+    assert "_neurath_binding" in reply["result"]["instructions"]
+    assert all("Prefer this task tool over CLI argv" not in row["description"]
+               for row in definitions())
+
+
+def test_ack_schema_accepts_one_or_many_but_not_ambiguous_batches():
+    from neurath.runtime.task_schema import arguments
+    assert arguments('collaboration_ack', {'message_id': 'one'})['message_id'] == 'one'
+    assert arguments('collaboration_ack', {'message_ids': ['one', 'two']})['message_ids'] == ['one', 'two']
+    for inputs in ({}, {'message_ids': []}, {'message_id': 'one', 'message_ids': ['two']},
+                   {'message_ids': ['one', 'one']}):
+        with pytest.raises(ValueError):
+            arguments('collaboration_ack', inputs)
+
+
+@pytest.mark.parametrize("name", ["verification_run", "verification_nodes", "verification_builtin"])
+def test_all_verification_faces_mark_completed_failure_as_mcp_error(monkeypatch, name):
+    monkeypatch.setattr(mcp, "call_tool", lambda *a, **k: {
+        "status": "failed", "exit_code": 1, "diagnostic_tail": "assert 201 <= 3"})
+    reply = mcp.response(None, {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                                "params": {"name": name, "arguments": {}}})["result"]
+    assert reply["isError"] is True
+    assert reply["structuredContent"]["ok"] is False
+    assert reply["structuredContent"]["result"]["diagnostic_tail"] == "assert 201 <= 3"
 
 
 def test_session_status_cli_uses_common_service(sessions, monkeypatch):

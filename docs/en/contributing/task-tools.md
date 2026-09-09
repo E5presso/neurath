@@ -59,6 +59,54 @@ release requires the observed lease epoch and fencing token. Material tasks prep
 exact local actions from actual invocation/readback evidence; they are not shell or file-edit tools.
 Workflow, phase, adaptive and evaluation tasks accept typed domain data, not arbitrary state patches.
 
+An actual change to a Git-scoped file prepared with `material_prepare` leaves a project `check`
+obligation. Later material batches and checkpoints cannot erase it. A successful
+`verification_run(check="check")` must match the current source and configuration and revalidate
+the caller's authority. Read-only turns, preparations with no file changes and Git-ignored private
+artifacts do not require this check. Missing bindings or unsupported execution policies remain
+explicitly incomplete. Stop combines verification and handoff guidance while retaining its bounded
+continuation budget. This confirms the registered project check; goal-specific native round trips
+and independent review still require their own explicit acceptance criteria.
+
+## Reduce calls and response size
+
+The default `session_status(detail="summary")` returns installation, activation, policy,
+ownership and next actions. `detail="full"` also returns the capability catalog. The internal
+CLI retains its detailed result. Shared guidance appears once in MCP initialization
+`instructions`. Native identity, policy and ownership checks remain enforced even when
+a host does not display that guidance.
+
+| Similar operations | Selection and consolidation decision |
+| --- | --- |
+| `session_status`, `session_inspect`, `turn_inspect` | Readiness and kernel detail serve different purposes. Start normal preparation with one summary. |
+| `collaboration_message`, `collaboration_inbox`, `collaboration_ack`, `collaboration_reply` | Do not fetch a body already received. When replying, use `collaboration_reply`, which includes acknowledgement. |
+| `verification_run`, `verification_builtin`, `verification_nodes` | Project bindings, built-in checks and exact nodes have different inputs and evidence contracts. Keep their names and handle failure consistently. |
+| `phase_*`, `workflow_*`, `evaluation_*`, `review_*` | Progression, independent evaluation and review acceptance have distinct authority. Do not merge them into a free-form executor. |
+| `releases_*`, `installation_*` | Release verification and user choice retain contracts distinct from local installation planning and application. |
+
+Pass public nodes such as `tests/test_example.py::test_example` to `verification_nodes`.
+Use the file path from `targets` directly in `material_prepare.expectations[].observable_id`,
+without a `file:` prefix.
+
+After fetching bodies through `collaboration_inbox`, acknowledge them in one call using
+the existing `collaboration_ack` tool's `message_ids` array. Single `message_id` calls remain
+supported. Both forms together, an unread body or a foreign recipient rejects the entire batch.
+
+Codex installation writes `tool_timeout_sec=3660`, above the verifier's maximum 3600 seconds.
+Existing connections may need reloading. A transport timeout does not establish process
+termination: inspect execution before another check. This does not accelerate checks or change
+other hosts' connection limits.
+
+Failed built-in and node checks return MCP errors with exit code, output digest, before/after
+fingerprints and bounded diagnostics. A completed failure is not executed again on same-key
+replay. Diagnostic text appears only in the first response and is excluded from durable state.
+Use a new key for a new check after fixing the cause. Uncertain execution still requires inspection.
+
+Memory synchronization reads bounded native records first, then records events and learning
+observations in order within one transaction. Replay retains source conflict checks; a conflict
+rolls back the batch. Synthetic processing improvements do not establish an end-to-end LLM
+session speedup or token cost reduction.
+
 ## Plan and run independent work
 
 1. Discover provider/model capabilities with `provider_capabilities` and `provider_models`.
