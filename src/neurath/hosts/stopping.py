@@ -1,8 +1,9 @@
-"""Bound host continuation separately from kernel completion and tool authority.
+"""Keep normal host continuation coupled to unresolved kernel obligations.
 
 A Stop rejection asks the host to run the model again. It is not an execution
-security boundary. Unresolved work remains unresolved when control returns to
-the user; only the existing domain gate can close a foreground turn.
+security boundary. Only the existing domain gate can close a foreground turn;
+an exhausted retry budget or a side question cannot waive incomplete work.
+Explicit user interruption remains owned by the host.
 """
 
 import os
@@ -92,8 +93,9 @@ def _turn_key(root, host, request, environment):
             or actor.status not in {ActorStatus.ACTIVE, ActorStatus.IDLE}):
         raise ValueError("Stop continuation root binding changed")
     turn = state.foreground_turns.get(binding.actor_id)
-    if turn is None or turn.status is not ForegroundTurnStatus.ACTIVE:
-        raise ValueError("Stop continuation requires an active foreground")
+    if turn is None or turn.status not in {
+            ForegroundTurnStatus.ACTIVE, ForegroundTurnStatus.READY_TO_STOP}:
+        raise ValueError("Stop continuation requires an open foreground")
     data = snapshot(root, request["session_id"])
     if data.get("host") != host or not data.get("transcript") or data.get("connected") is False:
         raise ValueError("Stop continuation requires a registered native transcript")
@@ -108,18 +110,13 @@ def _turn_key(root, host, request, environment):
     return _budget_key(binding.actor_id, turn)
 
 
-def _deferred(reason):
-    message = "Neurath work remains incomplete. " + reason
-    return 0, {"continue": False, "stopReason": message, "systemMessage": message}, message
-
-
 def dispatch_stop(root, host, request, run, environment=None):
-    """Permit at most one repair continuation per attested foreground turn.
+    """Reject every current normal Stop until kernel prerequisites are met.
 
-The native continuation flag handles normal hosts. The locked per-turn budget
-also handles duplicate events or a replay with a missing/incorrect flag. It
-records a delivery budget only, never a kernel transition or ownership grant.
-"""
+    Revalidate ingress before asking the host to continue. The native
+    stop_hook_active flag is not completion evidence and grants no exemption.
+    This does not change the host's explicit user-interruption mechanism.
+    """
     from neurath.memory.store import clean
 
     try:
@@ -148,17 +145,12 @@ records a delivery budget only, never a kernel transition or ownership grant.
         reason = clean(f"{diagnostic}; {type(error).__name__}: {error}")[:2000]
         return 1, {}, "Neurath Stop deferred without completion or authority: " + reason
     reason = clean(diagnostic)[:4000] or "The completion prerequisites are unresolved."
-    if request.get("stop_hook_active") is not False:
-        return _deferred(reason)
     from neurath.hosts.identity import journal
 
     try:
         with journal(root, request["session_id"]) as data:
             if _turn_key(root, host, request, environment) != key or not unchanged(data):
                 raise ValueError("Stop turn changed before continuation delivery")
-            if data.get("stop_continuation") == key:
-                return _deferred(reason)
-            data["stop_continuation"] = key
     except Exception as error:
         return 1, {}, "Neurath Stop continuation deferred: " + clean(str(error))[:2000]
     return 0, {"decision": "block", "reason": reason}, ""

@@ -82,6 +82,8 @@ class HarnessRegressionExecutionError(HarnessIncidentValidationError):
         exit_code: int,
         diagnostic_tail: str,
         output_sha256: str,
+        *,
+        reason: str | None = None,
     ) -> None:
         """Command identity, exit, capped tail과 full output digest를 보존합니다.
 
@@ -91,7 +93,8 @@ class HarnessRegressionExecutionError(HarnessIncidentValidationError):
             diagnostic_tail: 현재 응답에만 노출할 bounded sanitized output tail입니다.
             output_sha256: 전체 stdout/stderr bytes의 SHA-256 identity입니다.
         """
-        super().__init__(f"regression command failed with exit {exit_code}: {command}")
+        super().__init__(reason if reason is not None
+                         else f"regression command failed with exit {exit_code}: {command}")
         self.command = command
         """실패한 exact allowlisted command입니다."""
         self.exit_code = exit_code
@@ -856,15 +859,29 @@ def _execute_regression_command(
             _bounded_diagnostic_tail(result.stdout + b"\n" + result.stderr),
             output_hash,
         )
-    if expected_output is not None and expected_output.encode() not in result.stdout:
-        raise HarnessIncidentValidationError("configured stdout requirement was not satisfied")
-    if nodes:
-        output = result.stdout.decode("utf-8", errors="replace")
-        for node in nodes:
-            # A passing aggregate cannot substitute for any requested leaf node.
-            if not re.search(r"(?m)^" + re.escape(node) + r" PASSED(?:\s|$)", output):
-                raise HarnessIncidentValidationError(f"requested pytest node did not pass: {node}")
-    _require_effective_regression_result(arguments, result, command)
+    try:
+        if expected_output is not None and expected_output.encode() not in result.stdout:
+            raise HarnessIncidentValidationError("configured stdout requirement was not satisfied")
+        if nodes:
+            from scripts.agent_harness.verification_runner import pytest_result_pattern
+
+            output = result.stdout.decode("utf-8", errors="replace")
+            for node in nodes:
+                matches = tuple(pytest_result_pattern(node).finditer(output))
+                if not matches:
+                    raise HarnessIncidentValidationError(
+                        f"requested pytest node produced no result: {node}")
+                if any(match.group("outcome") != "PASSED" for match in matches):
+                    raise HarnessIncidentValidationError(
+                        f"requested pytest node did not fully pass: {node}")
+        _require_effective_regression_result(arguments, result, command)
+    except HarnessIncidentValidationError as error:
+        # Interpretation failure must not erase the process that actually ran.
+        diagnostic = result.stdout + b"\n" + result.stderr + b"\n" + str(error).encode()
+        raise HarnessRegressionExecutionError(
+            command, result.returncode, _bounded_diagnostic_tail(diagnostic), output_hash,
+            reason=str(error),
+        ) from error
     return result, output_hash
 
 

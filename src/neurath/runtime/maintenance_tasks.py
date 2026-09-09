@@ -20,12 +20,16 @@ EXTERNAL = {"releases_check", "releases_prepare", "releases_apply", "releases_re
 
 class MaintenanceCalls:
     """Durable at-most-once action admission, separate from message redelivery."""
-    def __init__(self, path):
-        self.path = Path(path)
-        if any(p.is_symlink() for p in (self.path, *self.path.parents)):
-            raise ValueError("maintenance path must not be a symlink")
-        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        os.close(os.open(self.path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600))
+    def __init__(self, path=None, *, database=None):
+        if (path is None) == (database is None):
+            raise ValueError("provide exactly one maintenance database")
+        self.database = database
+        self.path = Path(path) if database is None else database.path
+        if database is None:
+            if any(p.is_symlink() for p in (self.path, *self.path.parents)):
+                raise ValueError("maintenance path must not be a symlink")
+            self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            os.close(os.open(self.path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600))
         with self._db() as db:
             db.execute("""CREATE TABLE IF NOT EXISTS maintenance_calls(
                 owner TEXT, key TEXT, request TEXT, status TEXT, result TEXT,
@@ -33,12 +37,20 @@ class MaintenanceCalls:
 
     @contextmanager
     def _db(self):
+        if self.database is not None:
+            with self.database.connection() as db:
+                yield db
+            return
         if any(Path(str(self.path)+s).is_symlink() for s in ("", "-wal", "-shm", "-journal")):
             raise ValueError("maintenance database must not be a symlink")
         db = sqlite3.connect(self.path, timeout=20)
         try:
-            with db:
-                yield db
+            db.execute("BEGIN IMMEDIATE")
+            yield db
+            db.commit()
+        except BaseException:
+            db.rollback()
+            raise
         finally:
             db.close()
 
@@ -57,7 +69,6 @@ class MaintenanceCalls:
     def execute(self, owner, key, name, fields, action):
         request = canonical([name, fields])
         with self._db() as db:
-            db.execute("BEGIN IMMEDIATE")
             prior = db.execute("SELECT request,status,result FROM maintenance_calls WHERE owner=? AND key=?",
                                (owner, key)).fetchone()
             if prior:
@@ -98,7 +109,11 @@ def run(root, name, fields, *, identity, expected_turn=None, verified_policy_evi
                 raise TaskError("native-execution-required", "external maintenance needs observed caller policy")
             _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence)
     validated = None
-    store = MaintenanceCalls(control_root(Path(root)) / ".neurath/local/maintenance/calls.sqlite3") if name not in READS else None
+    if name not in READS:
+        from neurath.runtime.database import RuntimeDatabase
+        store = MaintenanceCalls(database=RuntimeDatabase(control_root(Path(root))))
+    else:
+        store = None
     if choice:
         found, previous = store.peek(identity.address, fields["key"], name, fields)
         if found:

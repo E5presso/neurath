@@ -6,6 +6,8 @@ import os
 import signal
 import subprocess
 import sys
+import threading
+import time
 from argparse import Namespace
 from collections.abc import Sequence
 from contextlib import redirect_stderr
@@ -29,6 +31,15 @@ SPEC.loader.exec_module(app_server_resume)
 
 class AppServerResumeTest(TestCase):
     """skill contract와 phase runner enforcement 회귀 시나리오를 unittest fixture로 고정합니다."""
+
+    def socket_path(self, directory: str) -> Path:
+        """Create the canonical Git worktree-local app-server socket route."""
+        worktree = Path(directory).resolve()
+        subprocess.run(("git", "init", "-q", str(worktree)), check=True)
+        (worktree / ".git/info/exclude").write_text(".neurath/local/\n.monitor-pr/\n")
+        state_directory = worktree / ".monitor-pr"
+        state_directory.mkdir(exist_ok=True)
+        return state_directory / "app-server.sock"
 
     def test_application_derives_thread_worktree_and_socket_from_runtime(self) -> None:
         """Public selector 없이 vendor session과 Git cwd를 exact app-server route로 묶습니다."""
@@ -73,7 +84,7 @@ class AppServerResumeTest(TestCase):
     def test_ensure_app_server_records_managed_process_group(self) -> None:
         """새 worktree-local app-server는 restart 가능한 pid receipt를 남깁니다."""
         with TemporaryDirectory() as temporary_directory:
-            socket_path = Path(temporary_directory) / "app-server.sock"
+            socket_path = self.socket_path(temporary_directory)
             process = Mock(pid=321)
             launch_options: dict[str, object] = {}
 
@@ -92,15 +103,21 @@ class AppServerResumeTest(TestCase):
                 return process
 
             with (
-                patch("app_server_resume.subprocess.Popen", side_effect=launch),
+                patch("app_server_resume.Popen", side_effect=launch),
                 patch("app_server_resume.socket_accepts_connections", return_value=True),
             ):
                 app_server_resume.ensure_app_server(socket_path, Path("/tmp/codex"))
 
-            receipt = json.loads(
-                app_server_resume.managed_app_server_pid_path(socket_path).read_text(
-                    encoding="utf-8"
-                )
+            pid, executable = app_server_resume.read_managed_app_server_identity(
+                socket_path
+            )
+            receipt = {
+                "pid": pid,
+                "socket_path": str(socket_path),
+                "executable_path": str(executable),
+            }
+            self.assertFalse(
+                app_server_resume.managed_app_server_pid_path(socket_path).exists()
             )
 
         self.assertEqual(321, receipt["pid"])
@@ -118,7 +135,7 @@ class AppServerResumeTest(TestCase):
     def test_ensure_app_server_reaps_stale_managed_group_before_replacement(self) -> None:
         """죽은 listener의 기존 receipt를 새 pid로 덮기 전에 이전 group을 종료합니다."""
         with TemporaryDirectory() as temporary_directory:
-            socket_path = Path(temporary_directory) / "app-server.sock"
+            socket_path = self.socket_path(temporary_directory)
             socket_path.touch()
             app_server_resume.write_managed_app_server_receipt(
                 socket_path,
@@ -127,13 +144,19 @@ class AppServerResumeTest(TestCase):
             )
             process = Mock(pid=654)
 
-            def terminate(path: Path) -> None:
+            def terminate(database: object, key: str, path: Path) -> None:
                 """Fixture의 stale managed server artifact를 제거합니다.
 
                 Args:
                     path: 제거할 fixture socket 경로입니다.
                 """
-                app_server_resume.cleanup_managed_app_server_paths(path)
+                record, value = app_server_resume._managed_record_locked(
+                    database, key, path
+                )
+                self.assertEqual("active", value["status"])
+                app_server_resume._cleanup_managed_app_server_locked(
+                    database, key, path, record
+                )
 
             def launch(*_args: object, **_kwargs: object) -> Mock:
                 """교체 listener socket과 fake process를 만듭니다.
@@ -154,31 +177,30 @@ class AppServerResumeTest(TestCase):
                     side_effect=[False, True],
                 ),
                 patch(
-                    "app_server_resume.terminate_managed_app_server",
+                    "app_server_resume._terminate_managed_app_server_locked",
                     side_effect=terminate,
                 ) as terminate_group,
-                patch("app_server_resume.subprocess.Popen", side_effect=launch),
+                patch("app_server_resume.Popen", side_effect=launch),
             ):
                 app_server_resume.ensure_app_server(socket_path, Path("/tmp/codex"))
 
-            receipt = json.loads(
-                app_server_resume.managed_app_server_pid_path(socket_path).read_text(
-                    encoding="utf-8"
-                )
+            receipt = app_server_resume.read_managed_app_server_identity(
+                socket_path
             )
 
-        terminate_group.assert_called_once_with(socket_path)
-        self.assertEqual(654, receipt["pid"])
+        self.assertEqual(1, terminate_group.call_count)
+        self.assertEqual(socket_path, terminate_group.call_args.args[2])
+        self.assertEqual(654, receipt[0])
 
     def test_ensure_app_server_rejects_live_listener_without_receipt(self) -> None:
         """Connected socket도 managed identity receipt가 없으면 delivery에 재사용하지 않습니다."""
         with TemporaryDirectory() as temporary_directory:
-            socket_path = Path(temporary_directory) / "app-server.sock"
+            socket_path = self.socket_path(temporary_directory)
             socket_path.touch()
 
             with (
                 patch("app_server_resume.socket_accepts_connections", return_value=True),
-                patch("app_server_resume.subprocess.Popen") as launch,
+                patch("app_server_resume.Popen") as launch,
                 self.assertRaisesRegex(RuntimeError, "receipt"),
             ):
                 app_server_resume.ensure_app_server(socket_path, Path("/tmp/codex"))
@@ -188,26 +210,30 @@ class AppServerResumeTest(TestCase):
     def test_ensure_app_server_reaps_group_when_listener_start_times_out(self) -> None:
         """Socket startup 실패도 새 process group과 receipt를 남기지 않습니다."""
         with TemporaryDirectory() as temporary_directory:
-            socket_path = Path(temporary_directory) / "app-server.sock"
+            socket_path = self.socket_path(temporary_directory)
             process = Mock(pid=321)
 
             with (
-                patch("app_server_resume.subprocess.Popen", return_value=process),
-                patch("app_server_resume.time.time", side_effect=[0, 21]),
-                patch("app_server_resume.terminate_managed_app_server") as terminate_group,
+                patch("app_server_resume.Popen", return_value=process),
+                patch("app_server_resume._wall_time", side_effect=[0, 21]),
+                patch(
+                    "app_server_resume._terminate_managed_app_server_locked"
+                ) as terminate_group,
                 self.assertRaisesRegex(RuntimeError, "socket unavailable"),
             ):
                 app_server_resume.ensure_app_server(socket_path, Path("/tmp/codex"))
 
-        terminate_group.assert_called_once_with(socket_path)
+        self.assertEqual(1, terminate_group.call_count)
+        self.assertEqual(socket_path, terminate_group.call_args.args[2])
 
     def test_idle_managed_server_restarts_before_new_delivery(self) -> None:
         """Idle read-back 뒤 server group을 교체해 이전 turn subprocess를 제거합니다."""
         with TemporaryDirectory() as temporary_directory:
-            socket_path = Path(temporary_directory) / "app-server.sock"
-            app_server_resume.managed_app_server_pid_path(socket_path).write_text(
-                '{"pid":321}',
-                encoding="utf-8",
+            socket_path = self.socket_path(temporary_directory)
+            app_server_resume.write_managed_app_server_receipt(
+                socket_path,
+                321,
+                Path("/tmp/codex"),
             )
             fake_client = FakeAppServerClient([
                 {},
@@ -244,7 +270,7 @@ class AppServerResumeTest(TestCase):
     def test_terminate_managed_server_kills_exact_process_group(self) -> None:
         """Receipt와 command가 일치하면 orphan descendant를 포함한 group을 종료합니다."""
         with TemporaryDirectory() as temporary_directory:
-            socket_path = Path(temporary_directory) / "app-server.sock"
+            socket_path = self.socket_path(temporary_directory)
             socket_path.touch()
             app_server_resume.write_managed_app_server_receipt(
                 socket_path,
@@ -268,7 +294,9 @@ class AppServerResumeTest(TestCase):
             ):
                 app_server_resume.terminate_managed_app_server(socket_path)
 
-            receipt_exists = app_server_resume.managed_app_server_pid_path(socket_path).exists()
+            receipt_exists = app_server_resume.managed_app_server_receipt_exists(
+                socket_path
+            )
             socket_exists = socket_path.exists()
 
         kill_group.assert_called_once_with(321, signal.SIGTERM)
@@ -278,7 +306,7 @@ class AppServerResumeTest(TestCase):
     def test_terminate_managed_server_rejects_pid_reuse(self) -> None:
         """PID가 재사용돼 command identity가 다르면 다른 process group을 죽이지 않습니다."""
         with TemporaryDirectory() as temporary_directory:
-            socket_path = Path(temporary_directory) / "app-server.sock"
+            socket_path = self.socket_path(temporary_directory)
             socket_path.touch()
             app_server_resume.write_managed_app_server_receipt(
                 socket_path,
@@ -384,7 +412,7 @@ class AppServerResumeTest(TestCase):
     def test_managed_server_identity_requires_kernel_executable_identity(self) -> None:
         """Spoof 가능한 argv0가 아니라 kernel이 보고한 executable이 receipt와 같아야 합니다."""
         with TemporaryDirectory() as temporary_directory:
-            socket_path = Path(temporary_directory) / "app-server.sock"
+            socket_path = self.socket_path(temporary_directory)
             expected_binary = Path("/Applications/Codex.app/Contents/Resources/codex")
             app_server_resume.write_managed_app_server_receipt(
                 socket_path,
@@ -407,7 +435,7 @@ class AppServerResumeTest(TestCase):
     def test_managed_server_identity_requires_kernel_socket_ownership(self) -> None:
         """Exact command process가 receipt socket listener를 실제로 소유해야 합니다."""
         with TemporaryDirectory() as temporary_directory:
-            socket_path = Path(temporary_directory) / "app-server.sock"
+            socket_path = self.socket_path(temporary_directory)
             expected_binary = Path("/Applications/Codex.app/Contents/Resources/codex")
             app_server_resume.write_managed_app_server_receipt(
                 socket_path,
@@ -448,10 +476,11 @@ class AppServerResumeTest(TestCase):
     def test_active_managed_server_is_not_restarted(self) -> None:
         """실행 중인 turn은 server group reset 대신 기존 pending-delivery를 유지합니다."""
         with TemporaryDirectory() as temporary_directory:
-            socket_path = Path(temporary_directory) / "app-server.sock"
-            app_server_resume.managed_app_server_pid_path(socket_path).write_text(
-                '{"pid":321}',
-                encoding="utf-8",
+            socket_path = self.socket_path(temporary_directory)
+            app_server_resume.write_managed_app_server_receipt(
+                socket_path,
+                321,
+                Path("/tmp/codex"),
             )
             fake_client = FakeAppServerClient([
                 {},
@@ -678,6 +707,10 @@ class AppServerResumeTest(TestCase):
 
         with (
             patch("app_server_resume.ensure_app_server"),
+            patch(
+                "app_server_resume.managed_app_server_receipt_exists",
+                return_value=False,
+            ),
             patch("app_server_resume.select_codex_binary", return_value=Path("/tmp/codex")),
             patch("app_server_resume.AppServerClient", return_value=fake_client),
         ):
@@ -706,6 +739,10 @@ class AppServerResumeTest(TestCase):
 
         with (
             patch("app_server_resume.ensure_app_server"),
+            patch(
+                "app_server_resume.managed_app_server_receipt_exists",
+                return_value=False,
+            ),
             patch("app_server_resume.select_codex_binary", return_value=Path("/tmp/codex")),
             patch("app_server_resume.AppServerClient", return_value=fake_client),
         ):
@@ -728,6 +765,10 @@ class AppServerResumeTest(TestCase):
 
         with (
             patch("app_server_resume.ensure_app_server"),
+            patch(
+                "app_server_resume.managed_app_server_receipt_exists",
+                return_value=False,
+            ),
             patch("app_server_resume.select_codex_binary", return_value=Path("/tmp/codex")),
             patch("app_server_resume.AppServerClient", return_value=fake_client),
         ):
@@ -756,6 +797,10 @@ class AppServerResumeTest(TestCase):
 
         with (
             patch("app_server_resume.ensure_app_server"),
+            patch(
+                "app_server_resume.managed_app_server_receipt_exists",
+                return_value=False,
+            ),
             patch("app_server_resume.select_codex_binary", return_value=Path("/tmp/codex")),
             patch("app_server_resume.AppServerClient", return_value=fake_client),
         ):
@@ -783,6 +828,10 @@ class AppServerResumeTest(TestCase):
 
         with (
             patch("app_server_resume.ensure_app_server"),
+            patch(
+                "app_server_resume.managed_app_server_receipt_exists",
+                return_value=False,
+            ),
             patch("app_server_resume.select_codex_binary", return_value=Path("/tmp/codex")),
             patch("app_server_resume.AppServerClient", return_value=fake_client),
         ):
@@ -887,6 +936,85 @@ class AppServerResumeTest(TestCase):
         self.assertEqual("absent", result["recovery_status"])
         self.assertEqual("idle", result["thread_status"])
         self.assertNotIn("turn/start", [method for method, _ in fake_client.calls])
+
+    def test_legacy_pid_receipt_imports_once_and_reappearance_fails_closed(self) -> None:
+        """Legacy JSON migrates once; a later old writer cannot regain authority."""
+        with TemporaryDirectory() as temporary_directory:
+            socket_path = self.socket_path(temporary_directory)
+            legacy_path = app_server_resume.managed_app_server_pid_path(socket_path)
+            legacy = {
+                "pid": 321,
+                "socket_path": str(socket_path),
+                "executable_path": "/tmp/codex",
+            }
+            legacy_path.write_text(json.dumps(legacy), encoding="utf-8")
+            self.assertEqual(
+                (321, Path("/tmp/codex").resolve()),
+                app_server_resume.read_managed_app_server_identity(socket_path),
+            )
+            self.assertFalse(legacy_path.exists())
+            legacy_path.write_text(json.dumps(legacy), encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "reappeared"):
+                app_server_resume.read_managed_app_server_identity(socket_path)
+            self.assertTrue(legacy_path.exists())
+
+    def test_invalid_legacy_pid_receipt_is_preserved(self) -> None:
+        """Invalid compatibility input does not create authority or get deleted."""
+        with TemporaryDirectory() as temporary_directory:
+            socket_path = self.socket_path(temporary_directory)
+            legacy_path = app_server_resume.managed_app_server_pid_path(socket_path)
+            original = b'{"pid":321}'
+            legacy_path.write_bytes(original)
+            with self.assertRaisesRegex(RuntimeError, "identity mismatch"):
+                app_server_resume.read_managed_app_server_identity(socket_path)
+            self.assertEqual(original, legacy_path.read_bytes())
+
+    def test_lifecycle_lock_blocks_cleanup_until_current_owner_releases(self) -> None:
+        """Socket cleanup cannot cross the per-worktree lifecycle lock."""
+        with TemporaryDirectory() as temporary_directory:
+            socket_path = self.socket_path(temporary_directory)
+            app_server_resume.write_managed_app_server_receipt(
+                socket_path,
+                321,
+                Path("/tmp/codex"),
+            )
+            socket_path.touch()
+            locked = threading.Event()
+            release = threading.Event()
+            cleanup_finished = threading.Event()
+            cleanup_errors: list[BaseException] = []
+
+            def hold_lifecycle() -> None:
+                with app_server_resume._managed_app_server_lifecycle(socket_path):
+                    locked.set()
+                    release.wait(timeout=5)
+
+            def cleanup() -> None:
+                try:
+                    app_server_resume.cleanup_managed_app_server_paths(socket_path)
+                except BaseException as error:
+                    cleanup_errors.append(error)
+                finally:
+                    cleanup_finished.set()
+
+            owner = threading.Thread(target=hold_lifecycle)
+            owner.start()
+            self.assertTrue(locked.wait(timeout=5))
+            cleaner = threading.Thread(target=cleanup)
+            cleaner.start()
+            time.sleep(0.05)
+            self.assertFalse(cleanup_finished.is_set())
+            self.assertTrue(socket_path.exists())
+            release.set()
+            owner.join(timeout=5)
+            cleaner.join(timeout=5)
+            self.assertFalse(owner.is_alive())
+            self.assertFalse(cleaner.is_alive())
+            self.assertEqual([], cleanup_errors)
+            self.assertFalse(socket_path.exists())
+            self.assertFalse(
+                app_server_resume.managed_app_server_receipt_exists(socket_path)
+            )
 
 
 class FakeAppServerClient:

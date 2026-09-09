@@ -13,6 +13,8 @@ from pathlib import Path
 from unittest import TestCase
 from unittest.mock import patch
 
+from scripts.agent_harness.monitor_observation_store import MonitorObservationStore
+
 ROOT = Path(__file__).resolve().parents[3]
 HELPER_PATH = ROOT / ".agents/skills/monitor-pr/scripts/monitor_launch_lock.py"
 SPEC = importlib.util.spec_from_file_location("monitor_launch_lock", HELPER_PATH)
@@ -32,13 +34,14 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from scripts.agent_harness.monitor_observation_store import MonitorObservationStore
 
 name = Path(sys.argv[0]).name
 token = os.environ["MONITOR_STARTER_TOKEN"]
 events_path = Path(os.environ["MONITOR_TEST_EVENTS_PATH"])
 worktree = Path.cwd().resolve()
 runtime_path = worktree / ".monitor-pr/monitor-state.json"
-runtime_path.parent.mkdir(parents=True, exist_ok=True)
+runtime_store = MonitorObservationStore(runtime_path)
 
 def record(kind, **details):
     event = {"kind": kind, "token": token}
@@ -49,15 +52,14 @@ def record(kind, **details):
 
 if name == "monitor_runtime_handoff.py":
     record("handoff-start")
-    if runtime_path.exists():
-        previous = json.loads(runtime_path.read_text(encoding="utf-8"))
+    if runtime_store.exists():
+        previous = runtime_store.read_required()
         for key in ("pid", "manager_pid"):
             try:
                 os.kill(int(previous[key]), signal.SIGTERM)
             except ProcessLookupError:
                 pass
         record("runtime-stop")
-        runtime_path.unlink(missing_ok=True)
     time.sleep(0.15)
     record("handoff-end")
     print(json.dumps({"retired": True}))
@@ -102,12 +104,12 @@ elif name == "monitor_process_manager.py":
         "heartbeat_at_epoch": time.time(),
         "last_observed": {"comments": {}, "terminal": {}},
     }
-    runtime_path.write_text(json.dumps(runtime_state), encoding="utf-8")
+    runtime_store.write(runtime_state)
     record("launch-end", pid=sleepers[0].pid, manager_pid=sleepers[1].pid)
     print(json.dumps(runtime))
 elif name == "monitor_runtime_readback.py":
     manager = json.loads(sys.argv[sys.argv.index("--manager-json") + 1])
-    state = json.loads(runtime_path.read_text(encoding="utf-8"))
+    state = runtime_store.read_required()
     workflow_id = sys.argv[sys.argv.index("--workflow-id") + 1]
     runtime_id = sys.argv[sys.argv.index("--runtime-id") + 1]
     subscription = {
@@ -411,14 +413,7 @@ class MonitorLaunchLockTest(TestCase):
             events = [
                 json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines()
             ]
-            runtime_text = runtime_path.read_text(encoding="utf-8")
-            try:
-                final_runtime = json.loads(runtime_text)
-            except json.JSONDecodeError as exc:
-                self.fail(
-                    f"final runtime state is invalid: {runtime_text!r}; "
-                    f"results={results!r}; events={events!r}; error={exc}"
-                )
+            final_runtime = MonitorObservationStore(runtime_path).read_required()
             live_pids = [int(final_runtime[key]) for key in ("pid", "manager_pid")]
             launched_pids = [
                 int(event[key])

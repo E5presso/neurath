@@ -2,7 +2,6 @@
 
 import hashlib
 import logging
-import os
 import sqlite3
 import time
 import uuid
@@ -11,6 +10,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from neurath.memory.store import canonical, control_root
+from neurath.runtime.database import RuntimeDatabase
+
+MAX_BULK_ITEMS = 32
+MAX_BULK_RECIPIENTS = 32
+MAX_BULK_DELIVERIES = 100
+MAX_MESSAGE_BYTES = 32768
+MAX_BULK_BODY_BYTES = 262144
 
 
 def bounded(value, label, limit=512):
@@ -22,6 +28,39 @@ def bounded(value, label, limit=512):
     ):
         raise ValueError(f"{label} must be nonempty text within {limit} bytes")
     return value
+
+
+def bulk_messages(messages):
+    """Validate the entire bounded batch before opening a delivery transaction."""
+    if not isinstance(messages, list) or not 1 <= len(messages) <= MAX_BULK_ITEMS:
+        raise ValueError("messages must contain one to 32 items")
+    normalized, keys = [], set()
+    deliveries = body_bytes = 0
+    for item in messages:
+        if (not isinstance(item, dict) or set(item) - {"to", "message", "key", "kind"}
+                or not {"to", "message", "key"}.issubset(item)):
+            raise ValueError("bulk item requires to, message and key only, with optional kind")
+        key = bounded(item["key"], "idempotency key")
+        body = bounded(item["message"], "message", MAX_MESSAGE_BYTES)
+        kind = item.get("kind", "question")
+        if kind not in {"question", "proposal", "update", "result"}:
+            raise ValueError("invalid message kind")
+        recipients = item["to"]
+        if (not isinstance(recipients, list) or not 1 <= len(recipients) <= MAX_BULK_RECIPIENTS
+                or any(not isinstance(recipient, str) for recipient in recipients)
+                or len(set(recipients)) != len(recipients)):
+            raise ValueError("bulk recipients must be one to 32 distinct addresses")
+        for recipient in recipients:
+            bounded(recipient, "recipient")
+        if key in keys:
+            raise ValueError("bulk item keys must be unique")
+        keys.add(key)
+        deliveries += len(recipients)
+        body_bytes += len(body.encode()) * len(recipients)
+        normalized.append((key, body, kind, tuple(recipients)))
+    if deliveries > MAX_BULK_DELIVERIES or body_bytes > MAX_BULK_BODY_BYTES:
+        raise ValueError("bulk recipient or durable body byte limit exceeded")
+    return normalized
 
 
 @dataclass(frozen=True)
@@ -43,12 +82,6 @@ class AgentIdentity:
         return f"{self.host}:{self.session}{suffix}"
 
 
-class _MessageConnection(sqlite3.Connection):
-    """Collect notification IDs within one transaction, never before commit."""
-
-    notices: list[str]
-
-
 class MessageStore:
     """SQLite commits enqueue, acknowledge and reply atomically across processes."""
 
@@ -62,11 +95,8 @@ class MessageStore:
                 raise ValueError("agent directory must not be a symlink")
             directory.mkdir(exist_ok=True, mode=0o700)
         self.directory = directory
-        self.path = directory / "messages.sqlite3"
-        if self.path.is_symlink():
-            raise ValueError("agent database must not be a symlink")
-        fd = os.open(self.path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-        os.close(fd)
+        self.database = RuntimeDatabase(self.root)
+        self.path = self.database.path
         with self.connection() as db:
             for statement in (
                 """CREATE TABLE IF NOT EXISTS agents (
@@ -102,34 +132,24 @@ class MessageStore:
 
     @contextmanager
     def connection(self):
-        if any(
-            (Path(str(self.path) + suffix)).is_symlink()
-            for suffix in ("", "-journal", "-wal", "-shm")
-        ):
-            raise ValueError("agent database must not be a symlink")
-        db = sqlite3.connect(self.path, timeout=20, factory=_MessageConnection)
-        db.notices = []
-        db.row_factory = sqlite3.Row
-        try:
-            db.execute("PRAGMA synchronous=FULL")
-            db.execute("BEGIN IMMEDIATE")
+        with self.database.connection() as db:
+            notice_start = len(db.notices)
             yield db
-            db.commit()
-        except BaseException:
-            db.rollback()
-            raise
-        finally:
-            db.close()
-        # Network/host delivery cannot roll back an already committed message or
-        # block the human-input path. Socket notification itself is nonblocking.
-        if db.notices:
-            from neurath.agents.delivery import dispatch
+            for message_id in dict.fromkeys(db.notices[notice_start:]):
+                db.after_commit.setdefault(
+                    ("message", message_id),
+                    lambda message_id=message_id: self._dispatch(message_id),
+                )
 
-            for message_id in dict.fromkeys(db.notices):
-                try:
-                    dispatch(self, message_id)
-                except (OSError, ValueError, RuntimeError, sqlite3.Error):
-                    logging.getLogger(__name__).warning("Native notification unavailable; message remains queued")
+    def _dispatch(self, message_id):
+        # Delivery runs only after the outer shared transaction has committed.
+        from neurath.agents.delivery import dispatch
+        try:
+            dispatch(self, message_id)
+        except (OSError, ValueError, RuntimeError, sqlite3.Error):
+            logging.getLogger(__name__).warning(
+                "Native notification unavailable; message remains queued"
+            )
 
     def register(self, identity, *, name=None, summary=None, status="active"):
         if status not in ("active", "idle", "paused", "retired"):
@@ -221,6 +241,16 @@ class MessageStore:
             return self._send(
                 db, sender, recipient, body, key=key, max_messages=max_messages, ttl=ttl, kind=kind
             )
+
+    def send_many(self, sender, messages):
+        """Commit all messages or none; notify recipients only after commit."""
+        normalized = bulk_messages(messages)
+        with self.connection() as db:
+            return [self._send(
+                db, sender, recipient, body,
+                key="bulk:" + hashlib.sha256(canonical([key, recipient]).encode()).hexdigest(),
+                kind=kind,
+            ) for key, body, kind, recipients in normalized for recipient in recipients]
 
     def _send(
         self,

@@ -171,7 +171,10 @@ def test_settings_stay_out_of_checkout(project):
     service.consent(True)
     assert service.path.is_relative_to(project / ".git")
     assert "auto_report" not in (project / ".neurath/project.json").read_text()
-    assert json.loads(service.path.read_text())["auto_report"] is True
+    assert service._read()["auto_report"] is True
+    assert not service.path.exists()
+    database = service.state_store._database().path
+    assert subprocess.run(["git", "check-ignore", "-q", str(database)], cwd=project).returncode == 0
 
 
 def test_modified_projected_skill_requires_contribution(project):
@@ -194,9 +197,9 @@ def test_draft_tampering_cannot_reuse_approval(project):
     data["kind"] = "contribution"
     draft = service.prepare(data, privacy_reviewed=True)
     service.approve(draft["id"], decision=True)
-    state = json.loads(service.path.read_text())
+    state = service._read()
     state["reports"][draft["id"]]["body"] += "A changed proposal"
-    service.path.write_text(json.dumps(state))
+    service._save(state)
     with pytest.raises(ValueError, match="content changed"):
         service.submit(draft["id"])
 
@@ -216,7 +219,11 @@ def test_read_only_status_has_no_writes_and_corruption_fails_closed(project):
     service.status()
     assert not service.directory.exists()
     service.consent(True)
-    service.path.write_text('{"schema":1,"auto_report":"yes","reports":{}}')
+    import hashlib
+    raw = b'{"schema":1,"auto_report":"yes","reports":{}}'
+    with service.state_store._database().connection() as db:
+        db.execute("UPDATE runtime_records SET payload=?,digest=? WHERE namespace=? AND key=?",
+                   (raw, hashlib.sha256(raw).hexdigest(), "reporting", service.state_store.key))
     with pytest.raises(ValueError, match="invalid"):
         service.status()
 

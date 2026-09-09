@@ -94,6 +94,12 @@ def _host_hook(root, host, raw, environment=None, stop_guard=None):
         from neurath.hosts.identity import validate_tool_foreground
 
         validate_tool_foreground(root, host, payload, env)
+    if event in {"PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied"}:
+        from scripts.agent_harness.task_todo import TOOL_NAMES as TODO_TOOL_NAMES
+        if payload.get("tool_name") in TODO_TOOL_NAMES:
+            from neurath.runtime.task_todo import host_event
+            if host_event(root, host, payload, raw):
+                return 0, {}, ""
     if event in {"PreToolUse", "PostToolUse"} and payload.get("tool_name") in SPAWN_TOOLS:
         try:
             return 0, spawn_hook(root, host, payload, env), ""

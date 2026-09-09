@@ -1242,12 +1242,13 @@ class AgentContinuationHookApplication:
                 소비할 수 있어 authority source가 모호하면 발생합니다.
         """
         turn = state.foreground_turns.get(handle.actor_id)
+        question_receipt = None if turn is None else turn.awaiting_input_receipt
         if (
             turn is None
             or turn.status not in {ForegroundTurnStatus.READY_TO_STOP, ForegroundTurnStatus.CLOSED}
-            or turn.receipt is None
-            or turn.receipt.outcome is not ForegroundTurnOutcome.AWAITING_INPUT
-            or turn.receipt.question is None
+            or question_receipt is None
+            or question_receipt.outcome is not ForegroundTurnOutcome.AWAITING_INPUT
+            or question_receipt.question is None
         ):
             return None
         contexts: list[ForegroundPromptAuthorityContext] = []
@@ -1278,7 +1279,7 @@ class AgentContinuationHookApplication:
                 )
                 if (
                     len(selected) != 1
-                    or render_socratic_question(selected[0]) != turn.receipt.question
+                    or render_socratic_question(selected[0]) != question_receipt.question
                 ):
                     continue
                 claim_ids = (f"gap:{selected[0].gap_id}",)
@@ -1298,7 +1299,7 @@ class AgentContinuationHookApplication:
                     snapshot.state.contract,
                     tuple(claim.removeprefix("criterion:") for claim in claim_ids),
                 )
-                if turn.receipt.question != expected_question:
+                if question_receipt.question != expected_question:
                     continue
             else:
                 continue
@@ -1316,7 +1317,7 @@ class AgentContinuationHookApplication:
                     claim_ids=claim_ids,
                     control_action=receipt.decision.action.value,
                     question_digest=hashlib.sha256(
-                        turn.receipt.question.strip().encode("utf-8")
+                        question_receipt.question.strip().encode("utf-8")
                     ).hexdigest(),
                     question_generation=turn.generation,
                     question_turn_revision=turn.revision,

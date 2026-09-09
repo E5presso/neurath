@@ -149,9 +149,15 @@ class HarnessMaintenanceTest(unittest.TestCase):
         result = ended["result"]
         self.assertIsInstance(result, dict)
         assert isinstance(result, dict)
-        receipt = Path(str(result["receipt"]))
-        self.assertTrue(receipt.is_file())
-        self.assertFalse(receipt.parent.parent.joinpath("harness-maintenance.json").exists())
+        self.assertEqual("sqlite:harness-maintenance:" + str(result["lease_id"]), result["receipt"])
+        from scripts.agent_harness.runtime_database import RuntimeDatabase
+        with RuntimeDatabase(self.repository).connection() as db:
+            receipt = db.execute("SELECT payload FROM harness_maintenance_receipts WHERE lease_id=?",
+                                 (result["lease_id"],)).fetchone()
+            active = db.execute("SELECT 1 FROM harness_maintenance_leases WHERE session_id='session-1'").fetchone()
+        self.assertIsNotNone(receipt)
+        self.assertIsNone(active)
+        self.assertEqual("closed", json.loads(receipt["payload"])["status"])
         readback = result["readback"]
         self.assertIsInstance(readback, list)
         assert isinstance(readback, list)

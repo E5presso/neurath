@@ -313,6 +313,7 @@ def response(root, request):
 
 def main():
     from contextlib import redirect_stdout
+    from neurath.agents.stdio import StdioCalls, error_reply
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", required=True, type=Path)
@@ -322,18 +323,48 @@ def main():
 
     root = repository(args.root)
     activate(root)
-    while line := sys.stdin.buffer.readline(MAX_FRAME + 1):
-        if len(line) > MAX_FRAME or not line.endswith(b"\n"):
-            return 1
-        try:
-            # Backend diagnostics are not JSON-RPC frames on a stdio transport.
-            with redirect_stdout(sys.stderr):
-                reply = response(root, json.loads(line))
-        except (ValueError, TypeError, AttributeError):
-            reply = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}
-        if reply is not None:
-            print(canonical(reply), flush=True)
-    return 0
+    calls = StdioCalls(root, sys.stdout)
+    try:
+        while line := sys.stdin.buffer.readline(MAX_FRAME + 1):
+            if len(line) > MAX_FRAME or not line.endswith(b"\n"):
+                return 1
+            try:
+                request = json.loads(line)
+            except (ValueError, TypeError):
+                calls.write(error_reply(None, -32700, "Parse error"))
+                continue
+            if not isinstance(request, dict) or not isinstance(request.get("method"), str):
+                calls.write(error_reply(None, -32600, "Invalid request"))
+                continue
+            if "id" in request and (not isinstance(request["id"], (str, int)) or isinstance(request["id"], bool)):
+                calls.write(error_reply(None, -32600, "Invalid request ID"))
+                continue
+            params = request.get("params", {})
+            if request["method"] == "notifications/cancelled":
+                if isinstance(params, dict):
+                    calls.cancel(params.get("requestId"))
+                continue
+            if (request["method"] == "tools/call" and "id" in request
+                    and isinstance(params, dict) and isinstance(params.get("name"), str)
+                    and params["name"] in {"agent", *TASKS}):
+                try:
+                    submitted = calls.submit(request)
+                except (OSError, RuntimeError):
+                    calls.write(error_reply(request["id"], -32603, "Call worker unavailable; inspect operation state"))
+                    continue
+                if not submitted:
+                    calls.write(error_reply(request["id"], -32000,
+                        "Concurrent call capacity reached or duplicate request ID; no new call started"))
+                continue
+            try:
+                with redirect_stdout(sys.stderr):
+                    reply = response(root, request)
+            except (ValueError, TypeError, AttributeError):
+                reply = error_reply(request.get("id"), -32600, "Invalid request")
+            calls.write(reply)
+        return 0
+    finally:
+        calls.close()
 
 
 if __name__ == "__main__":

@@ -573,17 +573,15 @@ class LocalPrMonitorTest(TestCase):
         try:
             monitor = fixture.monitor()
             observation_path = fixture.worktree / ".monitor-pr/monitor-state.json"
-            observation_path.parent.mkdir(parents=True, exist_ok=True)
-            observation_path.write_text(
-                json.dumps({
+            observations = local_pr_monitor.MonitorObservationStore(observation_path)
+            observations.write({
                     "process_state_path": "/obsolete/worktree/.process-state.json",
                     "unknown_legacy_field": "must-not-survive",
                     "last_observed": {"pr_state": "OPEN"},
-                }),
-                encoding="utf-8",
-            )
+                })
             monitor.run_once(self._snapshot())
-            state = json.loads(observation_path.read_text(encoding="utf-8"))
+            state = observations.read_required()
+            legacy_path_exists = observation_path.exists()
         finally:
             fixture.close()
 
@@ -591,6 +589,7 @@ class LocalPrMonitorTest(TestCase):
         self.assertEqual("process-ticket-131", state["workflow_id"])
         self.assertNotIn("process_state_path", state)
         self.assertNotIn("unknown_legacy_field", state)
+        self.assertFalse(legacy_path_exists)
 
     def test_observation_cache_has_a_local_only_store_boundary(self) -> None:
         """Local observation JSON은 legacy canonical-style state helper를 재사용하지 않습니다."""

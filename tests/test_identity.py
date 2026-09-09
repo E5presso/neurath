@@ -445,7 +445,8 @@ def test_prepared_delegation_binds_to_attested_child_not_caller_selected_actor(
         )[0]
         == 0
     )
-    state = json.loads((root / ".neurath/local/runs/root/.process-state.json").read_text())
+    from scripts.agent_harness.session_kernel import SessionKernel, SessionLocator, SessionId
+    state = SessionKernel(SessionLocator(root)).inspect(SessionId("root")).to_payload()
     delegation = state["delegations"]["review-1"]
     assert delegation["target_actor_id"] == "claude-code:child"
     assert delegation["topology_policy"] == "direct-child"
@@ -787,7 +788,7 @@ def test_resume_retries_after_settlement_before_foreground_close(runtime, monkey
     original = k.SessionKernel.apply
 
     def interrupted(self, command, *args, **kwargs):
-        if isinstance(command, k.ForegroundTurnClosed):
+        if isinstance(command, k.ForegroundTurnReplaced):
             raise OSError("interrupted between typed commits")
         return original(self, command, *args, **kwargs)
 
@@ -1126,15 +1127,16 @@ def test_peer_retry_after_journal_failure_uses_canonical_provenance(runtime, mon
     start(send, "codex")
     native_turn_started(transcript, "peer-turn")
     native_peer_delivery(transcript, "peer-turn")
-    original = identity.os.replace
+    from scripts.agent_harness.runtime_database import RuntimeTransaction
+    original = RuntimeTransaction.put
 
-    def failed_flush(source, target):
-        if str(target).endswith(".neurath-host.json"):
+    def failed_flush(self, namespace, key, payload, *, expected_revision):
+        if namespace == "host-journal":
             raise OSError("fixture journal flush failure")
-        return original(source, target)
+        return original(self, namespace, key, payload, expected_revision=expected_revision)
 
     with monkeypatch.context() as patch:
-        patch.setattr(identity.os, "replace", failed_flush)
+        patch.setattr(RuntimeTransaction, "put", failed_flush)
         with pytest.raises(OSError, match="journal flush"):
             send("codex", "PreToolUse", turn_id="peer-turn", tool_use_id="crashed-read",
                  tool_name="mcp__codex_app__read_thread", tool_input={})
@@ -1308,8 +1310,7 @@ def test_retired_root_stop_has_no_state_or_bookkeeping_effect(runtime, host):
     kernel.apply(k.SessionEnded(session_id=state.session.id, actor_id=state.session.root_actor_id,
                                 idempotency_key="explicit-fixture-end"))
     before = fixture_local_bytes(root)
-    assert any(p.endswith(".neurath-host.json") for p in before)
-    assert any(p.endswith("project.sqlite3") for p in before)
+    assert any(p.endswith("runtime.sqlite3") for p in before)
     for _ in range(2):
         code, output, diagnostic = send(host, "Stop", turn_id="unadmitted-turn")
         assert code == 0 and output == {}, diagnostic

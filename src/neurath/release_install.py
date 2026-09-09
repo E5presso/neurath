@@ -10,7 +10,9 @@ import zipfile
 from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
 
-from neurath.install.transaction import canonical, git_dir, read_state, snapshot
+from neurath.install.transaction import (
+    STATE, canonical, git_dir, installation_state_matches, read_state, snapshot,
+)
 from neurath.reporting import Reporting
 from neurath.updates import MAX_WHEEL, download_asset
 
@@ -112,7 +114,7 @@ def apply(root, directory, offer, operation):
     plan_read(plan_path, operation, root)
     verify(python, root, offer, operation["distribution"])
     reporting = Reporting(root)
-    before_reporting = reporting.path.read_bytes() if reporting.path.exists() else None
+    before_reporting = reporting._read()
     receipt = runtime_command(python, root, "apply", plan_path)
     if receipt["id"] != operation["plan_id"]:
         raise ValueError("installation record differs from prepared plan")
@@ -123,26 +125,43 @@ def apply(root, directory, offer, operation):
     from neurath.doctor import passed
     if not passed(report):
         raise ValueError("updated installation diagnostics failed; recover the prior installation")
-    if (reporting.path.read_bytes() if reporting.path.exists() else None) != before_reporting:
+    if reporting._read() != before_reporting:
         raise ValueError("reporting preferences changed during update; inspect and recover")
     return dict(phase="applied", receipt=receipt["id"], doctor=report,
                 host_activation="unverified; observe the next normal native host event")
+
+
+def _matches_plan_files(root, plan, side):
+    """Keep product/config bytes exact; validate installation state cutover."""
+    for item in plan["changes"]:
+        if item["path"] == STATE:
+            semantic = side + "_state"
+            if not installation_state_matches(root, item[side],
+                    **({"expected_state": plan[semantic]} if semantic in plan else {})):
+                return False
+        elif snapshot(root, item["path"]) != item[side]:
+            return False
+    return True
 
 
 def recover(root, directory, operation):
     """Conservative rollback, including a process killed before recording apply's result."""
     python, plan_path = paths(directory, operation)
     plan = plan_read(plan_path, operation, root)
-    journal = git_dir(root) / "neurath-journal.json"
-    if journal.exists():
-        if json.loads(journal.read_text()) != plan:
+    from neurath.install.state_store import InstallStateStore
+    journal = InstallStateStore(root).journal()
+    legacy = git_dir(root) / "neurath-journal.json"
+    if journal is None and legacy.is_file():
+        journal = json.loads(legacy.read_text())
+    if journal is not None:
+        if journal != plan:
             raise ValueError("recovery conflict: journal belongs to another installation")
         runtime_command(python, root, "recover")
-    if all(snapshot(root, x["path"]) == x["before"] for x in plan["changes"]):
+    if _matches_plan_files(root, plan, "before"):
         return dict(phase="recovered")
-    if not all(snapshot(root, x["path"]) == x["after"] for x in plan["changes"]):
+    if not _matches_plan_files(root, plan, "after"):
         raise ValueError("recovery conflict: preserve concurrent edits and inspect installation state")
     runtime_command(python, root, "restore", operation["plan_id"])
-    if not all(snapshot(root, x["path"]) == x["before"] for x in plan["changes"]):
+    if not _matches_plan_files(root, plan, "before"):
         raise ValueError("rollback readback differs from previous installation")
     return dict(phase="recovered")

@@ -13,6 +13,7 @@ from pathlib import Path, PurePosixPath
 
 from neurath import __version__
 from neurath.install.projection import HOSTS, PROFILES, asset_files, host_hooks, skills
+from neurath.install.state_store import InstallStateStore, projection
 from neurath.resources import distribution_id
 from neurath.skill_names import public_name, validate_skill_prefix
 
@@ -103,9 +104,24 @@ def bytes_of(value):
 def read_state(root):
     value = snapshot(Path(root), STATE)
     try:
-        state = json.loads(bytes_of(value)) if value else None
+        visible = json.loads(bytes_of(value)) if value else None
     except (ValueError, TypeError) as error:
         raise InstallError("invalid installation state") from error
+    canonical_state = InstallStateStore(root).state()
+    if visible is None:
+        if canonical_state is not None:
+            raise InstallError("installation state projection is missing")
+        return None
+    if not isinstance(visible, dict):
+        raise InstallError("invalid installation state")
+    if visible.get("schema") == 2:
+        if canonical_state is None or visible != projection(canonical_state):
+            raise InstallError("installation state reference mismatch")
+        state = canonical_state
+    else:
+        state = visible
+        if canonical_state is not None and canonical_state != state:
+            raise InstallError("installation state differs from canonical SQLite state")
     if state is not None and (state.get("schema") != 1 or not isinstance(state.get("owned"), dict)):
         raise InstallError("unsupported installation state")
     if state is not None:
@@ -116,9 +132,59 @@ def read_state(root):
     return state
 
 
+_STATE_UNSPECIFIED = object()
+
+
+def installation_state_matches(root, expected, *, expected_state=_STATE_UNSPECIFIED):
+    """Allow only a validated schema-1/schema-2 representation difference.
+
+    Same-schema content and permissions stay exact. The validated semantic state
+    must agree with its saved bytes and with the current canonical state.
+    """
+    current = snapshot(Path(root), STATE)
+    actual_state = read_state(root)
+    try:
+        expected_visible = json.loads(bytes_of(expected)) if expected is not None else None
+        current_visible = json.loads(bytes_of(current)) if current is not None else None
+    except (TypeError, ValueError) as error:
+        raise InstallError("invalid installation state comparison") from error
+    if expected_state is _STATE_UNSPECIFIED:
+        if expected_visible is None or (isinstance(expected_visible, dict)
+                                       and expected_visible.get("schema") == 1):
+            expected_state = expected_visible
+        else:
+            # Without the validated state payload, only exact representation is allowed.
+            return current == expected
+    if expected_state is not None:
+        if (not isinstance(expected_state, dict) or expected_state.get("schema") != 1
+                or not isinstance(expected_state.get("owned"), dict)):
+            raise InstallError("invalid expected canonical installation state")
+        try:
+            validate_skill_prefix(expected_state.get("skill_prefix", ""))
+        except ValueError as error:
+            raise InstallError("invalid expected installation skill prefix") from error
+    if expected_visible != expected_state and expected_visible != projection(expected_state):
+        raise InstallError("saved installation bytes differ from expected canonical state")
+    if actual_state != expected_state:
+        return False
+    if current == expected:
+        return True
+    return (isinstance(current, dict) and isinstance(expected, dict)
+            and current.get("kind") == expected.get("kind") == "file"
+            and current.get("mode") == expected.get("mode")
+            and isinstance(current_visible, dict) and isinstance(expected_visible, dict)
+            and {current_visible.get("schema"), expected_visible.get("schema")} == {1, 2})
+
+
 def _read_receipt(root, receipt):
     if not isinstance(receipt, str) or re.fullmatch(r"[a-f0-9]{64}", receipt) is None:
         raise InstallError("invalid installation record ID")
+    try:
+        stored = InstallStateStore(root).receipt(receipt)
+    except ValueError as error:
+        raise InstallError(str(error)) from error
+    if stored is not None:
+        return stored
     path = git_dir(root) / "neurath-receipts" / f"{receipt}.json"
     try:
         result = json.loads(path.read_text())
@@ -233,12 +299,23 @@ def rebase_shared(path, record, current):
 
 def make_plan(root, *, action="install", profile=None, hosts=None, receipt=None, skill_prefix=None):
     root = repository(root)
-    if (git_dir(root) / "neurath-journal.json").exists():
+    if (InstallStateStore(root).journal() is not None
+            or (git_dir(root) / "neurath-journal.json").exists()):
         raise InstallError("interrupted transaction: run neurath recover")
     if action not in {"install", "update", "uninstall", "restore"}:
         raise InstallError("unsupported action")
     state = read_state(root)
     saved = _read_receipt(root, receipt) if action == "restore" else None
+    before_state = state
+    after_state = state
+    if action == "restore":
+        if "before_state" in saved:
+            after_state = saved["before_state"]
+        else:
+            legacy = next(
+                item["before"] for item in saved["changes"] if item["path"] == STATE
+            )
+            after_state = json.loads(bytes_of(legacy)) if legacy else None
     recorded_prefix = (
         state.get("skill_prefix", "") if state else
         saved.get("skill_prefix", "") if saved else ""
@@ -284,11 +361,22 @@ def make_plan(root, *, action="install", profile=None, hosts=None, receipt=None,
         owned[path] = rebase_shared(path, record, observe(path))
     if action == "restore":
         for item in saved["changes"]:
-            if observe(item["path"]) != item["after"]:
+            observed = observe(item["path"])
+            matches = (installation_state_matches(root, item["after"],
+                       **({"expected_state": saved["after_state"]} if "after_state" in saved else {}))
+                       if item["path"] == STATE else observed == item["after"])
+            if not matches:
                 raise InstallError(f"restore conflict: {item['path']}")
         for item in reversed(saved["changes"]):
+            if item["path"] == STATE:
+                continue
             change(item["path"], item["before"])
+        state_value = None if after_state is None else file_value(
+            (canonical(projection(after_state)) + "\n").encode(), 0o600
+        )
+        change(STATE, state_value)
     elif action == "uninstall":
+        after_state = None
         for path, record in owned.items():
             change(path, record["original"])
         if state:
@@ -470,7 +558,10 @@ def make_plan(root, *, action="install", profile=None, hosts=None, receipt=None,
             "skill_prefix": skill_prefix,
             "owned": new_owned,
         }
-        change(STATE, file_value((canonical(after_state) + "\n").encode(), 0o600))
+        change(
+            STATE,
+            file_value((canonical(projection(after_state)) + "\n").encode(), 0o600),
+        )
     plan = {
         "schema": 1,
         "root": str(root),
@@ -480,6 +571,8 @@ def make_plan(root, *, action="install", profile=None, hosts=None, receipt=None,
         "hosts": hosts,
         "skill_prefix": skill_prefix,
         "receipt": receipt,
+        "before_state": before_state,
+        "after_state": after_state,
         "checks": checks,
         "changes": changes,
     }
@@ -556,11 +649,12 @@ def apply_plan(root, plan):
     control = git_dir(root)
     with (control / "neurath-install.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        journal = control / "neurath-journal.json"
-        if journal.exists():
+        existing = InstallStateStore(root)
+        if (existing.journal() is not None
+                or (control / "neurath-journal.json").exists()):
             raise InstallError("interrupted transaction: run neurath recover")
-        for path, expected in plan.get("checks", {}).items():
-            if snapshot(root, path) != expected:
+        for path, expected_value in plan.get("checks", {}).items():
+            if snapshot(root, path) != expected_value:
                 raise InstallError(f"stale plan: {path}")
         expected = make_plan(
             root,
@@ -574,7 +668,13 @@ def apply_plan(root, plan):
             raise InstallError("stale or modified plan: regenerate with this distribution")
         if not plan["changes"]:
             return {"id": plan["id"], "changed": 0}
-        _save_json(journal, plan)
+        store = InstallStateStore(root, create=True)
+        try:
+            store.import_legacy_files(control)
+            store.ensure_state(plan["before_state"])
+            store.begin(plan)
+        except ValueError as error:
+            raise InstallError(str(error)) from error
         applied = []
         try:
             for item in plan["changes"]:
@@ -590,11 +690,12 @@ def apply_plan(root, plan):
                 elif snapshot(root, item["path"]) != item["before"]:
                     rollback_conflict = True
             if not rollback_conflict:
-                journal.unlink(missing_ok=True)
+                store.discard(plan["id"])
             raise
-        receipt_dir = control / "neurath-receipts"
-        _save_json(receipt_dir / f"{plan['id']}.json", plan)
-        journal.unlink()
+        try:
+            store.finish(plan, plan["after_state"])
+        except ValueError as error:
+            raise InstallError(str(error)) from error
         _prune_skill_directories(root, plan["changes"])
         return {"id": plan["id"], "changed": len(plan["changes"])}
 
@@ -604,10 +705,14 @@ def recover(root):
     control = git_dir(root)
     with (control / "neurath-install.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        journal = control / "neurath-journal.json"
-        if not journal.exists():
+        store = InstallStateStore(root, create=True)
+        try:
+            store.import_legacy_files(control)
+            plan = store.journal()
+        except ValueError as error:
+            raise InstallError(str(error)) from error
+        if plan is None:
             return {"recovered": False}
-        plan = json.loads(journal.read_text())
         if plan["root"] != str(root):
             raise InstallError("journal root mismatch")
         for item in plan["changes"]:
@@ -615,5 +720,5 @@ def recover(root):
                 raise InstallError(f"recovery conflict: {item['path']}")
         for item in reversed(plan["changes"]):
             _write(root, item["path"], item["before"])
-        journal.unlink()
+        store.discard(plan["id"])
         return {"recovered": True}

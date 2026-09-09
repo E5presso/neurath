@@ -42,6 +42,16 @@ still require separate actual-host evidence; source implementation and registrat
 
 ## Model selection requirements
 
+Native direct-child agents are the default for independent leaf work within a task. Use a provider
+run when a separate session lifecycle, another provider, or necessary isolation unavailable through
+native child tools is required. Record that reason. Ordinary messages use the existing conversation;
+multiple messages and recipients can use `collaboration_send.messages` in one call.
+
+Choose the smallest observed model sufficient for the role, difficulty and user constraints. A plan's
+`selection.mode/model` selects the model; the top-level provider `mode=inherit` preserves execution
+permissions. They are separate decisions. Neither a side question nor a progress report completes
+the original work; canonical tasks remain in SQLite until evidence resolves them.
+
 | ID | Contract |
 | --- | --- |
 | MP-01 | Before each authorized new provider/session, form a plan, including explicit inheritance of the host default. Do not create a session solely to discover models. |
@@ -74,8 +84,11 @@ before substantive assignment. Do not create a separate discovery session. If pr
 require a paid model call whose hard constraints cannot be established, return a blocker.
 
 A plan becomes stale when its assignment, target provider/host, constraints, effective policy,
-policy mapping revision, observed target default, or a known invalidating inventory fact changes. Recheck availability
-immediately before a new creation. Elapsed time alone does not cancel an existing task or its plan.
+policy mapping revision, observed target default, or a known invalidating inventory fact changes.
+Reuse a plan only while its assignment, target, policy and constraints still match. A new assignment
+or target may require a new plan, but the session catalog remains reusable across worktrees and turns.
+Refresh the catalog only on explicit request or concrete evidence that the observation is stale.
+Elapsed time alone does not cancel an existing task or its plan.
 Reading the recorded outcome under the same already accepted key is not a new creation. S2 covers
 target-default resolution and changes; S3 covers invalidated policy mappings and elapsed-time-only
 cases. The provider_plan selection and provider_run readback retain the three default fields above.

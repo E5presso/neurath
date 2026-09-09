@@ -58,6 +58,32 @@ def test_committed_message_wakes_same_idle_issuer_and_retries_same_key():
     assert len(host.calls) == 4
 
 
+def test_idle_delivery_preserves_owned_session_reasoning_settings():
+    host, _, session, deliver = owner()
+    session.policy["requested"].update({
+        "collaboration_mode": "default",
+        "reasoning_effort": "high",
+    })
+
+    result = deliver(MESSAGE)
+
+    assert result["delivery"] == "submitted"
+    params = host.calls[-1][1]
+    assert params["effort"] == "high"
+    assert params["collaborationMode"] == {
+        "mode": "default",
+        "settings": {
+            "model": "host-model",
+            "developer_instructions": None,
+            "reasoning_effort": "high",
+        },
+    }
+    assert params["sandboxPolicy"] == {
+        "type": "readOnly",
+        "networkAccess": False,
+    }
+
+
 def test_active_issuer_uses_observed_turn_precondition():
     host, _, _, deliver = owner()
     host.thread.update(status={"type": "active"}, turns=[{"id": "current", "status": "inProgress"}])

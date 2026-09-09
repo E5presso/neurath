@@ -57,6 +57,7 @@ from scripts.agent_harness.material_action import (
     ToolReceiptOutcome,
 )
 from scripts.agent_harness.runtime_hook import RuntimeHookApplication
+from scripts.agent_harness.runtime_database import RuntimeDatabase
 from scripts.agent_harness.session_kernel import (
     ActorId,
     ActorKind,
@@ -896,11 +897,11 @@ class AgentContinuationHookTest(TestCase):
 
     def test_local_runtime_recovery_accepts_fresh_starter_readback(self) -> None:
         """Recovery는 starter의 새 route와 같은 fresh observation을 검증한 뒤 성공합니다."""
+        from scripts.agent_harness.monitor_observation_store import MonitorObservationStore
         observation_path = self.fixture.repository / ".monitor-pr/monitor-state.json"
         observation_path.parent.mkdir(parents=True)
         route = self.fixture.monitor_subscription(heartbeat_at_epoch=100.0)
-        observation_path.write_text(
-            json.dumps({
+        MonitorObservationStore(observation_path).write({
                 "schema_version": 4,
                 **{
                     key: value
@@ -920,9 +921,7 @@ class AgentContinuationHookTest(TestCase):
                         "poll_interval_seconds",
                     }
                 },
-            }),
-            encoding="utf-8",
-        )
+            })
         starter = (
             self.fixture.repository
             / ".agents/skills/monitor-pr/scripts/start_local_pr_monitor_locked.sh"
@@ -944,8 +943,7 @@ class AgentContinuationHookTest(TestCase):
             self.assertEqual(starter.resolve(), starter_path)
             self.assertEqual(self.fixture.repository.resolve(), worktree)
             self.assertEqual("workflow", environment["WORKFLOW_ID"])
-            observation_path.write_text(
-                json.dumps({
+            MonitorObservationStore(observation_path).write({
                     "schema_version": 4,
                     **{
                         key: value
@@ -965,9 +963,7 @@ class AgentContinuationHookTest(TestCase):
                             "poll_interval_seconds",
                         }
                     },
-                }),
-                encoding="utf-8",
-            )
+                })
             return subprocess.CompletedProcess(
                 args=("bash", str(starter_path)),
                 returncode=0,
@@ -1181,8 +1177,13 @@ class AgentContinuationHookTest(TestCase):
         handle = self.fixture.open_session("corrupt")
         self.fixture.open_workflow(handle, "workflow")
         self.fixture.open_session("fallback")
-        paths = self.fixture.locator.locate(SessionId("corrupt"))
-        paths.process_state.write_text("{not-json", encoding="utf-8")
+        with RuntimeDatabase(self.fixture.repository).connection() as db:
+            changed = db.execute(
+                "UPDATE runtime_records SET payload=? "
+                "WHERE namespace='session' AND key='corrupt'",
+                (b"{not-json",),
+            )
+            self.assertEqual(1, changed.rowcount)
 
         result = self.fixture.run(
             self.fixture.application(),
@@ -1211,7 +1212,9 @@ class StopTerminalReachabilityMatrixTest(TestCase):
         question: str = "현재 사용자 결정을 선택해 주세요.",
     ) -> None:
         """Adaptive AWAIT_USER와 결속할 exact awaiting-input outer turn을 만듭니다."""
-        self.fixture.active_turn(handle)
+        current = handle.inspect().foreground_turns.get(handle.actor_id)
+        if current is None or current.status is not ForegroundTurnStatus.ACTIVE:
+            self.fixture.active_turn(handle)
         turn = handle.inspect().foreground_turns[handle.actor_id]
         handle.apply(
             ForegroundTurnYielded(
@@ -1784,6 +1787,77 @@ class StopTerminalReachabilityMatrixTest(TestCase):
             ForegroundTurnStatus.CLOSED,
             handle.inspect().foreground_turns[handle.actor_id].status,
         )
+
+    def test_replaced_awaiting_question_survives_pending_task_stop_gate(self) -> None:
+        """Host replacement stays incomplete but retains the exact question for the response."""
+        from scripts.agent_harness.session_kernel import ForegroundTurnClosed, ForegroundTurnReplaced, InvalidSessionState
+        from scripts.agent_harness.session_state_codec import SessionStateCodec
+        from scripts.agent_harness.task_service import TaskService
+
+        session = "adaptive-replaced-question"
+        handle = self.fixture.open_session(session)
+        initial = self.fixture.run(self.fixture.application(), session, HookEvent.USER_PROMPT,
+                                   prompt="Review the request", turn_id="old-native-turn")
+        self.assertEqual(0, initial.exit_code, initial.stderr)
+        workflow_id = self.fixture.open_workflow(handle, "adaptive", kind="evaluate-harness", skill_state={})
+        question = self._seed_await_user_state(handle, workflow_id)
+        tasks = TaskService(handle)
+        tasks.define([{"key": "pending", "title": "Pending implementation", "goal": "Complete implementation",
+                       "sources": [], "acceptance": ["Required behavior is verified"],
+                       "evidence_contract": "pending-work", "dependencies": []}],
+                     expected_revision=0, key="pending-task")
+        with tasks.database.transaction() as tx:
+            original_record = tx.get("task-ledger", str(handle.session_id))
+            assert original_record is not None
+            original_tasks = original_record.payload
+        self._awaiting_input_turn(handle, question=question)
+        before = handle.inspect().foreground_turns[handle.actor_id]
+        with self.assertRaisesRegex(TransitionRejected, "task"):
+            handle.apply(ForegroundTurnClosed(session_id=handle.session_id, actor_id=handle.actor_id,
+                         expected_turn_revision=before.revision, idempotency_key="refuse-task-stop"))
+        event = ForegroundTurnReplaced(session_id=handle.session_id, actor_id=handle.actor_id,
+                    expected_turn_revision=before.revision, replacement_reference="codex-turn:next-native-turn",
+                    idempotency_key="host-replaces-awaiting-question")
+        replaced = handle.apply(event)
+        closed = replaced.foreground_turns[handle.actor_id]
+        assert closed.receipt is not None
+        assert before.receipt is not None
+        assert closed.replacement_question is not None
+        self.assertIs(ForegroundTurnOutcome.INCOMPLETE, closed.receipt.outcome)
+        self.assertEqual(before.receipt.to_payload(), closed.replacement_question.to_payload())
+        self.assertEqual(replaced.to_payload(), handle.apply(event).to_payload())
+        codec = SessionStateCodec()
+        decoded = codec.decode(replaced.to_payload(), handle.session_id)
+        decoded_question = decoded.foreground_turns[handle.actor_id].awaiting_input_receipt
+        assert decoded_question is not None
+        self.assertEqual(question, decoded_question.question)
+        malformed = json.loads(json.dumps(replaced.to_payload()))
+        malformed["foreground_turns"][str(handle.actor_id)]["replacement_question"]["outcome"] = "completed"
+        with self.assertRaises(InvalidSessionState):
+            codec.decode(malformed, handle.session_id)
+        legacy = json.loads(json.dumps(replaced.to_payload()))
+        legacy["foreground_turns"][str(handle.actor_id)].pop("replacement_question")
+        self.assertIsNone(codec.decode(legacy, handle.session_id).foreground_turns[handle.actor_id].awaiting_input_receipt)
+        prompted = self.fixture.run(self.fixture.application(), session, HookEvent.USER_PROMPT,
+                                     prompt="Proceed as proposed", turn_id="next-native-turn")
+        self.assertEqual(0, prompted.exit_code, prompted.stderr)
+        next_turn = handle.inspect().foreground_turns[handle.actor_id]
+        assert next_turn.user_prompt_receipt is not None
+        context = next_turn.user_prompt_receipt.authority_context
+        self.assertIsNotNone(context)
+        assert context is not None
+        self.assertEqual(workflow_id, context.workflow_id)
+        self.assertEqual(hashlib.sha256(question.encode()).hexdigest(), context.question_digest)
+        self.assertEqual(closed.generation, context.question_generation)
+        self.assertEqual(closed.revision, context.question_turn_revision)
+        self.assertIsNone(next_turn.replacement_question)
+        with tasks.database.transaction() as tx:
+            retained = tx.get("task-ledger", str(handle.session_id))
+            assert retained is not None
+            self.assertEqual(original_tasks, retained.payload)
+        with self.assertRaisesRegex(TransitionRejected, "task"):
+            handle.apply(ForegroundTurnClosed(session_id=handle.session_id, actor_id=handle.actor_id,
+                         expected_turn_revision=next_turn.revision, idempotency_key="refuse-next-task-stop"))
 
     def test_adaptive_await_user_response_binds_exact_goal_question_and_claims(self) -> None:
         """AWAIT_USER 다음 prompt는 exact workflow/goal/criteria/question digest만 보존합니다."""

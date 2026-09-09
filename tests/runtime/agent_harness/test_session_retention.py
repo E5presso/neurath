@@ -103,8 +103,7 @@ class SessionRetentionAcceptanceTest(TestCase):
 
         receipt = manager.end(self.handle, idempotency_key="end-retention-session")
 
-        paths = self.locator.locate(self.session_id)
-        self.assertFalse(paths.enclave.exists())
+        self.assertFalse(enclaves.exists(self.session_id))
         with self.assertRaises(EnclaveAuthorityError):
             enclaves.set(
                 self.session_id,

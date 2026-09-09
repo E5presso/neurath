@@ -14,6 +14,7 @@ from neurath.resources import distribution_id
 
 GIT_LABELS = ("git_status", "staged_files", "commit_sha", "branch_name", "worktree_absolute_path",
               "remote_branch", "remote_head", "push_head_match")
+SOURCE_LABELS = (*GIT_LABELS, "worktree_release_receipt")
 AUTHORITY_LABELS = {"adaptive_control_initialized", "adaptive_control_receipt"}
 
 
@@ -85,7 +86,7 @@ def prepare(root, handle, fields):
     supplemental = {label for label in labels if re.fullmatch(r"supplemental_[a-z][a-z0-9_]{0,99}",label)}
     if not labels or len(labels) != len(set(labels)) or not set(labels) <= required | supplemental:
         raise ValueError("evidence labels must be unique names required by the current phase")
-    if not set(fields["labels"]) <= set(GIT_LABELS):
+    if not set(fields["labels"]) <= set(SOURCE_LABELS):
         raise ValueError("automatic evidence label has no Git producer; use an explicit report or current authority reference")
     if set(labels) & AUTHORITY_LABELS:
         raise ValueError("reserved adaptive authority must use its current evidence reference")
@@ -94,7 +95,10 @@ def prepare(root, handle, fields):
     before = _basis(root)
     evidence, provenance = [], []
     for label in fields["labels"]:
-        if label == "git_status":
+        if label == "worktree_release_receipt":
+            from neurath.runtime.finish_release import release_evidence
+            value = release_evidence(root, handle)
+        elif label == "git_status":
             value = _git(root,"status","--porcelain=v1","--untracked-files=all") or "clean"
         elif label == "staged_files":
             value = _git(root,"diff","--cached","--name-only")
@@ -130,7 +134,7 @@ def prepare(root, handle, fields):
         provenance.append({"label":label,"authority":"source-readback"})
     for note in fields["notes"]:
         label, value = note["label"], note["text"]
-        if label in GIT_LABELS or any(re.search(r"\b"+re.escape(other)+r"\b",value) for other in all_labels-{label}):
+        if label in SOURCE_LABELS or any(re.search(r"\b"+re.escape(other)+r"\b",value) for other in all_labels-{label}):
             raise ValueError("report cannot impersonate a reserved source or another evidence label")
         evidence.append(label+": "+value+" [authority=agent-report]")
         provenance.append({"label":label,"authority":"agent-report"})

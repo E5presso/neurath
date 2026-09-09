@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 
 from scripts.agent_harness.enclave_store import EnclaveFact, EnclaveSourceKind, EnclaveStore
+from scripts.agent_harness.runtime_database import RuntimeDatabase
 from scripts.agent_harness.material_action import (
     AdaptiveActionBinding,
     MaterialActionBatch,
@@ -43,6 +44,7 @@ from scripts.agent_harness.session_kernel import (
     ProcessState,
     ResumeId,
     SessionId,
+    SessionEnded,
     SessionKernel,
     SessionLocator,
     SessionRuntime,
@@ -80,57 +82,36 @@ class SessionRehydrationTest(unittest.TestCase):
         self.lifecycle = SessionLifecycle(self.locator, self.enclaves)
 
     def write_session(self, session_id: str, fact: str, *, status: str = "active") -> None:
-        """목표 persistence shape의 최소 active session fixture를 기록합니다."""
-        paths = self.locator.locate(SessionId(session_id))
-        paths.directory.mkdir(parents=True, exist_ok=True)
-        paths.process_state.write_text(
-            json.dumps(
-                {
-                    "schema": "neurath.coding-agent-process-state.v1",
-                    "revision": 0,
-                    "session": {
-                        "id": session_id,
-                        "resume_id": session_id,
-                        "runtime": "codex",
-                        "root_actor_id": f"codex:session:{session_id}",
-                        "status": status,
-                    },
-                    "actors": {
-                        f"codex:session:{session_id}": {
-                            "id": f"codex:session:{session_id}",
-                            "parent_actor_id": None,
-                            "kind": "root",
-                            "status": "active",
-                        }
-                    },
-                    "workflows": {},
-                    "delegations": {},
-                    "resources": {"worktrees": {}},
-                    "mailboxes": {},
-                    "incidents": {},
-                    "outbox": {},
-                },
-                ensure_ascii=False,
+        """Public kernel/enclave APIs로 current SQLite session fixture를 기록합니다."""
+        identity = SessionId(session_id)
+        actor = ActorId(f"codex:session:{session_id}")
+        self.kernel.apply(SessionStarted(
+            session_id=identity,
+            resume_id=ResumeId(session_id),
+            runtime=SessionRuntime.CODEX,
+            root_actor_id=actor,
+            idempotency_key=f"fixture-start:{session_id}",
+        ))
+        current = self.enclaves.read(identity)
+        self.enclaves.set(
+            identity,
+            actor,
+            "invariant",
+            EnclaveFact(
+                value=fact,
+                source_kind=EnclaveSourceKind.USER,
+                source_turn_id=TurnId("turn-1"),
             ),
-            encoding="utf-8",
+            expected_digest=current.digest,
         )
-        paths.enclave.write_text(
-            json.dumps(
-                {
-                    "schema": "neurath.coding-agent-enclave.v1",
-                    "session_id": session_id,
-                    "facts": {
-                        "invariant": {
-                            "value": fact,
-                            "source_kind": "user",
-                            "source_turn_id": "turn-1",
-                        }
-                    },
-                },
-                ensure_ascii=False,
-            ),
-            encoding="utf-8",
-        )
+        if status == "ended":
+            self.kernel.apply(SessionEnded(
+                session_id=identity,
+                actor_id=actor,
+                idempotency_key=f"fixture-end:{session_id}",
+            ))
+        elif status != "active":
+            raise ValueError(f"unsupported fixture status: {status}")
 
     def envelope(
         self,
@@ -573,12 +554,15 @@ class SessionRehydrationTest(unittest.TestCase):
         self.write_session("fallback", "fallback하면 안 되는 사실")
         self.write_session("terminal", "종료된 사실", status="ended")
         self.write_session("corrupt", "손상 전 사실")
-        self.locator.locate(SessionId("corrupt")).process_state.write_text(
-            "{not-json", encoding="utf-8"
-        )
-        orphan = self.locator.locate(SessionId("orphan"))
-        orphan.directory.mkdir(parents=True)
-        orphan.enclave.write_text("{}", encoding="utf-8")
+        with RuntimeDatabase(self.root).connection() as db:
+            changed = db.execute(
+                "UPDATE runtime_records SET payload=? "
+                "WHERE namespace='session' AND key='corrupt'",
+                (b"{not-json",),
+            )
+            self.assertEqual(1, changed.rowcount)
+        with RuntimeDatabase(self.root).transaction() as tx:
+            tx.put("enclave", "orphan", b"{}", expected_revision=None)
 
         cases = (
             ("terminal", RehydrationDiagnostic.TERMINAL_SESSION),
@@ -606,16 +590,22 @@ class SessionRehydrationTest(unittest.TestCase):
                 provenance_id="thread-fork:source->forked",
             )
         )
-        source_path = self.locator.locate(SessionId("source")).enclave
-        fork_path = self.locator.locate(SessionId("forked")).enclave
-        fork_payload = json.loads(fork_path.read_text(encoding="utf-8"))
-        fork_payload["facts"]["invariant"]["value"] = "fork에서만 변경"
-        fork_path.write_text(json.dumps(fork_payload), encoding="utf-8")
+        target = self.kernel.inspect(SessionId("forked"))
+        before = self.enclaves.read(SessionId("forked"))
+        changed = self.enclaves.set(SessionId("forked"), target.session.root_actor_id,
+            "invariant", EnclaveFact(value="fork에서만 변경", source_kind=EnclaveSourceKind.USER,
+                                    source_turn_id=TurnId("fork-update")),
+            expected_digest=before.digest)
+        self.assertEqual("fork에서만 변경", changed.facts["invariant"].value)
 
         self.assertEqual(SessionId("forked"), receipt.target_session_id)
-        self.assertNotEqual(source_path.resolve(), fork_path.resolve())
-        self.assertIn("원본 사실", source_path.read_text(encoding="utf-8"))
-        self.assertNotIn("fork에서만 변경", source_path.read_text(encoding="utf-8"))
+        source_content = json.dumps(self.enclaves.read(SessionId("source")).to_payload(), ensure_ascii=False)
+        self.assertIn("원본 사실", source_content)
+        self.assertNotIn("fork에서만 변경", source_content)
+        self.assertNotEqual(
+            self.enclaves.read(SessionId("source")).digest,
+            changed.digest,
+        )
         target_state = self.kernel.inspect(SessionId("forked"))
         self.assertEqual(SessionId("source"), target_state.session.parent_session_id)
         self.assertEqual(

@@ -39,13 +39,14 @@ def test_installation_plan_can_be_loaded_and_applied_by_its_owner(sessions, monk
 
 
 def test_recovery_face_reaches_real_journal_with_degraded_placement(sessions, monkeypatch):
-    from neurath.install.transaction import make_plan, git_dir, _save_json, _write
+    from neurath.install.transaction import make_plan, _write
+    from neurath.install.state_store import InstallStateStore
     from neurath.providers import readiness
     root, _ = sessions
     call(sessions, "worktree_claim", {})
     plan = make_plan(root, action="uninstall")
     item = next(c for c in plan["changes"] if c["path"].startswith(".agents/skills/") and c["path"].endswith("SKILL.md"))
-    _save_json(git_dir(root) / "neurath-journal.json", plan)
+    InstallStateStore(root, create=True).begin(plan)
     _write(root, item["path"], item["after"])
     assert not (root / item["path"]).exists()
     # The native protocol fixture is authenticated above. This controlled policy
@@ -60,7 +61,7 @@ def test_recovery_face_reaches_real_journal_with_degraded_placement(sessions, mo
     result = call(sessions, "installation_recover", {"key": "recover"})
     assert result["recovered"] is True
     assert (root / item["path"]).exists()
-    assert not (git_dir(root) / "neurath-journal.json").exists()
+    assert InstallStateStore(root).journal() is None
 
 
 def test_interrupted_plan_names_mcp_recovery_without_poisoning_key(sessions,monkeypatch):

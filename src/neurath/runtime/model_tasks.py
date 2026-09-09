@@ -1,6 +1,8 @@
 """Native-bound inventory and plan tasks; no agent-supplied availability evidence."""
 import hashlib
 import json
+import fcntl
+import os
 from dataclasses import asdict
 from pathlib import Path
 
@@ -78,12 +80,50 @@ def decode_inventory(data):
 
 
 class InventoryStore:
-    def __init__(self, path):
-        self.plans = ModelPlanStore(path)
+    def __init__(self, path=None, *, database=None):
+        self.plans = ModelPlanStore(path, database=database)
         with self.plans._db() as db:
             db.execute("""CREATE TABLE IF NOT EXISTS model_inventories(
                 owner TEXT, id TEXT, target TEXT, record TEXT,
                 PRIMARY KEY(owner,id))""")
+            db.execute("""CREATE TABLE IF NOT EXISTS session_model_inventories(
+                owner TEXT NOT NULL, provider TEXT NOT NULL, record TEXT NOT NULL,
+                PRIMARY KEY(owner,provider))""")
+
+    def session_inventory(self, owner, provider, discover, *, refresh=False):
+        """Reuse provider metadata for one native issuer, across turns/worktrees.
+
+        Only explicit refresh replaces the observation. A per-issuer/provider
+        mutex serializes discovery without holding the shared database writer.
+        Target and execution policy admission remain separate checks on every use.
+        """
+        if provider not in {"codex", "claude-code"} or type(refresh) is not bool:
+            raise ValueError("invalid provider inventory request")
+        def cached():
+            with self.plans._db() as db:
+                row = db.execute(
+                    "SELECT record FROM session_model_inventories WHERE owner=? AND provider=?",
+                    (owner, provider)).fetchone()
+                return None if row is None else decode_inventory(json.loads(row["record"]))
+        previous = cached()
+        if previous is not None and not refresh:
+            return previous
+        lock_path = self.plans.path.parent / ("catalog-" + digest([owner, provider]) + ".lock")
+        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "a+") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            previous = cached()
+            if previous is not None and not refresh:
+                return previous
+            inventory = discover()
+            if not isinstance(inventory, Inventory) or inventory.provider != provider:
+                raise ValueError("discovered inventory provider mismatch")
+            with self.plans._db() as db:
+                db.execute(
+                    "INSERT INTO session_model_inventories VALUES(?,?,?) "
+                    "ON CONFLICT(owner,provider) DO UPDATE SET record=excluded.record",
+                    (owner, provider, canonical(asdict(inventory))))
+            return inventory
 
     def save(self, owner, target, inventory):
         target = str(Path(target).resolve())
@@ -112,7 +152,10 @@ class InventoryStore:
 
 
 def store_for(root):
-    return InventoryStore(control_root(Path(root)) / ".neurath/local/models/plans.sqlite3")
+    from neurath.runtime.database import RuntimeDatabase
+
+    root = control_root(Path(root))
+    return InventoryStore(database=RuntimeDatabase(root))
 
 
 def record_observation(root, owner, target, observation):
@@ -189,9 +232,12 @@ def run(root, name, fields, *, identity, expected_turn=None, verified_policy_evi
         if expected_turn is None:
             raise TaskError("native-execution-required", "inventory needs observed host policy")
         _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence)
-        inventory = refresh_inventory(root, fields["provider"], target)
+        inventory = store.session_inventory(
+            identity.address, fields["provider"],
+            lambda: refresh_inventory(root, fields["provider"], target),
+            refresh=fields.get("refresh", False))
         result = {**store.save(identity.address, target, inventory), "inventory": asdict(inventory),
-                  "freshness": "current-attempt"}
+                  "freshness": "session-observation"}
     elif name == "provider_plan":
         fields = {**fields, "worktree": str(target)}
         from neurath.runtime.provider_policy import planning_policy
@@ -227,9 +273,11 @@ def definitions():
         "max_latency_ms":{"type":"number","minimum":0}})
     return {
         "provider_models":("model-plan","models",
-            ("Observe native model inventory for this authorized project without starting a model turn. "
-             "Catalog recommendations are not configured defaults. Unavailable metadata stays unavailable."),
-            {"provider":choice("codex","claude-code"),"worktree":t(4096,default="")},False),
+            ("Read the native issuer's cached provider model catalog across turns and worktrees. "
+             "The first request observes metadata without a model turn. Use refresh only for an explicit "
+             "refresh request or a known availability change. Catalog recommendations are not configured defaults."),
+            {"provider":choice("codex","claude-code"),"worktree":t(4096,default=""),
+             "refresh":{"type":"boolean","default":False}},False),
         "provider_plan":("model-plan","plan",
             ("Validate and persist a difficulty-aware model proposal against an owned native inventory. "
              "Record task evidence, constraints and rationale. This typed operation owns its persistence; "
@@ -264,7 +312,9 @@ def admitted_request(root, identity, fields, policy):
     from neurath.runtime.provider_policy import planning_policy
     policy = planning_policy(root, identity, fields, policy)
     store = store_for(root)
-    inventory = refresh_inventory(root, fields["provider"], fields["worktree"])
+    inventory = store.session_inventory(
+        identity.address, fields["provider"],
+        lambda: refresh_inventory(root, fields["provider"], fields["worktree"]))
     plan = admit_plan(store, identity, fields, policy, inventory)
     request = {k:v for k,v in fields.items() if k != "key"}
     return {**fields, "model_request": request, "model_plan": plan,

@@ -2653,13 +2653,7 @@ class LocalPrMonitor:
         return "unconfigured"
 
     def _write_event(self, payload: dict[str, object]) -> None:
-        events_dir = self._state_path.parent / "events"
-        events_dir.mkdir(parents=True, exist_ok=True)
-        event_name = f"{int(time.time() * 1000)}-{payload['reason']}.json"
-        (events_dir / event_name).write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        self._state.append_event(payload)
 
     def _dict(self, value: object) -> dict[str, object]:
         return dict(value) if isinstance(value, Mapping) else {}

@@ -33,6 +33,7 @@ from scripts.agent_harness.adaptive_control import (
     UserDecision,
     UserDecisionClaim,
     UserDecisionDisposition,
+    UserDecisionProvenance,
     UserDecisionTarget,
     UserDeferral,
     approved_requirement_fingerprint,
@@ -73,7 +74,6 @@ from scripts.agent_harness.session_kernel import (
     DelegationResult,
     DelegationTopologyPolicy,
     ForegroundPromptAuthorityContext,
-    ForegroundTurnClosed,
     ForegroundTurnOutcome,
     ForegroundTurnPrompted,
     ForegroundTurnProvisioned,
@@ -353,15 +353,9 @@ class AdaptiveControlAuthorityVerifierTest(TestCase):
                 idempotency_key="authority-fixture:question-yield",
             )
         )
-        ready = owner.inspect().foreground_turns[owner.actor_id]
-        owner.apply(
-            ForegroundTurnClosed(
-                session_id=owner.session_id,
-                actor_id=owner.actor_id,
-                expected_turn_revision=ready.revision,
-                idempotency_key="authority-fixture:question-close",
-            )
-        )
+        # The exact pending question remains READY_TO_STOP. The next real user
+        # prompt reactivates that same native foreground lifecycle, and avoids
+        # pretending that an active workflow has satisfied the production Stop gate.
         preceding = owner.inspect().foreground_turns[owner.actor_id]
         selected_workflow_id = context_workflow_id or fixture.workflow_id
         workflow = owner.inspect().workflows[selected_workflow_id]
@@ -378,7 +372,7 @@ class AdaptiveControlAuthorityVerifierTest(TestCase):
             question_generation=preceding.generation,
             question_turn_revision=preceding.revision,
         )
-        prompt_digest = hashlib.sha256(prompt.strip().encode("utf-8")).hexdigest()
+        prompt_digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
         owner.apply(
             ForegroundTurnPrompted(
                 session_id=owner.session_id,
@@ -2080,19 +2074,10 @@ class AdaptiveControlAuthorityVerifierTest(TestCase):
                             actor_id=fixture.owner.actor_id,
                             expected_turn_revision=active.revision,
                             receipt=ForegroundTurnReceipt(
-                                ForegroundTurnOutcome.COMPLETED,
-                                summary="이전 user response 처리가 종료됐다",
+                                ForegroundTurnOutcome.AWAITING_INPUT,
+                                question="나중의 관련 없는 질문",
                             ),
                             idempotency_key="later-user-prompt:yield",
-                        )
-                    )
-                    ready = fixture.owner.inspect().foreground_turns[fixture.owner.actor_id]
-                    fixture.owner.apply(
-                        ForegroundTurnClosed(
-                            session_id=fixture.owner.session_id,
-                            actor_id=fixture.owner.actor_id,
-                            expected_turn_revision=ready.revision,
-                            idempotency_key="later-user-prompt:close",
                         )
                     )
                     fixture.owner.apply(
@@ -2801,10 +2786,22 @@ class AdaptiveAuthorityFixture:
         return prepared.assignment_json, prepared.candidate_ref
 
     def corrupt_artifact(self, reference: str) -> None:
-        """Content-addressed artifact bytes를 바꿔 digest read-back failure를 만듭니다."""
+        """SQLite payload만 바꾸고 digest를 유지해 canonical corruption을 만듭니다."""
+        from scripts.agent_harness.runtime_database import RuntimeDatabase
+
         digest = reference.removeprefix("sha256:")
-        path = self.locator.locate(self.owner.session_id).artifacts / "sha256" / f"{digest}.json"
-        path.write_text('{"forged":true}', encoding="utf-8")
+        with RuntimeDatabase(self.repository).transaction() as tx:
+            changed = tx.connection.execute(
+                "UPDATE runtime_records SET payload=? "
+                "WHERE namespace=? AND key=?",
+                (
+                    b'{"forged":true}',
+                    f"artifact:{self.owner.session_id}",
+                    digest,
+                ),
+            )
+            if changed.rowcount != 1:
+                raise AssertionError("authority fixture artifact was not stored in SQLite")
 
     def persist_snapshot(
         self,
@@ -3001,3 +2998,136 @@ class AdaptiveAuthorityFixture:
                 root_actor_id=self.owner.actor_id,
             ),
         )
+    def test_native_active_answer_before_gap_registration_survives_later_prompt(self) -> None:
+        """Active steering needs prompt authenticity plus consumed independent interpretation."""
+        with AdaptiveAuthorityFixture() as fixture:
+            contract = fixture._contract(
+                EvidenceKind.INDEPENDENT_SEMANTIC,
+                OracleOwner.INDEPENDENT_EVALUATOR,
+            )
+            answer_text = "이 작업은 취소해 주세요."
+            fixture.owner.apply(ForegroundTurnPrompted(
+                session_id=fixture.owner.session_id,
+                actor_id=fixture.owner.actor_id,
+                vendor_turn_id="native-active-turn",
+                prompt_digest=hashlib.sha256(answer_text.encode("utf-8")).hexdigest(),
+                authority_context=None,
+                idempotency_key="native-answer:prompt",
+            ))
+            answer = fixture.owner.inspect().foreground_turns[
+                fixture.owner.actor_id].user_prompt_receipt
+            self.assertIsNotNone(answer)
+            assert answer is not None
+
+            open_gap = ClarificationGap(
+                gap_id="cancel-work",
+                section=RequirementSection.SCOPE,
+                authority=GapAuthority.USER,
+                dependency_rank=0,
+                weight=1.0,
+                blocking=True,
+                reversible=False,
+                scope_local=False,
+                context="사용자가 이 작업의 계속 여부를 결정한다",
+                question="이 작업을 계속할까요?",
+                consequence="취소 결정을 놓치면 원치 않는 작업을 계속한다",
+                recommendation="인증된 사용자 결정을 적용한다",
+                recommendation_rationale="작업 범위는 사용자가 소유한다",
+                intent_revision=contract.intent_revision,
+            )
+            persisted = fixture.persist_snapshot(fixture._snapshot(
+                AdaptiveControlState.empty(
+                    contract,
+                    replace(fixture._inventory(contract), gaps=(open_gap,)),
+                )
+            ))
+            claim = UserDecisionClaim(
+                workflow_id=str(fixture.workflow_id),
+                question_workflow_revision=None,
+                source_goal_fingerprint=contract.fingerprint,
+                source_intent_revision=contract.intent_revision,
+                source_revision=contract.source_revision,
+                question_digest=None,
+                question_generation=None,
+                question_turn_revision=None,
+                prompt_digest=answer.prompt_digest,
+                prompt_reference=answer.authority_reference,
+                prompt_generation=answer.generation,
+                prompt_turn_revision=answer.turn_revision,
+                target_kind=UserDecisionTarget.GAP,
+                target_id=open_gap.gap_id,
+                disposition=UserDecisionDisposition.BLOCKED,
+                value_summary_digest=user_decision_value_summary_digest(
+                    UserDecisionTarget.GAP,
+                    open_gap.gap_id,
+                    UserDecisionDisposition.BLOCKED,
+                    contract.fingerprint,
+                    contract.intent_revision,
+                    contract.source_revision,
+                ),
+                result_goal_fingerprint=contract.fingerprint,
+                result_intent_revision=contract.intent_revision,
+                result_source_revision=contract.source_revision,
+                provenance=UserDecisionProvenance.NATIVE_PROMPT,
+                source_workflow_revision=persisted.workflow_revision,
+            )
+            artifact = fixture.write_artifact(
+                "native-answer-decision",
+                (self._user_decision_report_claim(claim),),
+                contract=contract,
+                include_execution_completion=False,
+            )
+            evaluator = fixture.independent_lineage(
+                "native-answer-decision", artifact)
+            decision = UserDecision(claim=claim, interpretation_lineage=evaluator)
+            user_lineage = AuthorityReceipt(
+                authority=EvidenceAuthority.USER,
+                issuer_id="user",
+                subject_id=str(fixture.owner.actor_id),
+                intent_revision=contract.intent_revision,
+                source_revision=contract.source_revision,
+                receipt_digest=answer.prompt_digest,
+                delegation_id=answer.authority_reference,
+            )
+            candidate = replace(
+                persisted.state,
+                inventory=replace(
+                    persisted.state.inventory,
+                    gaps=(open_gap.mark_blocked(decision.reference, user_lineage),),
+                ),
+                user_decisions=(decision,),
+            )
+            fixture.transition_delegation(
+                "native-answer-decision",
+                artifact,
+                lifecycle="consumed",
+                candidate_state=candidate,
+            )
+
+            fixture.owner.apply(ForegroundTurnPrompted(
+                session_id=fixture.owner.session_id,
+                actor_id=fixture.owner.actor_id,
+                vendor_turn_id="native-active-turn",
+                prompt_digest=hashlib.sha256(
+                    "나중의 관련 없는 질문".encode("utf-8")).hexdigest(),
+                authority_context=None,
+                idempotency_key="native-answer:later-prompt",
+            ))
+            verification = fixture.verifier.validate_candidate(
+                candidate, persisted.workflow_revision)
+            self.assertIs(AdaptiveControlAuthorityStatus.VERIFIED, verification.status)
+
+            missing = replace(
+                evaluator,
+                receipt_digest="f" * 64,
+                delegation_id="missing-native-interpretation",
+            )
+            unsigned = replace(
+                candidate,
+                user_decisions=(
+                    UserDecision(claim=claim, interpretation_lineage=missing),
+                ),
+            )
+            with self.assertRaises(AdaptiveControlAuthorityNotFound):
+                fixture.verifier.validate_candidate(
+                    unsigned, persisted.workflow_revision)

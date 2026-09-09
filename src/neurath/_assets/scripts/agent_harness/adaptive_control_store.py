@@ -35,6 +35,7 @@ from scripts.agent_harness.adaptive_control import (
     UserDecision,
     UserDecisionClaim,
     UserDecisionDisposition,
+    UserDecisionProvenance,
     UserDecisionTarget,
     UserDeferral,
     adaptive_output_fingerprint,
@@ -1299,9 +1300,7 @@ class _AdaptiveControlCodec:
             "user decision",
         )
         claim_payload = self._mapping(payload.get("claim"), "user decision.claim")
-        self._exact_fields(
-            claim_payload,
-            {
+        legacy_fields = {
                 "workflow_id",
                 "question_workflow_revision",
                 "source_goal_fingerprint",
@@ -1321,12 +1320,41 @@ class _AdaptiveControlCodec:
                 "result_goal_fingerprint",
                 "result_intent_revision",
                 "result_source_revision",
-            },
-            "user decision claim",
+        }
+        native_fields = (
+            legacy_fields
+            - {
+                "question_workflow_revision",
+                "question_digest",
+                "question_generation",
+                "question_turn_revision",
+                "prompt_generation",
+                "prompt_turn_revision",
+            }
+            | {"provenance", "source_workflow_revision"}
         )
+        native_with_kernel_fields = native_fields | {
+            "prompt_generation", "prompt_turn_revision"}
+        actual_fields = set(claim_payload)
+        if actual_fields == legacy_fields:
+            provenance = UserDecisionProvenance.ADAPTIVE_QUESTION
+        elif frozenset(actual_fields) in {
+            frozenset(native_fields), frozenset(native_with_kernel_fields)
+        }:
+            provenance = self._enum(
+                UserDecisionProvenance,
+                claim_payload.get("provenance"),
+                "decision.provenance",
+            )
+            if provenance is not UserDecisionProvenance.NATIVE_PROMPT:
+                raise InvalidAdaptiveControlState(
+                    "native user decision fields require native-prompt provenance")
+        else:
+            raise InvalidAdaptiveControlState(
+                "user decision claim fields do not match a supported schema")
         claim = UserDecisionClaim(
             workflow_id=self._text(claim_payload.get("workflow_id"), "decision.workflow_id"),
-            question_workflow_revision=self._integer(
+            question_workflow_revision=None if provenance is UserDecisionProvenance.NATIVE_PROMPT else self._integer(
                 claim_payload.get("question_workflow_revision"),
                 "decision.question_workflow_revision",
             ),
@@ -1342,15 +1370,15 @@ class _AdaptiveControlCodec:
                 claim_payload.get("source_revision"),
                 "decision.source_revision",
             ),
-            question_digest=self._text(
+            question_digest=None if provenance is UserDecisionProvenance.NATIVE_PROMPT else self._text(
                 claim_payload.get("question_digest"),
                 "decision.question_digest",
             ),
-            question_generation=self._integer(
+            question_generation=None if provenance is UserDecisionProvenance.NATIVE_PROMPT else self._integer(
                 claim_payload.get("question_generation"),
                 "decision.question_generation",
             ),
-            question_turn_revision=self._integer(
+            question_turn_revision=None if provenance is UserDecisionProvenance.NATIVE_PROMPT else self._integer(
                 claim_payload.get("question_turn_revision"),
                 "decision.question_turn_revision",
             ),
@@ -1362,11 +1390,11 @@ class _AdaptiveControlCodec:
                 claim_payload.get("prompt_reference"),
                 "decision.prompt_reference",
             ),
-            prompt_generation=self._integer(
+            prompt_generation=None if "prompt_generation" not in actual_fields else self._integer(
                 claim_payload.get("prompt_generation"),
                 "decision.prompt_generation",
             ),
-            prompt_turn_revision=self._integer(
+            prompt_turn_revision=None if "prompt_turn_revision" not in actual_fields else self._integer(
                 claim_payload.get("prompt_turn_revision"),
                 "decision.prompt_turn_revision",
             ),
@@ -1396,6 +1424,15 @@ class _AdaptiveControlCodec:
             result_source_revision=self._text(
                 claim_payload.get("result_source_revision"),
                 "decision.result_source_revision",
+            ),
+            provenance=provenance,
+            source_workflow_revision=(
+                None
+                if provenance is UserDecisionProvenance.ADAPTIVE_QUESTION
+                else self._integer(
+                    claim_payload.get("source_workflow_revision"),
+                    "decision.source_workflow_revision",
+                )
             ),
         )
         stored_digest = self._text(payload.get("decision_digest"), "decision.decision_digest")

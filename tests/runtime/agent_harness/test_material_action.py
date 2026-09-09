@@ -788,12 +788,11 @@ class MaterialActionKernelTest(TestCase):
 
     def test_process_state_without_material_actions_decodes_as_empty_projection(self) -> None:
         """Action projection 이전 snapshot은 schema bump 없이 empty default로 읽힙니다."""
-        state_path = self.locator.locate(self.session_id).process_state
-        payload = json.loads(state_path.read_text(encoding="utf-8"))
-        payload.pop("material_actions", None)
-        state_path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+        from scripts.agent_harness.session_state_codec import SessionStateCodec
 
-        reloaded = self.kernel.inspect(self.session_id)
+        payload = self.kernel.inspect(self.session_id).to_payload()
+        payload.pop("material_actions", None)
+        reloaded = SessionStateCodec().decode(payload, self.session_id)
 
         self.assertEqual({}, reloaded.material_actions)
 
@@ -911,6 +910,21 @@ class MaterialActionKernelTest(TestCase):
                                 idempotency_key="action:resolve",
                             )
                         )
+
+    def test_stale_unstarted_batch_can_abort_or_block_with_original_provenance(self) -> None:
+        for resolution in (MaterialActionResolution.ABORTED, MaterialActionResolution.BLOCKED):
+            with self.subTest(resolution=resolution):
+                kernel, session_id, actor_id, workflow_id, _ = self._semantic_fixture(resolution.value)
+                batch = kernel.inspect(session_id).material_actions[actor_id]
+                self._advance_adaptive_workflow(kernel, session_id, actor_id, workflow_id)
+                result = kernel.apply(MaterialActionResolved(
+                    session_id=session_id, actor_id=actor_id, batch_id=batch.batch_id,
+                    expected_batch_revision=batch.revision, resolution=resolution,
+                    idempotency_key="cleanup:stale"))
+                resolved = result.material_actions[actor_id]
+                self.assertEqual(resolution, resolved.resolution)
+                self.assertEqual(batch.adaptive_binding, resolved.adaptive_binding)
+                self.assertEqual((), resolved.invocations)
 
     def test_resume_can_terminalize_orphaned_inflight_without_forging_success(self) -> None:
         """Exact resume만 orphaned PreTool을 UNKNOWN/BLOCKED로 닫고 live 취소는 거부합니다."""

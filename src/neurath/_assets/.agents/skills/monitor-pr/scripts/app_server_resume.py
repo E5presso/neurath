@@ -1,6 +1,8 @@
 """PR monitor가 Codex app-server와 GitHub 상태를 연결하는 실행 흐름입니다."""
 
 import argparse
+import fcntl
+from contextlib import contextmanager
 import base64
 import ctypes
 import ctypes.util
@@ -13,6 +15,8 @@ import signal
 import socket
 import struct
 import subprocess
+from subprocess import Popen
+from time import time as _wall_time
 import sys
 import time
 from collections.abc import Mapping, Sequence
@@ -20,6 +24,10 @@ from pathlib import Path
 from typing import Any, Self
 
 from monitor_runtime_resources import MonitorRuntimeResources
+from scripts.agent_harness.runtime_database import RuntimeDatabase, StoredRecord
+from scripts.agent_harness.session_kernel import SessionLocator
+
+APP_SERVER_NAMESPACE = "managed-app-server"
 
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 TURN_LIST_READ_ERRORS = (RuntimeError, TimeoutError, TypeError, IndexError)
@@ -286,24 +294,21 @@ def select_codex_binary() -> Path:
     raise RuntimeError("codex app-server binary not found")
 
 
-def ensure_app_server(socket_path: Path, codex_binary: Path) -> None:
-    """PR monitor resume 요청과 app-server 응답을 실제 Codex turn 상태로 변환합니다.
+def ensure_app_server(socket_path, codex_binary):
+    with _managed_app_server_lifecycle(socket_path) as resources:
+        _ensure_app_server_locked(*resources, codex_binary)
 
-    Args:
-        socket_path: socket_path 입력을 monitor resume 요청을 만들거나 monitor state를 갱신할 때 사용합니다.
-        codex_binary: codex_binary 입력을 monitor resume 요청을 만들거나 monitor state를 갱신할 때 사용합니다.
 
-    Raises:
-        선언된 실패 조건에서 예외를 발생시킵니다."""
+def _ensure_app_server_locked(database, key, socket_path, codex_binary):
     if socket_path.exists() and socket_accepts_connections(socket_path):
-        validate_managed_app_server_identity(socket_path)
+        _validate_managed_app_server_locked(database, key, socket_path)
         return
-    if managed_app_server_pid_path(socket_path).is_file():
-        terminate_managed_app_server(socket_path)
+    _record, current = _managed_record_locked(database, key, socket_path)
+    if current["status"] == "active":
+        _terminate_managed_app_server_locked(database, key, socket_path)
     else:
         socket_path.unlink(missing_ok=True)
-    socket_path.parent.mkdir(parents=True, exist_ok=True)
-    process = subprocess.Popen(
+    process = Popen(
         [str(codex_binary), "app-server", "--listen", f"unix://{socket_path}"],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
@@ -312,17 +317,120 @@ def ensure_app_server(socket_path: Path, codex_binary: Path) -> None:
         env={
             **os.environ,
             "NEURATH_MANAGED_APP_SERVER": "1",
-            "NEURATH_MANAGED_APP_SERVER_SOCKET": str(socket_path.resolve()),
+            "NEURATH_MANAGED_APP_SERVER_SOCKET": str(socket_path),
         },
     )
-    write_managed_app_server_receipt(socket_path, process.pid, codex_binary)
-    deadline = time.time() + 20
-    while time.time() < deadline:
+    _write_managed_record_locked(
+        database, key, socket_path, process.pid, codex_binary)
+    deadline = _wall_time() + 20
+    while _wall_time() < deadline:
         if socket_path.exists() and socket_accepts_connections(socket_path):
             return
         time.sleep(0.25)
-    terminate_managed_app_server(socket_path)
+    _terminate_managed_app_server_locked(database, key, socket_path)
     raise RuntimeError(f"app-server socket unavailable: {socket_path}")
+
+
+def validate_managed_app_server_identity(socket_path):
+    with _managed_app_server_lifecycle(socket_path) as resources:
+        pid, executable, _record = _validate_managed_app_server_locked(
+            *resources)
+        return pid, executable
+
+
+def _validate_managed_app_server_locked(database, key, socket_path):
+    pid, executable_path, record = _read_managed_identity_locked(
+        database, key, socket_path)
+    try:
+        process_group_id = os.getpgid(pid)
+    except ProcessLookupError as error:
+        raise RuntimeError("managed app-server process is missing") from error
+    try:
+        kernel_executable = kernel_process_executable(pid)
+    except (OSError, RuntimeError) as error:
+        raise RuntimeError(
+            "managed app-server process identity mismatch") from error
+    if (
+        process_group_id != pid
+        or not managed_app_server_command_matches(
+            pid, socket_path, executable_path)
+        or kernel_executable.resolve() != executable_path
+        or not process_owns_unix_socket(pid, socket_path)
+    ):
+        raise RuntimeError("managed app-server process identity mismatch")
+    return pid, executable_path, record
+
+
+def restart_managed_app_server(socket_path, codex_binary):
+    with _managed_app_server_lifecycle(socket_path) as resources:
+        _terminate_managed_app_server_locked(*resources)
+        _ensure_app_server_locked(*resources, codex_binary)
+
+
+def terminate_managed_app_server(socket_path):
+    with _managed_app_server_lifecycle(socket_path) as resources:
+        _terminate_managed_app_server_locked(*resources)
+
+
+def _terminate_managed_app_server_locked(database, key, socket_path):
+    try:
+        pid, _executable, record = _validate_managed_app_server_locked(
+            database, key, socket_path)
+    except RuntimeError as error:
+        if str(error) != "managed app-server process is missing":
+            raise
+        record, value = _managed_record_locked(database, key, socket_path)
+        if value["status"] != "active":
+            raise RuntimeError("managed app-server receipt is absent")
+        _cleanup_managed_app_server_locked(
+            database, key, socket_path, record)
+        return
+    os.killpg(pid, signal.SIGTERM)
+    deadline = time.monotonic() + 5
+    while process_group_is_alive(pid) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    if process_group_is_alive(pid):
+        os.killpg(pid, signal.SIGKILL)
+    _cleanup_managed_app_server_locked(
+        database, key, socket_path, record)
+
+
+def cleanup_managed_app_server_paths(socket_path):
+    with _managed_app_server_lifecycle(socket_path) as resources:
+        database, key, canonical_socket = resources
+        record, value = _managed_record_locked(
+            database, key, canonical_socket)
+        if value["status"] == "active":
+            _cleanup_managed_app_server_locked(
+                database, key, canonical_socket, record)
+        else:
+            canonical_socket.unlink(missing_ok=True)
+
+
+def _cleanup_managed_app_server_locked(
+    database, key, socket_path, expected_record
+):
+    with database.transaction() as tx:
+        current = tx.get(APP_SERVER_NAMESPACE, key)
+        if (
+            current is None
+            or current.revision != expected_record.revision
+            or _decode_managed_record(current, socket_path)["status"] != "active"
+        ):
+            raise RuntimeError(
+                "managed app-server receipt changed before cleanup")
+        socket_path.unlink(missing_ok=True)
+        tx.put(
+            APP_SERVER_NAMESPACE,
+            key,
+            _canonical({
+                "schema": 1,
+                "status": "absent",
+                "socket_path": str(socket_path),
+            }),
+            expected_revision=current.revision,
+        )
+
 
 
 def managed_app_server_pid_path(socket_path: Path) -> Path:
@@ -337,127 +445,222 @@ def managed_app_server_pid_path(socket_path: Path) -> Path:
     return socket_path.with_suffix(".pid")
 
 
-def write_managed_app_server_receipt(
-    socket_path: Path,
-    pid: int,
-    codex_binary: Path,
-) -> None:
-    """새 session leader의 pid와 socket identity를 atomic receipt로 기록합니다.
-
-    Args:
-        socket_path: App-server UNIX socket 경로입니다.
-        pid: `start_new_session=True`로 시작한 process group leader pid입니다.
-        codex_binary: Process group leader로 실행한 exact Codex executable입니다.
-    """
-    receipt_path = managed_app_server_pid_path(socket_path)
-    temporary_path = receipt_path.with_suffix(".pid.tmp")
-    temporary_path.write_text(
-        json.dumps({
-            "pid": pid,
-            "socket_path": str(socket_path.resolve()),
-            "executable_path": str(codex_binary.resolve()),
-        }),
-        encoding="utf-8",
-    )
-    temporary_path.replace(receipt_path)
+def _canonical(value):
+    return json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode()
 
 
-def read_managed_app_server_identity(socket_path: Path) -> tuple[int, Path]:
-    """Receipt에서 exact process group leader와 executable identity를 읽습니다.
-
-    Args:
-        socket_path: Receipt와 결속된 worktree-local socket입니다.
-
-    Returns:
-        검증 전 pid와 executable path입니다.
-
-    Raises:
-        RuntimeError: Receipt 구조나 socket identity가 완전하지 않을 때 발생합니다.
-    """
-    receipt_path = managed_app_server_pid_path(socket_path)
+def _decode_managed_record(record, socket_path):
     try:
-        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError, OSError) as exc:
-        raise RuntimeError(f"managed app-server receipt is invalid: {receipt_path}") from exc
-    pid = receipt.get("pid") if isinstance(receipt, dict) else None
-    recorded_socket = receipt.get("socket_path") if isinstance(receipt, dict) else None
-    executable_path = receipt.get("executable_path") if isinstance(receipt, dict) else None
+        value = json.loads(record.payload)
+    except (TypeError, ValueError, UnicodeError) as error:
+        raise RuntimeError("managed app-server receipt is invalid in SQLite") from error
+    if not isinstance(value, dict):
+        raise RuntimeError("managed app-server receipt is invalid in SQLite")
+    status = value.get("status")
+    required = (
+        {"schema", "status", "socket_path"}
+        if status == "absent"
+        else {"schema", "status", "pid", "socket_path", "executable_path"}
+    )
+    allowed = required | {"legacy_digest"}
     if (
-        not isinstance(pid, int)
-        or pid <= 1
-        or recorded_socket != str(socket_path.resolve())
-        or not isinstance(executable_path, str)
-        or not executable_path.strip()
+        not required <= set(value) <= allowed
+        or value.get("schema") != 1
+        or status not in {"active", "absent"}
+        or value.get("socket_path") != str(socket_path)
+        or ("legacy_digest" in value and (
+            not isinstance(value["legacy_digest"], str)
+            or len(value["legacy_digest"]) != 64
+            or any(character not in "0123456789abcdef"
+                   for character in value["legacy_digest"])
+        ))
     ):
         raise RuntimeError("managed app-server receipt identity mismatch")
-    return pid, Path(executable_path).resolve()
-
-
-def validate_managed_app_server_identity(socket_path: Path) -> tuple[int, Path]:
-    """Receipt, process group, executable, argv, socket identity를 함께 검증합니다.
-
-    Args:
-        socket_path: 검증할 worktree-local app-server socket입니다.
-
-    Returns:
-        검증된 process group leader pid와 executable입니다.
-
-    Raises:
-        RuntimeError: Live listener를 exact managed process로 증명할 수 없을 때 발생합니다.
-    """
-    pid, executable_path = read_managed_app_server_identity(socket_path)
-    try:
-        process_group_id = os.getpgid(pid)
-    except ProcessLookupError as exc:
-        raise RuntimeError("managed app-server process is missing") from exc
-    try:
-        kernel_executable = kernel_process_executable(pid)
-    except (OSError, RuntimeError) as exc:
-        raise RuntimeError("managed app-server process identity mismatch") from exc
-    if (
-        process_group_id != pid
-        or not managed_app_server_command_matches(pid, socket_path, executable_path)
-        or kernel_executable.resolve() != executable_path.resolve()
-        or not process_owns_unix_socket(pid, socket_path)
+    if status == "active" and (
+        not isinstance(value.get("pid"), int)
+        or isinstance(value.get("pid"), bool)
+        or value["pid"] <= 1
+        or not isinstance(value.get("executable_path"), str)
+        or not value["executable_path"].strip()
     ):
-        raise RuntimeError("managed app-server process identity mismatch")
-    return pid, executable_path
+        raise RuntimeError("managed app-server receipt identity mismatch")
+    return value
 
 
-def restart_managed_app_server(socket_path: Path, codex_binary: Path) -> None:
-    """Idle server group과 남은 turn subprocess를 종료하고 새 group을 시작합니다.
-
-    Args:
-        socket_path: 교체할 worktree-local UNIX socket입니다.
-        codex_binary: 새 app-server를 시작할 executable입니다.
-    """
-    terminate_managed_app_server(socket_path)
-    ensure_app_server(socket_path, codex_binary)
-
-
-def terminate_managed_app_server(socket_path: Path) -> None:
-    """검증된 app-server process group 전체를 종료합니다.
-
-    Args:
-        socket_path: Receipt와 command가 결속된 worktree-local socket입니다.
-
-    Raises:
-        RuntimeError: Receipt, process group, command identity가 일치하지 않을 때 발생합니다.
-    """
+def _legacy_managed_record(data, socket_path):
     try:
-        pid, _executable_path = validate_managed_app_server_identity(socket_path)
-    except RuntimeError as exc:
-        if str(exc) != "managed app-server process is missing":
-            raise
-        cleanup_managed_app_server_paths(socket_path)
-        return
-    os.killpg(pid, signal.SIGTERM)
-    deadline = time.monotonic() + 5
-    while process_group_is_alive(pid) and time.monotonic() < deadline:
-        time.sleep(0.05)
-    if process_group_is_alive(pid):
-        os.killpg(pid, signal.SIGKILL)
-    cleanup_managed_app_server_paths(socket_path)
+        value = json.loads(data)
+    except (TypeError, ValueError, UnicodeError) as error:
+        raise RuntimeError("legacy managed app-server receipt is invalid") from error
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"pid", "socket_path", "executable_path"}
+        or not isinstance(value.get("pid"), int)
+        or isinstance(value.get("pid"), bool)
+        or value["pid"] <= 1
+        or value.get("socket_path") != str(socket_path)
+        or not isinstance(value.get("executable_path"), str)
+        or not value["executable_path"].strip()
+    ):
+        raise RuntimeError("legacy managed app-server receipt identity mismatch")
+    return {
+        "schema": 1,
+        "status": "active",
+        "pid": value["pid"],
+        "socket_path": str(socket_path),
+        "executable_path": str(Path(value["executable_path"]).resolve()),
+        "legacy_digest": hashlib.sha256(data).hexdigest(),
+    }
+
+
+@contextmanager
+def _managed_app_server_lifecycle(socket_path):
+    supplied = Path(socket_path).absolute()
+    worktree = supplied.parent.parent.resolve()
+    canonical_socket = worktree / ".monitor-pr/app-server.sock"
+    if (
+        supplied != canonical_socket
+        or supplied.parent.is_symlink()
+        or not worktree.is_dir()
+    ):
+        raise RuntimeError("managed app-server socket path is not canonical")
+    locator = SessionLocator.from_worktree(worktree)
+    supplied.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = supplied.parent / ".app-server.lifecycle.lock"
+    if lock_path.is_symlink():
+        raise RuntimeError("managed app-server lifecycle lock must not be a symlink")
+    descriptor = os.open(
+        lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, "a+") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield RuntimeDatabase(locator.control_root), str(worktree), canonical_socket
+
+
+def _managed_record_locked(database, key, socket_path):
+    legacy_path = managed_app_server_pid_path(socket_path)
+    if legacy_path.is_symlink():
+        raise RuntimeError(
+            "legacy managed app-server receipt must not be a symlink")
+    with database.transaction() as tx:
+        record = tx.get(APP_SERVER_NAMESPACE, key)
+    if record is None:
+        if legacy_path.exists() and not legacy_path.is_file():
+            raise RuntimeError(
+                "legacy managed app-server receipt must be a regular file")
+        data = legacy_path.read_bytes() if legacy_path.is_file() else None
+        value = (
+            {
+                "schema": 1,
+                "status": "absent",
+                "socket_path": str(socket_path),
+            }
+            if data is None
+            else _legacy_managed_record(data, socket_path)
+        )
+        with database.transaction() as tx:
+            record = tx.put(
+                APP_SERVER_NAMESPACE, key, _canonical(value),
+                expected_revision=None)
+    value = _decode_managed_record(record, socket_path)
+    legacy_digest = value.get("legacy_digest")
+    if legacy_digest is None:
+        if legacy_path.exists():
+            raise RuntimeError(
+                "legacy managed app-server receipt reappeared after cutover")
+        return record, value
+    if legacy_path.exists():
+        if (
+            not legacy_path.is_file()
+            or hashlib.sha256(legacy_path.read_bytes()).hexdigest()
+            != legacy_digest
+        ):
+            raise RuntimeError(
+                "legacy managed app-server receipt changed before removal")
+        legacy_path.unlink()
+    completed = dict(value)
+    del completed["legacy_digest"]
+    with database.transaction() as tx:
+        current = tx.get(APP_SERVER_NAMESPACE, key)
+        if current is None or current.revision != record.revision:
+            raise RuntimeError(
+                "managed app-server receipt changed during legacy cutover")
+        record = tx.put(
+            APP_SERVER_NAMESPACE, key, _canonical(completed),
+            expected_revision=current.revision)
+    return record, completed
+
+
+def _write_managed_record_locked(
+    database, key, socket_path, pid, codex_binary
+):
+    record, current = _managed_record_locked(database, key, socket_path)
+    if current["status"] != "absent":
+        raise RuntimeError("an active managed app-server receipt already exists")
+    value = {
+        "schema": 1,
+        "status": "active",
+        "pid": pid,
+        "socket_path": str(socket_path),
+        "executable_path": str(codex_binary.resolve()),
+    }
+    _decode_managed_record(
+        StoredRecord(record.revision, _canonical(value)), socket_path)
+    with database.transaction() as tx:
+        return tx.put(
+            APP_SERVER_NAMESPACE, key, _canonical(value),
+            expected_revision=record.revision)
+
+
+def _read_managed_identity_locked(database, key, socket_path):
+    record, value = _managed_record_locked(database, key, socket_path)
+    if value["status"] != "active":
+        raise RuntimeError("managed app-server receipt is absent")
+    return (
+        int(value["pid"]),
+        Path(str(value["executable_path"])).resolve(),
+        record,
+    )
+
+
+def write_managed_app_server_receipt(socket_path, pid, codex_binary):
+    with _managed_app_server_lifecycle(socket_path) as (
+        database, key, canonical_socket
+    ):
+        _write_managed_record_locked(
+            database, key, canonical_socket, pid, codex_binary)
+
+
+def read_managed_app_server_identity(socket_path):
+    with _managed_app_server_lifecycle(socket_path) as (
+        database, key, canonical_socket
+    ):
+        pid, executable, _record = _read_managed_identity_locked(
+            database, key, canonical_socket)
+        return pid, executable
+
+
+def managed_app_server_receipt_exists(socket_path):
+    with _managed_app_server_lifecycle(socket_path) as (
+        database, key, canonical_socket
+    ):
+        _record, value = _managed_record_locked(
+            database, key, canonical_socket)
+        return value["status"] == "active"
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def managed_app_server_command_matches(
@@ -592,14 +795,7 @@ def process_group_is_alive(process_group_id: int) -> bool:
     return True
 
 
-def cleanup_managed_app_server_paths(socket_path: Path) -> None:
-    """종료된 managed server의 socket과 pid receipt를 제거합니다.
 
-    Args:
-        socket_path: 제거할 managed server socket 경로입니다.
-    """
-    socket_path.unlink(missing_ok=True)
-    managed_app_server_pid_path(socket_path).unlink(missing_ok=True)
 
 
 def socket_accepts_connections(socket_path: Path) -> bool:
@@ -669,7 +865,7 @@ def resume_thread(args: argparse.Namespace, prompt: str) -> dict[str, Any]:
         resume_response = initialize_and_resume_thread(client, args)
         if (
             thread_is_active(resume_response)
-            or not managed_app_server_pid_path(socket_path).is_file()
+            or not managed_app_server_receipt_exists(socket_path)
         ):
             return deliver_and_wait(client, args, prompt, resume_response)
     restart_managed_app_server(socket_path, codex_binary)
@@ -1259,8 +1455,7 @@ def main() -> int:
 
     if args.terminate_managed_server:
         socket_path = resolve_socket_path(args)
-        receipt_path = managed_app_server_pid_path(socket_path)
-        if receipt_path.is_file():
+        if managed_app_server_receipt_exists(socket_path):
             terminate_managed_app_server(socket_path)
             status = "terminated"
         else:

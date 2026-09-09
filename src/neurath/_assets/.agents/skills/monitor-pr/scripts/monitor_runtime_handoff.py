@@ -19,7 +19,6 @@ import uuid
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
 SCRIPT_DIRECTORY = Path(__file__).resolve().parent
@@ -28,6 +27,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
 if str(SCRIPT_DIRECTORY) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIRECTORY))
 
+from monitor_observation_store import MonitorObservationStore
 from monitor_runtime_lock import MonitorRuntimeCommitLock, monitor_runtime_claim_path
 
 from scripts.agent_harness.session_kernel import (
@@ -1559,45 +1559,6 @@ class LegacyMonitorFileStore:
             raise LegacyMonitorStateInvalid(f"{target.path} must contain a JSON object")
         return payload
 
-    def write_if_absent(self, path: Path, payload: Mapping[str, object]) -> bool:
-        """Prepared baseline을 fsync 뒤 atomic no-replace create로 기록합니다.
-
-        Args:
-            path: 새 monitor가 이어서 읽을 canonical local runtime state입니다.
-            payload: Compatibility reader가 만든 observation baseline입니다.
-
-        Returns:
-            Baseline을 생성했으면 True, competing current state가 먼저 있으면 False입니다.
-        """
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary_name = ""
-        try:
-            with NamedTemporaryFile(
-                "w",
-                encoding="utf-8",
-                dir=path.parent,
-                prefix=f".{path.name}.",
-                suffix=".tmp",
-                delete=False,
-            ) as temporary:
-                temporary_name = temporary.name
-                json.dump(dict(payload), temporary, ensure_ascii=False, indent=2)
-                temporary.write("\n")
-                temporary.flush()
-                os.fsync(temporary.fileno())
-            try:
-                os.link(temporary_name, path)
-            except FileExistsError:
-                return False
-            directory_descriptor = os.open(path.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory_descriptor)
-            finally:
-                os.close(directory_descriptor)
-            return True
-        finally:
-            if temporary_name:
-                Path(temporary_name).unlink(missing_ok=True)
 
 
 class LegacyMonitorMigration:
@@ -1621,6 +1582,7 @@ class LegacyMonitorMigration:
         """
         self._paths = paths
         self._files = LegacyMonitorFileStore()
+        self._observations = MonitorObservationStore(paths.state_path)
 
     def inventory(
         self,
@@ -1737,7 +1699,7 @@ class LegacyMonitorMigration:
         Returns:
             Baseline source path와 persisted payload이며 action이 없으면 빈 값들입니다.
         """
-        if not states or self._paths.state_path.exists():
+        if not states or self._observations.exists():
             return "", None
         source = max(states, key=lambda state: state.recency)
         baseline = self._observation_baseline(source.payload)
@@ -1755,14 +1717,9 @@ class LegacyMonitorMigration:
         return str(source.path), payload
 
     def write_baseline(self, payload: Mapping[str, object] | None) -> None:
-        """Prepared plan의 exact baseline을 canonical state가 없을 때만 기록합니다.
-
-        Args:
-            payload: Prepared receipt에 durable하게 저장된 complete baseline payload입니다.
-        """
-        if payload is None or self._paths.state_path.exists():
-            return
-        self._files.write_if_absent(self._paths.state_path, payload)
+        """Commit the prepared baseline only if no current observation exists."""
+        if payload is not None:
+            self._observations.write_if_absent(payload)
 
     def remove(self, claims: tuple[PreparedFileClaim, ...]) -> tuple[str, ...]:
         """Workflow prepared receipt 뒤 exact obsolete state만 제거합니다.

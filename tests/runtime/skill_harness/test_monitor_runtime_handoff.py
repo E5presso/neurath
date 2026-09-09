@@ -144,6 +144,10 @@ class MonitorRuntimeHandoffFixture:
         """Canonical local monitor observation state를 반환합니다."""
         return self.state_dir / "monitor-state.json"
 
+    def observations(self):
+        """Compatibility path에 결속된 common SQLite observation store를 반환합니다."""
+        return monitor_runtime_handoff.MonitorObservationStore(self.monitor_state)
+
     def run(self) -> HandoffResultView:
         """Runtime identity와 exact workflow selector로 handoff를 실행합니다."""
         result = monitor_runtime_handoff.MonitorRuntimeHandoffApplication().run(
@@ -269,10 +273,7 @@ class MonitorRuntimeHandoffTest(TestCase):
             fixture.state_dir.mkdir()
             current_plist = fixture.state_dir / "current.plist"
             current_plist.write_bytes(plistlib.dumps({"Label": "com.neurath.pr131.local-monitor"}))
-            fixture.monitor_state.write_text(
-                json.dumps({"provider": "local-pr-monitor"}),
-                encoding="utf-8",
-            )
+            fixture.observations().write({"provider": "local-pr-monitor"})
             router = SubprocessCommandRouter(fixture.root)
             with (
                 patch.object(
@@ -284,7 +285,7 @@ class MonitorRuntimeHandoffTest(TestCase):
             ):
                 result = fixture.run()
                 current_plist_exists = current_plist.exists()
-                current_state_exists = fixture.monitor_state.exists()
+                current_state_exists = fixture.observations().exists()
         finally:
             fixture.close()
 
@@ -457,7 +458,7 @@ class MonitorRuntimeHandoffTest(TestCase):
             with patch.object(monitor_runtime_handoff.shutil, "which", return_value=None):
                 result = fixture.run()
             skill_state = fixture.skill_state()
-            migrated_state = json.loads(fixture.monitor_state.read_text(encoding="utf-8"))
+            migrated_state = fixture.observations().read_required()
         finally:
             fixture.close()
 
@@ -627,7 +628,7 @@ class MonitorRuntimeHandoffTest(TestCase):
                 result = fixture.run()
             plist_exists = obsolete_plist.exists()
             state_exists = obsolete_state.exists()
-            baseline_exists = fixture.monitor_state.exists()
+            baseline_exists = fixture.observations().exists()
         finally:
             fixture.close()
 
@@ -839,7 +840,7 @@ class MonitorRuntimeHandoffTest(TestCase):
                 result = fixture.run()
             plist_exists = obsolete_plist.exists()
             state_after_run = obsolete_state.read_text(encoding="utf-8")
-            baseline_exists = fixture.monitor_state.exists()
+            baseline_exists = fixture.observations().exists()
         finally:
             fixture.close()
 
@@ -897,7 +898,7 @@ class MonitorRuntimeHandoffTest(TestCase):
                 result = fixture.run()
             state_exists = obsolete_state.exists()
             lock_after_run = legacy_lock.read_text(encoding="utf-8")
-            baseline_exists = fixture.monitor_state.exists()
+            baseline_exists = fixture.observations().exists()
         finally:
             fixture.close()
 
@@ -970,26 +971,22 @@ class MonitorRuntimeHandoffTest(TestCase):
     def test_baseline_no_replace_preserves_state_created_during_atomic_publish(self) -> None:
         """Baseline atomic create 경쟁에서 먼저 생긴 canonical state를 덮어쓰지 않습니다."""
         fixture = MonitorRuntimeHandoffFixture()
-        original_link = monitor_runtime_handoff.os.link
+        original_write_if_absent = (
+            monitor_runtime_handoff.MonitorObservationStore.write_if_absent
+        )
         fresh_payload = {"provider": "fresh-current-monitor", "revision": 7}
         injected = False
 
-        def create_current_before_link(source: str, destination: str) -> None:
-            """Baseline no-replace link 직전에 경쟁 writer의 current state를 생성합니다.
-
-            Args:
-                source: Fsync가 끝난 prepared temporary baseline path입니다.
-                destination: Canonical monitor state path입니다.
-
-            Raises:
-                FileExistsError: 경쟁 writer가 destination을 먼저 만들었음을 재현합니다.
-            """
+        def create_current_before_write(
+            store: object,
+            payload: Mapping[str, object],
+        ) -> bool:
+            """Baseline INSERT OR IGNORE 직전에 competing SQLite writer를 재현합니다."""
             nonlocal injected
-            destination_path = Path(destination)
-            if destination_path.resolve() == fixture.monitor_state.resolve() and not injected:
+            if not injected:
                 injected = True
-                destination_path.write_text(json.dumps(fresh_payload), encoding="utf-8")
-            original_link(source, destination)
+                store.write(fresh_payload)
+            return original_write_if_absent(store, payload)
 
         try:
             fixture.state_dir.mkdir()
@@ -1001,13 +998,14 @@ class MonitorRuntimeHandoffTest(TestCase):
             with (
                 patch.object(monitor_runtime_handoff.shutil, "which", return_value=None),
                 patch.object(
-                    monitor_runtime_handoff.os,
-                    "link",
-                    side_effect=create_current_before_link,
+                    monitor_runtime_handoff.MonitorObservationStore,
+                    "write_if_absent",
+                    autospec=True,
+                    side_effect=create_current_before_write,
                 ),
             ):
                 result = fixture.run()
-            current_payload = json.loads(fixture.monitor_state.read_text(encoding="utf-8"))
+            current_payload = fixture.observations().read_required()
         finally:
             fixture.close()
 

@@ -35,6 +35,7 @@ from scripts.agent_harness.runtime_hook import (
     RuntimeHookDiagnostic,
     RuntimeHookResult,
 )
+from scripts.agent_harness.runtime_database import RuntimeDatabase
 from scripts.agent_harness.session_kernel import (
     ActorId,
     ActorKind,
@@ -453,7 +454,10 @@ class RuntimeHookApplicationTest(unittest.TestCase):
         )
         self.assertIn(
             "source-only fact",
-            self.locator.locate(SessionId("fork-target")).enclave.read_text(encoding="utf-8"),
+            json.dumps(
+                self.enclaves.read(SessionId("fork-target")).to_payload(),
+                ensure_ascii=False,
+            ),
         )
         self.assertNotEqual(
             self.locator.locate(SessionId("source-session")).directory,
@@ -635,7 +639,7 @@ class RuntimeHookApplicationTest(unittest.TestCase):
             SessionStatus.ENDED,
             self.kernel.inspect(SessionId("claude-end")).session.status,
         )
-        self.assertFalse(self.locator.locate(SessionId("claude-end")).enclave.exists())
+        self.assertFalse(self.enclaves.exists(SessionId("claude-end")))
 
         self.start_session("codex-end", SessionRuntime.CODEX, "delete-on-end")
         codex_result = self.run_hook(
@@ -657,7 +661,7 @@ class RuntimeHookApplicationTest(unittest.TestCase):
             SessionStatus.ENDED,
             self.kernel.inspect(SessionId("codex-end")).session.status,
         )
-        self.assertFalse(self.locator.locate(SessionId("codex-end")).enclave.exists())
+        self.assertFalse(self.enclaves.exists(SessionId("codex-end")))
 
     def test_codex_session_end_rejects_non_root_actor_identity(self) -> None:
         """Synthetic child thread identity는 SessionEnd capability로 root를 terminalize하지 못합니다."""
@@ -683,7 +687,7 @@ class RuntimeHookApplicationTest(unittest.TestCase):
             SessionStatus.ACTIVE,
             self.kernel.inspect(SessionId("codex-child-end")).session.status,
         )
-        self.assertTrue(self.locator.locate(SessionId("codex-child-end")).enclave.exists())
+        self.assertTrue(self.enclaves.exists(SessionId("codex-child-end")))
 
     def test_codex_session_start_does_not_require_a_synthetic_capability_field(self) -> None:
         """공식 Codex payload에 없는 capabilities field를 caller에게 요구하지 않습니다."""
@@ -973,10 +977,13 @@ class RuntimeHookApplicationTest(unittest.TestCase):
         """손상된 exact state는 unrelated healthy session으로 대체되지 않습니다."""
         self.start_session("corrupt", SessionRuntime.CLAUDE_CODE, "손상 전 사실")
         self.start_session("healthy", SessionRuntime.CLAUDE_CODE, "healthy fallback 금지")
-        self.locator.locate(SessionId("corrupt")).process_state.write_text(
-            "{not-json",
-            encoding="utf-8",
-        )
+        with RuntimeDatabase(self.root).connection() as db:
+            changed = db.execute(
+                "UPDATE runtime_records SET payload=? "
+                "WHERE namespace='session' AND key='corrupt'",
+                (b"{not-json",),
+            )
+            self.assertEqual(1, changed.rowcount)
 
         result = self.run_hook(
             {

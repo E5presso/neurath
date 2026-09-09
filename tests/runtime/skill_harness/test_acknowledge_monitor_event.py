@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 from collections.abc import Mapping
 from contextlib import redirect_stderr
@@ -77,7 +78,8 @@ class MonitorAcknowledgementFixture:
             root: Session control state와 local observation을 격리할 임시 root입니다.
         """
         self.worktree = root
-        self.locator = SessionLocator(root)
+        subprocess.run(("git", "init", "-q", str(root)), check=True)
+        self.locator = SessionLocator.from_worktree(root)
         self.session_id = SessionId("session")
         self.actor_id = ActorId("codex:session:session")
         self.workflow_id = WorkflowId("process-ticket-42")

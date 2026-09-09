@@ -333,9 +333,13 @@ class SessionPhaseStateStoreTest(TestCase):
             before_seed.outbox,
             before_seed.foreground_turns,
         )
-        SessionStateStore(
-            self.locator.locate(self.handle.session_id).process_state
-        )._write_snapshot(legacy_state)
+        import hashlib
+        from scripts.agent_harness.runtime_database import RuntimeDatabase
+        from scripts.agent_harness.session_state_codec import SessionStateCodec
+        encoded = SessionStateCodec().encode(legacy_state)
+        with RuntimeDatabase(self.locator.control_root).connection() as db:
+            db.execute("UPDATE runtime_records SET payload=?,digest=? WHERE namespace='session' AND key=?",
+                       (encoded, hashlib.sha256(encoded).hexdigest(), str(self.handle.session_id)))
 
         self.assertEqual(initialized.workflow_revision, legacy_workflow.revision)
 

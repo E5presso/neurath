@@ -5,6 +5,12 @@
     "decisions": "docs/en/contributing/architecture.md"
   },
   "verification": {
+    "runtime-contracts": {
+      "argv": ["uv", "run", "--locked", "python", "tools/run_core_regressions.py"],
+      "cwd": ".",
+      "success_codes": [0],
+      "timeout_seconds": 300
+    },
     "check": {
       "argv": [
         "uv",

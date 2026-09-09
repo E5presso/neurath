@@ -36,6 +36,7 @@ from scripts.agent_harness.session_kernel import (
     SessionNotFound,
     SessionRuntime,
     SessionStarted,
+    SessionStateStore,
     SessionStatus,
     TransitionRejected,
     WorkflowStatus,
@@ -641,8 +642,7 @@ class SessionRehydrator:
                 RehydrationStatus.BLOCKED,
                 diagnostic=RehydrationDiagnostic.RUNTIME_MISMATCH,
             )
-        paths = self._locator.locate(envelope.session_id)
-        if not paths.enclave.is_file():
+        if not self._enclaves.exists(envelope.session_id):
             return self._decision(
                 envelope,
                 RehydrationStatus.BLOCKED,
@@ -759,10 +759,16 @@ class SessionLifecycle:
             raise LifecycleConflict("fork runtime does not match source session")
         source_snapshot = self._enclaves.read(lineage.source_session_id)
         target_paths = self._locator.locate(lineage.target_session_id)
-        if not target_paths.process_state.exists() and target_paths.enclave.exists():
+        if (not SessionStateStore(target_paths.process_state).exists()
+                and self._enclaves.exists(lineage.target_session_id)):
             raise LifecycleConflict("fork target has an orphan enclave")
         if target_paths.artifacts.is_dir() and any(target_paths.artifacts.iterdir()):
             raise LifecycleConflict("fork target has pre-existing artifacts")
+        from scripts.agent_harness.runtime_database import RuntimeDatabase
+        with RuntimeDatabase(self._locator.control_root).transaction() as tx:
+            if tx.connection.execute("SELECT 1 FROM runtime_records WHERE namespace=? LIMIT 1",
+                                     (f"artifact:{lineage.target_session_id}",)).fetchone():
+                raise LifecycleConflict("fork target has pre-existing artifacts")
         target_root_actor_id = ActorId(
             f"{lineage.runtime.value}:session:{lineage.target_session_id}"
         )

@@ -17,6 +17,7 @@ from scripts.agent_harness.session_kernel import (
     EffectPrepared,
     ForegroundTurnClosed,
     ForegroundTurnInvalidated,
+    ForegroundTurnReplaced,
     ForegroundTurnPrompted,
     ForegroundTurnProvisioned,
     ForegroundTurnToolObserved,
@@ -577,6 +578,7 @@ class StateHandle:
                 ForegroundTurnYielded,
                 ForegroundTurnInvalidated,
                 ForegroundTurnClosed,
+                ForegroundTurnReplaced,
             ),
         ):
             if event.actor_id != self._binding.actor_id:

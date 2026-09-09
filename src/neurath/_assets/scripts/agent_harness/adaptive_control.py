@@ -87,6 +87,14 @@ class UserDecisionDisposition(StrEnum):
     REJECTED = "rejected"
     """사용자가 criterion의 관찰 결과를 거부했음을 나타냅니다."""
 
+class UserDecisionProvenance(StrEnum):
+    """USER decision이 사용한 authenticated native source 형태입니다."""
+
+    ADAPTIVE_QUESTION = "adaptive-question"
+    """직전 canonical question과 foreground prompt context를 함께 검증합니다."""
+    NATIVE_PROMPT = "native-prompt"
+    """질문을 발명하지 않고 native prompt와 독립적인 typed interpretation을 검증합니다."""
+
 
 class ControlAction(StrEnum):
     """하네스가 다음 한 단계에 부여하는 closed action 집합입니다."""
@@ -294,7 +302,7 @@ class UserDecisionClaim:
 
     workflow_id: str
     """질문과 effect가 속한 workflow의 stable identity입니다."""
-    question_workflow_revision: int
+    question_workflow_revision: int | None
     """사용자 질문을 발행한 시점의 workflow revision입니다."""
     source_goal_fingerprint: str
     """사용자 답변을 받기 전 goal contract의 fingerprint입니다."""
@@ -302,19 +310,19 @@ class UserDecisionClaim:
     """사용자 답변을 받기 전 intent revision입니다."""
     source_revision: str
     """사용자 답변을 받기 전 source snapshot revision입니다."""
-    question_digest: str
+    question_digest: str | None
     """사용자에게 제시한 canonical Socratic question의 digest입니다."""
-    question_generation: int
+    question_generation: int | None
     """질문이 속한 agent loop generation입니다."""
-    question_turn_revision: int
+    question_turn_revision: int | None
     """질문을 발행한 foreground turn의 revision입니다."""
     prompt_digest: str
     """Raw text를 저장하지 않고 사용자 응답을 식별하는 digest입니다."""
     prompt_reference: str
     """Foreground prompt receipt를 가리키는 opaque reference입니다."""
-    prompt_generation: int
+    prompt_generation: int | None
     """사용자 응답을 수신한 agent loop generation입니다."""
-    prompt_turn_revision: int
+    prompt_turn_revision: int | None
     """사용자 응답을 수신한 foreground turn의 revision입니다."""
     target_kind: UserDecisionTarget
     """Normalized effect를 소비할 gap 또는 criterion 종류입니다."""
@@ -330,6 +338,10 @@ class UserDecisionClaim:
     """Normalized effect 적용 뒤 intent revision입니다."""
     result_source_revision: str
     """Normalized effect 적용 뒤 source snapshot revision입니다."""
+    provenance: UserDecisionProvenance = UserDecisionProvenance.ADAPTIVE_QUESTION
+    """Legacy rendered-question provenance 또는 authenticated native-prompt provenance입니다."""
+    source_workflow_revision: int | None = None
+    """NATIVE_PROMPT effect를 독립 평가한 candidate의 exact pre-effect revision입니다."""
 
     def __post_init__(self) -> None:
         """Provenance, effect digest와 target/disposition matrix를 검증합니다.
@@ -339,26 +351,45 @@ class UserDecisionClaim:
                 계약과 다를 때 발생합니다.
         """
         _require_opaque_identity(self.workflow_id, "user decision workflow_id")
-        _require_non_negative_revision(
-            self.question_workflow_revision,
-            "user decision question workflow revision",
-        )
+        if not isinstance(self.target_kind, UserDecisionTarget):
+            raise ValueError("user decision target_kind must be a UserDecisionTarget")
+        if not isinstance(self.disposition, UserDecisionDisposition):
+            raise ValueError("user decision disposition must be a UserDecisionDisposition")
+        if not isinstance(self.provenance, UserDecisionProvenance):
+            raise ValueError("user decision provenance must be a UserDecisionProvenance")
         _require_digest(self.source_goal_fingerprint, "user decision source goal fingerprint")
         _require_revision(self.source_intent_revision, "user decision source intent revision")
         _require_text(self.source_revision, "user decision source revision")
-        _require_digest(self.question_digest, "user decision question digest")
-        _require_revision(self.question_generation, "user decision question generation")
-        _require_non_negative_revision(
-            self.question_turn_revision,
-            "user decision question turn revision",
-        )
         _require_digest(self.prompt_digest, "user decision prompt digest")
         _require_opaque_identity(self.prompt_reference, "user decision prompt reference")
-        _require_revision(self.prompt_generation, "user decision prompt generation")
-        _require_non_negative_revision(
-            self.prompt_turn_revision,
-            "user decision prompt turn revision",
-        )
+        if self.provenance is UserDecisionProvenance.ADAPTIVE_QUESTION:
+            _require_non_negative_revision(
+                self.question_workflow_revision, "user decision question workflow revision")
+            _require_digest(self.question_digest, "user decision question digest")
+            _require_revision(self.question_generation, "user decision question generation")
+            _require_non_negative_revision(
+                self.question_turn_revision, "user decision question turn revision")
+            _require_revision(self.prompt_generation, "user decision prompt generation")
+            _require_non_negative_revision(
+                self.prompt_turn_revision, "user decision prompt turn revision")
+            if self.source_workflow_revision is not None:
+                raise ValueError("adaptive question decision cannot carry source workflow revision")
+        else:
+            if any(value is not None for value in (
+                self.question_workflow_revision,
+                self.question_digest,
+                self.question_generation,
+                self.question_turn_revision,
+            )):
+                raise ValueError("native prompt decision cannot carry question provenance")
+            _require_non_negative_revision(
+                self.source_workflow_revision, "user decision source workflow revision")
+            if (self.prompt_generation is None) != (self.prompt_turn_revision is None):
+                raise ValueError("native prompt kernel provenance must be all-or-none")
+            if self.prompt_generation is not None:
+                _require_revision(self.prompt_generation, "user decision prompt generation")
+                _require_non_negative_revision(
+                    self.prompt_turn_revision, "user decision prompt turn revision")
         _require_identity(self.target_id, "user decision target_id")
         _require_digest(self.result_goal_fingerprint, "user decision result goal fingerprint")
         _require_revision(self.result_intent_revision, "user decision result intent revision")
@@ -412,19 +443,13 @@ class UserDecisionClaim:
         Returns:
             Claim provenance와 normalized effect만 포함한 JSON-compatible object입니다.
         """
-        return {
+        common = {
             "workflow_id": self.workflow_id,
-            "question_workflow_revision": self.question_workflow_revision,
             "source_goal_fingerprint": self.source_goal_fingerprint,
             "source_intent_revision": self.source_intent_revision,
             "source_revision": self.source_revision,
-            "question_digest": self.question_digest,
-            "question_generation": self.question_generation,
-            "question_turn_revision": self.question_turn_revision,
             "prompt_digest": self.prompt_digest,
             "prompt_reference": self.prompt_reference,
-            "prompt_generation": self.prompt_generation,
-            "prompt_turn_revision": self.prompt_turn_revision,
             "target_kind": self.target_kind.value,
             "target_id": self.target_id,
             "disposition": self.disposition.value,
@@ -433,6 +458,26 @@ class UserDecisionClaim:
             "result_intent_revision": self.result_intent_revision,
             "result_source_revision": self.result_source_revision,
         }
+        if self.provenance is UserDecisionProvenance.ADAPTIVE_QUESTION:
+            # Preserve the exact legacy field set and therefore every existing digest.
+            return {
+                **common,
+                "question_workflow_revision": self.question_workflow_revision,
+                "question_digest": self.question_digest,
+                "question_generation": self.question_generation,
+                "question_turn_revision": self.question_turn_revision,
+                "prompt_generation": self.prompt_generation,
+                "prompt_turn_revision": self.prompt_turn_revision,
+            }
+        native = {
+            **common,
+            "provenance": self.provenance.value,
+            "source_workflow_revision": self.source_workflow_revision,
+        }
+        if self.prompt_generation is not None:
+            native["prompt_generation"] = self.prompt_generation
+            native["prompt_turn_revision"] = self.prompt_turn_revision
+        return native
 
 
 @dataclass(frozen=True, slots=True)

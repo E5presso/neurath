@@ -29,6 +29,7 @@ from scripts.agent_harness.session_kernel import (
     WorkflowId,
     WorkflowStarted,
 )
+from scripts.agent_harness.runtime_database import RuntimeDatabase
 from scripts.agent_harness.state_handle import RuntimeEnvironmentResolver, StateHandle
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -76,12 +77,13 @@ class DelegateCliFixture:
         return self.worktree / ".process-state.json"
 
     @property
-    def artifact_files(self) -> tuple[Path, ...]:
-        """Exact session artifact directory에 저장된 immutable file을 반환합니다."""
-        artifacts = self.locator.locate(self.root_handle.session_id).artifacts
-        if not artifacts.exists():
-            return ()
-        return tuple(path for path in artifacts.rglob("*.json") if path.is_file())
+    def artifact_count(self) -> int:
+        """Exact session의 canonical SQLite artifact row 수를 반환합니다."""
+        with RuntimeDatabase(self.locator.control_root).connection() as db:
+            return int(db.execute(
+                "SELECT count(*) FROM runtime_records WHERE namespace=?",
+                (f"artifact:{self.root_handle.session_id}",),
+            ).fetchone()[0])
 
     def start_actor(self, actor_id: ActorId) -> None:
         """Root authority로 submit target subagent를 session topology에 등록합니다."""
@@ -525,7 +527,7 @@ class DelegateStateTest(TestCase):
         self.assertEqual(DelegationStatus.REPORTED, delegation.status)
         self.assertEqual(result["outcome_ref"], delegation.result.outcome_ref)
         self.assertTrue(str(result["outcome_ref"]).startswith("sha256:"))
-        self.assertEqual(1, len(fixture.artifact_files))
+        self.assertEqual(1, fixture.artifact_count)
 
     def test_complete_requires_exact_result_then_consumes_typed_delegation(self) -> None:
         """Owner complete는 target과 outcome ref를 검증한 뒤 reported를 consumed로 바꿉니다."""
@@ -866,7 +868,7 @@ class DelegateStateTest(TestCase):
                 submitted = fixture.submit(current, actor, extra_arguments=arguments)
                 self.assertEqual(2, submitted.returncode, submitted.stderr)
                 self.assertIn("identity is incomplete" if defect == "metadata" else "artifact", submitted.stderr)
-                self.assertEqual((), fixture.artifact_files)
+                self.assertEqual(0, fixture.artifact_count)
                 record = fixture.inspect().delegations[DelegationId(current["delegation_id"])]
                 self.assertEqual(DelegationStatus.PENDING, record.status)
 

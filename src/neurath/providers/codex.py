@@ -268,8 +268,16 @@ class CodexSessions:
             if requested.get("reasoning_effort") is not None:
                 params["effort"] = requested["reasoning_effort"]
             if requested.get("collaboration_mode") is not None:
+                settings = {
+                    "model": session.actual_model,
+                    "developer_instructions": None,
+                }
+                if requested.get("reasoning_effort") is not None:
+                    # Applying collaboration settings may otherwise reset the
+                    # turn's native effort after the top-level value is read.
+                    settings["reasoning_effort"] = requested["reasoning_effort"]
                 params["collaborationMode"] = {"mode": requested["collaboration_mode"],
-                    "settings": {"model": session.actual_model, "developer_instructions": None}}
+                    "settings": settings}
             result = self.transport.request("turn/start", params)
             turn = text(result["turn"]["id"], "native turn", 256)
         self._turns[session.native_session] = turn

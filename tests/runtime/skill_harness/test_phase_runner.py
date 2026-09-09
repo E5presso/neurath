@@ -62,6 +62,7 @@ from scripts.agent_harness.harness_incident import (
     HarnessIncidentValidationError,
 )
 from scripts.agent_harness.repository_readback import RepositoryWorktreeReadback
+from scripts.agent_harness.runtime_database import RuntimeDatabase
 from scripts.agent_harness.session_kernel import (
     ActorId,
     ActorKind,
@@ -1505,13 +1506,7 @@ class PhaseRunnerApplicationTest(TestCase):
             fixture.write_review_code_contract()
             fixture.run("init", "--skill", "review-code", "--run-id", "review-001")
             outcome_ref = fixture.write_review_completion(head_sha)
-            artifact_path = fixture.artifact_path(outcome_ref)
-            artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
-            assert isinstance(artifact, dict)
-            report = artifact["report"]
-            assert isinstance(report, dict)
-            report["summary"] = "변조됨"
-            artifact_path.write_text(json.dumps(artifact), encoding="utf-8")
+            fixture.corrupt_artifact(outcome_ref)
 
             result = fixture.complete_review_code(head_sha, outcome_ref=outcome_ref)
 
@@ -4322,6 +4317,7 @@ class PhaseRunnerFixture:
             text=True,
         )
         self.session_id = "phase-runner-session"
+        (self.root / ".gitignore").write_text(".neurath/local/\n", encoding="utf-8")
         self.workflow_id = "phase-runner-workflow"
         self.environment = {"CODEX_THREAD_ID": self.session_id}
         self.locator = SessionLocator.from_worktree(self.root)
@@ -5743,7 +5739,7 @@ class PhaseRunnerFixture:
         relative_paths = sorted(
             value.decode("utf-8", errors="surrogateescape")
             for value in files_result.stdout.split(b"\0")
-            if value and not value.startswith(b".agents/runs/")
+            if value and not value.startswith((b".agents/runs/", b".neurath/local/"))
         )
         digest = hashlib.sha256()
         digest.update(b"head\0" + head + b"\0")
@@ -6005,21 +6001,21 @@ class PhaseRunnerFixture:
             ),
         )
 
-    def artifact_path(self, reference: str) -> Path:
-        """Digest reference가 선택한 exact session artifact path를 반환합니다.
-
-        Args:
-            reference: SessionArtifactStore가 발급한 sha256 reference입니다.
-
-        Returns:
-            Corruption 회귀 테스트가 직접 변조할 exact artifact path입니다.
-        """
+    def corrupt_artifact(self, reference: str) -> None:
+        """Canonical SQLite payload를 digest 갱신 없이 변조합니다."""
         digest = reference.removeprefix("sha256:")
-        return (
-            self.locator.locate(self._state_handle.session_id).artifacts
-            / "sha256"
-            / (f"{digest}.json")
-        )
+        with RuntimeDatabase(self.root).connection() as db:
+            changed = db.execute(
+                "UPDATE runtime_records SET payload=? "
+                "WHERE namespace=? AND key=?",
+                (
+                    b'{"tampered":true}',
+                    f"artifact:{self._state_handle.session_id}",
+                    digest,
+                ),
+            )
+            if changed.rowcount != 1:
+                raise AssertionError("phase fixture artifact is not stored in SQLite")
 
     def record_harness_incident(self, rule_id: str, symptom: str) -> str:
         """Canonical incident application으로 open occurrence를 기록합니다.
@@ -6076,10 +6072,14 @@ class PhaseRunnerFixture:
             capture_output=True,
         )
         records = []
+        from scripts.skill_harness.harness_source_inventory import HarnessSourceInventory
+        inventory = HarnessSourceInventory(self.root)
         for raw_path in sorted(set(listed.stdout.split(b"\0"))):
-            if not raw_path or raw_path.startswith(b".agents/runs/"):
+            if not raw_path or raw_path.startswith((b".agents/runs/", b".neurath/local/")):
                 continue
             relative_path = os.fsdecode(raw_path)
+            if not inventory._in_scope(relative_path):
+                continue
             path = self.root / relative_path
             records.append({
                 "path": relative_path,
@@ -6148,7 +6148,7 @@ class PhaseRunnerFixture:
         Raises:
             TypeError: Canonical process/workflow/phase payload shape가 잘못되면 발생합니다.
         """
-        parsed = json.loads(self.process_state_path.read_text(encoding="utf-8"))
+        parsed = self._state_handle.inspect().to_payload()
         if not isinstance(parsed, dict):
             raise TypeError("canonical process state must be a JSON object")
         workflows = parsed.get("workflows")

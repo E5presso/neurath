@@ -59,7 +59,8 @@ def test_message_enters_recipient_hook_without_becoming_user_authority(sessions)
     assert "peer-request" in json.dumps(output)
     assert message["id"] in json.dumps(output)
     assert store.message("codex:api", message["id"])["status"] == "queued"
-    state = json.loads((root / ".neurath/local/runs/ui/.process-state.json").read_text())
+    from scripts.agent_harness.session_kernel import SessionKernel, SessionLocator, SessionId
+    state = SessionKernel(SessionLocator(root)).inspect(SessionId("ui")).to_payload()
     assert not state["delegations"]
     assert not state["workflows"]
 

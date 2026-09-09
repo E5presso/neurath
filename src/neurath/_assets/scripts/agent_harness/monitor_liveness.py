@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -14,23 +13,9 @@ class MonitorLivenessError(ValueError):
 
 
 def read_monitor_observation(path: Path) -> dict[str, object]:
-    """Atomic-replace observation resource를 filesystem mutation 없이 읽습니다.
-
-    Args:
-        path: Runtime resource resolver가 파생한 private observation path입니다.
-
-    Returns:
-        현재 observation JSON object입니다.
-
-    Raises:
-        OSError: Observation resource를 읽을 수 없을 때 발생합니다.
-        json.JSONDecodeError: Observation JSON이 invalid하면 발생합니다.
-        TypeError: Observation root가 object가 아니면 발생합니다.
-    """
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise TypeError(f"{path} must contain a JSON object")
-    return payload
+    """Read the required SQLite observation selected by this path handle."""
+    from scripts.agent_harness.monitor_observation_store import MonitorObservationStore
+    return MonitorObservationStore(path).read_required()
 
 
 @dataclass(frozen=True, slots=True)

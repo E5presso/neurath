@@ -34,17 +34,30 @@ def invoke(root, host, event, **fields):
     )
 
 
+def state_snapshot(root):
+    from neurath.runtime.engine import activate
+    activate(root)
+    from scripts.agent_harness.session_kernel import SessionKernel, SessionLocator, SessionId
+    return SessionKernel(SessionLocator(root)).inspect(SessionId("resume-test")).to_payload()
+
+
+def enclave_snapshot(root):
+    from neurath.runtime.engine import activate
+    activate(root)
+    from scripts.agent_harness.session_kernel import SessionLocator, SessionId
+    from scripts.agent_harness.enclave_store import EnclaveStore
+    return EnclaveStore(SessionLocator(root), max_bytes=4096).read(SessionId("resume-test")).to_payload()
+
+
 @pytest.mark.parametrize("host", ["codex", "claude-code"])
 def test_transport_exit_preserves_resumable_logical_session(installed, host):
     start = invoke(installed, host, "SessionStart", source="startup")
     assert start.returncode == 0, start.stderr
-    run = installed / ".neurath/local/runs/resume-test"
-    enclave = (run / "enclave.json").read_bytes()
+    enclave = enclave_snapshot(installed)
     ended = invoke(installed, host, "SessionEnd", reason="prompt_input_exit")
     assert ended.returncode == 0, ended.stderr
-    assert (run / "enclave.json").is_file(), "transport exit deleted resumable context"
-    assert (run / "enclave.json").read_bytes() == enclave
-    assert json.loads((run / ".process-state.json").read_text())["session"]["status"] == "active"
+    assert enclave_snapshot(installed) == enclave, "transport exit deleted resumable context"
+    assert state_snapshot(installed)["session"]["status"] == "active"
     resumed = invoke(installed, host, "SessionStart", source="resume")
     assert resumed.returncode == 0, resumed.stderr
     assert "neurath-enclave" in resumed.stdout
@@ -59,7 +72,9 @@ def test_transport_exit_preserves_resumable_logical_session(installed, host):
 def test_unknown_session_resume_is_not_reported_as_success(installed, host):
     result = invoke(installed, host, "SessionStart", source="resume")
     assert result.returncode != 0
-    assert not (installed / ".neurath/local/runs/resume-test/.process-state.json").exists()
+    from scripts.agent_harness.session_kernel import SessionNotFound
+    with pytest.raises(SessionNotFound):
+        state_snapshot(installed)
 
 
 @pytest.mark.parametrize("host", ["codex", "claude-code"])
@@ -75,8 +90,7 @@ def test_unknown_session_resume_is_not_reported_as_success(installed, host):
 )
 def test_child_without_process_identity_cannot_use_parent_authority(installed, host, tool, inputs):
     assert invoke(installed, host, "SessionStart", source="startup").returncode == 0
-    run = installed / ".neurath/local/runs/resume-test/.process-state.json"
-    before = run.read_bytes()
+    before = state_snapshot(installed)
     result = invoke(
         installed, host, "PreToolUse", agent_id="native-child", tool_name=tool, tool_input=inputs
     )
@@ -84,7 +98,7 @@ def test_child_without_process_identity_cannot_use_parent_authority(installed, h
         "unbound child was allowed to execute with inherited root identity"
     )
     assert "child" in result.stderr.lower()
-    assert run.read_bytes() == before
+    assert state_snapshot(installed) == before
 
 
 @pytest.mark.parametrize("host", ["codex", "claude-code"])
@@ -117,7 +131,6 @@ from scripts.agent_harness.session_kernel import SessionLocator, SessionKernel, 
 SessionKernel(SessionLocator.from_worktree(Path(sys.argv[1]))).apply(SessionEnded(session_id=SessionId('resume-test'), actor_id=ActorId(sys.argv[2]+':session:resume-test'), idempotency_key='explicit-retirement'))
 """
     subprocess.run([sys.executable, "-I", "-c", script, str(installed), host], check=True)
-    state = installed / ".neurath/local/runs/resume-test/.process-state.json"
-    before = state.read_bytes()
+    before = state_snapshot(installed)
     assert invoke(installed, host, "SessionStart", source="resume").returncode != 0
-    assert state.read_bytes() == before
+    assert state_snapshot(installed) == before

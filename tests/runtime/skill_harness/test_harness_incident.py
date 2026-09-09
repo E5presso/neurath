@@ -14,6 +14,7 @@ from scripts.agent_harness import harness_incident as incident_module
 from scripts.agent_harness.session_kernel import (
     HarnessIncidentStatus,
     SessionLocator,
+    SessionStateStore,
     TransitionRejected,
 )
 from scripts.agent_harness.state_handle import RuntimeEnvironmentResolver, StateHandle
@@ -42,10 +43,12 @@ class HarnessIncidentTest(TestCase):
             self.assertEqual({incident.id}, set(state.incidents))
             self.assertFalse((worktree / ".process-state.json").exists())
             self.assertTrue(
-                SessionLocator
-                .from_worktree(worktree)
-                .locate(handle.session_id)
-                .process_state.is_file()
+                SessionStateStore(
+                    SessionLocator
+                    .from_worktree(worktree)
+                    .locate(handle.session_id)
+                    .process_state
+                ).exists()
             )
 
     def test_cli_requires_runtime_identity_and_rejects_state_selector(self) -> None:

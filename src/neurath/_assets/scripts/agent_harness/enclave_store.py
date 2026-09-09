@@ -1,16 +1,13 @@
 """Session-local enclave facts를 bounded latest-only snapshot으로 보존합니다."""
 
-import fcntl
 import hashlib
 import json
-import os
 from collections.abc import Callable, Mapping
 from enum import StrEnum
 from functools import partial
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from types import MappingProxyType
-from typing import TextIO
+from scripts.agent_harness.runtime_database import RuntimeDatabase
 
 from scripts.agent_harness.session_kernel import (
     ActorId,
@@ -19,6 +16,7 @@ from scripts.agent_harness.session_kernel import (
     SessionKernel,
     SessionLocator,
     SessionStatus,
+    SessionStateStore,
     TurnId,
 )
 
@@ -244,6 +242,7 @@ class EnclaveStore:
             raise InvalidEnclaveRetryLimit("max_retries must be a positive integer")
         self._locator = locator
         self._kernel = SessionKernel(locator)
+        self._database = RuntimeDatabase(locator.control_root)
         self._max_bytes = max_bytes
         self._max_retries = max_retries
 
@@ -487,23 +486,21 @@ class EnclaveStore:
         if not key or key.strip() != key:
             raise EnclaveStateInvalid("enclave fact key must be a non-blank stable key")
 
-    def _open_lock(self, enclave_path: Path) -> TextIO:
-        return enclave_path.with_name(f"{enclave_path.name}.lock").open(
-            "a+",
-            encoding="utf-8",
-        )
-
     def _read_snapshot(
         self,
         enclave_path: Path,
         session_id: SessionId,
     ) -> EnclaveSnapshot:
-        if not enclave_path.is_file():
+        record = self._record(session_id)
+        if record is None:
             raise EnclaveStateInvalid(f"canonical enclave is missing: {enclave_path}")
+        return self._decode_snapshot(record.payload, session_id)
+
+    def _decode_snapshot(self, content: bytes, session_id: SessionId) -> EnclaveSnapshot:
         try:
-            raw_payload: object = json.loads(enclave_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError) as exc:
-            raise EnclaveStateInvalid(f"canonical enclave is invalid: {enclave_path}") from exc
+            raw_payload: object = json.loads(content)
+        except (json.JSONDecodeError, UnicodeError) as exc:
+            raise EnclaveStateInvalid("canonical enclave is invalid") from exc
         if not isinstance(raw_payload, dict):
             raise EnclaveStateInvalid("canonical enclave root must be an object")
         schema = raw_payload.get("schema")
@@ -571,30 +568,26 @@ class EnclaveStore:
                 발생합니다.
         """
         paths = self._locator.locate(session_id)
-        paths.directory.mkdir(parents=True, exist_ok=True)
-        with paths.process_state_lock.open("a+", encoding="utf-8") as state_lock:
-            fcntl.flock(state_lock.fileno(), fcntl.LOCK_EX)
-            try:
-                with self._open_lock(enclave_path) as enclave_lock:
-                    fcntl.flock(enclave_lock.fileno(), fcntl.LOCK_EX)
-                    try:
-                        self._recheck_authority(session_id, expected_authority)
-                        latest = self._read_snapshot(enclave_path, session_id)
-                        if latest.digest != expected_digest:
-                            raise EnclaveConflict(expected_digest, latest.digest)
-                        if candidate.digest == latest.digest:
-                            return latest
-                        self._write_locked(enclave_path, serialized)
-                        return candidate
-                    finally:
-                        fcntl.flock(enclave_lock.fileno(), fcntl.LOCK_UN)
-            finally:
-                fcntl.flock(state_lock.fileno(), fcntl.LOCK_UN)
+        session_store = SessionStateStore(paths.process_state)
+        with self._database.transaction() as tx:
+            authority = session_store.read_transaction(tx, session_id)
+            self._recheck_authority(session_id, expected_authority, authority)
+            record = tx.get("enclave", str(session_id))
+            if record is None:
+                raise EnclaveStateInvalid("canonical enclave is missing")
+            latest = self._decode_snapshot(record.payload, session_id)
+            if latest.digest != expected_digest:
+                raise EnclaveConflict(expected_digest, latest.digest)
+            if candidate.digest == latest.digest:
+                return latest
+            tx.put("enclave", str(session_id), serialized, expected_revision=record.revision)
+            return candidate
 
     def _recheck_authority(
         self,
         session_id: SessionId,
         expected_authority: ProcessState,
+        latest: ProcessState,
     ) -> None:
         """Commit mutex 안에서 exact revision, status, root actor를 다시 확인합니다.
 
@@ -608,7 +601,6 @@ class EnclaveStore:
             AuthorityRevisionConflictError: Authority는 유효하지만 다른 session event가
                 expected revision보다 먼저 commit되면 발생합니다.
         """
-        latest = self._kernel.inspect(session_id)
         if latest.session.status is not expected_authority.session.status:
             raise EnclaveAuthorityError(
                 f"session authority status changed during enclave mutation: {session_id}"
@@ -651,32 +643,46 @@ class EnclaveStore:
             )
         return serialized
 
-    def _write_locked(self, enclave_path: Path, serialized: bytes) -> None:
-        """Prepared bytes를 fsync하고 canonical enclave로 atomic replace합니다.
+    def _record(self, session_id: SessionId):
+        with self._database.transaction() as tx:
+            record = tx.get("enclave", str(session_id))
+            deleted = tx.was_deleted("enclave", str(session_id))
+        path = self._locator.locate(session_id).enclave
+        if record is None and not deleted and path.is_file():
+            def validate(content):
+                self._decode_snapshot(content, session_id)
+                return 0
+            record = self._database.import_legacy("enclave", str(session_id), path, validate)
+        return record
 
-        Args:
-            enclave_path: Exclusive commit mutex가 보호하는 canonical path입니다.
-            serialized: Lock 밖에서 검증한 complete snapshot bytes입니다.
-        """
-        temporary_name: str | None = None
-        try:
-            with NamedTemporaryFile(
-                "wb",
-                dir=enclave_path.parent,
-                prefix=f".{enclave_path.name}.",
-                suffix=".tmp",
-                delete=False,
-            ) as temporary:
-                temporary_name = temporary.name
-                temporary.write(serialized)
-                temporary.flush()
-                os.fsync(temporary.fileno())
-            os.replace(temporary_name, enclave_path)
-            directory_descriptor = os.open(enclave_path.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory_descriptor)
-            finally:
-                os.close(directory_descriptor)
-        finally:
-            if temporary_name is not None:
-                Path(temporary_name).unlink(missing_ok=True)
+    def exists(self, session_id: SessionId) -> bool:
+        # Presence is distinct from the typed read/validation operation.
+        with self._database.transaction() as tx:
+            if tx.get("enclave", str(session_id)) is not None:
+                return True
+            if tx.was_deleted("enclave", str(session_id)):
+                return False
+        return self._locator.locate(session_id).enclave.is_file()
+
+    def initialize(self, session_id: SessionId) -> None:
+        if self.exists(session_id):
+            return
+        store = SessionStateStore(self._locator.locate(session_id).process_state)
+        with self._database.transaction() as tx:
+            state = store.read_transaction(tx, session_id)
+            if state.session.status is not SessionStatus.ACTIVE:
+                raise EnclaveAuthorityError("terminal session cannot initialize enclave")
+            if tx.get("enclave", str(session_id)) is None:
+                tx.put("enclave", str(session_id), self._serialize(EnclaveSnapshot(session_id, {})),
+                       expected_revision=None)
+
+    def delete_terminal(self, session_id: SessionId) -> None:
+        self._record(session_id)
+        store = SessionStateStore(self._locator.locate(session_id).process_state)
+        with self._database.transaction() as tx:
+            state = store.read_transaction(tx, session_id)
+            if state.session.status is not SessionStatus.ENDED:
+                raise EnclaveAuthorityError("only a terminal session can discard its enclave")
+            record = tx.get("enclave", str(session_id))
+            if record is not None:
+                tx.delete("enclave", str(session_id), expected_revision=record.revision)
