@@ -226,6 +226,8 @@ def run(root, *, worktree, assignment, model=None, mode="read-only", approval_po
                         result["status"] = "needs-input"
                         break
                     result["implementation_dispatched"] = True
+                    result["preparation_text"] = result.pop("text", "")
+                    result["text"] = ""
                     inbox = _start_inbox(adapter, session)
                     continue
                 expected = result["submission"] if result["implementation_dispatched"] else result["bootstrap"]

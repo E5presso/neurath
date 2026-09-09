@@ -83,6 +83,8 @@ def test_ordinary_execution_has_no_deadline_and_reports_only_its_submitted_turn(
             self.events = iter([
                 {"method": "item/completed", "params": {"item": {"type": "commandExecution"}}},
                 {"method": "item/started", "params": {"turnId": "unrelated"}},
+                {"method": "item/completed", "params": {"item": {
+                    "type": "agentMessage", "text": "Preparation only report"}}},
                 {"method": "turn/completed", "params": {"turn": {"id": "bootstrap", "status": "completed"}}},
                 {"method": "item/started", "params": {"turnId": "work"}},
                 {"method": "turn/completed", "params": {"turn": {"id": "work", "status": "completed"}}},
@@ -107,7 +109,9 @@ def test_ordinary_execution_has_no_deadline_and_reports_only_its_submitted_turn(
     result = execution.run("/parent", worktree="/work", assignment="Implement", mode="workspace-write",
         approval_policy="never", collaboration_mode="default", event_callback=lambda *event: events.append(event))
     assert result["status"] == "completed"
-    assert waits == [None] * 5
+    assert waits == [None] * 6
+    assert result["preparation_text"] == "Preparation only report"
+    assert result["text"] == ""
     assert events[0][0] == "native-created"
     assert events[0][1]["created"]["native_session"] == "native"
     assert events[1:] == [("started", {"native_session": "native", "native_turn": "work"})]
