@@ -46,7 +46,10 @@ def test_fresh_session_receives_previous_host_goal(installed, first, second):
     assert new.returncode == 0, new.stderr
     assert "Work log CSV must preserve Korean filenames" in new.stdout
     assert "reference-only" in new.stdout
-    state = json.loads((installed / ".neurath/local/runs/new/.process-state.json").read_text())
+    from neurath.runtime.engine import activate
+    activate(installed)
+    from scripts.agent_harness.session_kernel import SessionKernel, SessionLocator, SessionId
+    state = SessionKernel(SessionLocator(installed)).inspect(SessionId("new")).to_payload()
     assert not state["workflows"]
     assert state["session"]["id"] == "new"
 

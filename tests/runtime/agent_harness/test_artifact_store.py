@@ -78,7 +78,8 @@ class SessionArtifactStoreTest(TestCase):
             for path in self.locator.locate(self.session_id).artifacts.rglob("*.json")
             if path.is_file()
         )
-        self.assertEqual(1, len(artifact_files))
+        self.assertEqual(0, len(artifact_files))
+        self.assertTrue(owner_store.has_artifacts())
 
     def test_same_reference_never_falls_back_to_another_session_directory(self) -> None:
         """같은 repository의 다른 session artifact를 digest만으로 scan하지 않습니다."""

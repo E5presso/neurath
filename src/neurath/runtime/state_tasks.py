@@ -134,8 +134,11 @@ def execute(root, name, fields, *, identity, expected_turn, verified_policy_evid
         if (claim.lease_epoch != fields["expected_lease_epoch"]
                 or claim.fencing_token != fields["fencing_token"]):
             raise TaskError("revision-conflict", "worktree release requires the observed lease and token")
-        registry.release(claim)
-        return {"claim": claim.to_payload(), "released": True}
+        from neurath.runtime.finish_release import capture_finish_context
+        with registry.terminal_admission(claim.worktree_id):
+            release_context = capture_finish_context(root, handle)
+            receipt = registry.release(claim, context=release_context)
+        return {"claim": claim.to_payload(), "released": True, "release_receipt": receipt}
     _reserve_key(root, identity, name, fields)
     return _material(root, canonical.path, handle, state, name, fields)
 

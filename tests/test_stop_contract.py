@@ -1,4 +1,4 @@
-"""Stopping the host must never imply completion or an unbounded retry budget."""
+"""Normal Stop preserves unfinished work and cannot waive kernel completion."""
 
 import json
 import subprocess
@@ -41,7 +41,7 @@ def stop_runtime(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("host", ["codex", "claude-code"])
-def test_repeated_handoff_request_yields_without_completing(stop_runtime, monkeypatch, host):
+def test_repeated_handoff_request_keeps_blocking_without_completing(stop_runtime, monkeypatch, host):
     from neurath.memory import hooks as memory
     from scripts.agent_harness.session_kernel import SessionId, SessionKernel, SessionLocator
 
@@ -54,11 +54,11 @@ def test_repeated_handoff_request_yields_without_completing(stop_runtime, monkey
     code, output, _ = send(host, "Stop", stop_hook_active=False)
     assert code == 0 and output.get("decision") == "block"
     assert output.get("reason") == "Save the missing handoff"
-    # Even a host replay that forgot its continuation flag cannot loop.
+    # Neither continuation flags nor duplicate events waive unfinished work.
     for active in (True, False, True):
         code, output, diagnostic = send(host, "Stop", stop_hook_active=active)
-        assert code == 0 and output.get("continue") is False, diagnostic
-        assert "incomplete" in output.get("stopReason", "")
+        assert code == 0 and output.get("decision") == "block", diagnostic
+        assert output.get("continue") is not False
         assert kernel.inspect(SessionId("root")).to_payload() == before
 
 
@@ -68,7 +68,8 @@ def test_missing_session_stop_is_nonblocking_and_creates_no_state(stop_runtime, 
     for active in (False, True):
         code, output, diagnostic = send(host, "Stop", stop_hook_active=active)
         assert code == 1 and "decision" not in output, diagnostic
-    assert not (root / ".neurath/local/runs/root/.process-state.json").exists()
+    from scripts.agent_harness.session_kernel import SessionStateStore, SessionLocator, SessionId
+    assert not SessionStateStore(SessionLocator(root).locate(SessionId("root")).process_state).exists()
 
 
 @pytest.mark.parametrize("host", ["codex", "claude-code"])
@@ -89,7 +90,7 @@ def test_retry_can_finish_once_prerequisite_is_met(stop_runtime, monkeypatch, ho
 
 
 @pytest.mark.parametrize("host", ["codex", "claude-code"])
-def test_unfinished_work_survives_yield_and_new_user_turn_gets_own_budget(
+def test_unfinished_work_keeps_blocking_across_user_turns(
     stop_runtime, monkeypatch, host,
 ):
     from neurath.memory import hooks as memory
@@ -101,13 +102,22 @@ def test_unfinished_work_survives_yield_and_new_user_turn_gets_own_budget(
     monkeypatch.setattr(memory, "checkpoint_request", lambda *_: None)
     kernel = k.SessionKernel(k.SessionLocator.from_worktree(root))
     state = kernel.inspect(k.SessionId("root"))
+    from scripts.agent_harness.state_handle import StateHandle, RuntimeIdentityBinding
+    from scripts.agent_harness.task_service import TaskService
+    handle = StateHandle.attach(k.SessionLocator.from_worktree(root), RuntimeIdentityBinding(
+        runtime=state.session.runtime, session_id=state.session.id,
+        actor_id=state.session.root_actor_id, root_actor_id=state.session.root_actor_id))
+    TaskService(handle).define([{"key": "whole-request", "title": "Complete the whole request",
+        "goal": "Complete all acceptance criteria", "sources": [],
+        "acceptance": ["All requested behavior is complete"], "evidence_contract": "unfinished",
+        "dependencies": []}], expected_revision=0, key="define-whole-request")
     kernel.apply(k.WorkflowStarted(
         session_id=state.session.id, workflow_id=k.WorkflowId("unfinished"),
         owner_actor_id=state.session.root_actor_id, kind="checkpoint",
         goal="Complete all acceptance criteria", payload={}, idempotency_key="unfinished",
     ))
     assert send(host, "Stop", stop_hook_active=False)[1].get("decision") == "block"
-    assert send(host, "Stop", stop_hook_active=True)[1].get("continue") is False
+    assert send(host, "Stop", stop_hook_active=True)[1].get("decision") == "block"
     state = kernel.inspect(k.SessionId("root"))
     assert state.workflows[k.WorkflowId("unfinished")].status.value == "active"
     assert state.foreground_turns[state.session.root_actor_id].status.value == "active"
@@ -209,3 +219,35 @@ def test_external_stop_readback_never_holds_up_human_input(stop_runtime, monkeyp
     assert output.get("decision") != "block"
     state = k.SessionKernel(k.SessionLocator.from_worktree(root)).inspect(k.SessionId("root"))
     assert state.foreground_turns[state.session.root_actor_id].status.value == "active"
+
+
+@pytest.mark.parametrize("host", ["codex", "claude-code"])
+def test_yielded_turn_with_pending_task_still_emits_blocking_stop(stop_runtime, monkeypatch, host):
+    from neurath.memory import hooks as memory
+    from scripts.agent_harness import session_kernel as k
+    from scripts.agent_harness.state_handle import StateHandle, RuntimeIdentityBinding
+    from scripts.agent_harness.task_service import TaskService
+    root, send = stop_runtime
+    assert send(host, "SessionStart", source="startup")[0] == 0
+    assert send(host, "UserPromptSubmit", prompt="Finish the original request")[0] == 0
+    monkeypatch.setattr(memory, "checkpoint_request", lambda *_: None)
+    locator = k.SessionLocator.from_worktree(root)
+    kernel = k.SessionKernel(locator)
+    state = kernel.inspect(k.SessionId("root"))
+    handle = StateHandle.attach(locator, RuntimeIdentityBinding(runtime=state.session.runtime,
+        session_id=state.session.id, actor_id=state.session.root_actor_id,
+        root_actor_id=state.session.root_actor_id))
+    tasks = TaskService(handle)
+    tasks.define([{"key": "original", "title": "Original request", "goal": "Finish original request",
+        "sources": [], "acceptance": ["All required behavior is implemented"],
+        "evidence_contract": "future-work", "dependencies": []}], expected_revision=0, key="define-original")
+    turn = kernel.inspect(state.session.id).foreground_turns[state.session.root_actor_id]
+    kernel.apply(k.ForegroundTurnYielded(session_id=state.session.id, actor_id=state.session.root_actor_id,
+        expected_turn_revision=turn.revision,
+        receipt=k.ForegroundTurnReceipt(k.ForegroundTurnOutcome.COMPLETED, summary="Answered only the side question"),
+        idempotency_key="yield-side-answer"))
+    for active in (False, True):
+        code, reply, diagnostic = send(host, "Stop", stop_hook_active=active)
+        assert code == 0 and reply.get("decision") == "block", diagnostic
+    assert tasks.list()["tasks"][0]["status"] == "pending"
+    assert kernel.inspect(state.session.id).foreground_turns[state.session.root_actor_id].status is k.ForegroundTurnStatus.ACTIVE

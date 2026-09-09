@@ -62,11 +62,14 @@ def install_legacy(repo, prefix="neurath-"):
 
 
 def contents(repo):
-    """Capture files and links, excluding installer-private Git history."""
+    """Compare product bytes and validated install state, excluding private runtime history."""
     return {
-        str(p.relative_to(repo)): ("link", os.readlink(p)) if p.is_symlink() else p.read_bytes()
+        str(p.relative_to(repo)): ("link", os.readlink(p)) if p.is_symlink() else (
+            installer.canonical(installer.read_state(repo)).encode()
+            if p == repo / installer.STATE else p.read_bytes())
         for p in repo.rglob("*")
-        if ".git" not in p.relative_to(repo).parts and (p.is_file() or p.is_symlink())
+        if ".git" not in p.relative_to(repo).parts and not p.is_relative_to(repo / ".neurath/local")
+        and (p.is_file() or p.is_symlink())
     }
 
 

@@ -241,10 +241,24 @@ class CodexSessions:
                if session.policy["requested"]["mode"] != "read-only" else "Do not claim or edit files. ") +
             "Report actual installation, native activation, effective mode and claim results. "
             "If a required named operation is unavailable, report that exact preparation gap. "
+            "Keep the worktree claim when preparation is complete. End this preparation turn "
+            "normally and wait for a separate assignment turn; release the claim only after "
+            "the later assigned work finishes. "
             "Do not implement changes, edit source files, synthesize lifecycle state, override a "
             "conflicting claim or change permissions. Stop and report any failed prerequisite."
         )
         return self._submit(session, prompt, thread, live)
+
+    def start_after_preparation(self, session, message, preparation_turn):
+        """Start a distinct assignment after this adapter's preparation completed."""
+        text(message, "message")
+        thread, live = self._state(session)
+        if live is not None or thread.get("status", {}).get("type") != "idle":
+            raise ValueError("separate assignment requires an idle completed preparation")
+        expected = text(preparation_turn, "preparation turn", 256)
+        if self._turns.get(session.native_session) != expected:
+            raise ValueError("assignment does not follow this adapter's preparation turn")
+        return self._submit(session, message, thread, live)
 
     def _submit(self, session, message, thread, live):
         state = thread.get("status", {})
@@ -268,8 +282,16 @@ class CodexSessions:
             if requested.get("reasoning_effort") is not None:
                 params["effort"] = requested["reasoning_effort"]
             if requested.get("collaboration_mode") is not None:
+                settings = {
+                    "model": session.actual_model,
+                    "developer_instructions": None,
+                }
+                if requested.get("reasoning_effort") is not None:
+                    # Applying collaboration settings may otherwise reset the
+                    # turn's native effort after the top-level value is read.
+                    settings["reasoning_effort"] = requested["reasoning_effort"]
                 params["collaborationMode"] = {"mode": requested["collaboration_mode"],
-                    "settings": {"model": session.actual_model, "developer_instructions": None}}
+                    "settings": settings}
             result = self.transport.request("turn/start", params)
             turn = text(result["turn"]["id"], "native turn", 256)
         self._turns[session.native_session] = turn

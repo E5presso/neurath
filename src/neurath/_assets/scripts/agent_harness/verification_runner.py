@@ -158,6 +158,31 @@ class VerificationKind(StrEnum):
     """대상 프로젝트의 workspace 검증를 실행합니다."""
 
 
+_PYTEST_NODE_PATTERN = re.compile(
+    r"(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_./-]+\.py::"
+    r"(?:[A-Za-z_][A-Za-z0-9_]*::)?test_[A-Za-z0-9_]+"
+    r"(?P<parameter>\[[^\s\[\]\x00\"'\\]+\])?"
+)
+
+
+def parse_pytest_selector(value: str) -> re.Match[str]:
+    """Validate an exact public node in the shell-free command grammar."""
+    match = _PYTEST_NODE_PATTERN.fullmatch(value) if isinstance(value, str) else None
+    if match is None:
+        raise VerificationRequestInvalid(
+            "pytest nodes must be canonical repository path and public test identities"
+        )
+    return match
+
+
+def pytest_result_pattern(selector: str) -> re.Pattern[str]:
+    """A base function selects every emitted parameter leaf; a leaf selects itself."""
+    parsed = parse_pytest_selector(selector)
+    suffix = "" if parsed.group("parameter") is not None else r"(?:\[[^\r\n]*\])?"
+    return re.compile(r"(?m)^" + re.escape(selector) + suffix
+                      + r"\s+(?P<outcome>PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS)(?:\s|$)")
+
+
 @dataclass(frozen=True, slots=True)
 class VerificationRequest:
     """한 typed verifier invocation의 kind와 exact pytest node 집합입니다."""
@@ -166,11 +191,6 @@ class VerificationRequest:
     """Closed verifier operation입니다."""
     nodes: tuple[str, ...] = ()
     """Pytest operation에만 허용되는 unique public node identity입니다."""
-
-    _NODE_PATTERN = re.compile(
-        r"(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_./-]+\.py::"
-        r"(?:[A-Za-z_][A-Za-z0-9_]*::)?test_[A-Za-z0-9_]+"
-    )
 
     def __post_init__(self) -> None:
         """Kind별 node cardinality와 shell-free identity를 검증합니다.
@@ -187,10 +207,8 @@ class VerificationRequest:
             return
         if not self.nodes or len(set(self.nodes)) != len(self.nodes):
             raise VerificationRequestInvalid("pytest requires unique public nodes")
-        if any(self._NODE_PATTERN.fullmatch(node) is None for node in self.nodes):
-            raise VerificationRequestInvalid(
-                "pytest nodes must be canonical repository path and public test identities"
-            )
+        for node in self.nodes:
+            parse_pytest_selector(node)
 
     @property
     def commands(self) -> tuple[str, ...]:

@@ -1,16 +1,13 @@
 """Delegation detail을 exact session에 content-addressed immutable artifact로 보존합니다."""
 
-import fcntl
 import hashlib
 import json
-import os
 import re
 from collections.abc import Mapping
 from pathlib import Path
-from tempfile import NamedTemporaryFile
-from typing import TextIO
 
-from scripts.agent_harness.session_kernel import ActorStatus, SessionStatus
+from scripts.agent_harness.runtime_database import CorruptRecord, RuntimeDatabase
+from scripts.agent_harness.session_kernel import ActorStatus, SessionStatus, SessionLocator, SessionStateStore
 from scripts.agent_harness.state_handle import StateHandle
 
 
@@ -81,6 +78,10 @@ class SessionArtifactStore:
             handle: Exact session과 current actor를 검증하는 state facade입니다.
         """
         self._handle = handle
+        root = handle._repository_control_root()
+        self._database = RuntimeDatabase(root)
+        self._namespace = f"artifact:{handle.session_id}"
+        self._session_store = SessionStateStore(SessionLocator(root).locate(handle.session_id).process_state)
 
     def put_json(self, payload: Mapping[str, object]) -> ArtifactReceipt:
         """JSON object를 canonicalize해 immutable content-addressed artifact로 저장합니다.
@@ -102,17 +103,15 @@ class SessionArtifactStore:
         content = self._encode(payload)
         digest = hashlib.sha256(content).hexdigest()
         reference = f"sha256:{digest}"
-        artifact_path = self._artifact_path(digest)
-        artifact_path.parent.mkdir(parents=True, exist_ok=True)
-        with self._open_lock(artifact_path) as lock:
-            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-            try:
-                if artifact_path.exists():
-                    self._verify_content(artifact_path, content, reference)
-                else:
-                    self._commit(artifact_path, content)
-            finally:
-                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+        self._import_legacy(digest)
+        with self._database.transaction() as tx:
+            state = self._session_store.read_transaction(tx, self._handle.session_id)
+            self._require_active_authority(state)
+            old = tx.get(self._namespace, digest)
+            if old is not None and old.payload != content:
+                raise ArtifactInvalid(f"content-addressed artifact collision: {reference}")
+            if old is None:
+                tx.put(self._namespace, digest, content, expected_revision=None)
         return ArtifactReceipt(
             reference=reference,
             media_type="application/json",
@@ -134,15 +133,17 @@ class SessionArtifactStore:
         """
         self._handle.inspect()
         digest = self._parse_reference(reference)
-        artifact_path = self._artifact_path(digest)
-        if not artifact_path.is_file():
+        self._import_legacy(digest)
+        try:
+            with self._database.transaction() as tx:
+                record = tx.get(self._namespace, digest)
+        except CorruptRecord as error:
+            raise ArtifactInvalid(f"artifact integrity mismatch: {reference}") from error
+        if record is None:
             raise ArtifactNotFound(
                 f"artifact {reference} is missing from session {self._handle.session_id}"
             )
-        try:
-            content = artifact_path.read_bytes()
-        except OSError as error:
-            raise ArtifactInvalid(f"cannot read artifact {reference}") from error
+        content = record.payload
         actual_reference = f"sha256:{hashlib.sha256(content).hexdigest()}"
         if actual_reference != reference:
             raise ArtifactInvalid(f"artifact digest mismatch: {reference}")
@@ -154,8 +155,9 @@ class SessionArtifactStore:
             raise ArtifactInvalid(f"artifact root must be a string-keyed object: {reference}")
         return {str(key): value for key, value in decoded.items()}
 
-    def _require_active_authority(self) -> None:
-        state = self._handle.inspect()
+    def _require_active_authority(self, state=None) -> None:
+        if state is None:
+            state = self._handle.inspect()
         actor = state.actors.get(self._handle.actor_id)
         if state.session.status is not SessionStatus.ACTIVE or actor is None:
             raise ArtifactAuthorityError("terminal or missing actor cannot write artifacts")
@@ -189,40 +191,31 @@ class SessionArtifactStore:
     def _artifact_path(self, digest: str) -> Path:
         return self._handle._session_artifact_directory() / "sha256" / f"{digest}.json"
 
-    def _open_lock(self, artifact_path: Path) -> TextIO:
-        return artifact_path.with_name(f".{artifact_path.name}.lock").open(
-            "a+",
-            encoding="utf-8",
-        )
-
-    def _verify_content(self, path: Path, expected: bytes, reference: str) -> None:
+    def _import_legacy(self, digest: str) -> None:
         try:
-            current = path.read_bytes()
-        except OSError as error:
-            raise ArtifactInvalid(f"cannot verify artifact {reference}") from error
-        if current != expected:
-            raise ArtifactInvalid(f"content-addressed artifact collision: {reference}")
+            with self._database.transaction() as tx:
+                if tx.get(self._namespace, digest) is not None:
+                    return
+        except CorruptRecord as error:
+            raise ArtifactInvalid(f"artifact integrity mismatch: sha256:{digest}") from error
+        path = self._artifact_path(digest)
+        if not path.is_file():
+            return
 
-    def _commit(self, artifact_path: Path, content: bytes) -> None:
-        temporary_name: str | None = None
-        try:
-            with NamedTemporaryFile(
-                "wb",
-                dir=artifact_path.parent,
-                prefix=f".{artifact_path.name}.",
-                suffix=".tmp",
-                delete=False,
-            ) as temporary:
-                temporary_name = temporary.name
-                temporary.write(content)
-                temporary.flush()
-                os.fsync(temporary.fileno())
-            os.replace(temporary_name, artifact_path)
-            directory_descriptor = os.open(artifact_path.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory_descriptor)
-            finally:
-                os.close(directory_descriptor)
-        finally:
-            if temporary_name is not None:
-                Path(temporary_name).unlink(missing_ok=True)
+        def validate(content):
+            if hashlib.sha256(content).hexdigest() != digest:
+                raise ArtifactInvalid("legacy artifact digest mismatch")
+            if not isinstance(json.loads(content), dict):
+                raise ArtifactInvalid("legacy artifact must be an object")
+            return 0
+
+        self._database.import_legacy(self._namespace, digest, path, validate)
+
+    def has_artifacts(self) -> bool:
+        """Check both current records and not-yet-imported immutable legacy objects."""
+        with self._database.transaction() as tx:
+            if tx.connection.execute("SELECT 1 FROM runtime_records WHERE namespace=? LIMIT 1",
+                                     (self._namespace,)).fetchone() is not None:
+                return True
+        directory = self._handle._session_artifact_directory()
+        return directory.is_dir() and any(directory.iterdir())

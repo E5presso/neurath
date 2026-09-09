@@ -16,6 +16,10 @@ from neurath.runtime.task_schema import TASKS, TaskError, arguments
 def execute(root, name, inputs, *, identity, expected_turn=None, verified_policy_evidence=None):
     fields = arguments(name, inputs)
     domain, action = TASKS[name][:2]
+    if domain == "task-ledger":
+        from neurath.runtime.task_ledger_tasks import execute as task_execute
+        return task_execute(root, action, fields, identity=identity, expected_turn=expected_turn,
+                            verified_policy_evidence=verified_policy_evidence)
     if domain == "monitor":
         from neurath.runtime.monitor_tasks import execute as monitor_execute
         return monitor_execute(root, name, fields, identity=identity, expected_turn=expected_turn,
@@ -182,6 +186,8 @@ def peer(root, action, fields, *, identity=None):
     if action == "register":
         return store.register(identity, name=fields["name"], summary=fields.get("summary", ""))
     if action == "send":
+        if fields.get("messages"):
+            return {"messages": store.send_many(actor, fields["messages"])}
         return store.send(actor, fields["to"], fields["message"], key=fields["key"],
                           kind=fields.get("kind", "question"), max_messages=fields.get("max_messages", 32),
                           ttl=fields.get("ttl", 86400))
@@ -254,8 +260,9 @@ def verification(root, check, *, identity=None, require_owner=False, expected_tu
         raise VerificationError(f"unbound verifier: {check}; configure project.json verification")
     owner_before = _verification_owner(root, identity) if require_owner else None
     environment = None
+    policy_before = None
     if expected_turn is not None:
-        _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence)
+        policy_before = _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence)
         # A background server's environment is not the caller's identity. Never
         # lend it to a check or manufacture a caller environment from arguments.
         import os
@@ -263,12 +270,27 @@ def verification(root, check, *, identity=None, require_owner=False, expected_tu
         environment = {key: value for key, value in os.environ.items() if not (
             key.startswith(("CODEX_", "CLAUDE_", "NEURATH_")) or key == "PYTHONPATH")}
     result = verify(root, binding, environment=environment)
+    prompt_changed = False
     try:
-        if require_owner and _verification_owner(root, identity) != owner_before:
-            raise TaskError("native-prompt-changed", "verification finished after its native turn, user prompt or claim changed")
+        owner_after = _verification_owner(root, identity) if require_owner else None
+        if require_owner:
+            if owner_after[2] != owner_before[2]:
+                raise TaskError("authority-denied", "verification claim changed after execution")
+            prompt_changed = owner_after != owner_before
         if expected_turn is not None:
-            # A completed process cannot lend its result to a different native turn.
-            _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence)
+            if prompt_changed and identity.host == "codex":
+                # Codex policy is freshly read from its registered native transcript.
+                # Claude keeps its strict prompt binding until fresh mode evidence exists.
+                # Observation of an already completed run is not new execution
+                # permission. Source and exact lease remain independently fenced.
+                from neurath.memory.store import canonical
+                observed_turn = canonical([owner_after[0], owner_after[1]])
+                policy_after = _mcp_execution_policy(root, identity, observed_turn,
+                    verified_policy_evidence, require_current_prompt=False)
+            else:
+                policy_after = _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence)
+            if _verification_policy(policy_after) != _verification_policy(policy_before):
+                raise TaskError("native-execution-required", "verification execution policy changed after admission")
     except Exception as error:  # noqa: BLE001 - preserve the completed verifier result
         # The process already returned. A failed observer must not erase its
         # result or label this as an unstarted execution that is safe to retry.
@@ -279,6 +301,10 @@ def verification(root, check, *, identity=None, require_owner=False, expected_tu
     if check == "check" and identity is not None and identity.is_root:
         from neurath.runtime.verification_obligations import VerificationObligations
         VerificationObligations(root).verified(identity.host, identity.session, identity.actor, check, result)
+        if prompt_changed:
+            # Do not train against the later question or reinterpret its approval.
+            return {**result, "completion_scope": "admitted-execution",
+                    "learning_status": "skipped-prompt-changed"}
         from neurath.hosts.identity import snapshot
         from neurath.memory.learning import Learning
         from neurath.memory.transcript import synchronize
@@ -288,6 +314,16 @@ def verification(root, check, *, identity=None, require_owner=False, expected_tu
         Learning(memory).verified(identity.host, identity.session,
                                   {k: v for k, v in result.items() if k != "diagnostic_tail"})
     return result
+
+
+def _verification_policy(report):
+    """Compare execution constraints, excluding prompt/model diagnostic metadata."""
+    if report is None:
+        return None
+    evidence = report["stages"]["policy"]["evidence"]
+    return {key: evidence.get(key) for key in (
+        "permission_mode", "approval_policy", "approvals_reviewer", "sandbox_policy",
+        "collaboration_mode", "sandbox_observation")}
 
 
 def _execution_ready(report, ownership_required=True, placement_required=True):
@@ -309,14 +345,15 @@ def _direct_mcp_execution(report, ownership_required=True, placement_required=Tr
             and evidence.get("approvals_reviewer") in (None, "user"))
 
 
-def _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence=None, *, ownership_required=True, placement_required=True):
+def _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence=None, *, ownership_required=True, placement_required=True, require_current_prompt=True):
     try:
         from neurath.providers.readiness import inspect_bound_readiness
     except ImportError as error:
         raise TaskError("execution-policy-unavailable", "native execution policy observer is unavailable",
                         next_action="Inspect session_status and diagnostics_project. Restore the native policy observer before retrying this named tool; preserve the current permissions.") from error
     report = inspect_bound_readiness(root, identity, expected_turn=expected_turn,
-                                     verified_policy_evidence=verified_policy_evidence)
+                                     verified_policy_evidence=verified_policy_evidence,
+                                     **({} if require_current_prompt else {"require_current_prompt": False}))
     if not placement_required:
         from neurath.doctor import integrity
         if integrity()["status"] != "passed":
@@ -357,5 +394,5 @@ def _verification_owner(root, identity):
             or claim.status.value != "active"):
         raise TaskError("authority-denied", "verification requires the current worktree owner")
     receipt = turn.user_prompt_receipt
-    return (turn.generation, turn.vendor_turn_id, claim.lease_epoch,
+    return (turn.generation, turn.vendor_turn_id, (claim.lease_epoch, claim.fencing_token),
             None if receipt is None else (receipt.turn_revision, receipt.prompt_digest))

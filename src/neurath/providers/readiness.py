@@ -95,7 +95,7 @@ def _installation(root):
 
 
 def inspect_bound_readiness(root, identity, *, expected_turn, requested_policy=None,
-                            verified_policy_evidence=None):
+                            verified_policy_evidence=None, require_current_prompt=True):
     """Internal core API. The core must verify the native invocation before calling.
 
     Re-read the kernel/host/claim even for a verified caller. This does not claim a
@@ -141,7 +141,8 @@ def inspect_bound_readiness(root, identity, *, expected_turn, requested_policy=N
                     or parent is None or parent.status.value != "active"
                     or parent_turn is None or parent_turn.status.value != "active"):
                 raise ValueError("native child lacks an active host-attested direct parent")
-        if verified_policy_evidence is not None and not _prompt_matches(verified_policy_evidence, turn):
+        if (require_current_prompt and verified_policy_evidence is not None
+                and not _prompt_matches(verified_policy_evidence, turn)):
             raise ValueError("native user prompt changed after invocation binding")
         data = snapshot(root, identity.session)
         if (data.get("host") != identity.host or not data.get("transcript")

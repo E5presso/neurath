@@ -225,6 +225,74 @@ def test_experimental_collaboration_is_applied_to_bootstrap_not_claimed_at_creat
         "mode": "plan", "settings": {"model": "chosen-model", "developer_instructions": None}}
 
 
+def test_collaboration_turn_preserves_planned_reasoning_in_both_native_fields():
+    host = Host()
+    host.supports_collaboration_mode = True
+    host.sandbox = {"type": "dangerFullAccess"}
+    adapter = CodexSessions(host)
+    session = adapter.create("/work", policy=ExecutionPolicy(
+        "danger-full-access", "never", collaboration_mode="default"))
+    session.policy["requested"]["reasoning_effort"] = "high"
+
+    adapter.bootstrap(session)
+
+    method, params = host.calls[-1]
+    assert method == "turn/start"
+    assert params["effort"] == "high"
+    assert params["collaborationMode"] == {
+        "mode": "default",
+        "settings": {
+            "model": "chosen-model",
+            "developer_instructions": None,
+            "reasoning_effort": "high",
+        },
+    }
+    assert params["sandboxPolicy"] == {"type": "dangerFullAccess"}
+    assert session.policy["requested"]["approval_policy"] == "never"
+
+
+def test_idle_followup_reuses_same_reasoning_and_collaboration_composition():
+    host = Host()
+    host.supports_collaboration_mode = True
+    host.sandbox = {"type": "dangerFullAccess"}
+    adapter = CodexSessions(host)
+    session = adapter.create("/work", policy=ExecutionPolicy(
+        "danger-full-access", "never", collaboration_mode="default"))
+    session.policy["requested"]["reasoning_effort"] = "high"
+    adapter.bootstrap(session)
+    host.thread["status"] = {"type": "idle"}
+    host.thread["turns"] = []
+
+    resumed = adapter.resume(session, "Continue the assigned task")
+    assert resumed["delivery"] == "preparation-required"
+    adapter.bootstrap(session)
+
+    starts = [params for method, params in host.calls if method == "turn/start"]
+    assert len(starts) == 2
+    for params in starts:
+        assert params["effort"] == "high"
+        assert params["collaborationMode"]["settings"]["reasoning_effort"] == "high"
+        assert params["sandboxPolicy"] == {"type": "dangerFullAccess"}
+
+
+def test_separate_assignment_requires_completed_owned_preparation_turn():
+    host = Host()
+    adapter = CodexSessions(host)
+    session = adapter.create("/work")
+    bootstrap = adapter.bootstrap(session)
+    host.thread.update(status={"type": "active"}, turns=[
+        {"id": bootstrap["native_turn"], "status": "inProgress"}])
+    with pytest.raises(ValueError, match="idle"):
+        adapter.start_after_preparation(session, "Implement", bootstrap["native_turn"])
+    host.thread.update(status={"type": "idle"}, turns=[])
+    with pytest.raises(ValueError, match="adapter"):
+        adapter.start_after_preparation(session, "Implement", "other-turn")
+    result = adapter.start_after_preparation(session, "Implement", bootstrap["native_turn"])
+    assert result["native_turn"] == "turn-id"
+    assert host.calls[-1][0] == "turn/start"
+    assert host.calls[-1][1]["input"][0]["text"] == "Implement"
+
+
 def test_idle_write_continuation_requires_new_native_preparation_without_sending_assignment(monkeypatch):
     monkeypatch.setattr(CodexSessions, "_state_roots", staticmethod(lambda _: []))
     host = Host()

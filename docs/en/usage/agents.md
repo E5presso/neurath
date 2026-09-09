@@ -17,6 +17,12 @@ preserve the host's execution mode, the agent runs the registered check through 
 It reports installation, native activation, observed mode and ownership separately.
 A fork has its own identity and must establish its own worktree ownership before editing.
 
+The agent keeps a visible TODO for the whole request, adds newly discovered work,
+and tells you when work remains unfinished. It keeps side questions from replacing the original
+request and leaves a normal stop pending until the outstanding work is settled. When you ask it to
+coordinate several peers, it can send one approved update to several exact recipients atomically;
+delivery still needs recipient confirmation.
+
 ## Request a second opinion
 
 To request independent implementation, say: “Fix this issue in a separate session. Run the
@@ -36,6 +42,8 @@ recovery and requests your intervention only for account information or authenti
 
 New provider work inherits the current permission mode. The agent plans the model from task
 difficulty, available models and your constraints, including explicit use of the native default.
+Ordinary work is assigned to native leaf agents when that is supported. The agent calibrates the
+model to the role and difficulty and uses the smallest capability that satisfies the request.
 Before authorized editing, the agent checks
 installation, actual host activation, effective execution mode, and ownership of a separate
 worktree of the same project. A created session alone is not ready to edit. If the chosen

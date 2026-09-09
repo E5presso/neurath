@@ -129,8 +129,9 @@ class SessionRetentionManager:
             )
         )
         paths = self._locator.locate(handle.session_id)
-        self._delete_enclave(paths.enclave, paths.enclave_lock)
-        eligible_at_epoch = paths.process_state.stat().st_mtime + self._retention_seconds
+        from scripts.agent_harness.enclave_store import EnclaveStore
+        EnclaveStore(self._locator, max_bytes=4096).delete_terminal(handle.session_id)
+        eligible_at_epoch = SessionStateStore(paths.process_state).modified_at() + self._retention_seconds
         return SessionRetentionReceipt(
             session_id=handle.session_id,
             ended_revision=state.revision,
@@ -154,29 +155,34 @@ class SessionRetentionManager:
             ActiveSessionRetentionError: Exact session이 아직 active이면 발생합니다.
         """
         paths = self._locator.locate(session_id)
-        if not paths.process_state.exists():
+        store = SessionStateStore(paths.process_state)
+        if not store.exists():
             return False
         paths.directory.mkdir(parents=True, exist_ok=True)
         with paths.process_state_lock.open("a+", encoding="utf-8") as lock:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
             try:
-                if not paths.process_state.exists():
-                    return False
-                state = self._read_exact_state(paths.process_state, session_id)
-                if state.session.status is not SessionStatus.ENDED:
-                    raise ActiveSessionRetentionError(
-                        f"active session is not eligible for collection: {session_id}"
-                    )
-                eligible_at_epoch = paths.process_state.stat().st_mtime + self._retention_seconds
-                if self._clock() < eligible_at_epoch:
-                    return False
-                if paths.enclave.exists():
-                    raise SessionRetentionError(
-                        f"terminal session enclave must be deleted before collection: {session_id}"
-                    )
-                paths.process_state.unlink()
-                self._fsync_directory(paths.directory)
-                return True
+                with store._database.transaction() as tx:
+                    record = tx.get("session", store._record_key)
+                    state = store._decode_record(record, session_id)
+                    if state is None:
+                        return False
+                    if state.session.status is not SessionStatus.ENDED:
+                        raise ActiveSessionRetentionError(
+                            f"active session is not eligible for collection: {session_id}"
+                        )
+                    modified = tx.connection.execute(
+                        "SELECT updated FROM runtime_records WHERE namespace='session' AND key=?",
+                        (store._record_key,),
+                    ).fetchone()[0]
+                    if self._clock() < modified + self._retention_seconds:
+                        return False
+                    if tx.get("enclave", str(session_id)) is not None:
+                        raise SessionRetentionError(
+                            f"terminal session enclave must be deleted before collection: {session_id}"
+                        )
+                    tx.delete("session", store._record_key, expected_revision=state.revision)
+                    return True
             finally:
                 fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 

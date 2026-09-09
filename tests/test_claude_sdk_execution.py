@@ -217,9 +217,8 @@ def test_terminal_native_response_does_not_wait_for_outstanding_work(
 @pytest.fixture
 def native_policy(tmp_path, monkeypatch):
     monkeypatch.setattr(execution_claude, "control_root", lambda _: tmp_path)
-    directory = tmp_path / ".neurath/local/agents"
-    directory.mkdir(parents=True)
-    path = directory / "messages.sqlite3"
+    from neurath.runtime.database import RuntimeDatabase
+    path = RuntimeDatabase(tmp_path).path
     identity = AgentIdentity("claude-code", "native-session", "native-actor")
     context = {"host": identity.host, "session": identity.session, "actor": identity.actor,
                "turn": "native-turn", "tool_use_id": "native-tool", "permission_mode": "dontAsk",

@@ -217,7 +217,7 @@ def test_real_wheel_update_preserves_choices_settings_and_restores(prepared):
         summary="Improve generic setup", expected="Keep preferences", observed="Check preferences",
         reproduction="Use an empty fixture", proposal="Preserve user choices"), privacy_reviewed=True)
     reporting.approve(draft["id"], decision=True)
-    report_bytes = reporting.path.read_bytes()
+    report_state = reporting._read()
     service.choose(offer["id"], "later", user_confirmed=True)
     with pytest.raises(ValueError, match="consent"):
         service.apply(offer["id"])
@@ -229,7 +229,7 @@ def test_real_wheel_update_preserves_choices_settings_and_restores(prepared):
     assert read_state(root)["hosts"] == ["codex"]
     assert 'sandbox_mode = "read-only"' in (root / ".codex/config.toml").read_text()
     assert "keep-user-hook" in (root / ".codex/hooks.json").read_text()
-    assert reporting.path.read_bytes() == report_bytes
+    assert reporting._read() == report_state
     assert (root / "AGENTS.md").read_text().startswith("Keep my instructions.")
     assert 'name="private-project"' in (root / "pyproject.toml").read_text()
     env = {k: v for k, v in os.environ.items() if not k.startswith(("NEURATH_", "CODEX_", "CLAUDE_"))}
@@ -238,7 +238,7 @@ def test_real_wheel_update_preserves_choices_settings_and_restores(prepared):
     assert json.loads(process.stdout)["current"] == "0.2.0"
     assert service.recover()["operation"]["phase"] == "recovered"
     assert read_state(root) == original
-    assert reporting.path.read_bytes() == report_bytes
+    assert reporting._read() == report_state
     assert service.notice() is None
 
 
@@ -330,10 +330,11 @@ transaction.apply_plan(Path(sys.argv[1]), json.loads(Path(sys.argv[2]).read_text
     monkeypatch.setattr(release_install, "apply", crash)
     with pytest.raises(KeyboardInterrupt):
         service.apply(offer["id"])
-    assert (service.directory.parent / "neurath-journal.json").exists()
+    from neurath.install.state_store import InstallStateStore
+    assert InstallStateStore(service.root).journal() is not None
     assert service.recover()["operation"]["phase"] == "recovered"
     assert read_state(service.root) == before
-    assert not (service.directory.parent / "neurath-journal.json").exists()
+    assert InstallStateStore(service.root).journal() is None
 
 
 def test_post_apply_diagnostic_failure_recovers_and_preserves_new_user_edit(prepared, monkeypatch):

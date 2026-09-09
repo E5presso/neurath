@@ -18,6 +18,7 @@ from scripts.agent_harness.session_kernel import (
     SessionLocator,
     SessionNotFound,
     SessionRuntime,
+    SessionStateStore,
 )
 from scripts.agent_harness.state_handle import (
     RuntimeEnvironmentResolver,
@@ -227,7 +228,11 @@ class StateHandleTest(TestCase):
         self.assertNotIn("goal", payload)
         self.assertNotIn("north_star", payload)
         self.assertNotIn("goal", state.session.to_payload())
-        self.assertTrue(locator.locate(binding.session_id).process_state.is_file())
+        self.assertTrue(
+            SessionStateStore(
+                locator.locate(binding.session_id).process_state
+            ).exists()
+        )
 
     def test_initialize_and_attach_separate_lifecycle_from_operational_access(self) -> None:
         """Lifecycle만 session을 시작하고 operational attach는 existing state만 엽니다."""

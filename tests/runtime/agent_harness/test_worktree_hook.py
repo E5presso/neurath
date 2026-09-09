@@ -625,6 +625,14 @@ class WorktreeHookApplicationTest(TestCase):
         self.assertEqual(2, result.exit_code)
         self.assertEqual(WorktreeHookDecisionCode.CANONICAL_STATE, result.decision.code)
 
+    def test_sqlite_runtime_state_direct_mutation_is_denied(self) -> None:
+        """SQLite and its journal retain the same protected canonical-state boundary."""
+        database = self.locator.control_root / ".neurath/local/runtime.sqlite3"
+        for suffix in ("", "-wal", "-shm", "-journal"):
+            result = self._run({"tool_name": "Write", "tool_input": {"file_path": str(database) + suffix}})
+            self.assertEqual(2, result.exit_code)
+            self.assertEqual(WorktreeHookDecisionCode.CANONICAL_STATE, result.decision.code)
+
     def test_external_publication_approval_is_host_owned(self) -> None:
         """Repository hook은 외부 publication approval을 승인하거나 거부하지 않습니다."""
         without_annotation = self._run({

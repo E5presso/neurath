@@ -12,6 +12,7 @@ from tempfile import TemporaryDirectory
 from unittest import TestCase
 
 from scripts.agent_harness.artifact_store import SessionArtifactStore
+from scripts.agent_harness.runtime_database import RuntimeDatabase
 from scripts.agent_harness.session_kernel import (
     ActorId,
     ActorKind,
@@ -70,7 +71,7 @@ class PublisherFixture:
         self._git("config", "user.email", "test@example.invalid")
         self._git("config", "user.name", "Neurath Publisher Test")
         (self.worktree / ".gitignore").write_text(
-            ".agents/runs/\n.process-state.json\n",
+            ".agents/runs/\n.process-state.json\n.neurath/local/\n",
             encoding="utf-8",
         )
         (self.worktree / "review.txt").write_text("reviewed\n", encoding="utf-8")
@@ -172,12 +173,21 @@ class PublisherFixture:
         )
         return environment
 
-    def artifact_path(self) -> Path:
-        """Corruption test가 exact review artifact 한 개를 찾도록 canonical path를 반환합니다."""
+    def corrupt_artifact(self) -> None:
+        """Review artifact의 canonical SQLite payload만 변조합니다."""
         digest = self.outcome_ref.removeprefix("sha256:")
-        return (
-            self.locator.locate(self.root_handle.session_id).artifacts / "sha256" / f"{digest}.json"
-        )
+        with RuntimeDatabase(self.worktree).connection() as db:
+            changed = db.execute(
+                "UPDATE runtime_records SET payload=? "
+                "WHERE namespace=? AND key=?",
+                (
+                    b'{"tampered":true}',
+                    f"artifact:{self.root_handle.session_id}",
+                    digest,
+                ),
+            )
+            if changed.rowcount != 1:
+                raise AssertionError("publisher fixture artifact is not stored in SQLite")
 
     def _skill_state(self) -> dict[str, object]:
         return {
@@ -330,9 +340,9 @@ class PublishFinalReviewTest(TestCase):
     def test_rejects_tampered_digest_verified_review_artifact(self) -> None:
         """Typed result가 가리키는 artifact bytes가 바뀌면 publication을 차단합니다."""
         fixture = self.fixture()
-        fixture.artifact_path().write_text('{"tampered":true}', encoding="utf-8")
+        fixture.corrupt_artifact()
 
-        with self.assertRaisesRegex(Exception, "digest mismatch"):
+        with self.assertRaisesRegex(Exception, "(digest|integrity) mismatch"):
             MODULE.CanonicalPublicationEvidenceReader(
                 fixture.root_handle,
                 fixture.workflow_id,

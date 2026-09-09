@@ -4,6 +4,11 @@
 
 ## 절차
 
+각 leaf 구현·조사·검토는 네이티브 직접 자식을 기본으로 배정합니다. 별도 세션 수명,
+다른 provider 또는 네이티브 도구가 제공하지 못하는 필수 격리가 필요할 때만 provider_run을
+사용합니다. 역할·난이도·제약에 맞는 최소 충분 모델을 선택하며 최상위 모델을 일괄 배정하지
+않습니다. 세션에서 관측한 모델 목록은 재사용하고 새로운 조건에 필요한 계획만 만듭니다.
+
 1. runtime이 worker를 지원하면 `tool:team_create` 또는 `tool:spawn_agent`로
    current wave의 모든 issue를 spawn합니다. 지원하지 않으면 같은 worker evidence를
    보존하며 serial로 실행합니다.
@@ -37,6 +42,16 @@
 5. wave의 모든 blocker가 terminal 상태가 된 뒤에만 다음 wave로 이동합니다.
 
 ## Monitor event routing
+
+같은 세션 안의 독립된 구현·검토 단위는 native subagent에 맡깁니다. 새 MCP 목록이나
+설치된 런타임을 시작부터 읽어야 하는 검증은 별도 세션이므로 provider_run을 사용합니다.
+앱의 create_thread는 실행 권한 승계를 보장하지 않으며 이 위임을 대신할 수 없습니다.
+provider_run의 실제 권한·활성화·소유권 확인 후 작업을 전달하고 생성자가 결과를 회수합니다.
+
+진행 중 새 작업은 기존 태스크를 지우지 않고 task_define으로 추가합니다. task_start와
+task_resolve는 실제 상태와 근거에 맞춰 사용하고, task_list의 현재 목록을 호스트 TODO에
+반영합니다. 도구 부재를 표시 성공으로 주장하지 않습니다. 중간 질문에 답해도 원래 작업을
+계속하며 미완료 태스크를 남긴 정상 Stop은 허용하지 않습니다. 사용자 명시적 중단은 보존합니다.
 
 `route_owner=autopilot`인 PR monitoring route table은 main autopilot session이
 소유한 exact autopilot workflow의 `SkillStateStore`에 있습니다. Route entry는 issue/PR

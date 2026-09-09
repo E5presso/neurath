@@ -16,10 +16,27 @@ def test_stdio_initialization_inventory_and_unbound_rejection(tmp_path):
         {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {
             "name": "agent", "arguments": {"argv": ["newsroom", "headlines"]}}},
     ]
-    result = subprocess.run([sys.executable, "-I", "-m", "neurath.agents.mcp", "--root", str(tmp_path)],
-        input="".join(json.dumps(r) + "\n" for r in requests), text=True, capture_output=True, timeout=15)
-    assert result.returncode == 0, result.stderr
-    replies = [json.loads(line) for line in result.stdout.splitlines()]
+    from tests.test_mcp_concurrency import send, receive
+    process = subprocess.Popen([sys.executable, "-I", "-m", "neurath.agents.mcp", "--root", str(tmp_path)],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
+    replies = []
+    try:
+        for request in requests:
+            send(process, request)
+            if "id" in request:
+                reply = receive(process, timeout=5)
+                assert reply is not None, "MCP request did not return before connection close"
+                replies.append(reply)
+        process.stdin.close()
+        assert process.wait(timeout=5) == 0, process.stderr.read()
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=3)
+        if not process.stdin.closed:
+            process.stdin.close()
+        process.stdout.close()
+        process.stderr.close()
     assert [r["id"] for r in replies] == [1, 2, 3]
     assert replies[0]["result"]["protocolVersion"] == "2025-06-18"
     names = {t["name"] for t in replies[1]["result"]["tools"]}

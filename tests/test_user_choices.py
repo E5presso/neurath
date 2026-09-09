@@ -1,10 +1,10 @@
 """A current native input must answer an exact pending choice, never an agent boolean."""
 import hashlib
 import pytest
-from neurath.runtime.user_choices import ChoiceStore, verify_answer
+from neurath.runtime.user_choices import ChoiceStore, verify_answer, verify_registered_prompt
 
 def receipt(text,generation=2,revision=1):
-    return {"prompt_digest":hashlib.sha256(text.strip().encode()).hexdigest(),
+    return {"prompt_digest":hashlib.sha256(text.encode()).hexdigest(),
             "generation":generation,"turn_revision":revision}
 
 def test_exact_native_answer_binds_question_target_and_owner(tmp_path):
@@ -15,6 +15,8 @@ def test_exact_native_answer_binds_question_target_and_owner(tmp_path):
     messages=[("assistant",choice["question"]),("user","네")]
     assert verify_answer(choice,receipt("네"),messages)=="yes"
     assert store.admit("owner",choice["user_choice_ref"],subject,receipt("네"),messages,"yes","apply")["decision"]=="yes"
+    spaced=[("assistant",choice["question"]),("user","  네.\n")]
+    assert verify_answer(choice,receipt("  네.\n"),spaced)=="yes"
     with pytest.raises(ValueError,match="used"):
         store.admit("owner",choice["user_choice_ref"],subject,receipt("네"),messages,"yes","different")
     with pytest.raises(ValueError):
@@ -76,6 +78,31 @@ def test_codex_and_claude_native_reader_ignores_tool_output_and_post_answer_pros
     path.write_text("\n".join(json.dumps(r) for r in records)+"\n")
     assert native_messages(tmp_path,SimpleNamespace(host="claude-code",session="native"))==[
       ("assistant","Question"),("user","no")]
+
+def test_registered_prompt_uses_exact_bytes_and_collapses_codex_duplicate_frames(
+    tmp_path, monkeypatch,
+):
+    import json
+    from neurath.hosts import identity as native_identity
+
+    path = tmp_path / "native.jsonl"
+    text = "  active answer\n"
+    records = [
+        {"type":"event_msg","payload":{"type":"user_message","message":text}},
+        {"type":"response_item","payload":{"type":"message","role":"user",
+            "content":[{"type":"input_text","text":text}]}},
+    ]
+    path.write_text("\n".join(json.dumps(item) for item in records) + "\n")
+    monkeypatch.setattr(native_identity, "snapshot", lambda *args: {
+        "host":"codex", "transcript":str(path)})
+    exact = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    proof = verify_registered_prompt(
+        tmp_path, "native", f"registered-native-prompt:{exact}", exact)
+    assert proof["prompt_digest"] == exact
+    stripped = hashlib.sha256(text.strip().encode("utf-8")).hexdigest()
+    with pytest.raises(ValueError, match="unobserved"):
+        verify_registered_prompt(
+            tmp_path, "native", f"registered-native-prompt:{stripped}", stripped)
 
 def test_update_choice_rechecks_prepared_plan_under_service_lock(monkeypatch):
     from contextlib import contextmanager

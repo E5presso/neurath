@@ -21,7 +21,7 @@ def repo(tmp_path):
 def files(root):
     result = {}
     for path in root.rglob("*"):
-        if ".git" in path.relative_to(root).parts:
+        if ".git" in path.relative_to(root).parts or path.is_relative_to(root / ".neurath/local"):
             continue
         relative = str(path.relative_to(root))
         if path.is_symlink():
@@ -54,7 +54,8 @@ def test_prefix_preserves_user_files_through_repeat_update_uninstall(repo, share
     apply_plan(repo, json.loads(json.dumps(plan)))
     state = read_state(repo)
     assert state["skill_prefix"] == prefix
-    receipt = json.loads((repo / ".git/neurath-receipts" / (plan["id"] + ".json")).read_text())
+    from neurath.install.transaction import _read_receipt
+    receipt = _read_receipt(repo, plan["id"])
     assert receipt["skill_prefix"] == prefix
     assert not any(path.startswith(".agents/skills/autopilot/") for path in state["owned"])
     assert user.read_bytes() == before[".agents/skills/autopilot/SKILL.md"][0]
@@ -88,10 +89,13 @@ def test_prefix_restore_uses_saved_record_after_uninstall(repo):
 def test_restore_rejects_modified_saved_record(repo, field, value):
     apply_plan(repo, make_plan(repo, skill_prefix="neurath-"))
     removed = apply_plan(repo, make_plan(repo, action="uninstall"))
-    path = repo / ".git/neurath-receipts" / (removed["id"] + ".json")
-    record = json.loads(path.read_text())
+    from neurath.install.state_store import InstallStateStore, canonical
+    store = InstallStateStore(repo)
+    record = store.receipt(removed["id"])
     record[field] = value
-    path.write_text(json.dumps(record))
+    with store.database.connection() as db:
+        db.execute("UPDATE installation_receipts SET payload=? WHERE root=? AND id=?",
+                   (canonical(record), str(repo.resolve()), removed["id"]))
     before = files(repo)
     with pytest.raises(InstallError, match="record integrity"):
         make_plan(repo, action="restore", receipt=removed["id"])
@@ -117,10 +121,14 @@ def test_invalid_prefix_is_refused_without_writes(repo, prefix):
 
 def test_legacy_record_without_prefix_keeps_default_names(repo):
     apply_plan(repo, make_plan(repo))
+    from neurath.install.state_store import InstallStateStore, canonical
     path = repo / ".neurath/install.json"
-    state = json.loads(path.read_text())
+    store = InstallStateStore(repo)
+    state = store.state()
     state.pop("skill_prefix", None)
-    path.write_text(json.dumps(state))
+    with store.database.connection() as db:
+        db.execute("DELETE FROM installation_states WHERE root=?", (str(repo.resolve()),))
+    path.write_text(canonical(state))
     plan = make_plan(repo, action="update")
     assert plan["skill_prefix"] == ""
     apply_plan(repo, plan)
@@ -221,7 +229,7 @@ def test_engine_uses_recorded_alias_and_bundled_contract(repo):
     assert run_skill(repo, "neurath-monitor-pr").returncode == 2
     path = repo / ".neurath/install.json"
     state = json.loads(path.read_text())
-    state["skill_prefix"] = "other-"
+    state["digest"] = "0" * 64
     path.write_text(json.dumps(state))
     assert run_skill(repo, "other-watch-pr").returncode == 2
 

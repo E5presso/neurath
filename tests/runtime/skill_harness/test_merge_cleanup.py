@@ -1,6 +1,5 @@
 """Merged ticket worktree cleanup의 root checkout invariant를 검증합니다."""
 
-import hashlib
 import importlib.util
 import os
 import subprocess
@@ -69,7 +68,7 @@ class MergeCleanupTest(TestCase):
             self.assertTrue((fixture.repo / "published.txt").is_file())
             self.assertFalse(fixture.worktree.exists())
             self.assertNotIn("task/128", fixture.git("branch", "--list", "task/128"))
-            self.assertTrue(fixture.cleanup_receipt.is_file())
+            self.assertIsNone(fixture.cleanup_receipt())
             self.assertTrue(receipt["worktree_claim_released"])
             with self.assertRaises(WorktreeNotClaimed):
                 registry.get(identity.worktree_id)
@@ -92,7 +91,7 @@ class MergeCleanupTest(TestCase):
 
             self.assertTrue(fixture.worktree.is_dir())
             self.assertIn("task/128", fixture.git_with_dir("branch", "--list", "task/128"))
-            self.assertFalse(fixture.cleanup_receipt.exists())
+            self.assertIsNone(fixture.cleanup_receipt())
 
     def test_ref_only_sync_is_rejected_as_dirty_root_checkout(self) -> None:
         """Develop ref만 전진하고 index/worktree가 과거 tree이면 cleanup을 거부합니다."""
@@ -117,7 +116,7 @@ class MergeCleanupTest(TestCase):
                 ).complete()
 
             self.assertTrue(fixture.worktree.is_dir())
-            self.assertFalse(fixture.cleanup_receipt.exists())
+            self.assertIsNone(fixture.cleanup_receipt())
 
     def test_handoff_before_cleanup_is_fenced_before_ticket_removal(self) -> None:
         """Stale cleanup은 새 owner의 worktree나 branch를 삭제하기 전에 충돌합니다."""
@@ -152,7 +151,7 @@ class MergeCleanupTest(TestCase):
                 current.fencing_token,
                 registry.get(identity.worktree_id).fencing_token,
             )
-            self.assertFalse(fixture.cleanup_receipt.exists())
+            self.assertIsNone(fixture.cleanup_receipt())
 
     def test_stale_cleanup_conflicts_before_any_git_mutation(self) -> None:
         """Stale cleanup은 fetch prune이 shared remote ref를 바꾸기 전에 충돌합니다."""
@@ -245,7 +244,7 @@ class MergeCleanupTest(TestCase):
             self.assertEqual(WorktreeClaimStatus.CLEANUP_RESERVED, reservation.status)
             self.assertFalse(fixture.worktree.exists())
             self.assertNotIn("task/128", fixture.git("branch", "--list", "task/128"))
-            self.assertFalse(fixture.cleanup_receipt.exists())
+            self.assertIsNone(fixture.cleanup_receipt(workflow_id))
             self.assertIsNotNone(fixture.cleanup_intent(workflow_id))
 
             receipt = MERGE_CLEANUP.MergeCleanupApplication().run(
@@ -257,7 +256,7 @@ class MergeCleanupTest(TestCase):
             )
 
             self.assertTrue(receipt["worktree_claim_released"])
-            self.assertTrue(fixture.cleanup_receipt.is_file())
+            self.assertEqual(receipt, fixture.cleanup_receipt(workflow_id))
             self.assertIsNone(fixture.cleanup_intent(workflow_id))
 
             retried = MERGE_CLEANUP.MergeCleanupApplication().run(
@@ -326,7 +325,7 @@ class MergeCleanupTest(TestCase):
             with self.assertRaises(WorktreeNotClaimed):
                 registry.get(identity.worktree_id)
             self.assertIsNotNone(fixture.cleanup_intent(workflow_id))
-            self.assertFalse(fixture.cleanup_receipt.exists())
+            self.assertIsNone(fixture.cleanup_receipt(workflow_id))
 
             receipt = MERGE_CLEANUP.MergeCleanupApplication().run(
                 environment=environment,
@@ -337,7 +336,7 @@ class MergeCleanupTest(TestCase):
             )
 
             self.assertTrue(receipt["worktree_claim_released"])
-            self.assertTrue(fixture.cleanup_receipt.is_file())
+            self.assertEqual(receipt, fixture.cleanup_receipt(workflow_id))
             self.assertIsNone(fixture.cleanup_intent(workflow_id))
 
     def test_same_actor_resumes_two_workflow_cleanup_plans_without_scanning(self) -> None:
@@ -468,7 +467,7 @@ class MergeCleanupTest(TestCase):
                 registry.get(identity.worktree_id).status,
             )
             self.assertTrue((fixture.worktree / "untracked.txt").is_file())
-            self.assertFalse(fixture.cleanup_receipt.exists())
+            self.assertIsNone(fixture.cleanup_receipt())
 
     def test_foreign_recreated_reservation_with_same_owner_epoch_is_rejected(self) -> None:
         """같은 owner/epoch라도 intent token과 다른 재생성 reservation은 adopt하지 않습니다."""
@@ -520,7 +519,7 @@ class MergeCleanupTest(TestCase):
                 )
 
             self.assertTrue(fixture.worktree.is_dir())
-            self.assertFalse(fixture.cleanup_receipt.exists())
+            self.assertIsNone(fixture.cleanup_receipt())
 
     def test_root_branch_is_rechecked_at_every_destructive_boundary(self) -> None:
         """Reservation 뒤, merge 직전, receipt 직전 root branch 전환을 모두 거부합니다."""
@@ -595,7 +594,7 @@ class MergeCleanupTest(TestCase):
                         remote_ref="origin/trunk",
                     )
 
-                self.assertFalse(fixture.cleanup_receipt.exists())
+                self.assertIsNone(fixture.cleanup_receipt())
 
     def test_claim_release_recovery_fetches_and_syncs_latest_remote_head(self) -> None:
         """Released claim recovery도 persisted intent 아래 latest remote를 다시 sync합니다."""
@@ -677,7 +676,7 @@ class MergeCleanupTest(TestCase):
                 WorktreeClaimStatus.CLEANUP_RESERVED,
                 registry.get(identity.worktree_id).status,
             )
-            self.assertFalse(fixture.cleanup_receipt.exists())
+            self.assertIsNone(fixture.cleanup_receipt())
 
 
 class SimulatedProcessCrash(RuntimeError):
@@ -701,7 +700,7 @@ class MergeCleanupFixture:
         self._git_process("init", "-b", "trunk", str(self.repo))
         self._configure(self.repo)
         (self.repo / ".gitignore").write_text(
-            ".tasks/\n.agents/worktrees/\n.agents/runs/\n.agents/resources/\n",
+            ".tasks/\n.agents/worktrees/\n.agents/runs/\n.agents/resources/\n.neurath/local/\n",
             encoding="utf-8",
         )
         (self.repo / "README.md").write_text("base\n", encoding="utf-8")
@@ -712,9 +711,6 @@ class MergeCleanupFixture:
         self.git("fetch", "origin")
         self.worktree = self.repo / ".tasks/128"
         self.git("worktree", "add", "-b", "task/128", str(self.worktree), "trunk")
-        identity = WorktreeIdentityResolver().resolve(self.worktree)
-        key = hashlib.sha256(str(identity.worktree_id).encode()).hexdigest()
-        self.cleanup_receipt = self.repo / ".git/neurath-cleanup" / f"{key}.json"
         return self
 
     def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
@@ -880,6 +876,19 @@ class MergeCleanupFixture:
         skill_state = workflow.payload["skill_state"]
         assert isinstance(skill_state, dict)
         return skill_state.get("merge_cleanup_intent")
+
+    def cleanup_receipt(
+        self,
+        workflow_id: WorkflowId = WorkflowId("process-ticket-128"),
+    ) -> object:
+        """Exact workflow가 보존한 canonical cleanup receipt를 반환합니다."""
+        locator = SessionLocator.from_worktree(self.repo)
+        workflow = SessionKernel(locator).inspect(
+            SessionId("owner-thread")
+        ).workflows[workflow_id]
+        skill_state = workflow.payload["skill_state"]
+        assert isinstance(skill_state, dict)
+        return skill_state.get("merge_cleanup_receipt")
 
     def _configure(self, repository: Path) -> None:
         self._git_process("-C", str(repository), "config", "user.email", "test@example.invalid")

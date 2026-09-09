@@ -22,6 +22,7 @@ from scripts.agent_harness.adaptive_control import (
     GoalCoverage,
     UserDecision,
     UserDecisionDisposition,
+    UserDecisionProvenance,
     UserDecisionTarget,
     effective_criterion_evidence,
 )
@@ -723,6 +724,9 @@ class AdaptiveControlAuthorityVerifier:
             raise AdaptiveControlAuthorityInvalid(
                 f"{claim_id} USER effect lineage is stale or foreign"
             )
+        if claim.provenance is UserDecisionProvenance.NATIVE_PROMPT:
+            self._verify_native_decision_prompt(claim, lineage, workflow, receipt)
+            return True
         if receipt is None:
             return False
         context = receipt.authority_context
@@ -762,6 +766,75 @@ class AdaptiveControlAuthorityVerifier:
                 f"{claim_id} USER effect does not reference the decision prompt"
             )
         return True
+
+    def _verify_native_decision_prompt(
+        self,
+        claim,
+        lineage,
+        workflow,
+        current_receipt,
+    ) -> None:
+        """Verify prompt authenticity while leaving semantic effect to its evaluator."""
+        if lineage is not None and (
+            lineage.receipt_digest != claim.prompt_digest
+            or lineage.delegation_id != claim.prompt_reference
+        ):
+            raise AdaptiveControlAuthorityInvalid(
+                "native USER effect does not reference its decision prompt")
+
+        native = None
+        if (
+            current_receipt is not None
+            and current_receipt.authority_reference == claim.prompt_reference
+        ):
+            native = current_receipt.to_payload()
+        else:
+            from scripts.agent_harness.runtime_database import RuntimeDatabase
+            with RuntimeDatabase(
+                self._handle._repository_control_root()
+            ).transaction() as tx:
+                record = tx.get(
+                    f"prompt:{self._handle.session_id}",
+                    claim.prompt_reference,
+                )
+            if record is not None:
+                try:
+                    stored = json.loads(record.payload)
+                except (json.JSONDecodeError, UnicodeError) as error:
+                    raise AdaptiveControlAuthorityInvalid(
+                        "historical native prompt receipt is corrupt") from error
+                if stored.get("actor_id") != str(workflow.owner_actor_id):
+                    raise AdaptiveControlAuthorityInvalid(
+                        "historical native prompt belongs to another actor")
+                native = stored
+
+        if native is None:
+            if claim.prompt_generation is not None or claim.prompt_turn_revision is not None:
+                raise AdaptiveControlAuthorityInvalid(
+                    "missing kernel prompt cannot carry kernel turn provenance")
+            try:
+                from neurath.runtime.user_choices import verify_registered_prompt
+                verify_registered_prompt(
+                    self._handle._repository_control_root(),
+                    self._handle.session_id,
+                    claim.prompt_reference,
+                    claim.prompt_digest,
+                )
+            except (ValueError, OSError) as error:
+                raise AdaptiveControlAuthorityInvalid(str(error)) from error
+            return
+
+        if native.get("authority_context") is not None:
+            raise AdaptiveControlAuthorityInvalid(
+                "question-bound prompt must use adaptive-question provenance")
+        if (
+            native.get("authority_reference") != claim.prompt_reference
+            or native.get("prompt_digest") != claim.prompt_digest
+            or native.get("generation") != claim.prompt_generation
+            or native.get("turn_revision") != claim.prompt_turn_revision
+        ):
+            raise AdaptiveControlAuthorityInvalid(
+                "native USER decision prompt provenance does not match")
 
     def _verify_repository_gap(
         self,
@@ -1228,6 +1301,15 @@ class AdaptiveControlAuthorityVerifier:
             raise AdaptiveControlAuthorityInvalid(
                 f"independent delegation trajectory digest is invalid: {delegation_id}"
             )
+        for claim in group.claims:
+            if (
+                claim.payload.get("claim_type") == "user-decision"
+                and claim.payload.get("provenance")
+                == UserDecisionProvenance.NATIVE_PROMPT.value
+                and claim.payload.get("source_workflow_revision") != workflow_revision
+            ):
+                raise AdaptiveControlAuthorityInvalid(
+                    "native USER decision was interpreted from another workflow revision")
         execution_receipts: AdaptiveExecutionReceiptStore | None = None
         for claim in group.claims:
             if claim.authority is not EvidenceAuthority.EXECUTABLE:

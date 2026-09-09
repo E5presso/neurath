@@ -71,9 +71,19 @@ def adaptive_schema():
     observation = _object({"goal_fingerprint": text, "generation": integer, "output_fingerprint": text,
         "active_criteria": strings, "root_causes": strings, "progress": number, "material_change": boolean,
         "reproducible_harness_gap": boolean, "recovery_epoch": integer, "efficiency_assessment": _nullable(efficiency)})
-    claim = _object({**{key: text for key in ("workflow_id", "source_goal_fingerprint", "source_revision", "question_digest", "prompt_digest", "prompt_reference", "target_id", "value_summary_digest", "result_goal_fingerprint", "result_source_revision")},
+    question_claim = _object({**{key: text for key in ("workflow_id", "source_goal_fingerprint", "source_revision", "question_digest", "prompt_digest", "prompt_reference", "target_id", "value_summary_digest", "result_goal_fingerprint", "result_source_revision")},
         **{key: integer for key in ("question_workflow_revision", "source_intent_revision", "question_generation", "question_turn_revision", "prompt_generation", "prompt_turn_revision", "result_intent_revision")},
         "target_kind": enum(ac.UserDecisionTarget), "disposition": enum(ac.UserDecisionDisposition)})
+    # Match the three exact field sets emitted by UserDecisionClaim.to_payload.
+    # Native prompt provenance never borrows or invents rendered-question fields.
+    native_fields = {key: value for key, value in question_claim["properties"].items()
+                     if key not in {"question_workflow_revision", "question_digest",
+                                    "question_generation", "question_turn_revision",
+                                    "prompt_generation", "prompt_turn_revision"}}
+    native_fields.update(provenance=choice(ac.UserDecisionProvenance.NATIVE_PROMPT.value),
+                         source_workflow_revision=integer)
+    claim = {"anyOf": [question_claim, _object(native_fields), _object({
+        **native_fields, "prompt_generation": integer, "prompt_turn_revision": integer})]}
     decision = _object({"claim": claim, "decision_digest": text, "interpretation_lineage": lineage})
     return _object({"schema_version": {"type": "integer", "enum": [5]}, "contract": contract,
         "inventory": inventory, "evidence": _array(evidence), "coverage": _nullable(coverage),
@@ -152,10 +162,26 @@ def execute(root, name, fields, *, identity, expected_turn, verified_policy_evid
                              identity, expected_turn, verified_policy_evidence)
     reads = {"phase_current", "adaptive_read", "adaptive_preflight", "evaluation_read"}
     if name not in reads | {"evaluation_report", "evaluation_consume", "delegation_prepare"}:
-        _require_owner(root, handle)
-    if name in {"phase_complete", "phase_finalize", "workflow_advance", "workflow_finalize", "evaluation_execute"}:
+        from scripts.agent_harness.worktree_registry import WorktreeNotClaimed
+        try:
+            _require_owner(root, handle)
+        except WorktreeNotClaimed:
+            from neurath.runtime.finish_release import post_release_admission
+            with post_release_admission(root, handle, name, fields) as released_handle:
+                return _execute_operation(root, name, fields, released_handle, identity, expected_turn,
+                                          verified_policy_evidence, ownership_required=False)
+    return _execute_operation(root, name, fields, handle, identity, expected_turn, verified_policy_evidence)
+
+
+def _execute_operation(root, name, fields, handle, identity, expected_turn, verified_policy_evidence,
+                       *, ownership_required=True):
+    if not ownership_required or name in {"phase_complete", "phase_finalize", "workflow_advance", "workflow_finalize", "evaluation_execute"}:
         from neurath.runtime.tasks import _mcp_execution_policy
-        _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence)
+        if ownership_required:
+            _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence)
+        else:
+            _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence,
+                                  ownership_required=False)
     cached = None
     if name == "phase_evidence_prepare":
         # Preparation has no external effect and validates before registering
@@ -245,6 +271,29 @@ def _preflight_start(root, name, fields, handle):
         raise PhaseRunnerError("EVALUATOR_UNAVAILABLE",
             "no current host-attested direct child evaluator; register the native evaluator "
             "and retry the same request; no workflow was created")
+    _require_new_root_task_intake(root, fields, handle)
+
+
+def _require_new_root_task_intake(root, fields, handle):
+    """Require a live task list only for newly admitted native root workflows.
+
+    Existing workflow resume/replay and legacy snapshots are not reconstructed.
+    Internal kernel events and direct-child evaluator workflows remain unchanged.
+    """
+    from neurath.runtime.task_schema import TaskError
+    from scripts.agent_harness.task_service import TaskService
+    process = handle.inspect()
+    if (handle.actor_id != process.session.root_actor_id
+            or fields["workflow_id"] in process.workflows):
+        return
+    ledger = TaskService(handle, worktree=root).list()
+    goal = fields.get("north_star", fields.get("goal"))
+    if not any(task["status"] in {"pending", "in_progress"}
+               and task["definition"]["evidence_contract"] == fields["workflow_id"]
+               and task["definition"]["goal"] == goal for task in ledger["tasks"]):
+        raise TaskError("task-intake-required",
+            "new root workflow requires a registered nonterminal measurable task",
+            next_action="Use task_define to append the authorized work and acceptance conditions before starting this new workflow. Existing tasks and completed history remain unchanged.")
 
 
 def _dispatch(root, name, fields, handle):

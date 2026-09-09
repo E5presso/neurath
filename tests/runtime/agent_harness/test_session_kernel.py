@@ -271,10 +271,10 @@ class SessionKernelAcceptanceTest(TestCase):
             paths_a.enclave,
         )
         self.assertNotEqual(paths_a.directory, paths_b.directory)
-        self.assertTrue(paths_a.process_state.is_file())
-        self.assertTrue(paths_a.enclave.is_file())
-        self.assertTrue(paths_b.process_state.is_file())
-        self.assertTrue(paths_b.enclave.is_file())
+        self.assertTrue(SessionStateStore(paths_a.process_state).exists())
+        self.assertFalse(paths_a.enclave.is_file())
+        self.assertTrue(SessionStateStore(paths_b.process_state).exists())
+        self.assertFalse(paths_b.enclave.is_file())
         self.assertIn(ActorId("codex:worker-a"), state_a.actors)
         self.assertNotIn(ActorId("codex:worker-a"), state_b.actors)
         with self.assertRaises(SessionNotFound):
@@ -414,8 +414,12 @@ class SessionKernelAcceptanceTest(TestCase):
                 idempotency_key="legacy-foreground-receipt:prompt",
             )
         )
-        state_path = self.locator.locate(session_id).process_state
-        payload = json.loads(state_path.read_text(encoding="utf-8"))
+        payload = self.kernel.inspect(session_id).to_payload()
+        legacy_root = self.control_root / "legacy-import"
+        legacy_root.mkdir()
+        legacy_locator = SessionLocator(legacy_root)
+        state_path = legacy_locator.locate(session_id).process_state
+        state_path.parent.mkdir(parents=True)
         turns = payload["foreground_turns"]
         self.assertIsInstance(turns, dict)
         assert isinstance(turns, dict)
@@ -428,7 +432,7 @@ class SessionKernelAcceptanceTest(TestCase):
             encoding="utf-8",
         )
 
-        reloaded = self.kernel.inspect(session_id)
+        reloaded = SessionKernel(legacy_locator).inspect(session_id)
 
         self.assertIsNone(reloaded.foreground_turns[root_actor_id].user_prompt_receipt)
 
@@ -595,13 +599,13 @@ class SessionKernelAcceptanceTest(TestCase):
         self.assertEqual(before.revision, retried.revision)
         self.assertEqual(before.revision, self.kernel.inspect(session_id).revision)
 
-    def test_process_death_before_atomic_replace_preserves_previous_canonical_json(self) -> None:
-        """Temporary snapshot 단계에서 process가 죽어도 canonical state는 이전의 유효 JSON으로 남습니다."""
+    def test_process_death_before_commit_preserves_previous_canonical_state(self) -> None:
+        """Commit 직전 process가 죽어도 SQLite에 이전의 유효 상태가 남습니다."""
         session_id = "crash-session"
         root_actor_id = "codex:root"
         self.start_session(session_id, root_actor_id)
         state_path = self.locator.locate(SessionId(session_id)).process_state
-        canonical_before = state_path.read_bytes()
+        canonical_before = self.kernel.inspect(SessionId(session_id)).to_payload()
         context = multiprocessing.get_context("spawn")
         process = context.Process(
             target=_crash_actor_commit,
@@ -620,8 +624,8 @@ class SessionKernelAcceptanceTest(TestCase):
             process.join()
             self.fail("crash failpoint에 도달하지 못했습니다")
 
-        canonical_after = state_path.read_bytes()
-        payload = json.loads(canonical_after)
+        canonical_after = self.kernel.inspect(SessionId(session_id)).to_payload()
+        payload = canonical_after
 
         self.assertEqual(CRASH_EXIT_CODE, process.exitcode)
         self.assertEqual(canonical_before, canonical_after)

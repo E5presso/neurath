@@ -142,6 +142,10 @@ def test_inventory_is_task_shaped_and_preserves_legacy():
         "session_inspect",
         "session_status",
         "turn_inspect",
+        "task_define",
+        "task_list",
+        "task_start",
+        "task_resolve",
         "turn_yield",
         "verification_builtin",
         "verification_nodes",
@@ -516,7 +520,8 @@ def test_provider_route_rejects_nested_identity_or_forged_inventory(sessions):
         assert response["structuredContent"]["error"]["code"] == "invalid-input"
 
 
-def test_cli_verification_cannot_attach_result_to_a_new_user_prompt(sessions, monkeypatch):
+@pytest.mark.parametrize("outcome", ["passed", "failed"])
+def test_cli_completed_verification_survives_prompt_only_change(sessions, monkeypatch, outcome):
     from neurath.runtime import tasks
     from neurath.hosts.identity import _state
 
@@ -531,14 +536,14 @@ def test_cli_verification_cannot_attach_result_to_a_new_user_prompt(sessions, mo
         assert invoke("claude-code", "cli-prompt", "UserPromptSubmit", prompt="new scope")[0] == 0
         after = _state(root, "cli-prompt").foreground_turns["claude-code:session:cli-prompt"]
         assert before.user_prompt_receipt.turn_revision != after.user_prompt_receipt.turn_revision
-        return {"status": "passed", "exit_code": 0}
+        return {"status": outcome, "exit_code": 0 if outcome == "passed" else 1}
 
     monkeypatch.setattr("neurath.runtime.verification.verify", result_after_new_prompt)
     result = tasks.verification(root, "probe", identity=mcp.AgentIdentity("claude-code", "cli-prompt", "claude-code:session:cli-prompt"),
                                 require_owner=True)
-    assert result["status"] == "caller-authority-changed"
-    assert result["verification_status"] == "passed" and result["exit_code"] == 0
-    assert result["retryable"] is False
+    assert result["status"] == outcome
+    assert result["exit_code"] == (0 if outcome == "passed" else 1)
+    assert "verification_status" not in result
 
 
 @pytest.mark.parametrize("failure", ["owner", "policy"])
@@ -553,7 +558,7 @@ def test_completed_verification_preserves_result_if_post_observer_fails(sessions
     def owner(*_):
         if ran and failure == "owner":
             raise TaskError("authority-denied", "claim changed after completion")
-        return ("current",)
+        return (1, "current", (1, "fence"), None)
 
     def policy(*_):
         if ran and failure == "policy":
@@ -576,3 +581,55 @@ def test_completed_verification_preserves_result_if_post_observer_fails(sessions
     assert body["result"]["output_sha256"] == "observed-output"
     assert body["error"]["state"] == "finished-without-current-authority"
     assert body["error"]["retryable"] is False
+
+@pytest.mark.parametrize("change", ["prompt", "claim", "policy", "source"])
+def test_completed_check_separates_prompt_drift_from_execution_boundaries(sessions, monkeypatch, change):
+    from neurath.runtime import tasks
+    from neurath.runtime.verification import fingerprint
+    from neurath.runtime.verification_obligations import VerificationObligations
+    from neurath.memory.learning import Learning
+
+    root, _ = sessions
+    config = {"argv": ["true"]}
+    (root / ".neurath/project.json").write_text(json.dumps({"verification": {"check": config}}))
+    basis = fingerprint(root)
+    before = (1, "same-native-turn", (7, "original-fence"), (1, "old-prompt"))
+    after = (1, "same-native-turn", (8, "new-fence") if change == "claim" else before[2],
+             (2, "new-prompt"))
+    owners = iter((before, after))
+    monkeypatch.setattr(tasks, "_verification_owner", lambda *_args: next(owners))
+    observations = []
+    def policy(*_args, **kwargs):
+        observations.append(kwargs)
+        return {"stages": {"policy": {"evidence": {
+            "approval_policy": "on-request" if change == "policy" and len(observations) == 2 else "never",
+            "sandbox_policy": {"type": "danger-full-access"}}}}}
+    monkeypatch.setattr(tasks, "_mcp_execution_policy", policy)
+    outcome = "failed" if change == "source" else "passed"
+    receipt = {"status": outcome, "exit_code": 0, "output_sha256": "immutable-output",
+               "timed_out": False, "before_fingerprint": basis,
+               "after_fingerprint": "changed-source" if change == "source" else basis,
+               "worktree_changed": change == "source", "config_sha256": "exact-config"}
+    executions = []
+    def verify(*_args, **_kwargs):
+        executions.append(True)
+        return dict(receipt)
+    monkeypatch.setattr("neurath.runtime.verification.verify", verify)
+    monkeypatch.setattr(Learning, "verified", lambda *_args: pytest.fail("later prompt cannot create learning authority"))
+    result = tasks.verification(root, "check", require_owner=True, expected_turn='[1,"same-native-turn"]',
+        identity=mcp.AgentIdentity("codex", "completed-check", "codex:session:completed-check"),
+        verified_policy_evidence={"user_prompt_receipt": {"turn_revision": 1, "prompt_digest": "old-prompt"}})
+    assert executions == [True]
+    assert result["output_sha256"] == receipt["output_sha256"]
+    if change in {"claim", "policy"}:
+        assert result["status"] == "caller-authority-changed"
+        assert result["verification_status"] == receipt["status"]
+        assert result["retryable"] is False
+    else:
+        assert result["status"] == outcome
+        assert result["learning_status"] == "skipped-prompt-changed"
+        assert observations[1] == {"require_current_prompt": False}
+    obligations = VerificationObligations(root)
+    with obligations.memory.connection() as db:
+        proofs = db.execute("SELECT receipt FROM material_verification_proofs WHERE session='completed-check'").fetchall()
+    assert bool(proofs) is (change == "prompt")

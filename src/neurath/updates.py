@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from neurath.install.transaction import _save_json, canonical, git_dir, read_state, repository
+from neurath.install.transaction import canonical, git_dir, read_state, repository
 
 API = "https://api.github.com/repos/E5presso/neurath"
 INTERVAL = 86400
@@ -94,16 +94,19 @@ class Updates:
         self.root = repository(root)
         self.directory = git_dir(self.root) / "neurath-updates"
         self.path = self.directory / "state.json"
+        from neurath.runtime.local_state import LocalState
+        self.state_store = LocalState(self.root, "updates", self.path, self._decode,
+            lambda: dict(schema=1, checked=0, requested=0, status="unchecked", offer=None,
+                         choices={}, announced=[], operation=None))
 
     def _read(self):
-        if self.directory.is_symlink() or self.path.is_symlink():
-            raise ValueError("update state must not be a symlink")
-        if not self.path.exists():
-            return dict(schema=1, checked=0, requested=0, status="unchecked", offer=None,
-                        choices={}, announced=[], operation=None)
-        if self.path.stat().st_size > 2 * 1024 * 1024:
+        return self.state_store.read()
+
+    @staticmethod
+    def _decode(raw):
+        if len(raw) > 2 * 1024 * 1024:
             raise ValueError("update state exceeds limit")
-        state = json.loads(self.path.read_text())
+        state = json.loads(raw)
         if (not isinstance(state, dict) or state.get("schema") != 1
                 or not isinstance(state.get("choices"), dict)
                 or not isinstance(state.get("announced"), list)
@@ -123,7 +126,7 @@ class Updates:
             yield self._read()
 
     def _save(self, state):
-        _save_json(self.path, state)
+        self.state_store.save(state)
 
     def _status(self, state):
         installed = read_state(self.root)

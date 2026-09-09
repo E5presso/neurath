@@ -3,7 +3,6 @@
 import fcntl
 import hashlib
 import json
-import os
 import re
 import subprocess
 import time
@@ -11,7 +10,6 @@ from collections.abc import Callable, Mapping
 from dataclasses import replace
 from enum import StrEnum
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from types import MappingProxyType
 from typing import Self
 
@@ -1116,6 +1114,7 @@ class ForegroundTurnRecord(ImmutableValue):
         "generation",
         "owner_actor_id",
         "receipt",
+        "replacement_question",
         "revision",
         "status",
         "user_prompt_receipt",
@@ -1131,6 +1130,7 @@ class ForegroundTurnRecord(ImmutableValue):
         receipt: ForegroundTurnReceipt | None,
         vendor_turn_id: str | None,
         user_prompt_receipt: ForegroundUserPromptReceipt | None = None,
+        replacement_question: ForegroundTurnReceipt | None = None,
     ) -> None:
         """한 actor의 latest foreground turn snapshot을 검증해 고정합니다.
 
@@ -1166,6 +1166,16 @@ class ForegroundTurnRecord(ImmutableValue):
             raise InvalidSessionState(
                 "foreground user prompt receipt must belong to the current turn"
             )
+        if replacement_question is not None and (
+            not isinstance(replacement_question, ForegroundTurnReceipt)
+            or replacement_question.outcome is not ForegroundTurnOutcome.AWAITING_INPUT
+            or status is not ForegroundTurnStatus.CLOSED
+            or receipt is None or receipt.outcome is not ForegroundTurnOutcome.INCOMPLETE
+            or not isinstance(receipt.reason, str)
+            or not receipt.reason.startswith("native foreground replaced:")
+        ):
+            raise InvalidSessionState("replacement question requires an interrupted closed turn")
+        object.__setattr__(self, "replacement_question", replacement_question)
         object.__setattr__(self, "owner_actor_id", owner_actor_id)
         object.__setattr__(self, "generation", generation)
         object.__setattr__(self, "revision", revision)
@@ -1195,6 +1205,16 @@ class ForegroundTurnRecord(ImmutableValue):
     user_prompt_receipt: ForegroundUserPromptReceipt | None
     """Raw prompt 없이 current generation에 결속된 runtime-owned user provenance입니다."""
 
+    replacement_question: ForegroundTurnReceipt | None
+    """Prior canonical question retained only across an incomplete host replacement."""
+
+    @property
+    def awaiting_input_receipt(self) -> ForegroundTurnReceipt | None:
+        """Question provenance is independent from the replacement outcome."""
+        if self.receipt is not None and self.receipt.outcome is ForegroundTurnOutcome.AWAITING_INPUT:
+            return self.receipt
+        return self.replacement_question
+
     def to_payload(self) -> dict[str, object]:
         """Actor-keyed process-state payload에 넣을 immutable snapshot을 반환합니다.
 
@@ -1207,6 +1227,9 @@ class ForegroundTurnRecord(ImmutableValue):
             "revision": self.revision,
             "status": self.status.value,
             "receipt": None if self.receipt is None else self.receipt.to_payload(),
+            "replacement_question": (
+                None if self.replacement_question is None else self.replacement_question.to_payload()
+            ),
             "vendor_turn_id": self.vendor_turn_id,
             "user_prompt_receipt": (
                 None if self.user_prompt_receipt is None else self.user_prompt_receipt.to_payload()
@@ -3453,6 +3476,45 @@ class ForegroundTurnClosed(KernelEvent):
     """Close CAS가 비교할 ready-turn counter입니다."""
 
     monitor_transitions: tuple[MonitorWorkflowStopProjection, ...]
+
+
+class ForegroundTurnReplaced(KernelEvent):
+    """Host-verified successor가 active foreground를 중단했음을 기록합니다."""
+
+    __slots__ = ("actor_id", "expected_turn_revision", "replacement_reference")
+
+    def __init__(
+        self,
+        session_id: SessionId,
+        actor_id: ActorId,
+        expected_turn_revision: int,
+        replacement_reference: str,
+        idempotency_key: str,
+    ) -> None:
+        """Normal Stop과 분리된 native interruption transition을 생성합니다."""
+        super().__init__(session_id, idempotency_key)
+        if (
+            not isinstance(expected_turn_revision, int)
+            or isinstance(expected_turn_revision, bool)
+            or expected_turn_revision < 0
+        ):
+            raise TransitionRejected("foreground replacement revision must be non-negative")
+        if not isinstance(replacement_reference, str):
+            raise TransitionRejected("foreground replacement reference must be text")
+        normalized = replacement_reference.strip()
+        if (
+            not normalized or chr(0) in normalized
+            or len(normalized.encode("utf-8")) > 1024
+            or any(character.isspace() for character in normalized)
+        ):
+            raise TransitionRejected("foreground replacement reference is invalid")
+        object.__setattr__(self, "actor_id", actor_id)
+        object.__setattr__(self, "expected_turn_revision", expected_turn_revision)
+        object.__setattr__(self, "replacement_reference", normalized)
+
+    actor_id: ActorId
+    expected_turn_revision: int
+    replacement_reference: str
     """Turn close와 같은 process revision에 commit할 canonical monitor 후보입니다."""
 
 
@@ -3984,6 +4046,8 @@ class SessionStateReducer:
             return self._invalidate_foreground_turn(state, event)
         if isinstance(event, ForegroundTurnClosed):
             return self._close_foreground_turn(state, event)
+        if isinstance(event, ForegroundTurnReplaced):
+            return self._replace_foreground_turn(state, event)
         if isinstance(event, DelegationAssigned):
             return self._assign_delegation(state, event)
         if isinstance(event, DelegationCancelled):
@@ -4861,19 +4925,20 @@ class SessionStateReducer:
         context = event.authority_context
         if context is None:
             return
+        question_receipt = None if current is None else current.awaiting_input_receipt
         if (
             current is None
             or current.status
             not in {ForegroundTurnStatus.READY_TO_STOP, ForegroundTurnStatus.CLOSED}
-            or current.receipt is None
-            or current.receipt.outcome is not ForegroundTurnOutcome.AWAITING_INPUT
-            or current.receipt.question is None
+            or question_receipt is None
+            or question_receipt.outcome is not ForegroundTurnOutcome.AWAITING_INPUT
+            or question_receipt.question is None
         ):
             raise TransitionRejected(
                 "prompt authority context requires the exact preceding user question"
             )
         question_digest = hashlib.sha256(
-            current.receipt.question.strip().encode("utf-8")
+            question_receipt.question.strip().encode("utf-8")
         ).hexdigest()
         if (
             context.question_digest != question_digest
@@ -5007,11 +5072,15 @@ class SessionStateReducer:
         event: MaterialActionResolved,
     ) -> ProcessState:
         current = self._material_action_batch(state, event.actor_id, event.batch_id)
-        self._validate_material_action_binding(
-            state,
-            event.actor_id,
-            current.adaptive_binding,
-        )
+        # Aborting or blocking obsolete intent records no successful effect.
+        # Keep its original provenance; only completion needs current authority.
+        # The domain resolver still rejects every unobserved in-flight call.
+        if event.resolution is MaterialActionResolution.COMPLETED:
+            self._validate_material_action_binding(
+                state,
+                event.actor_id,
+                current.adaptive_binding,
+            )
         try:
             candidate = current.resolve(event.resolution)
         except ValueError as error:
@@ -5253,6 +5322,48 @@ class SessionStateReducer:
             current.user_prompt_receipt,
         )
         return self._with_foreground_turn(candidate, event.actor_id, next_turn)
+
+    def _replace_foreground_turn(
+        self,
+        state: ProcessState,
+        event: ForegroundTurnReplaced,
+    ) -> ProcessState:
+        """Host successor evidence로 active turn만 incomplete/closed 처리합니다."""
+        self._require_available_actor(state, event.actor_id, "foreground turn owner")
+        current = state.foreground_turns.get(event.actor_id)
+        if current is None:
+            raise TransitionRejected("foreground turn is missing")
+        reason = f"native foreground replaced:{event.replacement_reference}"
+        if (
+            current.status is ForegroundTurnStatus.CLOSED
+            and current.revision == event.expected_turn_revision + 1
+            and current.receipt is not None
+            and current.receipt.outcome is ForegroundTurnOutcome.INCOMPLETE
+            and current.receipt.reason == reason
+        ):
+            return state
+        self._require_turn_revision(current, event.expected_turn_revision)
+        if current.status not in {ForegroundTurnStatus.ACTIVE, ForegroundTurnStatus.READY_TO_STOP}:
+            raise TransitionRejected("foreground replacement requires an open native turn")
+        return self._with_foreground_turn(
+            state,
+            event.actor_id,
+            ForegroundTurnRecord(
+                current.owner_actor_id,
+                current.generation,
+                current.revision + 1,
+                ForegroundTurnStatus.CLOSED,
+                ForegroundTurnReceipt(
+                    ForegroundTurnOutcome.INCOMPLETE,
+                    reason=reason,
+                ),
+                current.vendor_turn_id,
+                current.user_prompt_receipt,
+                replacement_question=(current.receipt
+                    if current.receipt is not None
+                    and current.receipt.outcome is ForegroundTurnOutcome.AWAITING_INPUT else None),
+            ),
+        )
 
     def _require_turn_revision(
         self,
@@ -5673,6 +5784,20 @@ class SessionStateStore:
             raise InvalidRetryLimit("max_retries must be positive")
         self._path = process_state_path
         self._lock_path = process_state_path.with_name(f"{process_state_path.name}.lock")
+        from scripts.agent_harness.runtime_database import RuntimeDatabase
+
+        # The old address remains a migration key, never a new JSON snapshot.
+        path = process_state_path.absolute()
+        if path.parents[1].name != "runs":
+            raise InvalidSessionState("session address must belong to the runtime runs directory")
+        if path.parents[2].name == ".agents":
+            control_root = path.parents[3]
+        elif path.parents[2].name == "local" and path.parents[3].name == ".neurath":
+            control_root = path.parents[4]
+        else:
+            raise InvalidSessionState("session address has no common runtime root")
+        self._database = RuntimeDatabase(control_root)
+        self._record_key = path.parent.name
         self._codec = SessionStateCodec()
         self._reducer = SessionStateReducer()
         self._commit_observer = commit_observer
@@ -5742,6 +5867,7 @@ class SessionStateStore:
                     event.session_id,
                     snapshot_revision,
                     candidate,
+                    enforce_task_gate=not isinstance(event, ForegroundTurnReplaced),
                 )
             except RevisionConflict:
                 if expected_revision is not None:
@@ -5759,12 +5885,13 @@ class SessionStateStore:
         with self._lock_path.open("a+", encoding="utf-8") as lock:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
             try:
-                latest = self._read_snapshot(session_id, missing_allowed=True)
-                latest_revision = None if latest is None else latest.revision
-                if latest_revision != expected_revision:
-                    raise RevisionConflict(
-                        f"expected revision {expected_revision}, got {latest_revision}"
-                    )
+                with self._database.transaction() as tx:
+                    latest = self._decode_record(tx.get("session", self._record_key), session_id)
+                    latest_revision = None if latest is None else latest.revision
+                    if latest_revision != expected_revision:
+                        raise RevisionConflict(
+                            f"expected revision {expected_revision}, got {latest_revision}"
+                        )
             finally:
                 fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
@@ -5773,20 +5900,54 @@ class SessionStateStore:
         session_id: SessionId,
         expected_revision: int | None,
         candidate: ProcessState,
+        *,
+        enforce_task_gate: bool = True,
     ) -> ProcessState:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         with self._lock_path.open("a+", encoding="utf-8") as lock:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
             try:
-                latest = self._read_snapshot(session_id, missing_allowed=True)
-                latest_revision = None if latest is None else latest.revision
-                if latest_revision != expected_revision:
-                    raise RevisionConflict(
-                        f"expected revision {expected_revision}, got {latest_revision}"
-                    )
-                next_revision = 0 if latest_revision is None else latest_revision + 1
-                committed = candidate.with_revision(next_revision)
-                self._write_snapshot(committed)
+                with self._database.transaction() as tx:
+                    latest = self._decode_record(tx.get("session", self._record_key), session_id)
+                    latest_revision = None if latest is None else latest.revision
+                    if latest_revision != expected_revision:
+                        raise RevisionConflict(
+                            f"expected revision {expected_revision}, got {latest_revision}"
+                        )
+                    next_revision = 0 if latest_revision is None else latest_revision + 1
+                    committed = candidate.with_revision(next_revision)
+                    root_turn = committed.foreground_turns.get(committed.session.root_actor_id)
+                    old_turn = (None if latest is None else
+                                latest.foreground_turns.get(latest.session.root_actor_id))
+                    if (
+                        enforce_task_gate
+                        and root_turn is not None
+                        and root_turn.status is ForegroundTurnStatus.CLOSED
+                        and (old_turn is None or old_turn.status is not ForegroundTurnStatus.CLOSED)
+                    ):
+                        from scripts.agent_harness.task_service import require_settled_tasks
+                        try:
+                            require_settled_tasks(tx, committed)
+                        except ValueError as error:
+                            raise TransitionRejected(f"task Stop gate: {error}") from error
+                    tx.put("session", self._record_key, self._codec.encode(committed),
+                           expected_revision=latest_revision)
+                    from scripts.agent_harness.task_service import bind_active_workflows
+                    bind_active_workflows(tx, committed)
+                    for actor_id, turn in committed.foreground_turns.items():
+                        prompt = turn.user_prompt_receipt
+                        if prompt is None or actor_id != committed.session.root_actor_id:
+                            continue
+                        payload = json.dumps({"actor_id": str(actor_id), **prompt.to_payload()},
+                            ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+                        namespace = f"prompt:{session_id}"
+                        old_prompt = tx.get(namespace, prompt.authority_reference)
+                        if old_prompt is None:
+                            tx.put(namespace, prompt.authority_reference, payload, expected_revision=None)
+                        elif old_prompt.payload != payload:
+                            raise InvalidSessionState("native prompt reference changed its content")
+                    if self._commit_observer is not None:
+                        self._commit_observer(CommitStage.BEFORE_REPLACE)
                 return committed
             finally:
                 fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
@@ -5796,41 +5957,66 @@ class SessionStateStore:
         expected_session_id: SessionId | None,
         missing_allowed: bool,
     ) -> ProcessState | None:
+        from scripts.agent_harness.runtime_database import CorruptRecord, LegacyStateChanged
+        import sqlite3
         try:
-            payload = json.loads(self._path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            if missing_allowed:
-                return None
-            raise SessionNotFound(f"session state is missing: {self._path}") from None
-        except (json.JSONDecodeError, OSError) as error:
-            raise InvalidSessionState(f"cannot read process state: {self._path}") from error
-        return self._codec.decode(payload, expected_session_id)
+            return self._load_snapshot(expected_session_id, missing_allowed)
+        except (CorruptRecord, LegacyStateChanged, json.JSONDecodeError,
+                UnicodeError, OSError, sqlite3.Error) as error:
+            raise InvalidSessionState("cannot read canonical session state") from error
 
-    def _write_snapshot(self, state: ProcessState) -> None:
-        temporary_name: str | None = None
+    def _load_snapshot(self, expected_session_id, missing_allowed):
+        with self._database.transaction() as tx:
+            record = tx.get("session", self._record_key)
+            deleted = tx.was_deleted("session", self._record_key)
+        if record is None and not deleted and self._path.is_file():
+            def validate(content):
+                return self._codec.decode(json.loads(content), expected_session_id).revision
+            record = self._database.import_legacy("session", self._record_key, self._path, validate)
+        state = self._decode_record(record, expected_session_id)
+        if state is None and not missing_allowed:
+            raise SessionNotFound(f"session state is missing: {self._record_key}")
+        return state
+
+    def _decode_record(self, record, expected_session_id):
+        if record is None:
+            return None
         try:
-            with NamedTemporaryFile(
-                "wb",
-                dir=self._path.parent,
-                prefix=f".{self._path.name}.",
-                suffix=".tmp",
-                delete=False,
-            ) as temporary:
-                temporary_name = temporary.name
-                temporary.write(self._codec.encode(state))
-                temporary.flush()
-                os.fsync(temporary.fileno())
-            if self._commit_observer is not None:
-                self._commit_observer(CommitStage.BEFORE_REPLACE)
-            os.replace(temporary_name, self._path)
-            directory_descriptor = os.open(self._path.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory_descriptor)
-            finally:
-                os.close(directory_descriptor)
-        finally:
-            if temporary_name is not None:
-                Path(temporary_name).unlink(missing_ok=True)
+            state = self._codec.decode(json.loads(record.payload), expected_session_id)
+        except (json.JSONDecodeError, UnicodeError) as error:
+            raise InvalidSessionState("cannot decode persisted session") from error
+        if state.revision != record.revision:
+            raise InvalidSessionState("session and database revisions differ")
+        return state
+
+    def exists(self) -> bool:
+        """Check canonical state, including a validated pre-cutover import."""
+        return self._read_snapshot(None, missing_allowed=True) is not None
+
+    def read_transaction(self, transaction, expected_session_id: SessionId) -> ProcessState:
+        """Read authority inside a caller's shared task or Stop transaction.
+
+        This performs no nested connection, migration or domain transition.
+        The caller must use this project's database and the exact session key.
+        """
+        databases = transaction.connection.execute("PRAGMA database_list").fetchall()
+        main = next((row[2] for row in databases if row[1] == "main"), None)
+        if main is None or Path(main).resolve() != self._database.path.resolve():
+            raise InvalidSessionState("session transaction belongs to another project")
+        if self._record_key != str(expected_session_id):
+            raise InvalidSessionState("session transaction identity mismatch")
+        state = self._decode_record(transaction.get("session", self._record_key), expected_session_id)
+        if state is None:
+            raise SessionNotFound(f"session state is missing: {expected_session_id}")
+        return state
+
+    def modified_at(self) -> float:
+        self.read()
+        with self._database.transaction() as tx:
+            return tx.connection.execute(
+                "SELECT updated FROM runtime_records WHERE namespace='session' AND key=?",
+                (self._record_key,),
+            ).fetchone()[0]
 
 
 class SessionKernel:
@@ -6065,35 +6251,5 @@ class SessionKernel:
         return self._locator.locate(session_id)
 
     def _initialize_enclave(self, paths: SessionPaths, session_id: SessionId) -> None:
-        paths.directory.mkdir(parents=True, exist_ok=True)
-        with paths.enclave_lock.open("a+", encoding="utf-8") as lock:
-            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-            try:
-                if paths.enclave.exists():
-                    return
-                payload = {
-                    "schema": ENCLAVE_SCHEMA,
-                    "session_id": str(session_id),
-                    "facts": {},
-                }
-                temporary_name: str | None = None
-                try:
-                    with NamedTemporaryFile(
-                        "w",
-                        encoding="utf-8",
-                        dir=paths.directory,
-                        prefix=".enclave.json.",
-                        suffix=".tmp",
-                        delete=False,
-                    ) as temporary:
-                        temporary_name = temporary.name
-                        json.dump(payload, temporary, ensure_ascii=False, indent=2, sort_keys=True)
-                        temporary.write("\n")
-                        temporary.flush()
-                        os.fsync(temporary.fileno())
-                    os.replace(temporary_name, paths.enclave)
-                finally:
-                    if temporary_name is not None:
-                        Path(temporary_name).unlink(missing_ok=True)
-            finally:
-                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+        from scripts.agent_harness.enclave_store import EnclaveStore
+        EnclaveStore(self._locator, max_bytes=4096).initialize(session_id)

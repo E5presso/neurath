@@ -2,14 +2,13 @@
 
 import hashlib
 import json
-import os
 import re
-import sqlite3
 import subprocess
 import time
-from contextlib import contextmanager, nullcontext
+from contextlib import nullcontext
 from pathlib import Path
 
+from neurath.runtime.database import RuntimeDatabase
 NEWSROOM_NOTICE = "Newsroom operation; article content requires explicit newsroom read."
 NEWSROOM_METADATA = {"tool", "tool_name", "exit_code", "status", "authority"}
 
@@ -50,17 +49,8 @@ class ProjectMemory:
     def __init__(self, root):
         self.worktree = Path(root).resolve()
         self.root = control_root(self.worktree)
-        directory = self.root
-        for part in (".neurath", "local", "memory"):
-            directory = directory / part
-            if directory.is_symlink():
-                raise ValueError("memory directory must not be a symlink")
-            directory.mkdir(exist_ok=True, mode=0o700)
-        self.path = directory / "project.sqlite3"
-        if self.path.is_symlink():
-            raise ValueError("memory database must not be a symlink")
-        fd = os.open(self.path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-        os.close(fd)
+        self.database = RuntimeDatabase(self.root)
+        self.path = self.database.path
         with self.connection() as db:
             db.execute("""CREATE TABLE IF NOT EXISTS events (
                 sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -83,20 +73,8 @@ class ProjectMemory:
                     db.execute("UPDATE events SET content=?,metadata=? WHERE id=?",
                                (NEWSROOM_NOTICE, canonical(metadata), row["id"]))
 
-    @contextmanager
     def connection(self):
-        db = sqlite3.connect(self.path, timeout=20)
-        db.row_factory = sqlite3.Row
-        try:
-            db.execute("PRAGMA synchronous=FULL")
-            db.execute("BEGIN IMMEDIATE")
-            yield db
-            db.commit()
-        except BaseException:
-            db.rollback()
-            raise
-        finally:
-            db.close()
+        return self.database.connection()
 
     def record(self, host, session, source, kind, content, metadata=None, *, _db=None):
         if host not in ("codex", "claude-code"):

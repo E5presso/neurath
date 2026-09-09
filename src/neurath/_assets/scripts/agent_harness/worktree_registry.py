@@ -6,11 +6,23 @@ import json
 import os
 import secrets
 import subprocess
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
+from contextvars import ContextVar
+from functools import wraps
 from enum import StrEnum
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from typing import TextIO
+from scripts.agent_harness.runtime_database import RuntimeDatabase
+
+_ADMISSIONS = ContextVar("neurath_worktree_admissions", default=frozenset())
+
+
+def _serialized_lease(operation):
+    @wraps(operation)
+    def wrapped(self, claim, *args, **kwargs):
+        with self.terminal_admission(claim.worktree_id):
+            return operation(self, claim, *args, **kwargs)
+    return wrapped
 
 from scripts.agent_harness.session_kernel import (
     ActorId,
@@ -540,7 +552,9 @@ class WorktreeRegistry:
         self._locator = locator
         self._kernel = SessionKernel(locator)
         self._registry_root = locator.worktree_registry_root
+        self._database = RuntimeDatabase(locator.control_root)
 
+    @_serialized_lease
     def claim(self, claim: WorktreeClaim) -> WorktreeClaim:
         """Worktree를 active actor 한 명에게 원자적으로 claim합니다.
 
@@ -560,7 +574,10 @@ class WorktreeRegistry:
         self._validate_claim_shape(claim)
         claim_path = self._claim_path(claim.worktree_id)
         claim_path.parent.mkdir(parents=True, exist_ok=True)
-        active_claim = self._activate(claim, lease_epoch=1)
+        with self._open_lock(claim_path) as preparation_lock:
+            fcntl.flock(preparation_lock.fileno(), fcntl.LOCK_EX)
+            prepared_epoch = self._next_epoch(claim_path)
+        active_claim = self._activate(claim, lease_epoch=prepared_epoch)
         serialized = self._serialize_claim(active_claim)
         session_lock = self._open_session_lock(claim.session_id)
         with session_lock:
@@ -570,13 +587,18 @@ class WorktreeRegistry:
                 with self._open_lock(claim_path) as lock:
                     fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
                     try:
-                        if claim_path.exists():
+                        try:
                             current = self._read_claim(claim_path, claim.worktree_id)
+                        except WorktreeNotClaimed:
+                            current = None
+                        if current is not None:
                             if current.status is WorktreeClaimStatus.CLEANUP_RESERVED:
                                 raise WorktreeCleanupInProgress(current)
                             if not self._same_owner(current, claim):
                                 raise WorktreeAlreadyClaimed(current)
                             return current
+                        if self._next_epoch(claim_path) != prepared_epoch:
+                            raise WorktreeClaimInvalid("worktree lease changed while preparing the claim")
                         self._write_locked(claim_path, serialized)
                         return active_claim
                     finally:
@@ -598,7 +620,10 @@ class WorktreeRegistry:
             WorktreeClaimInvalid: Persisted shape가 잘못되면 발생합니다.
         """
         claim_path = self._claim_path(worktree_id)
-        return self._read_claim(claim_path, worktree_id)
+        claim_path.parent.mkdir(parents=True, exist_ok=True)
+        with self._open_lock(claim_path) as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            return self._read_claim(claim_path, worktree_id)
 
     def authorize(self, access: WorktreeAccess) -> WorktreeAccessDecision:
         """Read-only는 즉시 허용하고 mutation은 coherent owner authority를 판정합니다.
@@ -651,7 +676,8 @@ class WorktreeRegistry:
             finally:
                 fcntl.flock(session_lock.fileno(), fcntl.LOCK_UN)
 
-    def release(self, expected_claim: WorktreeClaim) -> None:
+    @_serialized_lease
+    def release(self, expected_claim: WorktreeClaim, *, context=None) -> dict[str, object]:
         """Exact owner, epoch, token이 일치하는 current claim을 제거합니다.
 
         Args:
@@ -670,21 +696,27 @@ class WorktreeRegistry:
                 with self._open_lock(claim_path) as lock:
                     fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
                     try:
-                        if not claim_path.exists():
-                            raise WorktreeNotClaimed(
-                                f"worktree {expected_claim.worktree_id} is not claimed"
-                            )
                         current = self._read_claim(claim_path, expected_claim.worktree_id)
                         self._require_current_lease(current, expected_claim)
                         self._require_active_claim(current)
                         self._validate_claim_authority(current)
-                        claim_path.unlink()
-                        self._fsync_directory(claim_path.parent)
+                        if context is not None:
+                            state = self._kernel.inspect(current.session_id)
+                            workflow = state.workflows.get(context.get("workflow_id"))
+                            if (workflow is None or workflow.kind != "finish-session"
+                                    or workflow.owner_actor_id != current.actor_id
+                                    or workflow.status.value != "active"
+                                    or workflow.goal != context.get("goal")
+                                    or hashlib.sha256(self._encode_record(dict(workflow.payload.get("phase_run", {})))).hexdigest()
+                                    != context.get("phase_digest")):
+                                raise WorktreeClaimInvalid("finish workflow changed before release")
+                        return self._delete_locked(claim_path, "released", context=context)
                     finally:
                         fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
             finally:
                 fcntl.flock(session_lock.fileno(), fcntl.LOCK_UN)
 
+    @_serialized_lease
     def handoff(
         self,
         expected_claim: WorktreeClaim,
@@ -741,10 +773,6 @@ class WorktreeRegistry:
                 with self._open_lock(claim_path) as lock:
                     fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
                     try:
-                        if not claim_path.exists():
-                            raise WorktreeNotClaimed(
-                                f"worktree {expected_claim.worktree_id} is not claimed"
-                            )
                         current = self._read_claim(claim_path, expected_claim.worktree_id)
                         self._require_current_lease(current, expected_claim)
                         self._require_active_claim(current)
@@ -758,6 +786,7 @@ class WorktreeRegistry:
                 for session_lock in reversed(session_locks):
                     fcntl.flock(session_lock.fileno(), fcntl.LOCK_UN)
 
+    @_serialized_lease
     def reserve_cleanup(
         self,
         expected_claim: WorktreeClaim,
@@ -807,10 +836,6 @@ class WorktreeRegistry:
                 with self._open_lock(claim_path) as lock:
                     fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
                     try:
-                        if not claim_path.exists():
-                            raise WorktreeNotClaimed(
-                                f"worktree {expected_claim.worktree_id} is not claimed"
-                            )
                         current = self._read_claim(claim_path, expected_claim.worktree_id)
                         self._require_current_lease(current, expected_claim)
                         self._require_active_claim(current)
@@ -821,6 +846,7 @@ class WorktreeRegistry:
             finally:
                 fcntl.flock(session_lock.fileno(), fcntl.LOCK_UN)
 
+    @_serialized_lease
     def complete_cleanup(self, expected_reservation: WorktreeClaim) -> None:
         """External cleanup 성공 뒤 exact reservation만 제거합니다.
 
@@ -845,10 +871,6 @@ class WorktreeRegistry:
                 with self._open_lock(claim_path) as lock:
                     fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
                     try:
-                        if not claim_path.exists():
-                            raise WorktreeNotClaimed(
-                                f"worktree {expected_reservation.worktree_id} is not claimed"
-                            )
                         current = self._read_claim(
                             claim_path,
                             expected_reservation.worktree_id,
@@ -856,8 +878,7 @@ class WorktreeRegistry:
                         self._require_current_lease(current, expected_reservation)
                         if current.status is not WorktreeClaimStatus.CLEANUP_RESERVED:
                             raise WorktreeCleanupInProgress(current)
-                        claim_path.unlink()
-                        self._fsync_directory(claim_path.parent)
+                        self._delete_locked(claim_path, "cleanup")
                     finally:
                         fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
             finally:
@@ -911,13 +932,20 @@ class WorktreeRegistry:
 
     def _read_claim(self, claim_path: Path, worktree_id: WorktreeId) -> WorktreeClaim:
         try:
-            raw_payload: object = json.loads(claim_path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            raise WorktreeNotClaimed(f"worktree {worktree_id} is not claimed") from None
-        except (json.JSONDecodeError, OSError) as exc:
+            with self._database.transaction() as tx:
+                record = self._record(tx, claim_path)
+            if record is None:
+                raise WorktreeNotClaimed(f"worktree {worktree_id} is not claimed")
+            raw_payload = self._view(record, worktree_id)["current"]
+            if raw_payload is None:
+                raise WorktreeNotClaimed(f"worktree {worktree_id} is not claimed")
+        except (ValueError, OSError) as exc:
             raise WorktreeClaimInvalid(
                 f"canonical worktree claim is invalid: {claim_path}"
             ) from exc
+        return self._decode_claim(raw_payload, worktree_id)
+
+    def _decode_claim(self, raw_payload, worktree_id):
         if not isinstance(raw_payload, dict):
             raise WorktreeClaimInvalid("canonical worktree claim root must be an object")
         schema = raw_payload.get("schema")
@@ -1045,30 +1073,113 @@ class WorktreeRegistry:
         ).encode("utf-8")
 
     def _write_locked(self, claim_path: Path, serialized: bytes) -> None:
-        """Prepared claim bytes를 짧은 commit mutex 안에서 atomic replace합니다.
+        """Commit the current lease and invalidate any prior release proof together."""
+        current = json.loads(serialized)
+        self._decode_claim(current, WorktreeId(claim_path.stem))
+        payload = {"current": current, "epoch": current["lease_epoch"],
+                   "last_release": None, "release_kind": None, "release_context": None}
+        with self._database.transaction() as tx:
+            old = self._record(tx, claim_path)
+            tx.put("worktree", claim_path.stem, self._encode_record(payload),
+                   expected_revision=None if old is None else old.revision)
 
-        Args:
-            claim_path: Per-resource mutex가 보호하는 canonical claim path입니다.
-            serialized: Lock 밖에서 직렬화와 검증을 끝낸 complete bytes입니다.
-        """
-        temporary_name: str | None = None
-        try:
-            with NamedTemporaryFile(
-                "wb",
-                dir=claim_path.parent,
-                prefix=f".{claim_path.name}.",
-                suffix=".tmp",
-                delete=False,
-            ) as temporary:
-                temporary_name = temporary.name
-                temporary.write(serialized)
-                temporary.flush()
-                os.fsync(temporary.fileno())
-            os.replace(temporary_name, claim_path)
-            self._fsync_directory(claim_path.parent)
-        finally:
-            if temporary_name is not None:
-                Path(temporary_name).unlink(missing_ok=True)
+    @staticmethod
+    def _encode_record(payload):
+        return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+
+    def _record(self, tx, claim_path):
+        """Called under the existing resource mutex; import only this exact legacy claim."""
+        record = tx.get("worktree", claim_path.stem)
+        if record is None and claim_path.is_file():
+            content = claim_path.read_bytes()
+            self._decode_claim(json.loads(content), WorktreeId(claim_path.stem))
+            record = tx.put("worktree", claim_path.stem, content, expected_revision=None)
+            tx.connection.execute(
+                "UPDATE runtime_records SET legacy_path=?,legacy_digest=? WHERE namespace='worktree' AND key=?",
+                (str(claim_path), hashlib.sha256(content).hexdigest(), claim_path.stem))
+        return record
+
+    def _view(self, record, worktree_id):
+        raw = json.loads(record.payload)
+        if isinstance(raw, dict) and "schema" in raw:
+            claim = self._decode_claim(raw, worktree_id)
+            return {"current": raw, "epoch": claim.lease_epoch, "last_release": None,
+                    "release_kind": None, "release_context": None}
+        base = {"current", "epoch", "last_release", "release_kind"}
+        if not isinstance(raw, dict) or set(raw) not in (base, base | {"release_context"}):
+            raise WorktreeClaimInvalid("invalid durable worktree record")
+        raw.setdefault("release_context", None)
+        current = raw["current"]
+        subject = current if current is not None else raw["last_release"]
+        claim = self._decode_claim(subject, worktree_id)
+        if type(raw["epoch"]) is not int or raw["epoch"] != claim.lease_epoch:
+            raise WorktreeClaimInvalid("worktree epoch differs from its retained lease")
+        if current is None:
+            if raw["release_kind"] not in {"released", "cleanup"}:
+                raise WorktreeClaimInvalid("worktree release kind is invalid")
+        elif (raw["last_release"] is not None or raw["release_kind"] is not None
+              or raw["release_context"] is not None):
+            raise WorktreeClaimInvalid("active worktree retains stale release evidence")
+        return raw
+
+    def _next_epoch(self, claim_path):
+        with self._database.transaction() as tx:
+            record = self._record(tx, claim_path)
+            return 1 if record is None else self._view(record, WorktreeId(claim_path.stem))["epoch"] + 1
+
+    def _delete_locked(self, claim_path, kind, *, context=None):
+        with self._database.transaction() as tx:
+            record = self._record(tx, claim_path)
+            if record is None:
+                raise WorktreeNotClaimed("worktree has no current lease")
+            view = self._view(record, WorktreeId(claim_path.stem))
+            if view["current"] is None:
+                raise WorktreeNotClaimed("worktree has no current lease")
+            payload = {"current": None, "epoch": view["epoch"],
+                       "last_release": view["current"], "release_kind": kind, "release_context": context}
+            updated = tx.put("worktree", claim_path.stem, self._encode_record(payload),
+                             expected_revision=record.revision)
+            return self._release_receipt(updated, payload, claim_path.stem)
+
+    @staticmethod
+    def _release_receipt(record, view, identity):
+        return {"claim": view["last_release"], "revision": record.revision, "kind": view["release_kind"],
+                "context": view.get("release_context"),
+                "reference": f"worktree-release:{identity}:{record.revision}:"
+                             + hashlib.sha256(record.payload).hexdigest()}
+
+    def release_receipt(self, worktree_id):
+        """Return the latest release only while no later claim has superseded it."""
+        path = self._claim_path(worktree_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with self._open_lock(path) as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            with self._database.transaction() as tx:
+                record = self._record(tx, path)
+                if record is None:
+                    return None
+                view = self._view(record, worktree_id)
+                if view["current"] is not None:
+                    return None
+                return self._release_receipt(record, view, str(worktree_id))
+
+    @contextmanager
+    def terminal_admission(self, worktree_id):
+        """Serialize lease changes and post-release bookkeeping before inner mutexes."""
+        path = self._claim_path(worktree_id).with_suffix(".admission.lock")
+        key = str(path.resolve())
+        held = _ADMISSIONS.get()
+        if key in held:
+            yield
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a+", encoding="utf-8") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            token = _ADMISSIONS.set(held | {key})
+            try:
+                yield
+            finally:
+                _ADMISSIONS.reset(token)
 
     def _fsync_directory(self, directory: Path) -> None:
         """Replace 또는 unlink directory entry를 crash-safe하게 durable flush합니다.

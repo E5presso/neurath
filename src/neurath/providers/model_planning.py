@@ -196,11 +196,17 @@ def _selection(context, selection, inventory):
 
 
 class ModelPlanStore:
-    def __init__(self, database_path):
-        self.path = Path(database_path).absolute()
-        self._safe_path()
-        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        os.close(os.open(self.path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600))
+    def __init__(self, database_path=None, *, database=None):
+        if (database_path is None) == (database is None):
+            raise ValueError("provide exactly one model plan database")
+        self.database = database
+        self.path = (
+            Path(database_path).absolute() if database is None else database.path
+        )
+        if database is None:
+            self._safe_path()
+            self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            os.close(os.open(self.path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600))
         with self._db() as db:
             db.execute('''CREATE TABLE IF NOT EXISTS model_plans (
                 owner TEXT NOT NULL, id TEXT NOT NULL, revision INTEGER NOT NULL,
@@ -214,6 +220,10 @@ class ModelPlanStore:
 
     @contextmanager
     def _db(self):
+        if self.database is not None:
+            with self.database.connection() as db:
+                yield db
+            return
         self._safe_path()
         db = sqlite3.connect(self.path, timeout=20)
         db.row_factory = sqlite3.Row

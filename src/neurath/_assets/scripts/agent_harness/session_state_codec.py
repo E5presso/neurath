@@ -326,8 +326,29 @@ class SessionStateCodec:
                 receipt,
                 self._optional_string(raw_record.get("vendor_turn_id"), "vendor_turn_id"),
                 self._decode_user_prompt_receipt(raw_record.get("user_prompt_receipt")),
+                self._decode_replacement_question(raw_record.get("replacement_question")),
             )
         return turns
+
+    def _decode_replacement_question(self, payload: object) -> ForegroundTurnReceipt | None:
+        from scripts.agent_harness.session_kernel import (
+            ForegroundTurnOutcome, ForegroundTurnReceipt, InvalidSessionState, TransitionRejected,
+        )
+        if payload is None:
+            return None  # Snapshots preceding host replacement remain valid.
+        if (not isinstance(payload, dict)
+                or set(payload) != {"outcome", "summary", "question", "reason"}
+                or payload["outcome"] != ForegroundTurnOutcome.AWAITING_INPUT.value):
+            raise InvalidSessionState("replacement question must be an exact awaiting-input receipt")
+        try:
+            return ForegroundTurnReceipt(
+                ForegroundTurnOutcome.AWAITING_INPUT,
+                summary=self._optional_string(payload["summary"], "summary"),
+                question=self._optional_string(payload["question"], "question"),
+                reason=self._optional_string(payload["reason"], "reason"),
+            )
+        except TransitionRejected as error:
+            raise InvalidSessionState(str(error)) from error
 
     def _decode_user_prompt_receipt(
         self,

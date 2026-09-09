@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -200,7 +201,7 @@ class EnclaveStoreAcceptanceTest(TestCase):
             {"value", "source_kind", "source_turn_id"},
             set(fact_payload),
         )
-        serialized = self.locator.locate(self.session_id).enclave.read_text(encoding="utf-8")
+        serialized = json.dumps(self.store.read(self.session_id).to_payload(), ensure_ascii=False)
         for forbidden in (
             "브라우저 실측 금지",
             "history",
@@ -225,7 +226,7 @@ class EnclaveStoreAcceptanceTest(TestCase):
             self.root_actor_id,
             "temporary-policy",
         )
-        serialized = self.locator.locate(self.session_id).enclave.read_text(encoding="utf-8")
+        serialized = json.dumps(self.store.read(self.session_id).to_payload(), ensure_ascii=False)
 
         self.assertEqual({}, snapshot.facts)
         self.assertNotIn("temporary-policy", serialized)
@@ -235,7 +236,7 @@ class EnclaveStoreAcceptanceTest(TestCase):
 
     def test_subagent_cannot_directly_mutate_session_wide_enclave(self) -> None:
         """Subagent는 proposal 경계를 우회해 root-authoritative enclave를 직접 확정할 수 없습니다."""
-        enclave_before = self.locator.locate(self.session_id).enclave.read_bytes()
+        enclave_before = self.store.read(self.session_id).to_payload()
 
         with self.assertRaises(EnclaveAuthorityError):
             self.store.set(
@@ -247,7 +248,7 @@ class EnclaveStoreAcceptanceTest(TestCase):
 
         self.assertEqual(
             enclave_before,
-            self.locator.locate(self.session_id).enclave.read_bytes(),
+            self.store.read(self.session_id).to_payload(),
         )
 
     def test_oversized_mutation_fails_closed_without_changing_existing_enclave(self) -> None:
@@ -258,8 +259,7 @@ class EnclaveStoreAcceptanceTest(TestCase):
             "stable-fact",
             self.fact("유지되어야 함", "turn-1"),
         )
-        enclave_path = self.locator.locate(self.session_id).enclave
-        canonical_before = enclave_path.read_bytes()
+        canonical_before = self.store.read(self.session_id).to_payload()
 
         with self.assertRaises(EnclaveBudgetExceeded):
             self.store.set(
@@ -269,7 +269,7 @@ class EnclaveStoreAcceptanceTest(TestCase):
                 self.fact("x" * 4_096, "turn-2"),
             )
 
-        self.assertEqual(canonical_before, enclave_path.read_bytes())
+        self.assertEqual(canonical_before, self.store.read(self.session_id).to_payload())
         self.assertEqual(
             {"stable-fact"},
             set(self.store.read(self.session_id).facts),

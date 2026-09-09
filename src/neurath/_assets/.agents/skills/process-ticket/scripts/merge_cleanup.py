@@ -12,7 +12,6 @@ import sys
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from types import MappingProxyType
 from typing import ClassVar
 
@@ -525,7 +524,6 @@ class MergedWorktreeCleanup:
         self._repo_root = identity.repository_control_root.resolve()
         self._worktree = identity.path.resolve()
         self._branch = self._branch_name() if branch is None else branch
-        self._resource_key = hashlib.sha256(str(identity.worktree_id).encode()).hexdigest()
         self._base_branch = base_branch or self._run_git("-C", str(self._repo_root), "branch", "--show-current").stdout.strip()
         if not self._base_branch:
             raise MergeCleanupError("explicit base branch required for detached root")
@@ -616,7 +614,6 @@ class MergedWorktreeCleanup:
         self._remove_ticket_worktree_and_branch()
         self._registry.complete_cleanup(self._claim)
         receipt = self._build_receipt()
-        self._write_receipt(receipt)
         return receipt
 
     def complete_after_claim_release(self) -> dict[str, object]:
@@ -639,7 +636,6 @@ class MergedWorktreeCleanup:
         if self._read_git("branch", "--list", self._branch).stdout.strip():
             raise MergeCleanupError("released cleanup claim still has a branch")
         receipt = self._build_receipt()
-        self._write_receipt(receipt)
         return receipt
 
     def _validate_identity(self) -> None:
@@ -792,29 +788,6 @@ class MergedWorktreeCleanup:
             raise MergeCleanupPlanConflict(
                 f"root checkout branch changed {stage}: current={root_branch}"
             )
-
-    def _write_receipt(self, receipt: dict[str, object]) -> None:
-        receipt_path = self._repo_root / ".git/neurath-cleanup" / f"{self._resource_key}.json"
-        receipt_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary_name: str | None = None
-        try:
-            with NamedTemporaryFile(
-                "w",
-                encoding="utf-8",
-                dir=receipt_path.parent,
-                prefix=f".{receipt_path.name}.",
-                suffix=".tmp",
-                delete=False,
-            ) as temporary:
-                temporary_name = temporary.name
-                json.dump(receipt, temporary, ensure_ascii=False, indent=2, sort_keys=True)
-                temporary.write("\n")
-                temporary.flush()
-                os.fsync(temporary.fileno())
-            os.replace(temporary_name, receipt_path)
-        finally:
-            if temporary_name is not None:
-                Path(temporary_name).unlink(missing_ok=True)
 
     def _registered_worktrees(self) -> set[Path]:
         output = self._read_git("worktree", "list", "--porcelain").stdout

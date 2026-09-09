@@ -211,7 +211,8 @@ def test_transaction_rolls_back_and_interrupted_journal_recovers(repo, monkeypat
     assert read_state(repo) is None
     monkeypatch.setattr(installer, "_write", real)
     plan = make_plan(repo)
-    installer._save_json(installer.git_dir(repo) / "neurath-journal.json", plan)
+    from neurath.install.state_store import InstallStateStore
+    InstallStateStore(repo, create=True).begin(plan)
     real(repo, plan["changes"][0]["path"], plan["changes"][0]["after"])
     with pytest.raises(InstallError, match="interrupted"):
         apply_plan(repo, make_plan(repo))
@@ -267,11 +268,12 @@ installer.apply_plan(root,installer.make_plan(root))
         [sys.executable, "-I", "-c", script, str(repo)], capture_output=True, check=False
     )
     assert process.returncode == -signal.SIGKILL
-    assert (installer.git_dir(repo) / "neurath-journal.json").exists()
+    from neurath.install.state_store import InstallStateStore
+    assert InstallStateStore(repo).journal() is not None
     assert installer.recover(repo)["recovered"]
     assert (repo / "AGENTS.md").read_text() == "Original project rules\n"
     assert installer.read_state(repo) is None
-    assert not (installer.git_dir(repo) / "neurath-journal.json").exists()
+    assert InstallStateStore(repo).journal() is None
     apply_plan(repo, make_plan(repo))
     assert make_plan(repo)["changes"] == []
 

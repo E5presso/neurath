@@ -13,7 +13,6 @@ import os
 import re
 import secrets
 import shlex
-import tempfile
 import sys
 import time
 from pathlib import Path
@@ -43,43 +42,91 @@ def _path(root, session):
     return _locator(root).locate(SessionId(session)).directory / ".neurath-host.json"
 
 
-def snapshot(root, session):
-    path = _path(root, session)
-    data = (
-        json.loads(path.read_text())
-        if path.exists()
-        else {"session": session, "spawns": {}, "tools": {}}
-    )
-    if data.get("session") != session:
+def _database(root):
+    from scripts.agent_harness.runtime_database import RuntimeDatabase
+    return RuntimeDatabase(_locator(root).control_root)
+
+
+def _host_data(record, session):
+    data = ({"session": session, "spawns": {}, "tools": {}} if record is None
+            else json.loads(record.payload))
+    if not isinstance(data, dict) or data.get("session") != session:
         raise ValueError("host record belongs to a different session")
     return data
 
 
 @contextlib.contextmanager
-def journal(root, session):
-    _state(root, session)
+def _journal_lock(root, session):
     path = _path(root, session)
-    fd = os.open(str(path) + ".lock", os.O_CREAT | os.O_RDWR, 0o600)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(path) + ".lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, "a+") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        data = snapshot(root, session)
+        yield path
+
+
+def _host_record(tx, path, session):
+    """Import exact legacy metadata under its existing journal mutex."""
+    record = tx.get("host-journal", session)
+    if record is None and path.is_file():
+        if path.is_symlink():
+            raise ValueError("host journal must not be a symlink")
+        content = path.read_bytes()
+        data = json.loads(content)
+        if not isinstance(data, dict) or data.get("session") != session:
+            raise ValueError("host record belongs to a different session")
+        record = tx.put("host-journal", session, content, expected_revision=None)
+        tx.connection.execute(
+            "UPDATE runtime_records SET legacy_path=?,legacy_digest=? WHERE namespace='host-journal' AND key=?",
+            (str(path), hashlib.sha256(content).hexdigest(), session))
+    return record
+
+
+def snapshot(root, session):
+    database = _database(root)
+    with database.transaction() as tx:
+        record = tx.get("host-journal", session)
+    if record is None and _path(root, session).is_file():
+        with _journal_lock(root, session) as path, database.transaction() as tx:
+            record = _host_record(tx, path, session)
+    return _host_data(record, session)
+
+
+def _journal_exists(root, session):
+    with _database(root).transaction() as tx:
+        if tx.get("host-journal", session) is not None:
+            return True
+    return _path(root, session).is_file()
+
+
+@contextlib.contextmanager
+def journal(root, session):
+    _state(root, session)
+    database = _database(root)
+    with _journal_lock(root, session) as path:
+        with database.transaction() as tx:
+            record = _host_record(tx, path, session)
+            data = _host_data(record, session)
         yield data
-        with tempfile.NamedTemporaryFile(
-            dir=path.parent, prefix=".host-", mode="w", delete=False
-        ) as stream:
-            temporary = stream.name
-            json.dump(data, stream, ensure_ascii=False)
-            stream.flush()
-            os.fsync(stream.fileno())
-        try:
-            os.replace(temporary, path)
-            directory = os.open(path.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory)
-            finally:
-                os.close(directory)
-        finally:
-            Path(temporary).unlink(missing_ok=True)
+        if data.get("session") != session:
+            raise ValueError("host journal mutation changed session identity")
+        with database.transaction() as tx:
+            tx.put("host-journal", session,
+                   json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(),
+                   expected_revision=None if record is None else record.revision)
+
+
+def _all_journals(root):
+    database = _database(root)
+    with database.transaction() as tx:
+        sessions = [row[0] for row in tx.connection.execute(
+            "SELECT key FROM runtime_records WHERE namespace='host-journal'")]
+        values = [_host_data(tx.get("host-journal", session), session) for session in sessions]
+    from scripts._neurath_paths import state_path
+    for path in state_path(_locator(root).control_root, "runs").glob("*/.neurath-host.json"):
+        if path.parent.name not in sessions:
+            values.append(snapshot(root, path.parent.name))
+    return values
 
 
 def host_storage(host, environment):
@@ -169,7 +216,7 @@ def validate_start(root, host, payload, environment):
     if payload.get("agent_id"):
         raise ValueError("startup is not the registered native root")
     session = payload["session_id"]
-    if _path(root, session).exists():
+    if _journal_exists(root, session):
         data = snapshot(root, session)
         _validate_root_transcript(root, host, payload, path, data)
         if _state(root, session).session.runtime.value != host:
@@ -569,20 +616,17 @@ def resolve_native_codex(environment):
     if "CLAUDE_CODE_SESSION_ID" in environment:
         raise ValueError("multiple native identities")
     matches = []
-    locator = _locator(root)
-    for path in (
-        __import__("scripts._neurath_paths", fromlist=["state_path"])
-        .state_path(locator.control_root, "runs")
-        .glob("*/.neurath-host.json")
-    ):
-        data = json.loads(path.read_text())
+    for data in _all_journals(root):
         if data.get("host") == "codex" and any(
             record.get("child") == native for record in data.get("spawns", {}).values()
         ):
             matches.append(data["session"])
     if not matches:
         return None
-    if len(matches) != 1 or (_path(root, native).parent / ".process-state.json").exists():
+    from scripts.agent_harness.session_kernel import SessionStateStore
+    if len(matches) != 1 or SessionStateStore(
+        _path(root, native).parent / ".process-state.json"
+    ).exists():
         raise ValueError("ambiguous native child identity")
     state = _state(root, matches[0])
     actor_id = ActorId(f"codex:{native}")
@@ -860,7 +904,7 @@ def reconcile_child_prompt(root, host, payload, environment):
     if host != "codex":
         return
     from scripts.agent_harness.session_kernel import (
-        ActorId, ForegroundTurnClosed, ForegroundTurnStatus, SessionKernel,
+        ActorId, ForegroundTurnReplaced, ForegroundTurnStatus, SessionKernel,
     )
 
     path = _transcript(host, payload["transcript_path"], environment)
@@ -879,8 +923,9 @@ def reconcile_child_prompt(root, host, payload, environment):
         return
     state = _settle_interrupted_action(root, state, native_turn=payload["turn_id"], actor_id=actor)
     SessionKernel(_locator(root)).apply(
-        ForegroundTurnClosed(
+        ForegroundTurnReplaced(
             session_id=state.session.id, actor_id=actor, expected_turn_revision=turn.revision,
+            replacement_reference=f"codex-turn:{payload['turn_id']}",
             idempotency_key=f"native-child-turn:{child}:{turn.generation}:{turn.revision}",
         ), expected_revision=state.revision,
     )
@@ -991,7 +1036,7 @@ def _native_peer_turn(root, path, session, turn_id):
 def _resume_peer_foreground(root, session, path, turn_id):
     """Reconcile execution provenance without creating a user prompt receipt."""
     from scripts.agent_harness.session_kernel import (
-        ForegroundTurnClosed, ForegroundTurnPrompted, ForegroundTurnStatus, SessionKernel,
+        ForegroundTurnPrompted, ForegroundTurnReplaced, ForegroundTurnStatus, SessionKernel,
     )
 
     with journal(root, session) as data:
@@ -1007,8 +1052,9 @@ def _resume_peer_foreground(root, session, path, turn_id):
         state = _settle_interrupted_action(root, state, native_turn=turn_id)
         kernel = SessionKernel(_locator(root))
         if turn.status is not ForegroundTurnStatus.CLOSED:
-            state = kernel.apply(ForegroundTurnClosed(
+            state = kernel.apply(ForegroundTurnReplaced(
                 session_id=state.session.id, actor_id=actor, expected_turn_revision=turn.revision,
+                replacement_reference=f"codex-turn:{turn_id}",
                 idempotency_key=f"native-peer-close:{turn_id}:{turn.generation}:{turn.revision}",
             ), expected_revision=state.revision)
         kernel.apply(ForegroundTurnPrompted(
@@ -1022,7 +1068,7 @@ def _resume_peer_foreground(root, session, path, turn_id):
 def resume_foreground(root, host, payload, environment):
     """Retire only an exact interrupted native turn; never complete its workflow."""
     from scripts.agent_harness.session_kernel import (
-        ForegroundTurnClosed,
+        ForegroundTurnReplaced,
         ForegroundTurnStatus,
         SessionKernel,
     )
@@ -1093,11 +1139,18 @@ def resume_foreground(root, host, payload, environment):
         replay = same_turn if host == "codex" else same_prompt
         if turn.status is not ForegroundTurnStatus.CLOSED and not replay:
             state = _settle_interrupted_action(root, state, native_turn=latest)
+            replacement_reference = (
+                f"{host}-turn:{latest}"
+                if latest is not None
+                else "claude-code-prompt:sha256:"
+                + hashlib.sha256(payload["prompt"].encode()).hexdigest()
+            )
             SessionKernel(_locator(root)).apply(
-                ForegroundTurnClosed(
+                ForegroundTurnReplaced(
                     session_id=state.session.id,
                     actor_id=state.session.root_actor_id,
                     expected_turn_revision=turn.revision,
+                    replacement_reference=replacement_reference,
                     idempotency_key=f"native-resume:{host}:{turn.generation}:{turn.revision}",
                 ),
                 expected_revision=state.revision,
@@ -1164,5 +1217,5 @@ def require_process_receipt(environment):
     session = environment.get("CLAUDE_CODE_SESSION_ID")
     root = os.environ.get("NEURATH_TARGET_ROOT")
     if root and session and "NEURATH_TOOL_BINDING" not in environment:
-        if _path(root, session).exists() and snapshot(root, session).get("host") == "claude-code":
+        if _journal_exists(root, session) and snapshot(root, session).get("host") == "claude-code":
             raise ValueError("native Claude process requires its active tool identity record")

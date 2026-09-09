@@ -34,7 +34,9 @@ def run_fixture(target, selected_tests):
             ignore=shutil.ignore_patterns("__pycache__"),
         )
     (target / "conftest.py").write_text(
-        "import importlib, pathlib\nfor path in pathlib.Path(__file__).parent.joinpath('scripts').glob('*/*.py'):\n    if path.name not in ('__main__.py', '__init__.py'):\n        importlib.import_module('.'.join(path.relative_to(pathlib.Path(__file__).parent).with_suffix('').parts))\n"
+        "import importlib, pathlib, pytest\nfor path in pathlib.Path(__file__).parent.joinpath('scripts').glob('*/*.py'):\n    if path.name not in ('__main__.py', '__init__.py'):\n        importlib.import_module('.'.join(path.relative_to(pathlib.Path(__file__).parent).with_suffix('').parts))\n"
+        "@pytest.fixture(autouse=True)\ndef fixture_import_root(monkeypatch):\n"
+        "    monkeypatch.syspath_prepend(str(pathlib.Path(__file__).parent))\n"
     )
     (target / "pyproject.toml").write_text(
         '[tool.pytest.ini_options]\naddopts = "--import-mode=importlib"\n'
@@ -50,7 +52,7 @@ def run_fixture(target, selected_tests):
         json.dumps({"verification": {"pytest": {"argv": [sys.executable, "-m", "pytest"]}}})
     )
     (target / ".gitignore").write_text(
-        "__pycache__/\n.pytest_cache/\n.agents/runs/\n.agents/resources/\n"
+        "__pycache__/\n.pytest_cache/\n.agents/runs/\n.agents/resources/\n.neurath/local/\n"
     )
     subprocess.run(["git", "init", "-q", str(target)], check=True)
     subprocess.run(["git", "-C", str(target), "add", "."], check=True)
@@ -76,9 +78,20 @@ def run_fixture(target, selected_tests):
     }
     env["PYTHONPATH"] = str(target.resolve())
     print(f"Independent runtime fixture: {target}", flush=True)
-    return subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", *selected_tests], cwd=target, env=env, check=False
-    ).returncode
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", *selected_tests], cwd=target, env=env,
+        capture_output=True, text=True, check=False,
+    )
+    sys.stdout.write(result.stdout)
+    sys.stderr.write(result.stderr)
+    if result.returncode:
+        directory = ROOT / ".neurath/local/verification"
+        directory.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=directory,
+                prefix="runtime-failure-", suffix=".log", delete=False) as report:
+            report.write(result.stdout + result.stderr)
+        print(f"Full runtime failure diagnostic: {report.name}", flush=True)
+    return result.returncode
 
 
 if __name__ == "__main__":

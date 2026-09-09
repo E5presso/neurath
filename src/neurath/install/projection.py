@@ -54,12 +54,19 @@ POLICY = """# Neurath 공통 실행 정책
 동일 provider의 모드·관측 제한은 보존하고 다른 provider에는 의미가 같은 지원 설정을 매핑한다.
 명시적 deny·훅·sandbox 제한을 버리거나 프롬프트를 권한 설정으로 취급하지 않는다.
 OS 제약은 관측 범위를 별도로 기록하며 provider 모드에서 OS 무제한을 추정하지 않는다.
-모델은 provider_models로 실제 목록을 조회하고 provider_plan으로 난이도·근거·제약·대안과
-재계획 조건을 기록한다. provider_run에는 plan_id와 정확한 revision 및 안정된 key를 전달한다.
+모델 목록은 처음 필요할 때 provider_models로 관측하고 같은 세션의 턴·worktree에서 재사용한다.
+새 assignment나 target은 새 계획을 요구할 수 있지만 목록을 다시 조회할 이유는 아니다.
+명시적 refresh 요청 또는 구체적인 목록 무효화 근거가 있을 때만 다시 관측한다.
+provider_plan에는 난이도·근거·제약·대안과 재계획 조건을 기록한다. assignment, target,
+정책과 제약이 같은 계획은 기존 ID와 revision을 재사용한다. 달라진 조건에만 새 계획을 만든다.
+provider_run에는 plan_id와 정확한 revision 및 안정된 key를 전달한다.
 provider_models와 provider_plan은 자체 구조화된 신원·입력·저장 검증을 수행한다.
 이 도구를 호출하기 위해 별도 material_prepare나 임의 adaptive workflow를 만들지 않는다.
 inherit는 모델 override 없이 실제 기본값을 생성 후 확인한다. 추천 기본 모델을 사용자 설정으로
-오인하지 않는다. 비용·기능 제약을 확인할 수 없으면 유료 본 작업 전에 구체적으로 보고한다.
+오인하지 않는다. 역할과 난이도에 충분한 가장 작은 선택을 우선하고 최상위 모델이나
+상속 기본값을 모든 작업에 일괄 사용하지 않는다. 미확인 가격은 미확인으로 보존한다.
+명시된 사용자 비용·기능 제약을 충족하지 못하는 경우에만 해당 실행을 차단하고 다른 승인 작업은 계속한다.
+계획의 selection.mode/model은 모델 선택이고 provider_run의 top-level mode는 실행 권한 상속이다.
 Codex와 Claude의 provider_run은 mode=inherit를 기본으로 하며 이미 승인된 정책을 유지한다.
 명시한 실행 설정은 실제 승계값에 대한 확인 조건이며 조용한 권한 확대·축소를 허용하지 않는다.
 Claude의 bypassPermissions도 실제 native 모드와 도구 허용 결과를 확인한다.
@@ -97,6 +104,9 @@ CLI와 공통 도메인 서비스는 내부 실행 기반이며 에이전트의 
 한 번에 수신 확인한다. 읽지 않은 메시지나 다른 수신자의 메시지를 섞지 않는다.
 검증은 변경을 판별할 최소 검사부터 시작하고, 최종 소스가 고정되면 필수 전체 검사를 실행한다.
 material_prepare의 Git 관리 대상에 실제 변화가 있으면 프로젝트 check 의무가 남는다.
+material_prepare는 apply_patch·Edit·Write 등 구조화된 직접 편집의 정확한 대상을 준비한다.
+셸 명령은 호스트 실행 관리 경로이므로 uv sync·manifest 생성 명령만을 위해 배치를 만들지 않는다.
+명령의 실제 종료 코드와 등록된 검증 결과를 보존하며, 빈 배치를 실행 성공으로 완료 처리하지 않는다.
 현재 소스·설정의 verification_run 성공으로 확인하며 후속 배치·인계로 지우지 않는다.
 조회·무변경 준비·Git 제외 자료에는 적용하지 않는다. 목표별 실제 호스트·독립 검증은 별도 등록한다.
 검사가 불가능하면 허용된 대체 경로를 확인하고 구체적 제약과 미완료 상태를 보존한다.
@@ -153,11 +163,15 @@ DECLARED hook은 AVAILABLE host 증명이 아니다. 원시 agent_id는 direct-c
 사소한 설명 요청에 stateful workflow를 강제하지 않는다.
 
 ## Provider 선택과 작업 간 대화
-일반 Codex·Claude 독립 작업은 위의 명명된 provider_run과 네이티브 이벤트 경로를 사용한다.
-새 독립 작업은 `provider_run`을 사용하고 기본 `mode=inherit`로 바로 위 발행자의 실제 정책을 승계한다.
+같은 작업에서 분리할 수 있는 leaf 작업은 네이티브 직접 자식을 기본으로 사용한다.
+별도 세션 수명, 다른 provider, 또는 기본 자식 도구가 제공하지 못하는 필수 격리가 실제로
+필요할 때만 provider_run을 선택하고 그 이유를 남긴다. 단순 메시지 전달은 새 실행이 아니다.
+새 독립 세션은 기본 `mode=inherit`로 바로 위 발행자의 실제 실행 정책을 승계한다.
 `provider_status`는 이벤트 후 진단, `provider_cancel`은 취소 요청, `provider_recover`는 실제 종료가
 확인된 소유 연결 복구다. 후속 질문은 발견한 실제 주소에 `collaboration_send` 또는 `collaboration_reply`로
 전달한다. 복구 도구를 새 후속 작업이나 원래 작업의 재실행으로 사용하지 않는다.
+여러 메시지는 collaboration_send의 messages 배열로 묶고 각 항목의 to 배열에 수신자를 지정한다.
+일괄 전송 결과는 수신자별 ID로 확인하며 접수·전달·작업 완료를 구분한다.
 과거 제한 시간 실행기는 저장된 호출의 내부 호환용이다. 새 에이전트 운용 경로로 권하지 않는다.
 실행 결과는 agent-report다. 외부 실행으로 DIRECT_CHILD나 독립 evaluator 권한을 만들지 않는다.
 provider 인증과 모델 접근 권한은 해당 CLI의 기존 설정을 사용하며, 다른 모델로 몰래 대체하지 않는다.

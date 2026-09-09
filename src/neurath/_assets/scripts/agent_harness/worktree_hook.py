@@ -512,6 +512,9 @@ class WorktreeHookApplication:
         )
 
     def _is_canonical_state(self, locator: SessionLocator, target: Path) -> bool:
+        runtime_database = (locator.control_root / ".neurath/local/runtime.sqlite3").resolve()
+        if target in {Path(str(runtime_database) + suffix) for suffix in ("", "-wal", "-shm", "-journal")}:
+            return True
         runs_root = (__import__("scripts._neurath_paths", fromlist=["state_path"]).state_path(locator.control_root, "runs")).resolve()
         resources_root = (__import__("scripts._neurath_paths", fromlist=["state_path"]).state_path(locator.control_root, "resources")).resolve()
         return (

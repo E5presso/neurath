@@ -25,6 +25,7 @@ from scripts.agent_harness.adaptive_control import (
     UserDecision,
     UserDecisionClaim,
     UserDecisionDisposition,
+    UserDecisionProvenance,
     UserDecisionTarget,
     UserDeferral,
     approved_requirement_fingerprint,
@@ -447,3 +448,18 @@ class UserDecisionContractTest(TestCase):
             reference=decision.reference,
             lineage=self._user_lineage(contract),
         )
+    def test_legacy_digest_shape_and_provenance_enum_remain_closed(self) -> None:
+        contract = self._contract()
+        claim = self._decision(
+            contract,
+            target=UserDecisionTarget.CRITERION,
+            target_id="phase-complete",
+            disposition=UserDecisionDisposition.ACCEPTED,
+        ).claim
+        payload = claim.to_payload()
+        self.assertNotIn("provenance", payload)
+        self.assertNotIn("source_workflow_revision", payload)
+        with self.assertRaisesRegex(ValueError, "provenance"):
+            replace(claim, provenance="native-prompt")
+        with self.assertRaisesRegex(ValueError, "target_kind"):
+            replace(claim, target_kind="criterion")

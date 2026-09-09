@@ -31,7 +31,10 @@ def test_new_host_recalls_goal_and_checkpoint_without_taking_ownership(repo):
     assert "PDF remains" in str(recalled)
     assert "Use UTF-8" in str(recalled)
     assert recalled["authority"] == "reference-only"
-    assert not (repo / ".neurath/local/runs/second/.process-state.json").exists()
+    from neurath.runtime.engine import activate
+    activate(repo)
+    from scripts.agent_harness.session_kernel import SessionStateStore, SessionLocator, SessionId
+    assert not SessionStateStore(SessionLocator(repo).locate(SessionId("second")).process_state).exists()
 
 
 def test_source_records_are_idempotent_and_conflicting_replay_is_rejected(repo):

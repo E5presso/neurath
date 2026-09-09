@@ -6,7 +6,6 @@ import json
 import sqlite3
 import time
 import traceback
-from contextlib import closing
 from pathlib import Path
 
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
@@ -143,18 +142,9 @@ class ClaudeInbox:
 
 def _policy_context(root, identity, expected_turn):
     """Read a native-hook observation; never replay its invocation capability."""
-    directory = control_root(root)
-    for part in (".neurath", "local", "agents"):
-        directory /= part
-        if directory.is_symlink():
-            raise ValueError("native policy directory must not be a symlink")
-    path = directory / "messages.sqlite3"
-    if any(Path(str(path) + suffix).is_symlink() for suffix in ("", "-wal", "-shm", "-journal")):
-        raise ValueError("native policy database must not be a symlink")
-    if not path.is_file():
-        return None
-    with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as db:
-        db.row_factory = sqlite3.Row
+    from neurath.runtime.database import RuntimeDatabase
+
+    with RuntimeDatabase(control_root(root)).connection() as db:
         if not db.execute("SELECT 1 FROM sqlite_master WHERE name='collaboration_calls'").fetchone():
             return None
         row = db.execute("""SELECT context,invocation,expires FROM collaboration_calls

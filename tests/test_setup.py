@@ -303,7 +303,7 @@ def _installed_files(project):
     result = {}
     for path in project.rglob("*"):
         relative = path.relative_to(project)
-        if ".git" in relative.parts:
+        if ".git" in relative.parts or path.is_relative_to(project / ".neurath/local"):
             continue
         if path.is_symlink():
             result[str(relative)] = ("link", os.readlink(path))

@@ -40,6 +40,7 @@ from scripts.agent_harness.material_action import (
     ObservableDeltaKind,
     ObservableExpectation,
 )
+from scripts.agent_harness.runtime_database import RuntimeDatabase
 from scripts.agent_harness.session_kernel import (
     ActorId,
     ActorKind,
@@ -484,8 +485,17 @@ class AdaptiveEvaluationCandidateStoreTest(TestCase):
         ).prepare(self.state)
         self._assign(self.owner, self.child_actor_id, prepared.assignment_json)
         digest = prepared.candidate_ref.removeprefix("sha256:")
-        artifact_path = self.locator.locate(self.session_id).artifacts / "sha256" / f"{digest}.json"
-        artifact_path.write_text('{"tampered":true}', encoding="utf-8")
+        with RuntimeDatabase(self.control_root).connection() as db:
+            changed = db.execute(
+                "UPDATE runtime_records SET payload=? "
+                "WHERE namespace=? AND key=?",
+                (
+                    b'{"tampered":true}',
+                    f"artifact:{self.session_id}",
+                    digest,
+                ),
+            )
+            self.assertEqual(1, changed.rowcount)
 
         with self.assertRaises(AdaptiveEvaluationCandidateInvalid):
             AdaptiveEvaluationCandidateStore(

@@ -15,6 +15,22 @@ def call(sessions, name, inputs, invocation=None, host="codex", session="api"):
     return mcp.call_tool(sessions[0], bound, name=name)
 
 
+def define_task(sessions):
+    result = call(sessions, "task_define", {"tasks": [{"key": "commit-task",
+        "title": "Commit the approved change", "goal": "Review an authorized change",
+        "sources": [], "acceptance": ["The approved change is committed with observed Git evidence"],
+        "evidence_contract": "phase", "dependencies": []}], "expected_revision": 0, "key": "define-task"})
+    return result["tasks"][0]["id"]
+
+
+def assess_task(sessions, task_id, workflow_revision, status):
+    """Attach a root assessment to the actual observed phase result."""
+    from tests.test_task_acceptance_review import assessment
+    tasks = call(sessions, "task_list", {}, invocation="assessment-read")["tasks"]
+    task = next(task for task in tasks if task["id"] == task_id)
+    return assessment(task, f"workflow:phase:{workflow_revision}", status)
+
+
 def test_named_workflow_inventory_is_closed():
     from neurath.runtime.task_schema import definitions
     tools = {row["name"]: row for row in definitions()}
@@ -62,6 +78,15 @@ def test_missing_evaluator_rejection_does_not_poison_initialization_key(sessions
 
 
 def start(sessions, *, alias=False, workflow="phase", key="start", skill="commit", host="codex", session="api"):
+    ledger = call(sessions, "task_list", {}, invocation="intake-read:" + key + ":" + skill,
+                  host=host, session=session)
+    if not any(task["definition"]["evidence_contract"] == workflow for task in ledger["tasks"]):
+        call(sessions, "task_define", {"tasks": [{"key": "task-" + workflow,
+            "title": "Review authorized change", "goal": "Review an authorized change",
+            "sources": [], "acceptance": ["The authorized workflow reaches its stated outcome"],
+            "evidence_contract": workflow, "dependencies": []}],
+            "expected_revision": ledger["revision"], "key": "intake-" + workflow},
+            invocation="intake-define:" + key + ":" + skill, host=host, session=session)
     if alias:
         return call(sessions, "workflow_start", {"workflow_id": workflow, "kind": skill,
             "goal": "Review an authorized change", "initial_state": {"run_id": "run"}, "key": key}, invocation="start:" + key + ":" + skill, host=host, session=session)
@@ -124,6 +149,7 @@ def test_phase_checks_execution_policy_before_semantic_helpers(sessions, monkeyp
 
 def test_phase_failure_terminal_and_revision_are_enforced(sessions, monkeypatch):
     call(sessions, "worktree_claim", {})
+    task_id = define_task(sessions)
     start(sessions)
     monkeypatch.setattr("neurath.runtime.tasks._mcp_execution_policy", lambda *a, **k: None)
     with pytest.raises(ValueError, match="revision"):
@@ -133,6 +159,12 @@ def test_phase_failure_terminal_and_revision_are_enforced(sessions, monkeypatch)
         "transition": {"phase_id": 1, "status": "blocked", "summary": "not executed", "reason": "fixture blocker"}, "key": "blocked"})
     finalized = call(sessions, "workflow_finalize", {"workflow_id": "phase", "expected_revision": completed["workflow_revision"], "terminal_state": "blocked", "key": "finalize"})
     assert finalized["terminal_state"] == "blocked"
+    assessment = assess_task(sessions, task_id, finalized["workflow_revision"], "failed")
+    resolved = call(sessions, "task_resolve", {"task_id": task_id, "expected_revision": 1,
+        "expected_task_revision": 1, "key": "task-failed", "status": "failed",
+        "references": [f"workflow:phase:{finalized['workflow_revision']}"], "assessment": assessment})
+    assert resolved["tasks"][0]["status"] == "failed"
+    assert resolved["all_terminal"]
 
 
 def test_delegation_prepare_uses_bound_native_actor_and_conflicts(sessions, monkeypatch):

@@ -41,13 +41,16 @@ class Reporting:
         )
         self.directory = Path(common.stdout.strip()) / "neurath-reporting"
         self.path = self.directory / "state.json"
+        from neurath.runtime.local_state import LocalState
+        self.state_store = LocalState(self.root, "reporting", self.path, self._decode,
+                                      lambda: {"schema": 1, "auto_report": None, "reports": {}})
 
     def _read(self):
-        if self.directory.is_symlink() or self.path.is_symlink():
-            raise ValueError("reporting state must not be a symlink")
-        if not self.path.exists():
-            return {"schema": 1, "auto_report": None, "reports": {}}
-        value = json.loads(self.path.read_text())
+        return self.state_store.read()
+
+    @staticmethod
+    def _decode(raw):
+        value = json.loads(raw)
         if (not isinstance(value, dict) or value.get("schema") != 1
                 or (value.get("auto_report") is not None
                     and type(value["auto_report"]) is not bool)
@@ -65,16 +68,7 @@ class Reporting:
             yield self._read()
 
     def _save(self, state):
-        with tempfile.NamedTemporaryFile(dir=self.directory, delete=False) as stream:
-            temporary = Path(stream.name)
-            stream.write((canonical(state) + "\n").encode())
-            stream.flush()
-            os.fsync(stream.fileno())
-        try:
-            temporary.chmod(0o600)
-            temporary.replace(self.path)
-        finally:
-            temporary.unlink(missing_ok=True)
+        self.state_store.save(state)
 
     def status(self):
         state = self._read()

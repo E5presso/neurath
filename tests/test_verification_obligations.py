@@ -196,7 +196,7 @@ def _stop_prioritizes_verification_and_preserves_debt(stop_runtime, monkeypatch,
     assert code == 0 and output.get("decision") == "block", diagnostic
     assert output["reason"].index("verification") < output["reason"].index("handoff")
     code, output, diagnostic = send(host, "Stop", stop_hook_active=True)
-    assert code == 0 and output.get("continue") is False, diagnostic
+    assert code == 0 and output.get("decision") == "block", diagnostic
     assert ledger(root).pending(host, "root", state.session.root_actor_id)
     assert _state(root, "root").foreground_turns[state.session.root_actor_id].status.value == "active"
 

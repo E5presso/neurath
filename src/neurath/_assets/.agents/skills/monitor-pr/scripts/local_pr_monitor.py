@@ -1942,6 +1942,9 @@ class MonitorDelegationReader:
         ):
             if delegation.owner_actor_id != self._handle.actor_id:
                 continue
+            # Terminal history can use another producer's assignment schema.
+            if delegation.status not in {DelegationStatus.PENDING, DelegationStatus.REPORTED}:
+                continue
             try:
                 raw_assignment: object = json.loads(delegation.assignment)
             except json.JSONDecodeError as error:
@@ -1962,8 +1965,6 @@ class MonitorDelegationReader:
                 raise MonitorWorkflowStateError(
                     f"delegation assignment identity is incomplete: {delegation_id}"
                 )
-            if delegation.status not in {DelegationStatus.PENDING, DelegationStatus.REPORTED}:
-                continue
             claim: dict[str, object] = {
                 "delegation_id": str(delegation.id),
                 "kind": raw_assignment["kind"],
@@ -2653,13 +2654,7 @@ class LocalPrMonitor:
         return "unconfigured"
 
     def _write_event(self, payload: dict[str, object]) -> None:
-        events_dir = self._state_path.parent / "events"
-        events_dir.mkdir(parents=True, exist_ok=True)
-        event_name = f"{int(time.time() * 1000)}-{payload['reason']}.json"
-        (events_dir / event_name).write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        self._state.append_event(payload)
 
     def _dict(self, value: object) -> dict[str, object]:
         return dict(value) if isinstance(value, Mapping) else {}
