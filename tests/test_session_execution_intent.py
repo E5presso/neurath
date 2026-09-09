@@ -41,6 +41,8 @@ def test_preparation_wait_delivery_and_native_completion_are_distinct(monkeypatc
                 {"method": "item/completed", "params": {"threadId": "native",
                     "item": {"type": "commandExecution"}}},
                 {"method": "turn/completed", "params": {"threadId": "native", "turn": {
+                    "id": "bootstrap", "status": "completed"}}},
+                {"method": "turn/completed", "params": {"threadId": "native", "turn": {
                     "id": "assignment" if scenario == "completed" else "bootstrap", "status": "completed"}}}])
         def event(self, *args, **kwargs): return next(self.events)
         def close(self): pass
@@ -48,7 +50,8 @@ def test_preparation_wait_delivery_and_native_completion_are_distinct(monkeypatc
         def __init__(self, host): pass
         def create(self, *args): return Session("codex", "codex-app-server", "native", "/work", None, "model", {})
         def bootstrap(self, session): return {"delivery": "submitted", "native_turn": "bootstrap"}
-        def message(self, session, text):
+        def start_after_preparation(self, session, text, preparation_turn):
+            assert preparation_turn == "bootstrap"
             calls.append("assignment")
             return {"delivery": "needs-input" if scenario == "needs-input" else "submitted",
                     "native_turn": "assignment"}
