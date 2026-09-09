@@ -150,6 +150,7 @@ def run(root, *, worktree, assignment, model=None, mode="read-only", approval_po
             return result
         deadline = time.monotonic() + timeout if timeout is not None else None
         started = False
+        prepared_report = None
         while deadline is None or time.monotonic() < deadline:
             try:
                 event = host.event(lambda _: True,
@@ -192,26 +193,41 @@ def run(root, *, worktree, assignment, model=None, mode="read-only", approval_po
                 if not result["implementation_dispatched"] and item.get("type") in {"commandExecution", "mcpToolCall"}:
                     report = inspect_owned_session(session)
                     result["readiness"] = report
+                    prepared_report = None
                     if _prepared(report, mode):
                         from neurath.providers.execution_plan import ready_plan
                         result["model_verification"] = ready_plan(model_plan, session, report)
                         result["preparation"] = "verified"
-                        prompt = ("Neurath peer assignment within the authorized task. Preparation is verified. "
-                                  "Keep current permissions and worktree ownership. " +
-                                  ("Inspect and respond without edits. " if mode == "read-only" else
-                                   "Follow normal material action prepare, tool result, readback and resolve. "
-                                   "Release your own worktree claim normally when all assigned work is finished. ") +
-                                  "Assignment:\n" + assignment)
-                        result["submission"] = adapter.message(session, prompt)
-                        result["delivery"] = result["submission"]["delivery"]
-                        if result["submission"]["delivery"] == "submitted":
-                            result["implementation_dispatched"] = True
-                            inbox = _start_inbox(adapter, session)
-                        else:
-                            result["status"] = "needs-input"
-                            break
+                        prepared_report = report
             if name == "turn/completed":
                 turn = params.get("turn", {})
+                if not result["implementation_dispatched"]:
+                    if turn.get("id") != result["bootstrap"].get("native_turn"):
+                        continue
+                    result["preparation_completion"] = {
+                        key: turn.get(key) for key in ("id", "status", "error")}
+                    if turn.get("status") != "completed" or prepared_report is None:
+                        result["status"] = "not-ready"
+                        break
+                    prompt = (
+                        f"Preparation turn {turn['id']} completed. This is a new, separate "
+                        "authorized assignment turn. The prior preparation-only instruction "
+                        "does not scope this turn. Keep the verified permissions and retained "
+                        "worktree claim. "
+                        + ("Inspect and respond without edits. " if mode == "read-only" else
+                           "Follow normal material action prepare, tool result, readback and "
+                           "resolve. Release your worktree claim only after this assigned work "
+                           "is finished. ")
+                        + "Assignment:\n" + assignment)
+                    result["submission"] = adapter.start_after_preparation(
+                        session, prompt, turn["id"])
+                    result["delivery"] = result["submission"]["delivery"]
+                    if result["submission"]["delivery"] != "submitted":
+                        result["status"] = "needs-input"
+                        break
+                    result["implementation_dispatched"] = True
+                    inbox = _start_inbox(adapter, session)
+                    continue
                 expected = result["submission"] if result["implementation_dispatched"] else result["bootstrap"]
                 if inbox:
                     disposition = inbox.complete_turn(turn.get("id"), expected.get("native_turn"),
@@ -223,8 +239,6 @@ def run(root, *, worktree, assignment, model=None, mode="read-only", approval_po
                 result["completion"] = {key: turn.get(key) for key in ("id", "status", "error")}
                 if result["implementation_dispatched"]:
                     result["execution"] = "native-turn-completed"
-                    # Steering may share the preparation turn. This is native turn
-                    # evidence, not evidence that the implementation itself ran.
                 result["status"] = ("completed" if turn.get("status") == "completed"
                     and result["implementation_dispatched"] else "not-ready" if
                     not result["implementation_dispatched"] else "failed")

@@ -32,6 +32,8 @@ def test_service_never_dispatches_assignment_before_fresh_readiness(monkeypatch,
             ])
         def event(self, *args, **kwargs):
             event = next(self.events)
+            if event.get("params", {}).get("turn", {}).get("id") == "bootstrap-turn":
+                assert "assignment" not in calls
             if event is None:
                 raise TimeoutError("no progress within one event poll")
             return event
@@ -44,8 +46,9 @@ def test_service_never_dispatches_assignment_before_fresh_readiness(monkeypatch,
         def bootstrap(self, session):
             calls.append("bootstrap")
             return {"native_turn": "bootstrap-turn"}
-        def message(self, session, text):
+        def start_after_preparation(self, session, text, preparation_turn):
             assert calls[-1] == "ready"
+            assert preparation_turn == "bootstrap-turn"
             calls.append("assignment")
             return {"delivery": "submitted", "native_turn": "assignment-turn"}
     def inspect(session):
@@ -80,6 +83,7 @@ def test_ordinary_execution_has_no_deadline_and_reports_only_its_submitted_turn(
             self.events = iter([
                 {"method": "item/completed", "params": {"item": {"type": "commandExecution"}}},
                 {"method": "item/started", "params": {"turnId": "unrelated"}},
+                {"method": "turn/completed", "params": {"turn": {"id": "bootstrap", "status": "completed"}}},
                 {"method": "item/started", "params": {"turnId": "work"}},
                 {"method": "turn/completed", "params": {"turn": {"id": "work", "status": "completed"}}},
             ])
@@ -91,7 +95,10 @@ def test_ordinary_execution_has_no_deadline_and_reports_only_its_submitted_turn(
         def __init__(self, host): pass
         def create(self, *args): return Session("codex", "codex-app-server", "native", "/work", None, "model", {})
         def bootstrap(self, session): return {"native_turn": "bootstrap"}
-        def message(self, session, prompt): return {"delivery": "submitted", "native_turn": "work"}
+        def start_after_preparation(self, session, prompt, preparation_turn):
+            assert preparation_turn == "bootstrap"
+            assert "new, separate authorized assignment turn" in prompt
+            return {"delivery": "submitted", "native_turn": "work"}
     monkeypatch.setattr(execution, "_target", lambda *args: Path("/work"))
     monkeypatch.setattr(execution, "CodexStdio", Host)
     monkeypatch.setattr(execution, "CodexSessions", Adapter)
@@ -100,7 +107,7 @@ def test_ordinary_execution_has_no_deadline_and_reports_only_its_submitted_turn(
     result = execution.run("/parent", worktree="/work", assignment="Implement", mode="workspace-write",
         approval_policy="never", collaboration_mode="default", event_callback=lambda *event: events.append(event))
     assert result["status"] == "completed"
-    assert waits == [None] * 4
+    assert waits == [None] * 5
     assert events[0][0] == "native-created"
     assert events[0][1]["created"]["native_session"] == "native"
     assert events[1:] == [("started", {"native_session": "native", "native_turn": "work"})]
@@ -122,6 +129,7 @@ def _terminal_fixture(monkeypatch, inbox, close_error=None):
         def __init__(self, *args, **kwargs):
             self.events = iter([
                 {"method": "item/completed", "params": {"item": {"type": "commandExecution"}}},
+                {"method": "turn/completed", "params": {"turn": {"id": "bootstrap", "status": "completed"}}},
                 {"method": "turn/completed", "params": {"turn": {"id": "work", "status": "completed"}}},
                 {"method": "turn/completed", "params": {"turn": {"id": "report", "status": "completed"}}}])
         def event(self, *args, **kwargs): return next(self.events)
@@ -133,7 +141,9 @@ def _terminal_fixture(monkeypatch, inbox, close_error=None):
         def __init__(self, host): pass
         def create(self, *args): return Session("codex", "codex-app-server", "native", "/work", None, "model", {})
         def bootstrap(self, session): return {"native_turn": "bootstrap"}
-        def message(self, session, prompt): return {"delivery": "submitted", "native_turn": "work"}
+        def start_after_preparation(self, session, prompt, preparation_turn):
+            assert preparation_turn == "bootstrap"
+            return {"delivery": "submitted", "native_turn": "work"}
         def cancel(self, session):
             calls.append("cancel")
             return {"status": "interrupt-requested"}

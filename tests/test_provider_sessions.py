@@ -275,6 +275,24 @@ def test_idle_followup_reuses_same_reasoning_and_collaboration_composition():
         assert params["sandboxPolicy"] == {"type": "dangerFullAccess"}
 
 
+def test_separate_assignment_requires_completed_owned_preparation_turn():
+    host = Host()
+    adapter = CodexSessions(host)
+    session = adapter.create("/work")
+    bootstrap = adapter.bootstrap(session)
+    host.thread.update(status={"type": "active"}, turns=[
+        {"id": bootstrap["native_turn"], "status": "inProgress"}])
+    with pytest.raises(ValueError, match="idle"):
+        adapter.start_after_preparation(session, "Implement", bootstrap["native_turn"])
+    host.thread.update(status={"type": "idle"}, turns=[])
+    with pytest.raises(ValueError, match="adapter"):
+        adapter.start_after_preparation(session, "Implement", "other-turn")
+    result = adapter.start_after_preparation(session, "Implement", bootstrap["native_turn"])
+    assert result["native_turn"] == "turn-id"
+    assert host.calls[-1][0] == "turn/start"
+    assert host.calls[-1][1]["input"][0]["text"] == "Implement"
+
+
 def test_idle_write_continuation_requires_new_native_preparation_without_sending_assignment(monkeypatch):
     monkeypatch.setattr(CodexSessions, "_state_roots", staticmethod(lambda _: []))
     host = Host()
