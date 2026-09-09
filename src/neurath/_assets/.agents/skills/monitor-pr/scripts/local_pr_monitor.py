@@ -1942,6 +1942,9 @@ class MonitorDelegationReader:
         ):
             if delegation.owner_actor_id != self._handle.actor_id:
                 continue
+            # Terminal history can use another producer's assignment schema.
+            if delegation.status not in {DelegationStatus.PENDING, DelegationStatus.REPORTED}:
+                continue
             try:
                 raw_assignment: object = json.loads(delegation.assignment)
             except json.JSONDecodeError as error:
@@ -1962,8 +1965,6 @@ class MonitorDelegationReader:
                 raise MonitorWorkflowStateError(
                     f"delegation assignment identity is incomplete: {delegation_id}"
                 )
-            if delegation.status not in {DelegationStatus.PENDING, DelegationStatus.REPORTED}:
-                continue
             claim: dict[str, object] = {
                 "delegation_id": str(delegation.id),
                 "kind": raw_assignment["kind"],

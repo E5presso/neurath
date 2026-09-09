@@ -78,7 +78,7 @@
     "_assets/.agents/skills/monitor-pr/scripts/check_filters.sh": "748ab9875537a891e4d851668139dd71edde68337ed697a4ae1fd0b9270b0666",
     "_assets/.agents/skills/monitor-pr/scripts/collect_comments.sh": "4d6b432edd1d9f8afb69938c90c1a1cdb23b3f5ea98802dc74ce5fd8df2b1932",
     "_assets/.agents/skills/monitor-pr/scripts/launch_agent_plist.py": "dc9a40179bbb847df8115d7377645e4bd19a4b04343723e1f11248a67141d5f8",
-    "_assets/.agents/skills/monitor-pr/scripts/local_pr_monitor.py": "e8fcac6518883891511f12a2050bc379df3dcc9e60aa9bbf4d944204ee2bef8e",
+    "_assets/.agents/skills/monitor-pr/scripts/local_pr_monitor.py": "0d2ca19c1fa7557df53a2d64343a4e547885ca2acf5223ee675aef0cb0d7bed6",
     "_assets/.agents/skills/monitor-pr/scripts/monitor_check_summary.py": "34e9fbb475c3b163c4c2bee686f6e01abde40a7f53eaf74024cce45395ad91c3",
     "_assets/.agents/skills/monitor-pr/scripts/monitor_launch_lock.py": "067ed910b41819e9088d20288c1824b86f1255f2f07968a0575318cd9850b850",
     "_assets/.agents/skills/monitor-pr/scripts/monitor_observation_store.py": "4b2792e246b17be9f7a9c0e235cc4adaf563895d3a9ddc546a73c950c3bb49a8",

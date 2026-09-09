@@ -20,6 +20,7 @@ from scripts.agent_harness.session_kernel import (
     ActorLineageAssurance,
     ActorStarted,
     DelegationAssigned,
+    DelegationConsumed,
     DelegationId,
     DelegationReported,
     DelegationResult,
@@ -186,6 +187,8 @@ class MonitorFixture:
         delegation_id: str,
         workflow_id: str,
         suffix: str,
+        assignment_payload: Mapping[str, object] | None = None,
+        consumed: bool = False,
     ) -> None:
         """Exact 또는 foreign workflow에 귀속된 reported child result를 추가합니다."""
         child_id = ActorId(f"codex:child-{suffix}")
@@ -206,7 +209,7 @@ class MonitorFixture:
                 "started_at": "2026-08-04T00:00:00+00:00",
                 "target": f"child-{suffix}",
                 "workflow_id": workflow_id,
-            },
+            } if assignment_payload is None else dict(assignment_payload),
             separators=(",", ":"),
             sort_keys=True,
         )
@@ -246,6 +249,13 @@ class MonitorFixture:
                 idempotency_key=f"fixture:report:{suffix}",
             )
         )
+        if consumed:
+            self.handle.apply(DelegationConsumed(
+                session_id=self.handle.session_id,
+                delegation_id=typed_delegation_id,
+                consumer_actor_id=self.handle.actor_id,
+                idempotency_key=f"fixture:consume:{suffix}",
+            ))
 
 
 class LocalPrMonitorTest(TestCase):
@@ -566,6 +576,37 @@ class LocalPrMonitorTest(TestCase):
             "delegation-matching",
             result["delegation_id"],
         )
+
+    def test_consumed_generic_delegation_is_historical_not_monitor_schema(self) -> None:
+        fixture = MonitorFixture("active")
+        try:
+            fixture.add_reported_delegation(
+                delegation_id="autopilot-initial-evaluation",
+                workflow_id=str(fixture.workflow_id), suffix="historical-evaluation",
+                assignment_payload={"kind": "adaptive-goal-evaluation",
+                    "workflow_id": str(fixture.workflow_id), "goal_fingerprint": "a" * 64},
+                consumed=True,
+            )
+            active = local_pr_monitor.MonitorDelegationReader(
+                fixture.handle, fixture.workflow_id).active()
+        finally:
+            fixture.close()
+        self.assertEqual((), active)
+
+    def test_active_generic_delegation_still_fails_monitor_projection(self) -> None:
+        fixture = MonitorFixture("active")
+        try:
+            fixture.add_reported_delegation(
+                delegation_id="active-invalid-evaluation",
+                workflow_id=str(fixture.workflow_id), suffix="active-invalid",
+                assignment_payload={"kind": "adaptive-goal-evaluation",
+                    "workflow_id": str(fixture.workflow_id)},
+            )
+            with self.assertRaisesRegex(local_pr_monitor.MonitorWorkflowStateError,
+                                        "delegation assignment identity is incomplete"):
+                local_pr_monitor.MonitorDelegationReader(fixture.handle, fixture.workflow_id).active()
+        finally:
+            fixture.close()
 
     def test_monitor_receipt_has_session_and_workflow_without_process_state_path(self) -> None:
         """Local observation receipt는 canonical identity를 담고 legacy path를 담지 않습니다."""
