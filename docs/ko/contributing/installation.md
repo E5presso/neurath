@@ -71,3 +71,22 @@ uv run --locked pytest tests/test_example.py::test_example
 
 도구 사용법은 [현재 명명 도구와 스키마](task-tools.md)에서 확인합니다.
 배포 무결성·설치 배치·프로토콜 fixture·실제 호스트 활성화·모델 실행은 서로 다른 검증 범위입니다.
+
+## 공유 레거시 SQLite 전환
+
+초기 import는 준비 단계이며 설치 전환 완료가 아닙니다. 연결된 Git worktree는 정본 runtime DB를 공유하며, 비활성 worktree에도 이전 실행기가 남을 수 있습니다. 설치기는 레거시 SQLite 파일이 남아 있으면 명시적 전환을 요구합니다. 일반 runtime 호출은 변경된 원본을 계속 거부합니다.
+
+에이전트는 새 배포본의 부트스트랩 환경에서 복구를 수행합니다. 일반 runtime 초기화가 실패해도 이 경로를 사용할 수 있습니다.
+
+```text
+neurath --root TARGET cutover inspect
+neurath --root TARGET cutover prepare
+neurath --root TARGET cutover apply --expected-token TOKEN_FROM_INSPECTION
+neurath --root TARGET cutover recover
+```
+
+`inspect`는 선언된 저장소 네 개, import guard와 모든 연결 worktree 실행기를 읽습니다. `prepare`는 정본 DB가 없을 때만 초기 import를 명시적으로 준비하며, 원본 폐기나 호스트 활성화를 완료하지 않습니다. 에이전트는 DB writer를 중지한 뒤 검토한 진단 token으로 적용합니다. 알 수 없는 실행기, 열린 연결, journal, 바뀐 guard, 늦게 생긴 미반영 행은 전환을 막습니다. 일반 runtime이 원본 변경을 거부해도 진단은 동작합니다.
+
+적용 중에는 알려진 생성 실행기를 잠시 차단하고 원본을 비공개 로컬 보관소에 보존하며 이전 SQLite 경로를 디렉터리 tombstone으로 대체합니다. 트랜잭션은 정본 애플리케이션 데이터를 유지하고 guard를 갱신하며 원래 guard와 대조 결과를 감사 기록에 남깁니다. 새 메시지, 본문·수신자 변경은 거부합니다. 정본 기록이 종료된 경우의 지원하는 수명주기 차이만 허용합니다. SQLite 경로 차단이 영속화된 뒤 원래 실행기를 복원하고 정상 설치 업데이트가 필요한 worktree 목록을 반환합니다. 이전 runtime은 차단된 DB를 다시 열 수 없습니다.
+
+전환 중 중단되면 영속 journal이 남습니다. `recover`는 commit 전 경로를 복구하거나 commit 후 실행기 복원을 마칩니다. 충돌 파일과 손상된 백업은 보존하고 보고합니다. journal이 남은 동안 설치는 진행하지 않습니다. 이 Unix 복구 경로는 `lsof`와 닫힌 SQLite 연결을 요구합니다. 에이전트는 관련 worktree 업데이트 후 파일 배치·훅 프로토콜·실제 네이티브 활성화를 별도로 확인합니다.

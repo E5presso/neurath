@@ -72,6 +72,9 @@ def main(arguments=None):
     restore = commands.add_parser("restore")
     restore.add_argument("receipt", metavar="INSTALLATION_ID", help="되돌릴 설치 이력 ID")
     commands.add_parser("recover")
+    cutover = commands.add_parser("cutover", help="Inspect or explicitly retire shared legacy SQLite sources")
+    cutover.add_argument("action", choices=("inspect", "prepare", "apply", "recover"))
+    cutover.add_argument("--expected-token")
     wizard = commands.add_parser("wizard")
     wizard.add_argument("--output", type=Path, help="새 비공개 계획 파일 (기본: Git 관리 디렉터리)")
     check = commands.add_parser("doctor")
@@ -161,6 +164,21 @@ def main(arguments=None):
             )
             return 0
         root = repository((args.target or args.root) if args.command == "setup" else args.root)
+        if args.command == "cutover":
+            from neurath.install.cutover import (
+                apply_cutover, inspect_cutover, prepare_cutover, recover_cutover,
+            )
+            if args.action == "apply":
+                if not args.expected_token:
+                    raise ValueError("cutover apply requires the reviewed inspection token")
+                result = apply_cutover(root, expected_token=args.expected_token)
+            else:
+                if args.expected_token:
+                    raise ValueError("expected-token is only valid for cutover apply")
+                result = {"inspect": inspect_cutover, "prepare": prepare_cutover,
+                          "recover": recover_cutover}[args.action](root)
+            emit(result)
+            return 1 if result.get("status") == "blocked" else 0
         if args.command == "releases":
             from neurath.updates_cli import run as run_releases
 
@@ -223,9 +241,11 @@ def main(arguments=None):
                 return 0 if result["status"] == "completed" else 1
             return 0
         if args.command == "setup":
+            from neurath.install.cutover import require_cutover
             from neurath.install.setup import setup_project, show_setup
             from neurath.reporting import Reporting, QUESTION
 
+            require_cutover(root)
             decision = None if args.auto_report is None else args.auto_report == "yes"
             if (decision is None and not args.dry_run and not args.json and sys.stdin.isatty()
                     and Reporting(root).status()["consent_required"]):
