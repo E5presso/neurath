@@ -1,7 +1,7 @@
 """Operational phase evidence is prepared without argv or caller-forged authority."""
 import subprocess
 import pytest
-from tests.test_workflow_tasks import call, start, define_task, assess_task
+from tests.test_workflow_tasks import call, start, define_task
 pytest_plugins = ["tests.test_agent_hooks"]
 
 
@@ -31,10 +31,9 @@ def test_commit_phases_use_registered_git_evidence_without_cli(sessions, monkeyp
         "phase_id":3,"status":"completed","summary":"New commit observed","terminal_state":"committed",
         "evidence_refs":[committed["reference"]],"key":"phase-three"},invocation="phase-three")
     assert final["terminal_state"] == "committed"
-    assessment = assess_task(sessions, task_id, final["workflow_revision"], "succeeded")
     resolved = call(sessions, "task_resolve", {"task_id": task_id, "expected_revision": 1,
         "expected_task_revision": 1, "key": "task-succeeded", "status": "succeeded",
-        "references": [f"workflow:phase:{final['workflow_revision']}"], "assessment": assessment})
+        "references": [f"workflow:phase:{final['workflow_revision']}"], "summary": "Observed the requested commit"})
     assert resolved["tasks"][0]["status"] == "succeeded"
     assert resolved["all_terminal"]
 

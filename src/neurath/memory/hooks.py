@@ -133,12 +133,12 @@ def project_event(root, host, payload, output):
                 canonical(workflows),
                 {"authority": "reference-only"},
             )
-    if event in ("SessionStart", "UserPromptSubmit"):
+    if event == "SessionStart":
         result = dict(output)
         specific = dict(result.get("hookSpecificOutput", {}))
         specific.setdefault("hookEventName", event)
         existing = specific.get("additionalContext", "")
-        context = memory.context(query, host=host, session=session)
+        context = memory.context(query, max_bytes=3000, host=host, session=session)
         from neurath.memory.learning import Learning
 
         learning = Learning(memory)

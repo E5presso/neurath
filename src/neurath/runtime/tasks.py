@@ -9,7 +9,7 @@ import time
 
 from neurath.agents.newsroom import Newsroom
 from neurath.agents.store import MessageStore
-from neurath.memory.store import ProjectMemory, clean
+from neurath.memory.store import ProjectMemory
 from neurath.runtime.task_schema import TASKS, TaskError, arguments
 
 
@@ -258,72 +258,16 @@ def verification(root, check, *, identity=None, require_owner=False, expected_tu
     binding = config.get("verification", {}).get(check)
     if binding is None:
         raise VerificationError(f"unbound verifier: {check}; configure project.json verification")
-    owner_before = _verification_owner(root, identity) if require_owner else None
+    if require_owner:
+        _verification_owner(root, identity)
     environment = None
-    policy_before = None
     if expected_turn is not None:
-        policy_before = _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence)
-        # A background server's environment is not the caller's identity. Never
-        # lend it to a check or manufacture a caller environment from arguments.
+        _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence)
         import os
-
         environment = {key: value for key, value in os.environ.items() if not (
             key.startswith(("CODEX_", "CLAUDE_", "NEURATH_")) or key == "PYTHONPATH")}
-    result = verify(root, binding, environment=environment)
-    prompt_changed = False
-    try:
-        owner_after = _verification_owner(root, identity) if require_owner else None
-        if require_owner:
-            if owner_after[2] != owner_before[2]:
-                raise TaskError("authority-denied", "verification claim changed after execution")
-            prompt_changed = owner_after != owner_before
-        if expected_turn is not None:
-            if prompt_changed and identity.host == "codex":
-                # Codex policy is freshly read from its registered native transcript.
-                # Claude keeps its strict prompt binding until fresh mode evidence exists.
-                # Observation of an already completed run is not new execution
-                # permission. Source and exact lease remain independently fenced.
-                from neurath.memory.store import canonical
-                observed_turn = canonical([owner_after[0], owner_after[1]])
-                policy_after = _mcp_execution_policy(root, identity, observed_turn,
-                    verified_policy_evidence, require_current_prompt=False)
-            else:
-                policy_after = _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence)
-            if _verification_policy(policy_after) != _verification_policy(policy_before):
-                raise TaskError("native-execution-required", "verification execution policy changed after admission")
-    except Exception as error:  # noqa: BLE001 - preserve the completed verifier result
-        # The process already returned. A failed observer must not erase its
-        # result or label this as an unstarted execution that is safe to retry.
-        return {**result, "verification_status": result.get("status"),
-                "status": "caller-authority-changed", "retryable": False,
-                "diagnostic": clean(str(error)),
-                "next_action": "Inspect the completed check before deciding whether the current task needs another execution. No learning authority was recorded."}
-    if check == "check" and identity is not None and identity.is_root:
-        from neurath.runtime.verification_obligations import VerificationObligations
-        VerificationObligations(root).verified(identity.host, identity.session, identity.actor, check, result)
-        if prompt_changed:
-            # Do not train against the later question or reinterpret its approval.
-            return {**result, "completion_scope": "admitted-execution",
-                    "learning_status": "skipped-prompt-changed"}
-        from neurath.hosts.identity import snapshot
-        from neurath.memory.learning import Learning
-        from neurath.memory.transcript import synchronize
-
-        memory = ProjectMemory(root)
-        synchronize(memory, root, identity.host, identity.session, snapshot(root, identity.session))
-        Learning(memory).verified(identity.host, identity.session,
-                                  {k: v for k, v in result.items() if k != "diagnostic_tail"})
-    return result
-
-
-def _verification_policy(report):
-    """Compare execution constraints, excluding prompt/model diagnostic metadata."""
-    if report is None:
-        return None
-    evidence = report["stages"]["policy"]["evidence"]
-    return {key: evidence.get(key) for key in (
-        "permission_mode", "approval_policy", "approvals_reviewer", "sandbox_policy",
-        "collaboration_mode", "sandbox_observation")}
+    # Execution is admitted once. Later conversation does not rewrite its result.
+    return verify(root, binding, environment=environment)
 
 
 def _execution_ready(report, ownership_required=True, placement_required=True):

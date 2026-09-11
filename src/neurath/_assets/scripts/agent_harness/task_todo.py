@@ -109,16 +109,3 @@ def record(tx, process, actor_id, host, payload, *, succeeded=None):
         tx.put(published_ns, ledger.owner, _json(value),
                expected_revision=None if previous is None else previous.revision)
     return True
-
-
-def require_current(tx, process, ledger):
-    capability = tx.get(f"task-todo-capability:{ledger.session}", ledger.owner)
-    if capability is None:
-        return  # Never pretend an unavailable native display tool was exposed.
-    expected = projection(ledger, process.session.runtime.value)
-    receipt = tx.get(f"task-todo-projection:{ledger.session}", ledger.owner)
-    value = {} if receipt is None else json.loads(receipt.payload)
-    if (expected is None or value.get("status") != "current"
-            or value.get("projection_digest") != expected["projection_digest"]
-            or value.get("list_revision") != ledger.revision or value.get("task_ids") != expected["task_ids"]):
-        raise TaskLedgerError("native TODO submission is missing or stale for the current task list")

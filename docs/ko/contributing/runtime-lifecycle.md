@@ -37,9 +37,9 @@ sequenceDiagram
 
 관련 소스: [hooks.py](../../../src/neurath/hosts/hooks.py), [identity.py](../../../src/neurath/hosts/identity.py), [기억 훅](../../../src/neurath/memory/hooks.py).
 
-## 2. 호출 전 검사와 변경 효과
+## 2. 네이티브 편집과 검사
 
-에이전트가 문서를 수정하기로 결정했다고 가정합니다. 먼저 현재 worktree의 소유권과 변경 대상의 기준 상태를 확인합니다. material batch는 대상과 기대 변화(created·changed·deleted·unchanged)를 기록합니다. 다음 그림에서 변경 실행은 호스트 도구가 담당합니다.
+에이전트는 worktree를 점유하고 네이티브 호스트 도구로 편집·검사한 뒤 태스크 결과를 한 번 기록합니다. 일반 편집을 위해 material batch를 만들지 않습니다.
 
 ```mermaid
 sequenceDiagram
@@ -47,23 +47,17 @@ sequenceDiagram
     participant T as 명명된 작업
     participant K as 상태와 소유권
     participant H as 호스트 도구
-    participant F as 대상 파일
-    E->>T: worktree_claim / material_prepare
-    T->>K: 신원·소유자·대상·기준 상태
-    E->>H: 승인된 편집
-    H->>K: PreToolUse 검사와 호출 시작
-    H->>F: 변경 실행
-    H->>K: PostToolUse 결과와 관측
-    E->>T: material_read / material_resolve
-    T->>K: 정확한 revision과 효과 대조
-    K-->>E: 해결 결과 또는 구체적 차단
+    E->>T: worktree_claim / task_start
+    T->>K: 실제 신원과 소유권 확인
+    E->>H: 승인된 편집과 검사
+    H-->>E: 실제 실행 결과
+    E->>T: task_resolve(status, summary, references)
+    T->>K: 정확한 태스크 revision에 최종 결과 기록
 ```
 
-호출 결과가 유실되면 `material_abandon`은 unknown·blocked로 정리하는 경로입니다. 성공을 만드는 도구가 아닙니다. CAS는 읽었던 revision이 아직 현재인지 확인하는 조건부 갱신이며, fencing token은 오래된 소유자가 새 소유권을 이용하지 못하도록 대조하는 값입니다. 충돌은 현재 상태를 다시 읽고 원인을 확인해야 합니다.
+MCP 호출은 실제 actor·턴·worktree·입력에 결속되며 만료된 결속으로 다른 호출을 승인하지 않습니다. CAS는 현재 revision을 확인하고 fencing token은 오래된 소유권을 거부합니다. 실행 결과가 불명확하면 그대로 보존합니다. 기존 material 및 verification 작업은 내부 호환 인터페이스이며 공개 목록에는 노출하지 않습니다.
 
-MCP 호출은 PreToolUse에서 실제 actor·턴·worktree·정확한 입력에 결속되고 PostToolUse에서 닫힙니다. 요청 변경, 만료, 종료된 연결의 결속을 다른 호출에 사용할 수 없습니다. 명명된 도구가 임의 파일 편집을 대신하는 것은 아닙니다.
-
-관련 소스: [상태 작업](../../../src/neurath/runtime/state_tasks.py), [변경 작업 모델](../../../src/neurath/_assets/scripts/agent_harness/material_action.py), [MCP](../../../src/neurath/agents/mcp.py).
+관련 소스: [태스크 원장](../../../src/neurath/runtime/task_ledger_tasks.py), [호스트 훅](../../../src/neurath/hosts/hooks.py), [MCP](../../../src/neurath/agents/mcp.py).
 
 ## 3. 단계 실행과 독립 평가
 

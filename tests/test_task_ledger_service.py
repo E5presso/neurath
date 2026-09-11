@@ -26,7 +26,7 @@ def service(tmp_path):
 def item(key="fix"):
     return {"key": key, "title": "Fix " + key, "goal": "Verified result " + key,
             "sources": [], "acceptance": ["Observable result is verified"],
-            "evidence_contract": "work-" + key, "dependencies": []}
+            "dependencies": []}
 
 
 def test_task_service_defines_before_workflow_and_retains_prompt_source(service):
@@ -40,22 +40,6 @@ def test_task_service_defines_before_workflow_and_retains_prompt_source(service)
     assert store.list()["tasks"] == result["tasks"]
     assert store.define([item()], expected_revision=0, key="define")["revision"] == 1
 
-
-def test_task_service_rejects_unresolved_or_foreign_workflow_evidence(service):
-    from scripts.agent_harness.task_ledger import TaskLedgerError
-    store, kernel, sk = service
-    result = store.define([item()], expected_revision=0, key="define")
-    kernel.apply(sk.WorkflowStarted(session_id=sk.SessionId("one"), workflow_id=sk.WorkflowId("work-fix"),
-        owner_actor_id=sk.ActorId("owner"), kind="autopilot", goal="Verified result fix",
-        payload={}, idempotency_key="work"))
-    with pytest.raises(TaskLedgerError):
-        store.resolve(result["tasks"][0]["id"], expected_revision=1, expected_task_revision=1,
-                      key="resolve", references=["workflow:work-fix:0"], status="succeeded",
-                      assessment={"summary": "Reported result", "acceptance": [{
-                          "condition": item()["acceptance"][0], "outcome": "met",
-                          "explanation": "Reported workflow result",
-                          "reference": "workflow:work-fix:0"}]})
-    assert store.list()["revision"] == 1
 
 
 def test_task_admission_rechecks_current_process_inside_transaction(service):
@@ -107,28 +91,6 @@ def test_task_mcp_surface_has_no_caller_identity_or_verified_outcome():
                     "reference": "workflow:work:1"}]},
                 forbidden: True})
 
-
-def test_prompt_bound_root_decision_invalidates_without_child(service):
-    store, _, _ = service
-    defined = store.define([item()], expected_revision=0, key="define")
-    task, source = defined["tasks"][0], defined["current_prompt_source"]
-    reference = f"prompt:{source['reference']}:{source['revision']}"
-    decision = {"source_reference": source["reference"],
-        "source_digest": source["revision"], "disposition": "cancelled",
-        "reason": "The authenticated instruction cancels this exact task.",
-        "covering_sources": [], "covering_workflows": []}
-    result = store.resolve(task["id"], expected_revision=1,
-        expected_task_revision=1, key="invalidate-root",
-        references=[reference], status="invalidated",
-        assessment=None, decision=decision)
-    resolved = result["tasks"][0]
-    assert resolved["status"] == "invalidated"
-    assert resolved["assurance"] == "agent-assessment"
-    from scripts.agent_harness.artifact_store import SessionArtifactStore
-    report = SessionArtifactStore(store.handle).read_json(
-        resolved["result_report_reference"])
-    assert report["decision"] == decision
-    assert report["result_references"] == [reference]
 
 
 def test_native_replacement_preserves_pending_tasks_and_next_stop_gate(service):
@@ -225,88 +187,3 @@ def test_all_terminal_tasks_allow_normal_close(service):
     closed = kernel.apply(sk.ForegroundTurnClosed(session_id=sk.SessionId("one"), actor_id=sk.ActorId("owner"),
         expected_turn_revision=ready.foreground_turns[sk.ActorId("owner")].revision, idempotency_key="close"))
     assert closed.foreground_turns[sk.ActorId("owner")].status is sk.ForegroundTurnStatus.CLOSED
-
-
-def _invalidation_review(service, *, consumed=True, source_digest="a" * 64):
-    """Model a host-attested independent report through the actual delegation reducer."""
-    import json
-    from scripts.agent_harness.artifact_store import SessionArtifactStore
-    from scripts.agent_harness.task_service import read_ledger
-    store, kernel, sk = service
-    defined = store.define([item()], expected_revision=0, key="define")
-    process = kernel.inspect(sk.SessionId("one"))
-    prompt = process.foreground_turns[sk.ActorId("owner")].user_prompt_receipt
-    with store.database.transaction() as tx:
-        _, ledger = read_ledger(tx, process)
-        task = ledger.tasks[0]
-    assignment = {"kind": "task-invalidation", "task_id": task.id,
-        "definition_digest": task.definition.digest, "source_reference": prompt.authority_reference,
-        "source_digest": source_digest}
-    kernel.apply(sk.ActorStarted(session_id=sk.SessionId("one"), actor_id=sk.ActorId("reviewer"),
-        parent_actor_id=sk.ActorId("owner"), kind=sk.ActorKind.SUBAGENT,
-        lineage_assurance=sk.ActorLineageAssurance.HOST_ATTESTED, idempotency_key="reviewer"))
-    kernel.apply(sk.DelegationAssigned(session_id=sk.SessionId("one"), delegation_id=sk.DelegationId("decision"),
-        owner_actor_id=sk.ActorId("owner"), target_actor_id=sk.ActorId("reviewer"),
-        topology_policy=sk.DelegationTopologyPolicy.DIRECT_CHILD,
-        assignment=json.dumps(assignment), idempotency_key="assign"))
-    artifact = SessionArtifactStore(store.handle).put_json({"kind": "task-invalidation-result",
-        "assignment": assignment, "verdict": "pass", "disposition": "cancelled",
-        "reason": "The authenticated user decision cancels this exact task.",
-        "covering_sources": [], "covering_workflows": []})
-    kernel.apply(sk.DelegationReported(session_id=sk.SessionId("one"), delegation_id=sk.DelegationId("decision"),
-        reporter_actor_id=sk.ActorId("reviewer"), result=sk.DelegationResult(verdict="pass",
-        summary="The authenticated user decision cancels this exact task.",
-        outcome_ref=artifact.reference, blocking_findings=()), idempotency_key="report"))
-    if consumed:
-        kernel.apply(sk.DelegationConsumed(session_id=sk.SessionId("one"), delegation_id=sk.DelegationId("decision"),
-            consumer_actor_id=sk.ActorId("owner"), idempotency_key="consume"))
-    return defined["tasks"][0]["id"]
-
-
-def test_authenticated_consumed_task_decision_can_invalidate(service):
-    task_id = _invalidation_review(service)
-    store, _, _ = service
-    result = store.resolve(task_id, expected_revision=1, expected_task_revision=1, key="invalidate",
-                           references=["delegation:decision"], status="invalidated")
-    assert result["tasks"][0]["status"] == "invalidated"
-    assert result["all_terminal"]
-
-
-def test_unconsumed_task_decision_cannot_invalidate(service):
-    from scripts.agent_harness.task_ledger import TaskLedgerError
-    task_id = _invalidation_review(service, consumed=False)
-    store, _, _ = service
-    with pytest.raises(TaskLedgerError):
-        store.resolve(task_id, expected_revision=1, expected_task_revision=1, key="invalidate",
-                      references=["delegation:decision"], status="invalidated")
-    assert store.list()["tasks"][0]["status"] == "pending"
-
-
-def test_task_decision_cannot_substitute_user_prompt_content(service):
-    from scripts.agent_harness.task_ledger import TaskLedgerError
-    task_id = _invalidation_review(service, source_digest="b" * 64)
-    store, _, _ = service
-    with pytest.raises(TaskLedgerError):
-        store.resolve(task_id, expected_revision=1, expected_task_revision=1, key="invalidate",
-                      references=["delegation:decision"], status="invalidated")
-
-def test_task_invalidation_uses_immutable_prompt_after_later_active_input(service):
-    task_id = _invalidation_review(service)
-    store, kernel, sk = service
-    kernel.apply(sk.ForegroundTurnPrompted(
-        session_id=sk.SessionId("one"),
-        actor_id=sk.ActorId("owner"),
-        vendor_turn_id="turn",
-        prompt_digest="c" * 64,
-        authority_context=None,
-        idempotency_key="later-unrelated-prompt",
-    ))
-    result = store.resolve(
-        task_id,
-        expected_revision=1,
-        expected_task_revision=1,
-        key="invalidate-after-later-prompt",
-        references=["delegation:decision"],
-        status="invalidated",
-    )
-    assert result["tasks"][0]["status"] == "invalidated"

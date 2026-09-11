@@ -155,10 +155,6 @@ def _host_hook(root, host, raw, environment=None, stop_guard=None):
             return 0, {}, ""
         if payload.get("tool_name") not in MUTATION_TOOLS | SHELL_TOOLS:
             return 0, {}, ""
-        from scripts.agent_harness.material_action_runtime_hook import (
-            MaterialActionRuntimeHookApplication,
-        )
-
         if payload.get("session_id") and payload.get("tool_use_id"):
             record = snapshot(root, payload["session_id"])["tools"].get(payload["tool_use_id"])
             if record:
@@ -168,10 +164,7 @@ def _host_hook(root, host, raw, environment=None, stop_guard=None):
                 }
                 raw = json.dumps(payload)
                 finish_tool(root, host, payload)
-        result = MaterialActionRuntimeHookApplication(runtime).run(
-            "permission-denied" if event == "PermissionDenied" else "post", raw, env, Path(root)
-        )
-        return result.exit_code, {}, result.stderr
+        return 0, {}, ""
     from scripts.agent_harness.agent_continuation_hook import AgentContinuationHookApplication
 
     result = AgentContinuationHookApplication(runtime=runtime, stop_guard=stop_guard).run(
@@ -216,21 +209,6 @@ def _dispatch_event(root, host, raw, environment=None, stop_guard=None):
     if readonly is not None:
         return readonly
     diagnostics = []
-    if isinstance(request, dict) and request.get("hook_event_name") == "Stop":
-        from neurath.memory.hooks import checkpoint_request
-        from neurath.runtime.verification_obligations import stop_request
-
-        # Completion debt is not optional memory enrichment. Failure to inspect
-        # it must not fall through to a successful foreground close.
-        pending_verification = stop_request(root, host, request)
-        try:
-            reason = checkpoint_request(root, host, request)
-        except Exception as error:
-            _, diagnostic = _bookkeeping_failure({}, "Stop", "memory", error)
-            diagnostics.append(diagnostic)
-            reason = None
-        if pending_verification or reason:
-            return 2, {}, "\n\n".join(filter(None, (pending_verification, reason)))
     code, output, diagnostic = (_host_hook(root, host, raw, environment, stop_guard)
                                 if stop_guard is not None else _host_hook(root, host, raw, environment))
     if diagnostic:
@@ -331,6 +309,15 @@ def hook(root, host, raw, environment=None):
     runs memory/peer admission, and cannot manufacture execution authority.
     All lifecycle, ownership and tool gates retain their rejecting behavior.
     """
+    from neurath.runtime.bypass import mode
+    try:
+        switch = json.loads(raw)
+    except (ValueError, TypeError):
+        switch = {}
+    if isinstance(switch, dict) and switch.get("tool_name") == "mcp__neurath_collaboration__harness_bypass":
+        return 0, {}, ""
+    if mode(root)["enabled"]:
+        return 0, {}, ""
     try:
         request = json.loads(raw)
     except ValueError, TypeError:

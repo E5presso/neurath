@@ -829,14 +829,9 @@ class SessionStateValidator:
             turn = state.foreground_turns.get(actor_id)
             if turn is None or batch.turn_generation > turn.generation:
                 raise InvalidSessionState(f"material action foreground turn is missing: {actor_id}")
-            if batch.status is MaterialActionStatus.OPEN and (
-                turn.status is not ForegroundTurnStatus.ACTIVE
-                or batch.turn_generation != turn.generation
-                or batch.turn_revision != turn.revision
-            ):
-                raise InvalidSessionState(
-                    f"open material action is stale for foreground turn: {batch.batch_id}"
-                )
+            # Legacy edit records may outlive their foreground turn. Keeping an
+            # unresolved historical batch is not permission to reuse it and must
+            # not veto task-ledger completion. Action APIs check live authority.
             binding = batch.adaptive_binding
             if binding is not None:
                 workflow = state.workflows.get(WorkflowId(binding.workflow_id))

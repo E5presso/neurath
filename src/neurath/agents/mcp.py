@@ -169,6 +169,11 @@ def _execute(root, argv, identity):
 def call_tool(root, inputs, *, name="agent"):
     from neurath.hosts.identity import _state, active_connection
 
+    # This switch belongs to the configured MCP connection. It must remain
+    # callable when hooks cannot issue a native binding, including to turn off bypass.
+    if name == "harness_bypass":
+        from neurath.runtime.bypass import mode
+        return mode(root, arguments(name, inputs)["enabled"])
     request = _request(inputs, name, root)
     token = inputs.get("_neurath_binding")
     if not isinstance(token, str) or len(token) != 64:
@@ -275,6 +280,13 @@ def response(root, request):
         try:
             name = params["name"]
             value = call_tool(root, params.get("arguments"), name=name)
+            if name in {"task_define", "task_start", "task_resolve"}:
+                value = {"revision": value["revision"], "all_terminal": value["all_terminal"],
+                    "tasks": [{field: task[field] for field in ("id", "revision", "status")}
+                              for task in value["tasks"]], "native_todo": value["native_todo"]}
+            elif name in {"material_prepare", "material_resolve", "material_abandon"}:
+                value = {field: value[field] for field in
+                         ("batch_id", "revision", "status", "resolution")}
             failed = ((name in {"verification_run", "verification_builtin", "verification_nodes"}
                        and value.get("status") != "passed")
                       or (name == "provider_run" and value.get("status") not in
@@ -294,7 +306,12 @@ def response(root, request):
                         value["error"] = {"code": "provider-run-incomplete", "message": "The native provider run did not complete successfully",
                             "state": "failed-or-partial", "retryable": False,
                             "next_action": "Inspect the returned native session, readiness and outcome before any new run."}
-            result = {"content": [{"type": "text", "text": canonical(value)}],
+            # Structured results already carry the data. Do not serialize the
+            # entire result a second time into the model's text context.
+            summary = f"{name}: {'failed' if failed else 'ok'}"
+            if failed:
+                summary += ". " + value.get("error", {}).get("message", "Inspect the result.")
+            result = {"content": [{"type": "text", "text": summary}],
                       "structuredContent": value, "isError": failed}
         except Exception as error:
             from neurath.memory.store import clean
@@ -304,7 +321,7 @@ def response(root, request):
                         "retryable": False, "next_action": "Inspect native activation, current turn, worktree ownership and the input before retrying."})
             details = {**details, "message": clean(details["message"])}
             value = {"ok": False, "operation": params["name"], "error": details}
-            result = {"content": [{"type": "text", "text": canonical(value)}],
+            result = {"content": [{"type": "text", "text": details["message"]}],
                       "structuredContent": value, "isError": True}
     else:
         return envelope | {"error": {"code": -32601, "message": "Method or tool not found"}}
@@ -346,7 +363,8 @@ def main():
                 continue
             if (request["method"] == "tools/call" and "id" in request
                     and isinstance(params, dict) and isinstance(params.get("name"), str)
-                    and params["name"] in {"agent", *TASKS}):
+                    and params["name"] in {"agent", *TASKS}
+                    and params["name"] != "harness_bypass"):
                 try:
                     submitted = calls.submit(request)
                 except (OSError, RuntimeError):

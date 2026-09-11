@@ -88,3 +88,11 @@ plans and state can contain sensitive project material and should stay out of pu
 
 [Installation](installation.md) · [Project bindings](profiles.md) · [Skills](skills.md) ·
 [Terminology](../terminology.md) · [Contributing to Neurath](../contributing/index.md)
+
+## Temporarily pause Neurath
+
+> Temporarily turn off Neurath intervention in this worktree.
+
+The agent switches on bypass and reports the observed state. Neurath hooks pause while
+the host's permissions and your instructions remain in effect. Ask “Turn Neurath back on”
+to restore normal hooks. The switch stays available during bypass.

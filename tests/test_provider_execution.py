@@ -49,6 +49,9 @@ def test_service_never_dispatches_assignment_before_fresh_readiness(monkeypatch,
         def start_after_preparation(self, session, text, preparation_turn):
             assert calls[-1] == "ready"
             assert preparation_turn == "bootstrap-turn"
+            assert "material" not in text
+            assert "native host tools" in text and "task result once" in text
+            assert "Release your worktree claim" in text
             calls.append("assignment")
             return {"delivery": "submitted", "native_turn": "assignment-turn"}
     def inspect(session):

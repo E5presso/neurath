@@ -141,8 +141,6 @@ Targets may identify resources; actor/session/turn authority is derived only fro
 | phase_complete, phase_finalize | workflow_id; expected_revision; phase_id/status/summary/evidence refs for complete; terminal_state for finalize; key | PhaseRunner; consume authoritative evidence and enforce terminal checks. An evidence ref is resolved and authenticated, not trusted as a string. |
 | adaptive_read, adaptive_preflight | workflow_id (optional only for preflight) | Existing adaptive-control read/preflight; no state mutation. |
 | adaptive_replace, adaptive_override_goal | workflow_id; expected_revision; closed AdaptiveControlState; key | Existing adaptive service; validate every typed section and source/goal revision. Goal override additionally requires current user intent evidence. |
-| material_prepare | batch_id; closed MaterialActionKind; targets; typed expectations; optional workflow_id; key | Existing action preparation; authorize exact targets and bind expectations. Does not edit files or run a command. |
-| material_read, material_resolve, material_abandon | read: current batch; others: batch_id, expected_revision, closed resolution or abandoned invocation reference, key | Existing material service. Resolve from actual host invocation and readback, not caller-supplied success. No arbitrary execution gateway. |
 | worktree_inspect, worktree_claim, worktree_release | inspect/claim: none; release: expected claim revision/token reference | WorktreeRegistry; native cwd and exact actor, first-writer-wins claim and CAS release. No force takeover, PID-based ownership or caller-supplied actor. |
 | delegation_prepare, delegation_assign | delegation_id; assignment; key; assign additionally discovered target reference and workflow_id | Existing delegation contract and state service. Preparation grants no direct-child lineage; assignment checks actual native lineage or the separate peer task contract. |
 | evaluation_prepare, evaluation_read, evaluation_execute | workflow_id; typed adaptive state or prepared assignment reference; execute additionally criterion_id, closed evidence kind, registered test reference | Existing adaptive evaluation APIs. Execute preserves native execution policy; no arbitrary shell or invented evaluation receipt. |
@@ -218,3 +216,5 @@ M1 → M2/M3 → M4 → C6 → V1 and C1 → C2–C5 → C6 → V1; this is not 
 Resume from this file and its linked source/reference documents. Resolve provider-specific inventory
 adapters from current native capabilities; implement the named operation surface above over existing typed APIs. No fixed price
 table, commercial ranking, implementation completion or native acceptance is established here.
+
+Material and verification operations are retained only as internal compatibility interfaces and are absent from public MCP discovery. Ordinary edits and checks use native host tools; report the task outcome once with `task_resolve`.

@@ -112,7 +112,7 @@ Python 저장소, JavaScript 저장소에 설치합니다. 설치, 재설치, �
 ```sh
 ./setup --self
 명명 MCP 도구 diagnostics_project (현재 입력 스키마 사용)
-명명 MCP 도구 verification_run (현재 입력 스키마 사용) {"check": "check"}
+네이티브 호스트 명령 도구: .neurath/project.json에 등록된 check의 argv와 cwd로 실행
 ```
 
 개발 저장소는 `.neurath/project.json`에서 `check`를 동일한 전체 검사 명령에 연결합니다.

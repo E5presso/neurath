@@ -461,6 +461,7 @@ class FinalReviewPublisher:
             gateway: Shell-free Git/GitHub command boundary입니다.
         """
         self._reader = CanonicalPublicationEvidenceReader(handle, workflow_id)
+        self._handle = handle
         self._worktree = worktree.resolve()
         self._gateway = gateway
         self._policy = PublicationPolicy()
@@ -491,11 +492,7 @@ class FinalReviewPublisher:
         if self._gateway.run(("git", "-C", str(self._worktree), "status", "--porcelain")).strip():
             raise PublicationError("worktree가 clean하지 않습니다.")
         snapshot = self._reader.read(local_head=local_head)
-        validate_harness_incidents(
-            None,
-            self._worktree,
-            state=snapshot.delegation.skill_state_payload(),
-        )
+        validate_harness_incidents(self._handle.inspect(), self._worktree)
         receipt = self._policy.validate(
             snapshot=snapshot,
             pr=self._gateway.read_pr(repo, pr_number),
@@ -595,6 +592,7 @@ class FinalReviewPublisher:
         expected: PublicationEvidenceSnapshot,
         local_head: str,
     ) -> None:
+        validate_harness_incidents(self._handle.inspect(), self._worktree)
         current = self._reader.read(local_head=local_head)
         if not expected.same_evidence(current):
             raise PublicationError("canonical publication evidence changed during read-back")
