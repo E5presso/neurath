@@ -103,7 +103,7 @@ The history records each transition and its evidence. Withdrawn rules are no lon
 as learned guidance, although historical reports remain available as history.
 
 ```text
-Named MCP tool verification_run (current input schema) {"check": "check"}
+Native host command tool: run the check argv and cwd registered in .neurath/project.json
 Named MCP tool learning_status (current input schema)
 Named MCP tool learning_history (current input schema)
 ```

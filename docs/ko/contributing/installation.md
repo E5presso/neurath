@@ -59,11 +59,10 @@ manifest 갱신, 패키지 검사, 빌드, 자기 설치를 각각 수행합니�
 정확한 pytest 노드를 실행하려면 프로젝트 테스트 환경을 verification.pytest.argv에 연결합니다.
 이 내부 설정에는 실행 파일을 배열로 기록하며, 에이전트가 매번 하네스 CLI 옵션을 조립하지 않습니다.
 
-`verification_run`은 연결된 프로젝트 검사 이름, `verification_builtin`은 내장 검사 종류,
-`verification_nodes`는 정확한 테스트 노드 배열을 받습니다.
+등록된 명령과 작업 디렉터리를 네이티브 호스트 명령 도구로 실행합니다. 특정 pytest 검사에는 프로젝트 테스트 환경과 정확한 노드를 사용합니다. 예:
 
-```json
-{"tool":"verification_nodes","arguments":{"nodes":["tests/test_example.py::test_example"],"key":"check-example"}}
+```sh
+uv run --locked pytest tests/test_example.py::test_example
 ```
 
 메타데이터 언어·제목 규칙·브랜치 관례는 대상 프로젝트에서 선택합니다.

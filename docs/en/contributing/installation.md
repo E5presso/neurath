@@ -59,11 +59,10 @@ target's instructions. Do not invent missing documents or select a check merely 
 To run exact pytest nodes, bind the project's test environment through verification.pytest.argv.
 This internal configuration stores an executable array; agents do not reconstruct harness CLI options on every call.
 
-`verification_run` accepts a bound project check name, `verification_builtin` a built-in check kind, and
-`verification_nodes` an array of exact test nodes.
+Run the registered command and working directory with the native host command tool. For a focused pytest check, use the project test environment and exact test node, for example:
 
-```json
-{"tool":"verification_nodes","arguments":{"nodes":["tests/test_example.py::test_example"],"key":"check-example"}}
+```sh
+uv run --locked pytest tests/test_example.py::test_example
 ```
 
 Metadata language, title conventions and branch rules belong to the target project. Give `worktree_cleanup`

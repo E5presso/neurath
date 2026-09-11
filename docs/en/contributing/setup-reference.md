@@ -134,7 +134,7 @@ conditions. Even with a successful exit code, the verification record fails if r
 change during execution.
 
 ```text
-Named MCP tool verification_run (current input schema) {"check": "check"}
+Native host command tool: run the check argv and cwd registered in .neurath/project.json
 ```
 
 ## Updates and recovery

@@ -129,7 +129,7 @@ neurath --root /absolute/path/to/project wizard --output /private/path/neurath-p
 지정할 수 있으며, 종료 코드가 성공이어도 실행 중 저장소 파일이 바뀌면 receipt는 실패합니다.
 
 ```text
-명명 MCP 도구 verification_run (현재 입력 스키마 사용) {"check": "check"}
+네이티브 호스트 명령 도구: .neurath/project.json에 등록된 check의 argv와 cwd로 실행
 ```
 
 ## 업데이트와 복구
