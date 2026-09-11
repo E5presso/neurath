@@ -70,3 +70,22 @@ actually verified `base_branch` and `remote_ref` values. Never edit generated st
 
 Discover operation usage through the [named catalog and schemas](task-tools.md).
 Distribution integrity, installed placement, protocol fixtures, live activation and model execution are distinct evidence scopes.
+
+## Shared legacy SQLite cutover
+
+An initial import is staging, not a completed installation transition. Linked Git worktrees share the canonical runtime database; dormant worktrees may retain old launchers. Installation now requires explicit retirement when legacy SQLite files remain. Ordinary runtime calls continue to reject changed legacy sources.
+
+The agent uses the new distribution bootstrap environment for recovery, independently of normal guarded runtime initialization:
+
+```text
+neurath --root TARGET cutover inspect
+neurath --root TARGET cutover prepare
+neurath --root TARGET cutover apply --expected-token TOKEN_FROM_INSPECTION
+neurath --root TARGET cutover recover
+```
+
+`inspect` reads the four declared sources, import guards and every linked worktree launcher. `prepare` explicitly stages an initial import only when no canonical database exists; it does not establish retirement or host activation. After stopping database writers, the agent applies the exact reviewed inspection token. Unknown launchers, open handles, journals, changed guards and unknown late rows block the transition. Diagnosis remains usable when normal runtime initialization rejects drift.
+
+Apply temporarily fences recognized generated launchers, retains originals in private local storage and replaces old SQLite paths with directory tombstones. A transaction preserves canonical application data, updates source guards and records original guards and comparisons in audit receipts. New messages or changed bodies and recipients are rejected. Only supported lifecycle differences against terminal canonical records are permitted. After permanent SQLite fencing, original launchers are restored and affected worktrees are listed for supported installation updates. Old runtimes cannot reopen tombstoned databases.
+
+An interrupted transition leaves a durable journal. `recover` restores pre-commit paths or finishes post-commit launcher restoration. Conflicting files and damaged backups are preserved and reported. Installation refuses to proceed while the journal remains. These Unix recovery operations require `lsof` and closed SQLite handles. The agent separately verifies installation placement, hook protocols and actual native activation after updating affected worktrees.
