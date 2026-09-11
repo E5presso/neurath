@@ -219,3 +219,25 @@ def test_bootstrap_diagnostic_command_works_with_drift(project):
                              'cutover', 'inspect'], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     assert 'canonical_digest' in result.stdout
+
+
+def test_transient_handle_failure_can_retry_the_unchanged_plan(project, monkeypatch):
+    from neurath.install import cutover
+    root, path, _ = project
+    plan = cutover.inspect_cutover(root)
+    original = cutover._open_handles
+    calls = 0
+    def transient(paths):
+        nonlocal calls
+        calls += 1
+        return [999999] if calls == 2 else original(paths)
+    monkeypatch.setattr(cutover, '_open_handles', transient)
+    with pytest.raises(ValueError, match='Database opened during fencing'):
+        cutover.apply_cutover(root, expected_token=plan['token'])
+    monkeypatch.setattr(cutover, '_open_handles', original)
+    assert path.is_file()
+    assert not (root / '.neurath/local/cutover-pending.json').exists()
+    assert cutover.inspect_cutover(root)['token'] == plan['token']
+    result = cutover.apply_cutover(root, expected_token=plan['token'])
+    assert result['status'] == 'completed'
+    assert len(list((root / '.neurath/local/cutovers').iterdir())) == 2

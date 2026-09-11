@@ -291,10 +291,11 @@ def apply_cutover(worktree, *, expected_token):
         plan = inspect_cutover(root)
         if plan['token'] != expected_token or plan['status'] != 'ready':
             raise ValueError('Cutover plan changed or has blockers; inspect again')
-        archive = local / 'cutovers' / expected_token
-        if archive.parent.is_symlink():
+        archives = local / 'cutovers'
+        if archives.is_symlink():
             raise ValueError('Cutover archive must not use symlinks')
-        archive.mkdir(parents=True, mode=0o700)
+        archives.mkdir(mode=0o700, exist_ok=True)
+        archive = Path(tempfile.mkdtemp(prefix=expected_token + '-', dir=archives))
         journal = {**plan, 'archive': str(archive)}
         for index, item in enumerate(plan['launchers']):
             shutil.copy2(item['path'], archive / ('launcher-' + str(index)))
