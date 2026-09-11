@@ -41,25 +41,18 @@ def stop_runtime(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("host", ["codex", "claude-code"])
-def test_repeated_handoff_request_keeps_blocking_without_completing(stop_runtime, monkeypatch, host):
+def test_checkpoint_does_not_add_a_stop_gate(stop_runtime, monkeypatch, host):
     from neurath.memory import hooks as memory
     from scripts.agent_harness.session_kernel import SessionId, SessionKernel, SessionLocator
 
     root, send = stop_runtime
     assert send(host, "SessionStart", source="startup")[0] == 0
-    assert send(host, "UserPromptSubmit", prompt="Complete the requested work")[0] == 0
-    monkeypatch.setattr(memory, "checkpoint_request", lambda *_: "Save the missing handoff")
-    kernel = SessionKernel(SessionLocator.from_worktree(root))
-    before = kernel.inspect(SessionId("root")).to_payload()
-    code, output, _ = send(host, "Stop", stop_hook_active=False)
-    assert code == 0 and output.get("decision") == "block"
-    assert output.get("reason") == "Save the missing handoff"
-    # Neither continuation flags nor duplicate events waive unfinished work.
-    for active in (True, False, True):
-        code, output, diagnostic = send(host, "Stop", stop_hook_active=active)
-        assert code == 0 and output.get("decision") == "block", diagnostic
-        assert output.get("continue") is not False
-        assert kernel.inspect(SessionId("root")).to_payload() == before
+    assert send(host, "UserPromptSubmit", prompt="Complete requested work")[0] == 0
+    monkeypatch.setattr(memory, "checkpoint_request", lambda *_: pytest.fail("checkpoint gated Stop"))
+    code, output, diagnostic = send(host, "Stop", stop_hook_active=False)
+    assert code == 0 and output.get("decision") != "block", diagnostic
+    state = SessionKernel(SessionLocator.from_worktree(root)).inspect(SessionId("root"))
+    assert state.foreground_turns[state.session.root_actor_id].status.value == "closed"
 
 
 @pytest.mark.parametrize("host", ["codex", "claude-code"])
@@ -70,23 +63,6 @@ def test_missing_session_stop_is_nonblocking_and_creates_no_state(stop_runtime, 
         assert code == 1 and "decision" not in output, diagnostic
     from scripts.agent_harness.session_kernel import SessionStateStore, SessionLocator, SessionId
     assert not SessionStateStore(SessionLocator(root).locate(SessionId("root")).process_state).exists()
-
-
-@pytest.mark.parametrize("host", ["codex", "claude-code"])
-def test_retry_can_finish_once_prerequisite_is_met(stop_runtime, monkeypatch, host):
-    from neurath.memory import hooks as memory
-    from scripts.agent_harness.session_kernel import SessionId, SessionKernel, SessionLocator
-
-    root, send = stop_runtime
-    assert send(host, "SessionStart", source="startup")[0] == 0
-    assert send(host, "UserPromptSubmit", prompt="Finish after recording results")[0] == 0
-    monkeypatch.setattr(memory, "checkpoint_request", lambda *_: "Save handoff")
-    assert send(host, "Stop", stop_hook_active=False)[1].get("decision") == "block"
-    monkeypatch.setattr(memory, "checkpoint_request", lambda *_: None)
-    code, output, diagnostic = send(host, "Stop", stop_hook_active=True)
-    assert code == 0 and not output.get("decision"), diagnostic
-    state = SessionKernel(SessionLocator.from_worktree(root)).inspect(SessionId("root"))
-    assert state.foreground_turns[state.session.root_actor_id].status.value == "closed"
 
 
 @pytest.mark.parametrize("host", ["codex", "claude-code"])
@@ -109,7 +85,7 @@ def test_unfinished_work_keeps_blocking_across_user_turns(
         actor_id=state.session.root_actor_id, root_actor_id=state.session.root_actor_id))
     TaskService(handle).define([{"key": "whole-request", "title": "Complete the whole request",
         "goal": "Complete all acceptance criteria", "sources": [],
-        "acceptance": ["All requested behavior is complete"], "evidence_contract": "unfinished",
+        "acceptance": ["All requested behavior is complete"],
         "dependencies": []}], expected_revision=0, key="define-whole-request")
     kernel.apply(k.WorkflowStarted(
         session_id=state.session.id, workflow_id=k.WorkflowId("unfinished"),
@@ -159,9 +135,8 @@ def test_stop_infrastructure_failure_never_reenters_or_completes(stop_runtime, m
 
 
 @pytest.mark.parametrize("event", ["UserPromptSubmit", "SessionEnd"])
-@pytest.mark.parametrize("pending", [False, True])
 def test_claude_lifecycle_change_during_stop_preserves_new_state(
-    stop_runtime, monkeypatch, event, pending,
+    stop_runtime, monkeypatch, event,
 ):
     from neurath.memory import hooks as memory
     from scripts.agent_harness import session_kernel as k
@@ -173,13 +148,17 @@ def test_claude_lifecycle_change_during_stop_preserves_new_state(
     kernel = k.SessionKernel(k.SessionLocator.from_worktree(root))
     observed = []
 
-    def raced_checkpoint(*_):
-        fields = {"prompt": "New user instruction"} if event == "UserPromptSubmit" else {}
-        assert send(host, event, **fields)[0] == 0
-        observed.append(kernel.inspect(k.SessionId("root")).to_payload())
-        return "Handoff remains pending" if pending else None
+    from neurath.hosts import hooks
+    original = hooks._host_hook
 
-    monkeypatch.setattr(memory, "checkpoint_request", raced_checkpoint)
+    def raced_host_hook(root, provider, raw, environment=None, stop_guard=None):
+        if json.loads(raw).get("hook_event_name") == "Stop":
+            fields = {"prompt": "New user instruction"} if event == "UserPromptSubmit" else {}
+            assert send(host, event, **fields)[0] == 0
+            observed.append(kernel.inspect(k.SessionId("root")).to_payload())
+        return original(root, provider, raw, environment, stop_guard)
+
+    monkeypatch.setattr(hooks, "_host_hook", raced_host_hook)
     code, output, diagnostic = send(host, "Stop", stop_hook_active=False)
     assert code in (0, 1) and output.get("decision") != "block", diagnostic
     assert kernel.inspect(k.SessionId("root")).to_payload() == observed[-1]

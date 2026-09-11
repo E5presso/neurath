@@ -18,8 +18,7 @@ def test_named_state_inventory_has_closed_inputs():
     from neurath.runtime.task_schema import definitions
     tools = {item["name"]: item for item in definitions()}
     for name in ("session_inspect", "turn_inspect", "worktree_inspect", "worktree_claim",
-                 "worktree_release", "material_prepare", "material_read", "material_resolve",
-                 "material_abandon"):
+                 "worktree_release"):
         assert name in tools
         schema = tools[name]["inputSchema"]
         assert schema["additionalProperties"] is False
@@ -115,32 +114,18 @@ def test_material_retry_changed_content_is_rejected(sessions):
             {"observable_id": "other.txt", "expected_delta": "created"}]), invocation="conflict")
 
 
-def test_material_real_hook_completion_and_retry(sessions):
+def test_native_edits_do_not_need_or_record_material_batches(sessions):
     root, invoke = sessions
     call(sessions, "worktree_claim", host="claude-code", session="ui")
-    prepared = call(sessions, "material_prepare", prepare_inputs(), host="claude-code", session="ui")
     payload = {"file_path": str(root / "result.txt"), "content": "observed"}
-    code, _, diagnostic = invoke("claude-code", "ui", "PreToolUse", tool_name="Write", tool_use_id="write-result", tool_input=payload)
-    assert code == 0, diagnostic
+    assert invoke("claude-code", "ui", "PreToolUse", tool_name="Write",
+                   tool_use_id="write-result", tool_input=payload)[0] == 0
     (root / "result.txt").write_text("observed")
-    code, _, diagnostic = invoke("claude-code", "ui", "PostToolUse", tool_name="Write", tool_use_id="write-result", tool_input=payload, tool_response={"success": True})
-    assert code == 0, diagnostic
-    current = call(sessions, "material_read", host="claude-code", session="ui")["batch"]
-    assert current["revision"] > prepared["revision"]
-    result = call(sessions, "material_resolve", {"batch_id": "batch", "expected_revision": current["revision"], "resolution": "completed", "key": "complete"}, host="claude-code", session="ui")
-    assert result["resolution"] == "completed"
-
-
-def test_abandon_lost_post_keeps_unknown_receipt(sessions):
-    root, invoke = sessions
-    call(sessions, "worktree_claim", host="claude-code", session="ui")
-    call(sessions, "material_prepare", prepare_inputs(), host="claude-code", session="ui")
-    payload = {"file_path": str(root / "result.txt"), "content": "unconfirmed"}
-    assert invoke("claude-code", "ui", "PreToolUse", tool_name="Write", tool_use_id="lost-post", tool_input=payload)[0] == 0
-    current = call(sessions, "material_read", host="claude-code", session="ui")["batch"]
-    result = call(sessions, "material_abandon", {"batch_id": "batch", "expected_revision": current["revision"], "invocation_id": "lost-post", "key": "abandon"}, host="claude-code", session="ui")
-    assert result["resolution"] == "blocked"
-    assert result["invocations"][0]["receipt"]["outcome"] == "unknown"
+    assert invoke("claude-code", "ui", "PostToolUse", tool_name="Write",
+                   tool_use_id="write-result", tool_input=payload,
+                   tool_response={"success": True})[0] == 0
+    assert call(sessions, "material_read", host="claude-code", session="ui")["batch"] is None
+    assert (root / "result.txt").read_text() == "observed"
 
 
 def test_key_cannot_be_rebound_to_another_batch(sessions):

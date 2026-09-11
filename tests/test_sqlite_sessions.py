@@ -177,65 +177,7 @@ def test_sqlite_enclave_preserves_digest_cas_and_root_authority(tmp_path, sessio
                   expected_digest=after.digest)
 
 
-def test_sqlite_core_runtime_contracts(tmp_path):
-    """Run existing kernel/lifecycle contracts in the project's isolated kit fixture."""
-    import subprocess
-    import sys
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parents[1]
-    files = ["test_session_kernel.py", "test_enclave_store.py", "test_session_retention.py",
-             "test_session_rehydration.py", "test_artifact_store.py", "test_worktree_registry.py",
-             "test_worktree_hook.py", "test_material_action.py", "test_agent_continuation_hook.py",
-             "test_distribution_boundary.py"]
-    result = subprocess.run([sys.executable, str(root / "tools/run_core_regressions.py"),
-        "--target", str(tmp_path / "kit"),
-        *["scripts/agent_harness/tests/" + name for name in files],
-        *["scripts/skill_harness/tests/" + name for name in (
-            "test_merge_cleanup.py", "test_phase_runner.py", "test_publish_final_review.py",
-            "test_session_phase_store.py")]],
-        cwd=root, capture_output=True, text=True, timeout=120)
-    diagnostics = result.stdout + result.stderr
-    if result.returncode:
-        report = tmp_path / "runtime-diagnostics.log"
-        report.write_text(diagnostics)
-        pytest.fail(f"Runtime diagnostics: {report}\n{diagnostics[:6000]}\n{diagnostics[-6000:]}")
-
-
-def test_sqlite_monitor_runtime_contracts(tmp_path):
-    """Exercise monitor migration and its actual installed skill consumers."""
-    import subprocess
-    import sys
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parents[1]
-    files = ["test_monitor_observation_store.py", "test_local_pr_monitor.py",
-             "test_monitor_launch_lock.py", "test_monitor_runtime_handoff.py",
-             "test_merge_cleanup.py", "test_app_server_resume.py"]
-    result = subprocess.run([sys.executable, str(root / "tools/run_core_regressions.py"),
-        "--target", str(tmp_path / "kit"),
-        *["scripts/skill_harness/tests/" + name for name in files]],
-        cwd=root, capture_output=True, text=True, timeout=240)
-    diagnostics = result.stdout + result.stderr
-    if result.returncode:
-        report = tmp_path / "monitor-diagnostics.log"
-        report.write_text(diagnostics)
-        pytest.fail(f"Runtime diagnostics: {report}\n{diagnostics[:5000]}\n{diagnostics[-7000:]}")
-
-
-def test_native_answer_runtime_contracts(tmp_path):
-    """Exercise legacy decisions and active native steering in the isolated kit."""
-    import subprocess
-    import sys
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parents[1]
-    files = ["test_adaptive_user_decision.py", "test_adaptive_control_authority.py"]
-    result = subprocess.run([sys.executable, str(root / "tools/run_core_regressions.py"),
-        "--target", str(tmp_path / "kit"),
-        *["scripts/agent_harness/tests/" + name for name in files]],
-        cwd=root, capture_output=True, text=True, timeout=120)
-    assert result.returncode == 0, (result.stdout + result.stderr)[-16000:]
+# Runtime suites run once through tools/check.py, after the package tests.
 
 
 def test_sqlite_prompt_history_preserves_original_instruction_receipt(tmp_path, session_types):

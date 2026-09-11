@@ -2991,20 +2991,19 @@ class ForegroundTurnContinuationMatrixTest(TestCase):
         self.assertEqual("closed", turn["status"])
         self.assertIsNone(turn["receipt"])
 
-    def test_root_stop_blocks_current_open_material_action_without_workflow(self) -> None:
-        """Workflow가 없어도 current actor의 open material action은 Stop을 차단합니다."""
+    def test_root_stop_ignores_legacy_open_material_action(self) -> None:
+        """Legacy edit bookkeeping is not a separate completion gate."""
         handle = self.fixture.open_session("session")
         self._run_event(handle, "UserPromptSubmit")
         self._prepare_material_action(handle)
 
         result = self._run_event(handle, "Stop")
 
-        self.assertEqual(2, result.exit_code)
-        self.assertIn("open material action", result.stderr)
-        self.assertEqual("active", self._turn(handle)["status"])
+        self.assertEqual(0, result.exit_code, result.stderr)
+        self.assertEqual("closed", self._turn(handle)["status"])
 
-    def test_stop_terminalizes_an_unobserved_inflight_invocation_as_unknown(self) -> None:
-        """Runtime-neutral Stop은 missing PostTool을 UNKNOWN/BLOCKED로 닫고 실행을 꾸미지 않습니다."""
+    def test_stop_preserves_unobserved_material_history_without_fabricating_result(self) -> None:
+        """Stop neither repeats an edit nor invents its missing result."""
         handle = self.fixture.open_session("session")
         self._run_event(handle, "UserPromptSubmit")
         target, _digest = self._prepare_material_action(handle)
@@ -3026,37 +3025,15 @@ class ForegroundTurnContinuationMatrixTest(TestCase):
         batch = handle.inspect().material_actions[handle.actor_id]
         receipt = batch.invocations[0].receipt
 
-        self.assertEqual(2, result.exit_code)
-        self.assertIn("inspect and reconcile", result.stderr)
-        self.assertEqual("blocked", batch.resolution.value if batch.resolution else None)
-        self.assertIsNotNone(receipt)
-        assert receipt is not None
-        self.assertIs(ToolReceiptOutcome.UNKNOWN, receipt.outcome)
-        self.assertEqual((), receipt.observations)
-        self.assertEqual("active", self._turn(handle)["status"])
+        self.assertEqual(0, result.exit_code, result.stderr)
+        self.assertIsNone(batch.resolution)
+        self.assertIsNone(receipt)
+        self.assertEqual("closed", self._turn(handle)["status"])
 
         retried = self._run_event(handle, "Stop")
 
         self.assertEqual(0, retried.exit_code, retried.stderr)
         self.assertEqual("closed", self._turn(handle)["status"])
-
-    def test_open_material_action_blocks_before_external_stop_validation(self) -> None:
-        """Open intent는 Git read-back보다 먼저 fail-closed되어 side effect를 피합니다."""
-        handle = self.fixture.open_session("session")
-        self._run_event(handle, "UserPromptSubmit")
-        self._prepare_material_action(handle)
-        self.fixture.open_workflow(handle, "monitor")
-        git = FakeGitPublication()
-
-        result = self.fixture.run(
-            self.fixture.application(git=git),
-            "session",
-            HookEvent.STOP,
-        )
-
-        self.assertEqual(2, result.exit_code)
-        self.assertIn("open material action", result.stderr)
-        self.assertEqual([], git.paths)
 
     def test_root_stop_allows_resolved_material_action_without_workflow(self) -> None:
         """Current actor의 latest batch가 resolved이면 plain Stop을 허용합니다."""

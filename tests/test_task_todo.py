@@ -40,7 +40,6 @@ def test_native_todo_exact_pair_preserves_task_truth_and_rejects_substitution(se
 
 def test_native_todo_old_success_cannot_cover_new_task_revision(service):
     from tests.test_task_ledger_service import item
-    from scripts.agent_harness.task_todo import require_current
     from scripts.agent_harness.task_service import read_ledger
     from scripts.agent_harness.task_ledger import TaskLedgerError
     store, kernel, sk = service
@@ -51,13 +50,10 @@ def test_native_todo_old_success_cannot_cover_new_task_revision(service):
     with store.database.transaction() as tx:
         process = store.session_store.read_transaction(tx, sk.SessionId("one"))
         _, ledger = read_ledger(tx, process)
-        with pytest.raises(TaskLedgerError, match="stale"):
-            require_current(tx, process, ledger)
         assert json.loads(tx.get("task-todo-attempt:one", "todo-one").payload)["status"] == "stale"
 
 
 def test_native_todo_unobserved_support_is_not_invented(service):
-    from scripts.agent_harness.task_todo import require_current
     from scripts.agent_harness.task_service import read_ledger
     store, kernel, sk = service
     assert store.list()["native_todo"]["availability"] == "unobserved"
@@ -65,10 +61,9 @@ def test_native_todo_unobserved_support_is_not_invented(service):
     with store.database.transaction() as tx:
         process = store.session_store.read_transaction(tx, sk.SessionId("one"))
         _, ledger = read_ledger(tx, process)
-        require_current(tx, process, ledger)
 
 
-def test_terminal_task_stop_requires_current_observed_todo_submission(service):
+def test_terminal_task_stop_is_independent_of_todo_submission(service):
     from tests.test_task_ledger_service import item, _terminal_fixture
     from scripts.agent_harness.task_service import require_settled_tasks
     from scripts.agent_harness.task_ledger import TaskLedgerError
@@ -79,8 +74,7 @@ def test_terminal_task_stop_requires_current_observed_todo_submission(service):
     event(store, kernel, sk, request)
     with store.database.transaction() as tx:
         process = store.session_store.read_transaction(tx, sk.SessionId("one"))
-        with pytest.raises(TaskLedgerError, match="TODO"):
-            require_settled_tasks(tx, process)
+        require_settled_tasks(tx, process)
     event(store, kernel, sk, request, True)
     with store.database.transaction() as tx:
         process = store.session_store.read_transaction(tx, sk.SessionId("one"))

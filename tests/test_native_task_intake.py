@@ -15,7 +15,7 @@ def test_new_native_root_workflow_requires_task_intake_without_poisoning_key(ses
         assert db.execute("SELECT count(*) FROM workflow_task_requests WHERE key='start-after-intake'").fetchone()[0] == 0
     call(sessions, "task_define", {"tasks": [{"key": "authorized-work", "title": "Review authorized work",
         "goal": fields["north_star"], "sources": [], "acceptance": ["Review completed with stated evidence"],
-        "evidence_contract": fields["workflow_id"], "dependencies": []}], "expected_revision": 0,
+        "dependencies": []}], "expected_revision": 0,
         "key": "intake-before-workflow"}, invocation="define-native-task")
     started = call(sessions, "phase_start", fields, invocation="registered-intake")
     assert started["current_phase"]["id"] == 1

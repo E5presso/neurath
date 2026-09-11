@@ -27,7 +27,7 @@ artifacts = ["src/neurath/_assets/**", "src/neurath/manifest.json"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 norecursedirs = ["runtime"]
-addopts = "--import-mode=importlib"
+addopts = "--import-mode=importlib --tb=short"
 
 [tool.ruff]
 target-version = "py314"

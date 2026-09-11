@@ -11,31 +11,20 @@ def definitions():
                 "additionalProperties": False}
     source = obj({"kind": choice("prompt", "ticket", "spec"), "reference": text_field(4096),
                   "revision": text_field(4096)})
-    assessment = obj({"summary": text_field(4096), "acceptance": array(obj({
-        "condition": text_field(), "outcome": choice("met", "unmet"),
-        "explanation": text_field(4096), "reference": text_field(4096)}), 1, 32)})
-    decision = obj({"source_reference": text_field(4096), "source_digest": text_field(64),
-        "disposition": choice("cancelled", "duplicate", "superseded", "no-longer-required"),
-        "reason": text_field(4096),
-        "covering_sources": array(obj({"path": text_field(4096), "sha256": text_field(64)}),
-                                  maximum=32),
-        "covering_workflows": array(obj({"id": text_field(256), "revision": revision}),
-                                    maximum=32)})
     definition = obj({"key": text_field(512), "title": text_field(512), "goal": text_field(),
         "sources": array(source, maximum=31), "acceptance": array(text_field(), 1, 32),
-        "evidence_contract": text_field(256), "dependencies": array(text_field(128))})
+        "dependencies": array(text_field(128))})
     exact_task = {"task_id": text_field(128), "expected_revision": revision,
                   "expected_task_revision": revision, "key": text_field(512)}
     entries = {
-        "task_define": ("Append measurable tasks and issue stable IDs. The native prompt receipt is retained; prior tasks and terminal history remain. Evidence contract names the task's execution workflow, which may start later.",
+        "task_define": ("Append measurable tasks and issue stable IDs. The native prompt receipt is retained; prior tasks and terminal history remain.",
                         {"tasks": array(definition, 1), "expected_revision": revision, "key": text_field(512)}, False),
         "task_list": ("Read the canonical task list, revision and native TODO projection. An empty or missing list is not completed work.", {}, True),
         "task_start": ("Start one pending task using its exact task and list revisions.", exact_task, False),
-        "task_resolve": ("Resolve success/failure from an exact bound terminal workflow and the native root's complete acceptance assessment. Assurance is agent-assessment over observed canonical evidence, not independent proof. An optional submitted independent review remains validated. Invalidation accepts an authenticated prompt-bound root decision or the existing independent decision review. Workflow-owned phase review requirements remain unchanged.",
+        "task_resolve": ("Record a task result: terminal status, concise summary and evidence references. No separate workflow or acceptance review is required.",
                          {**exact_task, "status": choice("succeeded", "failed", "invalidated"),
                           "references": array(text_field(4096), 1, 32),
-                          "assessment": {"anyOf": [{"type": "null"}, assessment], "default": None},
-                          "decision": {"anyOf": [{"type": "null"}, decision], "default": None}}, False),
+                          "summary": text_field(4096)}, False),
     }
     return {name: ("task-ledger", name, description, fields, readonly)
             for name, (description, fields, readonly) in entries.items()}

@@ -5932,8 +5932,6 @@ class SessionStateStore:
                             raise TransitionRejected(f"task Stop gate: {error}") from error
                     tx.put("session", self._record_key, self._codec.encode(committed),
                            expected_revision=latest_revision)
-                    from scripts.agent_harness.task_service import bind_active_workflows
-                    bind_active_workflows(tx, committed)
                     for actor_id, turn in committed.foreground_turns.items():
                         prompt = turn.user_prompt_receipt
                         if prompt is None or actor_id != committed.session.root_actor_id:

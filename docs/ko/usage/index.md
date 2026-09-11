@@ -88,3 +88,11 @@ Codex 또는 Claude Code에서 프로젝트를 열고 다음과 같이 요청하
 
 [설치](installation.md) · [프로젝트 연결](profiles.md) · [스킬](skills.md) ·
 [용어](../terminology.md) · [Neurath 개발 참여](../contributing/index.md)
+
+## Neurath 개입 잠시 끄기
+
+> 이 worktree에서 Neurath 개입을 잠시 꺼주세요.
+
+에이전트가 바이패스를 켜고 확인한 상태를 알려줍니다. Neurath 훅은 중지되지만 호스트 권한과
+사용자 지시는 그대로 적용됩니다. “Neurath를 다시 켜주세요”라고 요청하면 정상 훅을 복구합니다.
+바이패스 중에도 전환 스위치는 사용할 수 있습니다.

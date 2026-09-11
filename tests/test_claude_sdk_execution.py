@@ -140,15 +140,22 @@ def test_verified_gate_drains_assignment_response_after_preparation(tmp_path, pr
     assert result["execution"] == "native-response-completed"
 
 
-def test_native_write_requires_claim_and_implementation_readiness(tmp_path, prepared, monkeypatch):
+@pytest.mark.parametrize("ready", [False, True])
+def test_native_write_requires_claim_and_implementation_readiness(tmp_path, prepared, monkeypatch, ready):
     monkeypatch.setattr(execution_claude, "_readiness", lambda _: {"waiting": None,
-        "implementation_ready": False,
+        "implementation_ready": ready,
         "stages": {name: {"status": "verified"} for name in ("installation", "activation", "policy")}})
     result = execution_claude.run(tmp_path, worktree=tmp_path, assignment="Implement",
                                  mode="native", permission_mode="dontAsk")
-    assert result["status"] == "not-ready"
+    assert result["status"] == ("completed" if ready else "not-ready")
     assert prepared[0].claim_requested is True
-    assert prepared[0].assignments == []
+    if ready:
+        text = prepared[0].assignments[0]
+        assert "material" not in text
+        assert "native host tools" in text and "task result once" in text
+        assert "Release your own claim" in text
+    else:
+        assert prepared[0].assignments == []
 
 
 def test_native_mode_requires_explicit_permission_mode(tmp_path):

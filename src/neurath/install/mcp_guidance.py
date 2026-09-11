@@ -114,6 +114,10 @@ def _typed_references(tool, parameters):
 
 def _classify(command, available):
     body = command.removeprefix(".neurath/run").strip()
+    if body.startswith(("verify ", "engine scripts.agent_harness.verification_runner")):
+        return None, "native-project-check", ""
+    if body.startswith("engine scripts.agent_harness.state_cli action "):
+        return None, "native-file-edit", ""
     if "<script>" in body or body == "engine <scripts.module>":
         return None, "entrypoint-placeholder", ""
     if body.startswith("engine scripts.agent_harness.state_cli session recover-foreground-turn"):
@@ -133,7 +137,7 @@ def _classify(command, available):
             "monitor_runtime_readback.py":"monitor_readback", "prepare_monitor_handoff.py":"monitor_handoff",
             "collect_comments.sh":"review_comments", "acknowledge_event.py":"monitor_external_wait" if "--external-wait" in params else "monitor_ack"}
         if filename == "safe_worktree_apply_patch.sh":
-            return "worktree_isolation / material_prepare", "native-file-edit", ""
+            return "worktree_isolation", "native-file-edit", ""
         if filename == "delegate_state.py":
             match = re.search(r"\b(begin|submit|complete|abort)\b",params)
             tool = None if match is None else {"begin":"review_begin","submit":"review_report","complete":"review_consume","abort":"review_abort"}[match[1]]
@@ -185,7 +189,9 @@ def migrate(text, available):
         if classification == "host-lifecycle-callback":
             return "`호스트 수명 이벤트가 수행하는 foreground 복구`"
         if classification == "native-file-edit":
-            return "`worktree_isolation`과 `material_prepare`로 준비한 뒤 호스트의 파일 편집 도구"
+            return "`작업 공간 소유권을 유지하며 호스트의 파일 편집 도구 사용`"
+        if classification == "native-project-check":
+            return "`호스트의 명령 도구로 프로젝트에 등록된 검사 실행`"
         if classification == "legacy-bounded-adapter":
             return "`"+str(tool)+"` (현재 스키마를 따르는 독립 작업; 과거 제한 실행기는 내부 호환용)"
         if classification != "named-mcp":

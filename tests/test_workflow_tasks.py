@@ -19,16 +19,8 @@ def define_task(sessions):
     result = call(sessions, "task_define", {"tasks": [{"key": "commit-task",
         "title": "Commit the approved change", "goal": "Review an authorized change",
         "sources": [], "acceptance": ["The approved change is committed with observed Git evidence"],
-        "evidence_contract": "phase", "dependencies": []}], "expected_revision": 0, "key": "define-task"})
+        "dependencies": []}], "expected_revision": 0, "key": "define-task"})
     return result["tasks"][0]["id"]
-
-
-def assess_task(sessions, task_id, workflow_revision, status):
-    """Attach a root assessment to the actual observed phase result."""
-    from tests.test_task_acceptance_review import assessment
-    tasks = call(sessions, "task_list", {}, invocation="assessment-read")["tasks"]
-    task = next(task for task in tasks if task["id"] == task_id)
-    return assessment(task, f"workflow:phase:{workflow_revision}", status)
 
 
 def test_named_workflow_inventory_is_closed():
@@ -80,11 +72,11 @@ def test_missing_evaluator_rejection_does_not_poison_initialization_key(sessions
 def start(sessions, *, alias=False, workflow="phase", key="start", skill="commit", host="codex", session="api"):
     ledger = call(sessions, "task_list", {}, invocation="intake-read:" + key + ":" + skill,
                   host=host, session=session)
-    if not any(task["definition"]["evidence_contract"] == workflow for task in ledger["tasks"]):
+    if not any(task["definition"]["goal"] == "Review an authorized change" for task in ledger["tasks"]):
         call(sessions, "task_define", {"tasks": [{"key": "task-" + workflow,
             "title": "Review authorized change", "goal": "Review an authorized change",
             "sources": [], "acceptance": ["The authorized workflow reaches its stated outcome"],
-            "evidence_contract": workflow, "dependencies": []}],
+            "dependencies": []}],
             "expected_revision": ledger["revision"], "key": "intake-" + workflow},
             invocation="intake-define:" + key + ":" + skill, host=host, session=session)
     if alias:
@@ -159,10 +151,9 @@ def test_phase_failure_terminal_and_revision_are_enforced(sessions, monkeypatch)
         "transition": {"phase_id": 1, "status": "blocked", "summary": "not executed", "reason": "fixture blocker"}, "key": "blocked"})
     finalized = call(sessions, "workflow_finalize", {"workflow_id": "phase", "expected_revision": completed["workflow_revision"], "terminal_state": "blocked", "key": "finalize"})
     assert finalized["terminal_state"] == "blocked"
-    assessment = assess_task(sessions, task_id, finalized["workflow_revision"], "failed")
     resolved = call(sessions, "task_resolve", {"task_id": task_id, "expected_revision": 1,
         "expected_task_revision": 1, "key": "task-failed", "status": "failed",
-        "references": [f"workflow:phase:{finalized['workflow_revision']}"], "assessment": assessment})
+        "references": [f"workflow:phase:{finalized['workflow_revision']}"], "summary": "The workflow returned a blocked result"})
     assert resolved["tasks"][0]["status"] == "failed"
     assert resolved["all_terminal"]
 
