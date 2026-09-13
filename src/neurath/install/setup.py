@@ -26,8 +26,10 @@ def next_steps(hosts, skill_prefix=""):
 
 def setup_project(root, *, profile=None, hosts=None, dry_run=False, skill_prefix=None,
                   auto_report=None):
+    from neurath.install.cutover import require_cutover
     from neurath.reporting import Reporting
 
+    require_cutover(root)
     if auto_report is not None and type(auto_report) is not bool:
         raise ValueError("auto_report must be an explicit boolean user decision")
     reporting = Reporting(root)

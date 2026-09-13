@@ -299,6 +299,8 @@ def rebase_shared(path, record, current):
 
 def make_plan(root, *, action="install", profile=None, hosts=None, receipt=None, skill_prefix=None):
     root = repository(root)
+    from neurath.install.cutover import require_cutover
+    require_cutover(root)
     if (InstallStateStore(root).journal() is not None
             or (git_dir(root) / "neurath-journal.json").exists()):
         raise InstallError("interrupted transaction: run neurath recover")
@@ -644,6 +646,8 @@ def _prune_skill_directories(root, changes):
 
 def apply_plan(root, plan):
     root = repository(root)
+    from neurath.install.cutover import require_cutover
+    require_cutover(root)
     if plan.get("root") != str(root):
         raise InstallError("plan belongs to another repository")
     control = git_dir(root)
