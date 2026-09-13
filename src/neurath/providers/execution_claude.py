@@ -404,7 +404,8 @@ async def _run(target, assignment, model, permission_mode, event_callback, resul
         result["submission"] = await adapter.dispatch(
             "Neurath authorized peer assignment. Keep native permissions. "
             + ("Inspect without edits. " if permission_mode == "plan" else
-               "Follow normal material actions and release your own claim after completion. ")
+               "Use native host tools to edit files and run checks; record the task result once. "
+               "Release your own claim after completion. ")
             + "Assignment:\n" + assignment)
         result["delivery"] = "submitted"
         result["implementation_dispatched"] = True

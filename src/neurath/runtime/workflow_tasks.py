@@ -289,7 +289,6 @@ def _require_new_root_task_intake(root, fields, handle):
     ledger = TaskService(handle, worktree=root).list()
     goal = fields.get("north_star", fields.get("goal"))
     if not any(task["status"] in {"pending", "in_progress"}
-               and task["definition"]["evidence_contract"] == fields["workflow_id"]
                and task["definition"]["goal"] == goal for task in ledger["tasks"]):
         raise TaskError("task-intake-required",
             "new root workflow requires a registered nonterminal measurable task",

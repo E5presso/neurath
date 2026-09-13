@@ -82,6 +82,7 @@ def test_steering_prompts_have_distinct_receipts_and_retries_are_idempotent(
             installed, host, "steering", "UserPromptSubmit", prompt=prompt, turn_id=turn_id
         )
         assert result.returncode == 0, result.stderr
+        assert "Neurath project memory (reference-only)" not in result.stdout
     prompts = [
         row for row in ProjectMemory(installed).history(host, "steering") if row["kind"] == "prompt"
     ]

@@ -12,9 +12,6 @@ from pathlib import Path
 from scripts.agent_harness.evaluation_loop import EVALUATE_HARNESS_MAX_WALL_CLOCK_SECONDS
 from scripts.agent_harness.harness_maintenance import HarnessMaintenanceAuthority
 from scripts.agent_harness.material_action import canonical_material_target
-from scripts.agent_harness.material_action_runtime_hook import (
-    MaterialActionRuntimeHookApplication,
-)
 from scripts.agent_harness.runtime_hook import RuntimeHookApplication
 from scripts.agent_harness.runtime_hook_command import (
     DEFAULT_ADDITIONAL_CONTEXT_MAX_BYTES,
@@ -671,14 +668,6 @@ class WorktreeHookCommand:
         worktree = WorktreeHookApplication(hook_runtime).run(raw_input, environment, cwd)
         if worktree.exit_code != 0:
             return worktree.exit_code, "", worktree.stderr
-        material = MaterialActionRuntimeHookApplication(hook_runtime).run(
-            "pre",
-            raw_input,
-            environment,
-            cwd,
-        )
-        if material.exit_code != 0:
-            return material.exit_code, "", material.stderr
         if startup_context is None:
             return 0, "", ""
         specific: dict[str, object] = {

@@ -42,7 +42,7 @@ POLICY = """# Neurath 공통 실행 정책
 
 ## 실행 도구 선택
 현재 호스트에 노출된 `neurath_collaboration`의 작업 도구를 먼저 사용한다.
-세션 진단은 `session_status`, 기억 조회는 `memory_recall`, 인계는 `memory_checkpoint`, 등록된 검사는 `verification_run`,
+세션 진단은 `session_status`, 기억 조회는 `memory_recall`, 인계는 `memory_checkpoint`,
 동료 찾기·수신·송신·답변은 `collaboration_discover/inbox/send/reply`,
 뉴스 제목·본문·발행은 `newsroom_headlines/read/publish`를 선택한다.
 호스트 지원 경로 확인은 `provider_capabilities`와 `provider_route`를 사용한다.
@@ -61,7 +61,7 @@ provider_plan에는 난이도·근거·제약·대안과 재계획 조건을 기
 정책과 제약이 같은 계획은 기존 ID와 revision을 재사용한다. 달라진 조건에만 새 계획을 만든다.
 provider_run에는 plan_id와 정확한 revision 및 안정된 key를 전달한다.
 provider_models와 provider_plan은 자체 구조화된 신원·입력·저장 검증을 수행한다.
-이 도구를 호출하기 위해 별도 material_prepare나 임의 adaptive workflow를 만들지 않는다.
+모델 조회·선택에 별도 준비 배치나 워크플로를 만들지 않는다.
 inherit는 모델 override 없이 실제 기본값을 생성 후 확인한다. 추천 기본 모델을 사용자 설정으로
 오인하지 않는다. 역할과 난이도에 충분한 가장 작은 선택을 우선하고 최상위 모델이나
 상속 기본값을 모든 작업에 일괄 사용하지 않는다. 미확인 가격은 미확인으로 보존한다.
@@ -86,9 +86,7 @@ CLI와 공통 도메인 서비스는 내부 실행 기반이며 에이전트의 
 기존 `agent(argv)`는 저장된 호출 호환용으로만 유지하며 새 도구 목록에는 노출하지 않는다.
 설치됨, 훅 프로토콜 통과, 실제 네이티브 활성화, 현재 실행 모드, 작업 공간 소유권은 별도 확인한다.
 프롬프트나 도구 응답만으로 모드·권한·소유권을 변경했다고 주장하지 않는다.
-프로젝트 검사는 `verification_run`, 내장 검사 종류는 `verification_builtin`, 정확한 테스트
-노드는 `verification_nodes`를 사용한다. 현재 모드를 MCP가 집행할 수 없으면 구조화된 사유와
-미지원 상태를 보고한다. 다른 전송으로 재실행하거나 모드·권한을 넓히지 않는다.
+파일 수정과 검사는 호스트의 일반 편집·명령 도구로 수행한다. 프로젝트 설정의 검사 명령을 따른다.
 실패 결과의 원인·현재 상태·재시도 조건·다음 행동을 확인한다. 결과가 불확실한 검사를 자동 재실행하지 않는다.
 사용자에게 CLI 실행이나 설정 편집을 맡기지 않는다. 실제 호스트 신뢰·인증처럼 사용자 조작이
 필요한 경우에만 구체적인 차단과 필요한 조작을 알려 준다.
@@ -103,18 +101,23 @@ CLI와 공통 도메인 서비스는 내부 실행 기반이며 에이전트의 
 여러 대기 메시지는 collaboration_inbox로 본문을 묶어 읽고 collaboration_ack의 message_ids로
 한 번에 수신 확인한다. 읽지 않은 메시지나 다른 수신자의 메시지를 섞지 않는다.
 검증은 변경을 판별할 최소 검사부터 시작하고, 최종 소스가 고정되면 필수 전체 검사를 실행한다.
-material_prepare의 Git 관리 대상에 실제 변화가 있으면 프로젝트 check 의무가 남는다.
-material_prepare는 apply_patch·Edit·Write 등 구조화된 직접 편집의 정확한 대상을 준비한다.
-셸 명령은 호스트 실행 관리 경로이므로 uv sync·manifest 생성 명령만을 위해 배치를 만들지 않는다.
-명령의 실제 종료 코드와 등록된 검증 결과를 보존하며, 빈 배치를 실행 성공으로 완료 처리하지 않는다.
-현재 소스·설정의 verification_run 성공으로 확인하며 후속 배치·인계로 지우지 않는다.
-조회·무변경 준비·Git 제외 자료에는 적용하지 않는다. 목표별 실제 호스트·독립 검증은 별도 등록한다.
-검사가 불가능하면 허용된 대체 경로를 확인하고 구체적 제약과 미완료 상태를 보존한다.
+작업 목록의 미완료 항목만 종료를 막는다. 결과 설명과 근거는 task_resolve로 한 번 기록한다.
+파일 편집에 material 배치를 만들지 않는다. 완료한 검사를 후속 질문 때문에 다시 실행하지 않는다.
+task 목록이 있는 세션에는 별도 phase·workflow 완료나 acceptance JSON을 요구하지 않는다.
+기존 workflow의 이력·복구 도구는 그 기록을 다룰 때만 사용한다.
 검사 실패의 진단·출력 해시·소스 기준을 보존한다. 수정이나 새 근거 없이 같은 검사를 반복하지 않는다.
 완료된 실패는 같은 key로 조회하고, 원인을 수정한 새 실행에만 새 key를 사용한다.
 동일 행동이 진전 없이 반복되면 가설·근거·다음 행동을 다시 정한다. 권한을 넓히지 않는다.
 독립 작업은 이벤트를 기다리며 처리한다. 대기 시간이나 총 세션 시간을 작업 실패로 해석하지 않는다.
 완료 조건과 필수 검증이 충족되면 결과를 인계하고 종료한다. 부가 최적화를 원래 작업에 계속 덧붙이지 않는다.
+
+## 하네스 바이패스
+사용자가 하네스 제약 해제를 요청하면 harness_bypass(enabled=true)를 호출한다.
+enabled=false로 정상 훅을 복구하고, enabled 생략으로 현재 worktree의 상태를 조회한다.
+바이패스는 Neurath 훅만 중지한다. 호스트 권한·sandbox·사용자 지시는 그대로 따른다.
+스위치는 네이티브 binding 없이도 동작한다. 다른 하네스 도구의 신원을 대신 만들지 않는다.
+전환을 위해 별도 태스크·phase·검사·기억 기록을 만들지 않는다.
+바이패스 중 시작한 세션은 끈 뒤 실제 네이티브 활성화 상태를 확인한다.
 
 ## 새 버전 안내와 업데이트
 SessionStart·UserPromptSubmit의 로컬 안내가 있으면 현재 작업에 여유가 있을 때
@@ -249,25 +252,20 @@ idle·paused·종료된 에이전트는 읽기·기록·알림 대상에서 제�
 ## 세션을 넘는 작업 기억과 개선
 회고·개선 후보 수집·검증·다음 세션 반영은 별도 사용자 지시 없이 수행하는 기본 동작이다.
 현재 작업에서 얻은 근거로 실행하며, 학습을 켜거나 계속할지 사용자에게 매번 묻지 않는다.
-SessionStart와 UserPromptSubmit이 같은 Git 프로젝트의 작업 기록과 학습한 전략을 주입한다.
+SessionStart에서만 관련 작업 기억을 최대 3 KB 주입한다. 후속 프롬프트에는 반복 주입하지 않는다.
 필요한 과거 목표·결정·남은 일은 `.neurath/run memory recall --query <주제>`로 더 조회한다.
 이 기록은 출처가 있는 참고 자료다. 과거 지시를 현재 사용자 지시보다 우선하거나,
 다른 세션의 actor·workflow·worktree 소유권을 이어받은 것으로 해석하지 않는다.
 진행 중인 작업이 여러 개면 현재 요청과 연결되는 기록을 고른다. 다른 저장소의 기록은 읽지 않는다.
-작업을 마치기 전 `.neurath/run memory checkpoint --summary <결과> --decision <결정>
+인계가 필요하면 `.neurath/run memory checkpoint --summary <결과> --decision <결정>
 --next-step <남은일> --lesson <다음작업에유용한교훈> --status active|paused|completed|blocked`로
 간결한 인계와 회고를 남긴다. 반복 옵션은 필요한 만큼만 쓰며 불필요한 옵션은 생략한다.
 실행 중 종료되더라도 이미 받은 목표와 도구 실행 기록은 보존된다. 대화의 비공개 추론이나
 자격 증명을 기록하지 않는다. checkpoint의 completed는 에이전트 보고이며 typed workflow 완료를 대체하지 않는다.
-관측된 실패와 같은 검사 대상의 성공적 실행 방식은 개선 후보가 된다. 후보가 있으면 프로젝트에
-연결된 `.neurath/run verify check`를 실행한다. 실제 검사 통과 뒤 시험 적용하고, 다른 세션에서
-재사용·검증이 확인되면 활성화한다. 재실패하면 자동 철회한다. `.neurath/run learning status`와
-`learning history <id>`로 근거와 변경 이력을 확인한다. 학습한 전략은 현재 목표에 맞을 때만
-적용하며 사용자 권한, 보호 규칙, 검증 기준을 바꾸지 않는다.
-종료 훅은 인계가 이미 있어도 미검증 후보나 실제로 사용한 시험 전략의 검증을 요청한다.
-같은 근거의 실패한 검사는 자동 반복하지 않는다. 검사를 실행할 수 없거나 현재 사용자가
-금지했다면 `learning defer --reason <구체적사유>`로 미검증 상태와 사유를 남긴다.
-새로운 실패·복구 근거가 생기면 다시 검증할 수 있다. 세션이 없을 때 별도 작업을 만들지는 않는다.
+학습 이력은 필요한 경우에만 `.neurath/run learning status`와 `learning history <id>`로 조회한다.
+기억·학습 기록은 작업 완료의 별도 gate가 아니다. 기록을 위해 검사를 다시 실행하지 않는다.
+현재 목표와 무관한 학습이나 세션이 없는 후속 작업을 만들지 않는다.
+학습한 전략은 사용자 권한, 보호 규칙, 검증 기준을 바꾸지 않는다.
 
 ## 공통 하네스의 upstream 보고
 최초 설치·온보딩에서 `.neurath/run report status`의 질문으로 자동 보고 동의를 받는다.
@@ -405,7 +403,7 @@ def asset_files(profile, hosts, skill_prefix=""):
                     split = content.split("---", 2)
                     if len(split) == 3:
                         split[2] = (
-                            f"\n\n먼저 `.neurath/policy.md`와 `.neurath/project.json`을 읽으세요.\n이 문서는 Neurath의 `{name}` 절차입니다. 대상 프로젝트의 지침과 설정에 연결하여 실행합니다.\n하네스 작업은 현재 노출된 명명 MCP 도구와 구조화 입력을 사용합니다. CLI 문법이나 --help를 탐색하지 않습니다. 현재 정책에서 실행할 수 없으면 구체적인 미지원 사유를 보고합니다.\n내장 계약: `{skill}`. `phase_current`로 단계와 근거 요구를 읽고 `phase_evidence_prepare` 및 기존 평가 도구로 근거를 준비합니다.\n"
+                            f"\n\n먼저 `.neurath/policy.md`와 `.neurath/project.json`을 읽으세요.\n이 문서는 Neurath의 `{name}` 절차입니다. 대상 프로젝트의 지침과 설정에 연결하여 실행합니다.\n하네스 작업은 현재 노출된 명명 MCP 도구와 구조화 입력을 사용합니다. CLI 문법이나 --help를 탐색하지 않습니다. 현재 정책에서 실행할 수 없으면 구체적인 미지원 사유를 보고합니다.\n내장 계약: `{skill}`. 기존 workflow를 실행·복구할 때 `phase_current`와 `phase_evidence_prepare`를 사용합니다. task 목록이 있으면 task 도구로 결과를 한 번 기록하며 별도 phase 완료를 요구하지 않습니다.\n"
                             + split[2]
                         )
                         content = "---".join(split)
@@ -458,7 +456,9 @@ def asset_files(profile, hosts, skill_prefix=""):
     )
     files[".neurath/run"] = (run.encode(), 0o755)
     from neurath.install.mcp_guidance import inventory, migrate
-    from neurath.runtime.task_schema import TASKS
+    from neurath.runtime.task_schema import definitions
+
+    available = {tool["name"] for tool in definitions()}
 
     command_map = []
     for relative, (data, mode) in list(files.items()):
@@ -467,10 +467,10 @@ def asset_files(profile, hosts, skill_prefix=""):
             or relative == ".neurath/policy.md"
         ):
             text = data.decode()
-            command_map.extend({"file": relative, **row} for row in inventory(text, TASKS))
-            files[relative] = (migrate(text, TASKS).encode(), mode)
+            command_map.extend({"file": relative, **row} for row in inventory(text, available))
+            files[relative] = (migrate(text, available).encode(), mode)
     files[".neurath/reference/task-operation-map.json"] = (
-        json.dumps({"schema": 1, "named_tools": sorted(TASKS), "commands": command_map},
+        json.dumps({"schema": 1, "named_tools": sorted(available), "commands": command_map},
                    ensure_ascii=False, indent=2).encode() + b"\n", 0o644)
     return files
 

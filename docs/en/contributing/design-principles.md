@@ -55,7 +55,7 @@ flowchart LR
 
 This is an evidence responsibility flow, not a requirement to create workflows for every simple read. In stateful work, preparation does not replace execution, a zero exit code does not replace goal attainment, and a review report does not accept itself.
 
-Registered checks execute exact argv, cwd, and success conditions and compare repository fingerprints before and after. A changed worktree makes that verification fail even with a successful exit code. Independent evaluation binds the goal, source revision, candidate artifact, and evidence origins. Unrelated passing tests cannot substitute for the requested behavior.
+Agents run the configured argv and cwd through native host tools and preserve the observed result and source basis. The internal compatibility verification runner additionally compares repository fingerprints; that older runner is not a public MCP requirement. Independent evaluation binds the goal, source revision, candidate artifact, and evidence origins. Unrelated passing tests cannot substitute for the requested behavior.
 
 Evidence: [material actions](../../../src/neurath/_assets/scripts/agent_harness/material_action.py), [registered verification](../../../src/neurath/runtime/verification.py), [evaluation authority](../../../src/neurath/_assets/scripts/agent_harness/adaptive_control_authority.py).
 
@@ -99,7 +99,7 @@ Evidence: [message store](../../../src/neurath/agents/store.py), [delivery servi
 
 ## 8. Preserve human steering without concealing failures
 
-The root user-input boundary prevents internal bookkeeping failures from suppressing new instructions. It reports `bookkeeping deferred` without claiming successful state updates or tool authority. Execution requiring identity, ownership, or material evidence remains constrained when that evidence is missing.
+The root user-input boundary prevents internal bookkeeping failures from suppressing new instructions. It reports `bookkeeping deferred` without claiming successful state updates or tool authority. Execution still requires authentic identity and current ownership. Ordinary edits do not require a separate material record.
 
 This separates human intervention from execution authorization; it does not permit every error. Similarly, the provider contract separates unbounded ordinary task lifetime from bounded checks, connections, and individual requests.
 

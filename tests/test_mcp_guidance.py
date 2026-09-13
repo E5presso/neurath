@@ -48,6 +48,17 @@ def test_installed_skill_guidance_and_policy_prefer_named_tools():
     assert ".neurath/reference/task-operation-map.json" in files
 
 
+def test_installed_policy_uses_one_task_completion_and_reversible_bypass():
+    from neurath.install.projection import asset_files
+
+    policy = asset_files("generic", ["codex"])[".neurath/policy.md"][0].decode()
+    assert "harness_bypass(enabled=true)" in policy
+    assert "enabled=false" in policy
+    assert "별도 phase·workflow 완료나 acceptance JSON을 요구하지 않는다" in policy
+    assert "SessionStart에서만" in policy
+    assert "종료 훅은 인계가 이미 있어도" not in policy
+
+
 def test_installed_operation_map_exposes_every_detected_compatibility_gap():
     import json
     from neurath.install.projection import asset_files
@@ -55,7 +66,7 @@ def test_installed_operation_map_exposes_every_detected_compatibility_gap():
     mapping=json.loads(files[".neurath/reference/task-operation-map.json"][0])
     assert mapping["schema"]==1
     assert mapping["commands"]
-    assert all(r["classification"] in {"named-mcp","entrypoint-placeholder","host-lifecycle-callback","legacy-bounded-adapter","native-file-edit"}
+    assert all(r["classification"] in {"named-mcp","entrypoint-placeholder","host-lifecycle-callback","legacy-bounded-adapter","native-file-edit","native-project-check"}
                for r in mapping["commands"])
     assert not any(r["classification"]=="missing-named-operation" for r in mapping["commands"])
 

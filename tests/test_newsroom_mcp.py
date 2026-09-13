@@ -40,7 +40,8 @@ def test_stdio_initialization_inventory_and_unbound_rejection(tmp_path):
     assert [r["id"] for r in replies] == [1, 2, 3]
     assert replies[0]["result"]["protocolVersion"] == "2025-06-18"
     names = {t["name"] for t in replies[1]["result"]["tools"]}
-    assert {"memory_recall", "verification_run", "newsroom_publish"} <= names
+    assert {"memory_recall", "harness_bypass", "newsroom_publish"} <= names
+    assert "verification_run" not in names
     assert "agent" not in names  # Saved calls below still reach their identity gate.
     assert replies[2]["result"]["isError"]
     assert "bound" in replies[2]["result"]["content"][0]["text"]

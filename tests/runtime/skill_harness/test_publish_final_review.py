@@ -24,6 +24,8 @@ from scripts.agent_harness.session_kernel import (
     DelegationReported,
     DelegationResult,
     DelegationTopologyPolicy,
+    HarnessIncidentRecorded,
+    IncidentId,
     SessionLocator,
     WorkflowId,
     WorkflowStarted,
@@ -192,7 +194,6 @@ class PublisherFixture:
     def _skill_state(self) -> dict[str, object]:
         return {
             "commit_done": {"sha": self.head},
-            "harness_incidents": [],
             "monitor_event_subscription": {
                 "repo": "E5presso/neurath",
                 "pr_number": 131,
@@ -303,6 +304,31 @@ class PublishFinalReviewTest(TestCase):
         fixture = PublisherFixture(consumed=consumed)
         self.addCleanup(fixture.cleanup)
         return fixture
+
+    def test_publisher_accepts_canonical_incidents_without_legacy_projection(self):
+        fixture = self.fixture()
+        class Gateway(MODULE.PublicationCommandGateway):
+            def read_pr(self, repo, pr_number):
+                raise RuntimeError('reached remote read')
+        publisher = MODULE.FinalReviewPublisher(handle=fixture.root_handle,
+            workflow_id=fixture.workflow_id, worktree=fixture.worktree, gateway=Gateway())
+        with self.assertRaisesRegex(RuntimeError, 'reached remote read'):
+            publisher.publish(repo='E5presso/neurath', pr_number=131)
+
+    def test_publisher_rejects_open_canonical_incident_before_remote_read(self):
+        fixture = self.fixture()
+        fixture.root_handle.apply(HarnessIncidentRecorded(
+            session_id=fixture.root_handle.session_id, occurrence_id=IncidentId('publication-open'),
+            rule_id='publication-review', actor_id=fixture.root_handle.actor_id,
+            symptom='Unresolved publication failure', recorded_at='2026-09-11T00:00:00+00:00',
+            idempotency_key='publication-open'))
+        class Gateway(MODULE.PublicationCommandGateway):
+            def read_pr(self, repo, pr_number):
+                raise AssertionError('remote read must not happen')
+        publisher = MODULE.FinalReviewPublisher(handle=fixture.root_handle,
+            workflow_id=fixture.workflow_id, worktree=fixture.worktree, gateway=Gateway())
+        with self.assertRaisesRegex(MODULE.HarnessIncidentValidationError, 'unresolved harness incident'):
+            publisher.publish(repo='E5presso/neurath', pr_number=131)
 
     def test_reads_consumed_final_review_from_one_canonical_session_snapshot(self) -> None:
         """Workflow evidence와 consumed delegation/artifact가 일치하면 receipt를 만듭니다."""

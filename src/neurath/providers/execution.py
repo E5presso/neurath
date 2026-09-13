@@ -215,8 +215,8 @@ def run(root, *, worktree, assignment, model=None, mode="read-only", approval_po
                         "does not scope this turn. Keep the verified permissions and retained "
                         "worktree claim. "
                         + ("Inspect and respond without edits. " if mode == "read-only" else
-                           "Follow normal material action prepare, tool result, readback and "
-                           "resolve. Release your worktree claim only after this assigned work "
+                           "Use native host tools to edit files and run checks; record the task result once. "
+                           "Release your worktree claim only after this assigned work "
                            "is finished. ")
                         + "Assignment:\n" + assignment)
                     result["submission"] = adapter.start_after_preparation(

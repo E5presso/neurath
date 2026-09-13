@@ -78,7 +78,7 @@ Neurath는 Claude Code와 Codex의 대화가 바뀌어도 프로젝트의 작업
 제공하지 않습니다. 과거 보고는 과거 이력으로 남습니다.
 
 ```text
-명명 MCP 도구 verification_run (현재 입력 스키마 사용) {"check": "check"}
+네이티브 호스트 명령 도구: .neurath/project.json에 등록된 check의 argv와 cwd로 실행
 명명 MCP 도구 learning_status (현재 입력 스키마 사용)
 명명 MCP 도구 learning_history (현재 입력 스키마 사용)
 ```

@@ -137,8 +137,6 @@ actor/session/turn 권위는 네이티브 근거에서만 도출한다.
 | phase_complete, phase_finalize | workflow_id, expected_revision, complete의 phase_id/status/summary/evidence 참조, finalize의 terminal_state, key | PhaseRunner가 진정한 근거를 소비하고 종료 검사를 강제한다. 근거 참조는 실제로 조회·인증하며 문자열 자체를 신뢰하지 않는다. |
 | adaptive_read, adaptive_preflight | workflow_id, preflight에서만 생략 가능 | 기존 adaptive-control 조회/사전 점검. 상태를 변경하지 않는다. |
 | adaptive_replace, adaptive_override_goal | workflow_id, expected_revision, 닫힌 AdaptiveControlState, key | 기존 adaptive 서비스가 모든 typed 절과 source/goal revision을 검증한다. goal override에는 현재 사용자 의도 근거도 필요하다. |
-| material_prepare | batch_id, 닫힌 MaterialActionKind, targets, typed expectations, 선택적 workflow_id, key | 기존 action 준비. 정확한 대상 권한과 기대값을 결속하며 파일 편집이나 명령 실행은 하지 않는다. |
-| material_read, material_resolve, material_abandon | read는 현재 batch, 나머지는 batch_id/expected_revision/닫힌 resolution 또는 중단된 invocation 참조/key | 기존 material 서비스. 호출자의 성공 선언이 아니라 실제 호스트 실행과 readback으로 해결한다. 임의 실행 통로가 아니다. |
 | worktree_inspect, worktree_claim, worktree_release | inspect/claim은 없음, release는 예상 claim revision/token 참조 | WorktreeRegistry가 네이티브 cwd와 정확한 actor로 최초 claim 및 CAS release를 수행한다. 강제 회수, PID 기반 소유권, 호출자 지정 actor는 불가하다. |
 | delegation_prepare, delegation_assign | delegation_id, assignment, key, assign에는 발견된 대상 참조와 workflow_id 추가 | 기존 위임 계약과 상태 서비스. 준비는 직계 자식 관계를 부여하지 않는다. 실제 네이티브 관계 또는 별도의 동료 작업 계약을 검사한다. |
 | evaluation_prepare, evaluation_read, evaluation_execute | workflow_id, typed adaptive 상태 또는 준비된 assignment 참조, execute에는 criterion_id/닫힌 evidence kind/등록된 test 참조 추가 | 기존 adaptive evaluation API. execute는 네이티브 실행 정책을 유지하며 임의 셸이나 평가 결과 발명을 허용하지 않는다. |
@@ -214,3 +212,5 @@ C1 → C2–C5 → C6 → V1이다. 전부 병렬인 계획이 아니다.
 이 파일과 연결된 소스/참조 문서에서 재개한다. Provider별 목록 adapter는 현재 네이티브 기능으로
 확정하고 위 명명 작업 표면을 기존 typed API 위에 구현한다. 고정 가격표, 상업 모델 순위, 구현 완료, 실제 호스트
 인수 통과를 이 문서로 주장하지 않는다.
+
+Material 및 verification 작업은 내부 호환 인터페이스로만 보존하며 공개 MCP 목록에는 노출하지 않습니다. 일반 편집과 검사는 네이티브 호스트 도구로 수행하고 `task_resolve`로 결과를 한 번 기록합니다.

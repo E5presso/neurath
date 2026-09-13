@@ -37,9 +37,9 @@ A declared hook differs from a verified session start. The agent distinguishes i
 
 Sources: [hooks.py](../../../src/neurath/hosts/hooks.py), [identity.py](../../../src/neurath/hosts/identity.py), [memory hooks](../../../src/neurath/memory/hooks.py).
 
-## 2. Invocation checks and material effects
+## 2. Native editing and checks
 
-Suppose the agent decides to edit documentation. It verifies worktree ownership and target baselines. A material batch records targets and expected deltas: created, changed, deleted, or unchanged. Host tools perform the actual mutation.
+The agent claims the worktree, edits with native host tools, runs the relevant checks and records one task result. It does not create a material batch for an ordinary edit.
 
 ```mermaid
 sequenceDiagram
@@ -47,23 +47,17 @@ sequenceDiagram
     participant T as Named tasks
     participant K as State and ownership
     participant H as Host tools
-    participant F as Target files
-    E->>T: worktree_claim / material_prepare
-    T->>K: Identity, owner, targets, baselines
-    E->>H: Authorized edit
-    H->>K: PreToolUse checks and invocation start
-    H->>F: Apply change
-    H->>K: PostToolUse outcome and observations
-    E->>T: material_read / material_resolve
-    T->>K: Compare exact revision and effects
-    K-->>E: Resolution or precise blocker
+    E->>T: worktree_claim / task_start
+    T->>K: Check actual identity and ownership
+    E->>H: Authorized edit and checks
+    H-->>E: Actual execution results
+    E->>T: task_resolve(status, summary, references)
+    T->>K: Record terminal result at exact task revision
 ```
 
-When completion is lost, `material_abandon` records unknown and blocked status rather than manufacturing success. Compare-and-swap (CAS) checks that the revision read earlier is still current. Fencing tokens prevent stale owners from acting under newer ownership. Conflicts require current-state inspection.
+MCP calls bind the actual actor, turn, worktree and input. Expired bindings cannot authorize other calls. Compare-and-swap checks the current revision; fencing tokens reject stale ownership. Unknown execution outcomes remain unknown. Legacy material and verification operations remain internal compatibility interfaces and are absent from public discovery.
 
-MCP calls bind the actual actor, turn, worktree, and exact input at PreToolUse, and close at PostToolUse. Changed requests, expired bindings, and terminated connections cannot authorize other calls. Named tasks do not replace arbitrary file editing.
-
-Sources: [state tasks](../../../src/neurath/runtime/state_tasks.py), [material model](../../../src/neurath/_assets/scripts/agent_harness/material_action.py), [MCP](../../../src/neurath/agents/mcp.py).
+Sources: [task ledger](../../../src/neurath/runtime/task_ledger_tasks.py), [host hooks](../../../src/neurath/hosts/hooks.py), [MCP](../../../src/neurath/agents/mcp.py).
 
 ## 3. Phase progression and independent evaluation
 

@@ -76,6 +76,8 @@ def _document(value, depth=0):
 
 # name: domain, operation, description, fields, read-only
 TASKS = {
+    "harness_bypass": ("harness", "bypass", "Read or switch off Neurath hook constraints for this worktree. Set enabled=true to bypass, false to restore, or omit to read. Host permissions remain unchanged. This switch remains callable while hooks are bypassed.",
+        {"enabled": {"anyOf": [{"type": "boolean"}, {"type": "null"}], "default": None}}, False),
     "session_status": ("session", "status", "Inspect installation, native activation, effective mode and worktree ownership. Default summary omits the capability catalog; detail=full includes it. Diagnostics grant no authority; never fabricate identity, change mode or claim ownership from this report.", {"detail": {**choice("summary", "full"), "default": "summary"}}, True),
     "provider_run": ("provider-execution", "run", "Accept an authorized independent session using its validated model plan and inherit the immediate creator's observed native permission mode. Explicit settings assert equality with inheritance. Return durable run_id immediately; no task lifetime deadline or completion wait. Verify actual model, policy, activation and ownership before assignment. States return to the same issuer through durable messages. Reuse key and request on uncertain retry. Acceptance is not execution or result acceptance. Never resumes a foreign live session. App observation is outside admission.",
         {"worktree": text_field(4096), "assignment": text_field(), "model": text_field(256, default=""),
@@ -200,7 +202,7 @@ OUTPUT_SCHEMA = {
 
 
 SERVER_INSTRUCTIONS = (
-    "Use named Neurath tools with their structured inputs instead of CLI argv. "
+    "Use task tools to record work and native host tools to edit files and run checks. "
     "The native host supplies identity and _neurath_binding; never invent them. "
     "Use session_status for readiness; request detail=full only for capability diagnostics. "
     "Reuse successful mutation results instead of immediately reading the same state again. "
@@ -217,7 +219,8 @@ def definitions():
                              "required": [key for key, rule in fields.items() if "default" not in rule],
                              "properties": {**deepcopy(fields), "_neurath_binding": text_field(64)}},
              "outputSchema": deepcopy(OUTPUT_SCHEMA)}
-            for name, (_, _, description, fields, readonly) in TASKS.items()]
+            for name, (_, _, description, fields, readonly) in TASKS.items()
+            if not name.startswith(("material_", "verification_"))]
 
 
 def _validate(value, rule, path):

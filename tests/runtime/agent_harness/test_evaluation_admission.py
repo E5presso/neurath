@@ -277,7 +277,7 @@ class EvaluationAdmissionTest(TestCase):
             self.assertEqual(before, fixture.owner.inspect().to_payload())
 
     def test_incomplete_return_preserves_material_incident_and_delegation_vetoes(self) -> None:
-        """Evaluator 부재는 열린 변경·incident·위임 작업의 기존 반환 거부를 완화하지 않습니다."""
+        """Material 이력은 보존하고 incident·위임의 기존 반환 조건은 유지합니다."""
         for veto in ("material", "incident", "delegation"):
             with self.subTest(veto=veto), TemporaryDirectory() as directory:
                 fixture = AgentContinuationHookFixture(Path(directory))
@@ -343,8 +343,9 @@ class EvaluationAdmissionTest(TestCase):
                     fixture.repository,
                 )
                 if veto == "material":
-                    self.assertNotEqual(0, yielded.exit_code, yielded.stdout)
-                    self.assertEqual(before.to_payload(), handle.inspect().to_payload())
+                    self.assertEqual(0, yielded.exit_code, yielded.stdout)
+                    self.assertEqual(before.material_actions[handle.actor_id],
+                                     handle.inspect().material_actions[handle.actor_id])
                     continue
                 self.assertEqual(0, yielded.exit_code, yielded.stdout)
                 stopped = fixture.run(fixture.application(), "veto", HookEvent.STOP)

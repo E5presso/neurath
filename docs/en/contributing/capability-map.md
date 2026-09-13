@@ -18,7 +18,7 @@ This map indexes the major package capabilities and all 31 current public skills
 | Host identity and lifecycle | Binds actual start, resume, invocations, and child relationships to the current session. | [identity.py](../../../src/neurath/hosts/identity.py) · [Regression](../../../tests/test_host_lifecycle.py) |
 | Kernel and state access | Explicitly models sessions, actors, turns, workflows, and delegations with checked transitions. | [session_kernel.py](../../../src/neurath/_assets/scripts/agent_harness/session_kernel.py) · [Regression](../../../tests/runtime/agent_harness/test_session_kernel.py) |
 | Worktree ownership | Checks worktree and owning actor against lease and fencing information. | [worktree_registry.py](../../../src/neurath/_assets/scripts/agent_harness/worktree_registry.py) · [Regression](../../../tests/runtime/agent_harness/test_worktree_registry.py) |
-| Material effects | Reconciles prepared targets, invocation results, and post-action observations. | [material_action.py](../../../src/neurath/_assets/scripts/agent_harness/material_action.py) · [Regression](../../../tests/runtime/agent_harness/test_material_action.py) |
+| Legacy material effects | Internal compatibility records retain prior targets and observations; ordinary edits use native tools. | [material_action.py](../../../src/neurath/_assets/scripts/agent_harness/material_action.py) · [Regression](../../../tests/runtime/agent_harness/test_material_action.py) |
 | Phase contracts | Checks required evidence, current phase, and terminal conditions. | [phase_runner.py](../../../src/neurath/_assets/scripts/skill_harness/phase_runner.py) · [Regression](../../../tests/runtime/skill_harness/test_phase_runner.py) |
 | Adaptive control and evaluation | Binds goals, ambiguity, evidence, counterevidence, and stagnation to source and evaluator authority. | [adaptive_control_authority.py](../../../src/neurath/_assets/scripts/agent_harness/adaptive_control_authority.py) · [Regression](../../../tests/runtime/agent_harness/test_adaptive_control_authority.py) |
 | Named tasks and MCP | Dispatches structured input to domain services under native invocation binding. | [tasks.py](../../../src/neurath/runtime/tasks.py) · [Regression](../../../tests/test_communication_mcp.py) |
@@ -55,19 +55,19 @@ A common task surface does not merge authority, stores, or completion semantics.
 
 ## Named task surface
 
-The current registry defines 132 named operations. [Task tools](task-tools.md) lists every exact name; [task_schema.py](../../../src/neurath/runtime/task_schema.py) owns schemas. These groups provide navigation.
+The current registry defines 130 public named operations. [Task tools](task-tools.md) lists every exact name; [task_schema.py](../../../src/neurath/runtime/task_schema.py) owns schemas. These groups provide navigation.
 
 | Group | Representative tasks | Boundary |
 | --- | --- | --- |
 | Diagnostics and routes | session_status, provider_capabilities, provider_route | Diagnostics and routes are not execution or authority |
-| State and material actions | session_inspect, worktree_claim, material_prepare | Preserve actual actor, ownership, revision |
+| State and ownership | session_inspect, worktree_claim, harness_bypass | Preserve actual actor, ownership, revision |
 | Workflows and evaluation | phase_start, evaluation_prepare, evaluation_consume | Creation, reporting, consumption, finalization differ |
 | Models and execution | provider_models, provider_plan, provider_run | Separate inventory, plans, actual-model read-back |
 | Collaboration and reports | collaboration_assign, collaboration_accept, collaboration_report | Peer requests differ from user authorization |
 | Message delivery | collaboration_message, collaboration_ack, delivery_redrive | Separate body read, receipt, effect acceptance |
 | Newsroom | newsroom_headlines, newsroom_read, newsroom_publish | Active title notification differs from body read |
 | Memory and learning | memory_recall, memory_checkpoint, learning_status | Reference reporting differs from validated strategies |
-| Verification | verification_run | Registered checks and current native execution policy |
+| Checks | Native host command tools | Run registered checks under the current native execution policy |
 | Maintenance | releases_prepare, reporting_submit, maintenance_choice_prepare | Exact target, consent, outcome reconciliation |
 
 Registry count is not readiness or a host pass count. Read the currently exposed schema and select a supported execution route.

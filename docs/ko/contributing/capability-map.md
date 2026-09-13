@@ -18,7 +18,7 @@
 | 호스트 신원·수명 | 실제 호스트의 시작·재개·도구·자식 관계를 현재 세션에 연결합니다. | [identity.py](../../../src/neurath/hosts/identity.py) · [회귀](../../../tests/test_host_lifecycle.py) |
 | 커널·상태 접근 | 세션·actor·턴·workflow·위임을 명시적으로 표현하고 전이를 검사합니다. | [session_kernel.py](../../../src/neurath/_assets/scripts/agent_harness/session_kernel.py) · [회귀](../../../tests/runtime/agent_harness/test_session_kernel.py) |
 | 작업 공간 소유권 | 실제 작업 공간과 소유 actor를 lease·fencing 정보로 대조합니다. | [worktree_registry.py](../../../src/neurath/_assets/scripts/agent_harness/worktree_registry.py) · [회귀](../../../tests/runtime/agent_harness/test_worktree_registry.py) |
-| 변경 효과 | 준비한 대상과 호출 결과·변경 후 관측을 대조합니다. | [material_action.py](../../../src/neurath/_assets/scripts/agent_harness/material_action.py) · [회귀](../../../tests/runtime/agent_harness/test_material_action.py) |
+| 기존 변경 효과 기록 | 내부 호환 기록은 과거 대상과 관측을 보존하며, 일반 편집은 네이티브 도구를 사용합니다. | [material_action.py](../../../src/neurath/_assets/scripts/agent_harness/material_action.py) · [회귀](../../../tests/runtime/agent_harness/test_material_action.py) |
 | 단계 계약 | 필수 근거·현재 단계·종료 조건을 검사합니다. | [phase_runner.py](../../../src/neurath/_assets/scripts/skill_harness/phase_runner.py) · [회귀](../../../tests/runtime/skill_harness/test_phase_runner.py) |
 | 적응 제어·독립 평가 | 목표·모호성·근거·반증·정체를 현재 소스와 검토자에 결속합니다. | [adaptive_control_authority.py](../../../src/neurath/_assets/scripts/agent_harness/adaptive_control_authority.py) · [회귀](../../../tests/runtime/agent_harness/test_adaptive_control_authority.py) |
 | 명명된 작업·MCP | 구조화 입력을 도메인 서비스로 전달하고 네이티브 호출 결속을 확인합니다. | [tasks.py](../../../src/neurath/runtime/tasks.py) · [회귀](../../../tests/test_communication_mcp.py) |
@@ -55,19 +55,19 @@ flowchart LR
 
 ## 명명된 작업 표면
 
-현재 등록부는 명명된 작업 132개를 정의합니다. 정확한 전체 이름은 [작업 도구](task-tools.md), 스키마 원본은 [task_schema.py](../../../src/neurath/runtime/task_schema.py)에 있습니다. 다음은 역할별 탐색 경로입니다.
+현재 등록부는 공개 명명 작업 130개를 정의합니다. 정확한 전체 이름은 [작업 도구](task-tools.md), 스키마 원본은 [task_schema.py](../../../src/neurath/runtime/task_schema.py)에 있습니다. 다음은 역할별 탐색 경로입니다.
 
 | 묶음 | 대표 작업 | 주의할 경계 |
 | --- | --- | --- |
 | 진단·경로 | session_status, provider_capabilities, provider_route | 진단과 경로는 실행·권한이 아님 |
-| 상태·변경 | session_inspect, worktree_claim, material_prepare | 실제 actor·소유권·revision 유지 |
+| 상태·소유권 | session_inspect, worktree_claim, harness_bypass | 실제 actor·소유권·revision 유지 |
 | 워크플로·평가 | phase_start, evaluation_prepare, evaluation_consume | 생성·보고·소비·종료는 별도 |
 | 모델·실행 | provider_models, provider_plan, provider_run | 목록·계획·실제 모델 확인 구분 |
 | 협업·보고 | collaboration_assign, collaboration_accept, collaboration_report | 동료 요청은 사용자 승인과 다름 |
 | 메시지 전달 | collaboration_message, collaboration_ack, delivery_redrive | 본문 조회·수신·효과 수락 구분 |
 | Newsroom | newsroom_headlines, newsroom_read, newsroom_publish | active 제목 알림과 본문 조회 분리 |
 | 기억·학습 | memory_recall, memory_checkpoint, learning_status | 참고 보고와 검증된 전략 구분 |
-| 검증 | verification_run | 등록된 검사·현재 호스트 실행 정책 |
+| 검사 | 네이티브 호스트 명령 도구 | 현재 호스트 실행 정책에 따라 등록된 검사 실행 |
 | 유지보수 | releases_prepare, reporting_submit, maintenance_choice_prepare | 정확한 대상·동의·결과 대조 |
 
 등록 개수는 실행 준비도나 호스트별 통과 개수가 아닙니다. 실제 노출된 도구 스키마를 읽고 지원되는 경로를 선택합니다.

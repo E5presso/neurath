@@ -1352,12 +1352,12 @@ class AgentContinuationHookApplication:
             AgentContinuationBlocked: Current actor의 material action, delegation 또는
                 generic foreground workflow가 미완료일 때 발생합니다.
         """
-        material_action = state.material_actions.get(handle.actor_id)
-        if material_action is not None and material_action.status is MaterialActionStatus.OPEN:
-            raise AgentContinuationBlocked(
-                "current actor open material action must resolve before Stop: "
-                f"{material_action.batch_id}@{material_action.revision}"
-            )
+        # The kernel checks the task ledger atomically with foreground close.
+        # Legacy workflow and display state are not additional task completion gates.
+        from scripts.agent_harness.runtime_database import RuntimeDatabase
+        with RuntimeDatabase(handle._repository_control_root()).transaction() as tx:
+            if tx.get("task-ledger", str(handle.session_id)) is not None:
+                return ()
         validate_harness_incidents(state, cwd.resolve())
         self._validate_delegations(state, handle)
         adaptive_control_returns: dict[WorkflowId, tuple[ControlAction, str | None]] = {}
@@ -1578,17 +1578,6 @@ class AgentContinuationHookApplication:
             return
         close_revision = turn.revision
         try:
-            with self._stop_guard(state, handle):
-                state, abandoned = self._abandon_unobserved_material_action(
-                    state,
-                    handle,
-                    turn.generation,
-                )
-            if abandoned:
-                raise AgentContinuationBlocked(
-                    "unobserved material invocation was blocked as UNKNOWN; "
-                    "inspect and reconcile current observables before retrying Stop"
-                )
             workflows = self._validated_stop_workflows(state, handle, cwd)
             stop_timestamp = self._clock()
             monitor_transitions = self._monitor_stop_transitions(
@@ -1650,9 +1639,6 @@ class AgentContinuationHookApplication:
         turn = state.foreground_turns.get(handle.actor_id)
         if turn is None or turn.status is not ForegroundTurnStatus.CLOSED:
             raise AgentContinuationBlocked("subagent terminalization requires a closed turn")
-        batch = state.material_actions.get(handle.actor_id)
-        if batch is not None and batch.status is MaterialActionStatus.OPEN:
-            raise AgentContinuationBlocked("subagent has an open material action")
         if any(
             workflow.owner_actor_id == handle.actor_id and workflow.status is WorkflowStatus.ACTIVE
             for workflow in state.workflows.values()

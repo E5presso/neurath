@@ -55,7 +55,7 @@ flowchart LR
 
 이 그림은 증거의 책임 흐름입니다. 모든 간단한 읽기에 workflow를 만들라는 뜻은 아닙니다. 상태를 소유하는 작업에서는 준비가 실행을 대신하지 않고, 성공 종료 코드가 목표 달성을 대신하지 않으며, 검토 보고가 자동 수락을 대신하지 않습니다.
 
-등록 검사는 정확한 argv·cwd·성공 조건을 실행하고 변경 전후 저장소 지문을 비교합니다. 실행 중 파일이 달라졌다면 성공 코드라도 해당 검증은 실패입니다. 독립 평가는 목표·소스 revision·후보 산출물·근거의 출처를 연결합니다. 다른 테스트의 통과를 원하는 동작의 증거로 바꾸지 않습니다.
+에이전트는 네이티브 호스트 도구로 설정된 argv와 cwd를 실행하고 실제 결과와 소스 기준을 보존합니다. 내부 호환 검증 실행기는 저장소 지문도 비교하지만, 이 기존 실행기는 공개 MCP 필수 절차가 아닙니다. 독립 평가는 목표·소스 revision·후보 산출물·근거의 출처를 연결합니다. 다른 테스트의 통과를 원하는 동작의 증거로 바꾸지 않습니다.
 
 근거: [변경 작업](../../../src/neurath/_assets/scripts/agent_harness/material_action.py), [등록 검사](../../../src/neurath/runtime/verification.py), [평가 권한](../../../src/neurath/_assets/scripts/agent_harness/adaptive_control_authority.py).
 

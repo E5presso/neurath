@@ -93,7 +93,7 @@ flowchart TB
 
 **Guidance:** policy explains common boundaries and terminology; skills describe procedures selected by primary intent and input authority. Executable contracts specify phases, evidence, and terminal conditions. Reading instructions differs from passing a contract. Public names such as `implement-issue` can map to internal identifiers such as `process-ticket`; `skill_names.py` owns that mapping.
 
-**Enforcement:** host adapters handle session, user-input, and tool events. `SessionKernel` models session, actor, turn, workflow, and delegation state. `StateHandle` binds the actual caller to state access. The worktree registry checks ownership. Host editing and shell tools perform file changes; material-action services connect baselines, invocation outcomes, and post-action observations. `material_prepare` does not edit files.
+**Enforcement:** host adapters handle session, user-input, and tool events. `SessionKernel` models session, actor, turn, workflow, and delegation state. `StateHandle` binds the actual caller to state access. The worktree registry checks ownership. Host editing and shell tools perform file changes and checks. The task ledger records one terminal result; ordinary edits do not require material preparation or resolution. Historical material records remain internal compatibility data.
 
 **Continuity:** shared memory supplies relevant goals and decisions to later sessions. Messaging manages delivery and acknowledgment, while providers manage independent runs and reporting through owned connections. Recall does not transfer ownership, and ACK does not approve task completion.
 

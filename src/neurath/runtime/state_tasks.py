@@ -157,10 +157,6 @@ def _material(root, worktree, handle, state, name, fields):
               "batch_id": fields["batch_id"], "idempotency_key": "task:" + name + ":" + fields["key"]}
     turn = state.foreground_turns[handle.actor_id]
     if name == "material_prepare":
-        from neurath.runtime.verification_obligations import VerificationObligations, reconcile_material
-        ledger = VerificationObligations(root)
-        # Preserve the previous canonical batch before the latest-only slot is replaced.
-        reconcile_material(ledger, state, handle.actor_id)
         current = state.material_actions.get(handle.actor_id)
         original = current if current is not None and current.batch_id == fields["batch_id"] else None
         targets, expectations = _expectations(root, worktree, fields, original)
@@ -192,8 +188,6 @@ def _material(root, worktree, handle, state, name, fields):
     else:
         raise TaskError("invalid-input", "unsupported state operation")
     committed = handle.apply(event, expected_revision=state.revision)
-    if name == "material_prepare":
-        reconcile_material(ledger, committed, handle.actor_id)
     return committed.material_actions[handle.actor_id].to_payload()
 
 
