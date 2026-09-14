@@ -1,22 +1,28 @@
 <!-- date: 2026-09-14; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
 
-# Neurath
+<p align="center">
+  <img src="docs/assets/neurath.png" width="720" alt="Neurath's boat, repaired while still at sea">
+</p>
 
-[한국어](README.ko.md)
+<h1 align="center">N E U R A T H</h1>
+<p align="center"><strong>Keep the context. Stay the course.</strong></p>
+<p align="center">A harness for Claude Code and Codex.<br>Shared memory, thoughtful collaboration, and a clear path back to your goal.</p>
+<p align="center"><strong>English</strong> · <a href="README.ko.md">한국어</a></p>
+<p align="center"><a href="#start-with-a-request">Get started</a> · <a href="docs/en/usage/index.md">Usage guide</a> · <a href="docs/en/contributing/index.md">Contributing</a></p>
 
-Neurath is a harness for Claude Code and Codex that brings project instructions, task tracking, verification procedures, and shared memory into an existing Git project. It helps agents carry a request through implementation and checking, retain useful context between sessions, and coordinate work without making you repeat the project's working practices each time.
+---
 
-Its central strategy is to help the agent reconsider its approach as work proceeds. Periodic reminders bring the original goal and acceptance conditions back into view, so the agent can replace an unproductive method without dropping the requested work.
+A new session should not mean starting over. Neurath helps your agents carry decisions forward, share what they learn, and return to the work you actually asked for.
 
-Neurath works with the project's own language, framework, documents, and tests. You describe the outcome you want; the agent uses the relevant procedure and reports what changed and what it checked.
+### Remember. Reconsider. Continue.
 
-## What it brings to your project
+- **Remember the work.** Carry decisions and unfinished tasks between sessions—even when you switch between Codex and Claude.
+- **Keep your bearings.** Bring the original goal back into view, so an agent can change its approach without losing the purpose.
+- **Build together.** Let agents exchange findings and review one another's work while keeping editing responsibilities separate.
 
-- **Project-aware work.** The agent follows your existing instructions and uses the documents and checks connected to the project. A bug fix can start with a reproduction and end with a test result that addresses the reported behavior.
-- **Tasks that survive a change of focus.** Measurable tasks record the original request, dependencies, and results. A side question adds context while unfinished work remains visible.
-- **Continuity between sessions.** Local memory retains observed decisions, results, and remaining work. A later session can retrieve that history and compare it with current source before continuing. If a provider stops because its quota is exhausted, another provider can pull the saved context and adopt unfinished work once the source has stopped safely.
-- **Coordinated agents.** Agents in linked worktrees can exchange findings and work independently in separate workspaces. When a task needs another provider, the agent checks whether that session can carry out the assignment with the requested model and permissions. You can ask the receiving provider to retain its own native settings.
-- **Installation that fits around existing work.** Neurath preserves project instructions, hooks, permissions, dependencies, and the project's virtual environment. Its runtime lives separately, and installation records support updates and restoration.
+The name comes from Neurath's boat: a vessel rebuilt at sea, without a chance to start from dry land. Software grows the same way. Keep what works, learn from what does not, and improve while the work moves forward.
+
+Your project keeps its language, tools, and working practices. Neurath adds the memory and coordination around them.
 
 ## Start with a request
 
@@ -24,7 +30,7 @@ Open your project in Claude Code or Codex and ask:
 
 > Install Neurath in this project from https://github.com/E5presso/neurath. Preserve my existing instructions and settings, connect the project's documents and checks, and confirm that it is active in this session.
 
-The agent inspects the project, prepares the integration, installs it, and checks the result. If the host needs login, project trust, or a new session, the agent explains that specific next step. Installed files and successful diagnostics are reported separately from actual host activation.
+The agent handles setup, preserves your existing settings, and reports whether Neurath is active. If login, project trust, or a new session is needed, it tells you exactly what remains.
 
 Neurath supports macOS and Linux, with Git and Claude Code or Codex. Its installer provisions Python 3.14 for the harness. The default integration supports both hosts; you can request just one. See [installation and maintenance](docs/en/usage/installation.md) for host choices, updates, restoration, and removal.
 
