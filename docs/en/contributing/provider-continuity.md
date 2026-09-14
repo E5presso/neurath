@@ -1,86 +1,104 @@
-<!-- date: 2026-09-14; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree source -->
+<!-- updated: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
 
-# Continue interrupted work with another provider
+# Continue the unfinished work from a receiving session
 
-[한국어](../../ko/contributing/provider-continuity.md)
+[한국어](../../ko/contributing/provider-continuity.md) · [Contributor start](index.md)
 
-When a provider stops before finishing, the receiving session can retrieve its saved context and take over the unfinished work. `memory_pull` reads the shared SQLite records and, when requested, the exact registered native transcript. It does not require a final checkpoint or context push from the source.
+A coding session may end before the user gets the result. In the hypothetical web application, the agent may have confirmed that the save API persists the filter but still need to fix and verify the reload path. The next agent needs both the investigation and a valid right to continue editing. Neurath's `memory_pull` lets the receiving session obtain the retained work and, when safe, adopt its unfinished tasks.
 
-The receiver runs under its own native root in the original source worktree. It first reads a preview, then adopts work only after the source's execution has settled. For ordinary user requests, see [resume from recorded decisions](../usage/memory.md).
+## What is being carried forward
 
-## Keep execution settings and work ownership separate
+**Context** is information presented to the agent for its current reasoning. **Memory** is attributed project information retained across sessions. A **session** is the native host interaction that produced those records. A **checkpoint** is an agent-authored handoff summary with decisions and next steps. A **transcript** is the native host's JSONL record of messages and tool events. A **pull** is the receiver's explicit retrieval of another session's retained work; adoption is the later ownership-changing step.
 
-An independent `provider_run` uses `inherit` by default. To preserve the receiving provider's own existing defaults, hooks, and tool rules, explicitly authorize `target-native` and use that mode in both the plan and execution. Model choice remains a separate plan field. The created session's actual model, policy, activation, and ownership must still be checked.
+The receiver reads source tasks and process state in the shared SQLite database, saved memory, communications, and the exact registered native JSONL. The source does not need to produce a final checkpoint or push a handoff. Already persisted decisions remain available even when it could not finish gracefully. A transcript can recover additional visible work, but no operation can guarantee recovery of provider content that was never persisted.
 
-`memory_pull` does not change the receiver's settings or copy source credentials. Its adoption step transfers unfinished tasks and the worktree lease. Selecting `target-native` alone transfers neither. See [model planning](model-planning-mcp.md) and [provider transports](provider-transports.md) for creation and policy validation.
+Sharing is local to the Git common directory. Linked worktrees and Codex/Claude sessions of that project can share records; independent clones and different machines do not synchronize automatically. The receiving verified native root must be in the original source worktree to adopt its work. It keeps its own native settings and identity.
 
-## Find and preview the source
+App affiliation is a separate diagnostic: `session_status.app_project` reads the app-owned local `thread-project-assignments` to find this session’s assignment, `local-projects` to verify the matching local project, and `projectless-thread-ids` to distinguish an explicitly projectless session. The read is capped at 16 MiB and returns only relevant affiliation fields. It does not change app state, observe remote UI, grant authority, or adopt work. See [the source reader](../../../src/neurath/hosts/app_projects.py).
 
-List candidate source sessions in the same Git project:
+## Preview the exact source before changing ownership
 
-```json
-{"tool":"memory_pull","arguments":{"action":"list","limit":20}}
-```
+1. Call `memory_pull(action="list")` to discover candidates. The default limit is 20 and the maximum is 50.
+2. Select the observed `source_host` and `source_session`. Call `preview` with a stable key. Never guess a session from a familiar title.
+3. Inspect the returned source, task state, native observation, and snapshot `reference`. Read the rest if the preview is limited.
+4. Reconcile the original user acceptance, unfinished work, unknown outcomes, and any source restrictions before considering adoption.
 
-Choose the exact returned source host and session. `source_host` is `codex` or `claude-code`; `limit` defaults to 20 and cannot exceed 50. The identifiers below are placeholders for actual returned values, not identities to invent.
+These operations have `authority="reference-only"`. Preview creates an immutable receiver-owned snapshot; it does not move the lease or make earlier work yours. The registered source JSONL, or its exact Codex archive relocation, is the only transcript source. Private reasoning and known credentials are omitted, while positions, digests, source attribution, and omission notices are preserved. There is no broad scan across conversations.
 
-```json
-{"tool":"memory_pull","arguments":{"action":"preview","source_host":"codex","source_session":"SOURCE_SESSION_FROM_LIST","key":"continuity-preview-1"}}
-```
+## Read large snapshots without losing the boundary
 
-Preview returns a `reference` plus source tasks, memory, communications, and transcript observations. It binds the source ledger, process, memory and communications state, registered transcript observation, and worktree lease basis into an immutable snapshot owned by the receiver. Reading it does not transfer ownership. Preview can help diagnose a source that is not yet safe to adopt.
-
-## Read the available context in bounded pieces
-
-The preview response is bounded to 8,000 UTF-8 bytes so the receiver can obtain its reference before taking ownership, without opening a host tool-output file through the shell. The complete snapshot is preserved. Use `read` to retrieve it in fragments:
+Both preview and read responses fit within 8,000 UTF-8 bytes. A `read` fragment contains at most 3,000 characters and can be shortened further to fit the byte bound. Its `offset` and `next_offset` count characters. They are different from transcript byte positions used by `before_offset`.
 
 ```json
-{"tool":"memory_pull","arguments":{"action":"read","reference":"RETURNED_PREVIEW_REFERENCE","offset":0}}
+{
+  "action": "read",
+  "reference": "<reference returned by preview>",
+  "offset": 0
+}
 ```
 
-Read returns `json_fragment`, `next_offset`, and `total_characters`. Offsets are character positions, not byte offsets. Each fragment contains at most 3,000 characters and is shortened further when needed to keep the complete response within 8,000 UTF-8 bytes. Continue with the returned `next_offset` until the snapshot is read.
+Follow each returned `next_offset` until it is `null`. `json_fragment` is part of the saved snapshot document, so a single page need not be valid standalone JSON. A limited preview supplies `read_remaining` with the correct reference. Reading that document recovers the full saved snapshot, not omitted source material.
 
-| Input | Purpose |
+A preview memory page contains at most 64 entries; individual memory content is capped at 4,096 characters and carries a truncation indication when needed. `memory_before` and `before_offset` select earlier retained memory and transcript portions with a new preview request. `scan_transcript=false` suppresses transcript body inclusion; native identity, source state, and pending-execution checks still apply.
+
+## Adopt only a stopped, settled source
+
+Before adoption, the source must be quiescent: the registered transcript is complete, no tool/process outcomes remain pending, and the native turn is closed or the journal records disconnection. Native children, provider executions, and peer assignments must also be settled. A yielded shell process without a later exit observation is unsettled even if the source stopped speaking.
+
+Read the receiver's `task_list` and use its returned revision. Then call:
+
+```json
+{
+  "action": "adopt",
+  "reference": "<the inspected immutable preview reference>",
+  "expected_revision": 0,
+  "key": "saved-filter-adopt-1"
+}
+```
+
+Here `0` is only illustrative: replace it with the actual receiver revision. Use a distinct key from preview. Adoption checks that the source task/process state, transcript observation, communications, and lease still match the preview. It also checks the current receiving task revision. Any changed basis requires a new preview and reconciliation, not a forced takeover.
+
+The transaction creates receiver-owned IDs for unfinished tasks, remaps dependencies, transfers the source-owned worktree lease, and marks the source as superseded. At most 64 unfinished tasks can be adopted. Completed source history stays attributed to the source. Partial import must roll back every domain. The returned claim is the current claim; old fencing tokens no longer authorize writes.
+
+A migrated source cannot resume task mutations or reclaim the worktree, even after the receiver later releases its lease. Adoption moves continuation responsibility rather than duplicating two active owners. It does not copy permissions or convert a previous failed attempt into cancellation of the user's requirement.
+
+## Resolve the obstacle that the tool actually reports
+
+| Condition | Consequence and recovery |
 | --- | --- |
-| `before_offset` | Request an earlier page of registered JSONL records; use the returned `earlier_offset` for the next preview |
-| `memory_before` | Request an earlier SQLite memory page using the returned cursor |
-| `scan_transcript:false` | Omit transcript content; native identity and unsettled-execution checks still apply |
+| Source is active or execution is unsettled | Preview can remain useful; adoption is unavailable until the real execution settles. |
+| Source state, transcript, or lease changed | Prepare a fresh snapshot and reassess it. |
+| Receiver revision changed | Read the receiver ledger again and reconcile before a new adoption call. |
+| Different worktree or a foreign claim | Receive in the original worktree under valid ownership; do not manufacture a claim. |
+| Snapshot belongs to another receiver | That reference cannot be adopted or read as this receiver. |
+| Legacy workflow lacks task continuation contract | Reference inspection remains available; task adoption is not established. |
+| Unknown previous process outcome | Keep it unknown and settle it through its authorized execution owner. |
 
-A memory page contains at most 64 entries; individual memory content is limited to 4,096 characters and marked when shortened. Large transcript records can be represented by an omission notice, original location, and digest. Reading the full saved snapshot does not reconstruct content that was omitted before it was stored.
+Once adopted, select the returned unfinished task with current task revisions, complete the reload fix and verification, and resolve the original acceptance conditions. Release the adopted lease only when authorized and using its actual returned values. The fact that memory was read, imported, or summarized is not evidence that the filter now survives refresh.
 
-The transcript reader uses the registered JSONL file, or its exact Codex archive relocation, rather than scanning unrelated conversations. It excludes private reasoning and recognized credentials, retains source positions and digests, and treats recovered text as reference material. A saved statement of success is not evidence of an unobserved tool result. Content the provider never persisted cannot be guaranteed recoverable.
+## Evidence for the mechanism
 
-## Adopt only after source execution has settled
+[src/neurath/memory/migration.py](../../../src/neurath/memory/migration.py) implements snapshots, bounds, and atomic adoption. `migration_transcript.py` limits native transcript recovery. Source mutation and claim fences also live in [src/neurath/_assets/scripts/agent_harness/task_service.py](../../../src/neurath/_assets/scripts/agent_harness/task_service.py) and `worktree_registry.py`.
 
-Use the preview's actual `reference` and the receiver's current task-list revision. The example revision `0` applies only to a receiver whose observed list revision is zero.
+[tests/test_memory_pull.py](../../../tests/test_memory_pull.py) covers unchanged-source requirements, task and lease transfer, rollback, dependency remapping, and the persistent source fence. [tests/test_memory_pull_mcp.py](../../../tests/test_memory_pull_mcp.py) covers individually parameterized native-bound pulls without source checkpoints; [tests/test_migration_transcript.py](../../../tests/test_migration_transcript.py) covers transcript boundaries. Individual bidirectional native cases and simulated billing-exhaustion cases are bounded evidence. They are not universal production proof or a guarantee of perfect semantic continuity across every provider interruption.
+## Named input reference
 
-```json
-{"tool":"memory_pull","arguments":{"action":"adopt","reference":"RETURNED_PREVIEW_REFERENCE","expected_revision":0,"key":"continuity-adopt-1"}}
-```
+The tables below are the current named-tool input contract. Nested required fields are required when their parent object or array item is supplied. Schema acceptance is only the first check; native identity, ownership, source, revision, and operation-specific prerequisites still apply. The host supplies `_neurath_binding`; do not synthesize it.
 
-Preview and adoption use different stable keys. Reuse a key only for the same operation and unchanged input. Adoption rechecks source quiescence, task and process state, transcript observation, and lease. A changed source requires a fresh preview, not a forced takeover.
+Every response has `ok` and `operation`. A successful call carries its canonical `result`; a failure carries `error.code`, `error.message`, `error.state`, `error.retryable`, and `error.next_action`. An `ok` envelope establishes the stated operation only, not the user goal. Preserve returned IDs and revisions for dependent calls.
 
-Unobserved tool or process outcomes, active children, unsettled provider jobs, or peer assignments prevent adoption. Retain the preview and the reason when these conditions are unresolved. The interface has no force-takeover option.
+### `memory_pull`
 
-On success, `status:"adopted"` is returned with `task_mapping`, imported `tasks`, the new `claim`, and `source_terminal_tasks`. Up to 64 unfinished tasks receive receiver-owned IDs with dependencies remapped. Terminal history and its evidence remain attributed to the source.
-
-Task import, lease transfer, and the source migration fence commit atomically. A migrated source cannot resume mutation or reclaim the worktree, even after the receiver releases its own lease. This protects against both sessions continuing the same writes. The receiver retains the original goals and completion conditions; changing providers does not weaken them or turn a prior attempt's failure into user cancellation.
-
-## Diagnose the boundary that has not been satisfied
-
-| Observation | Next step |
-| --- | --- |
-| Source still has unsettled execution | Establish the actual tool, child, provider, or peer outcome before adoption |
-| Source state or transcript changed after preview | Obtain a new preview and review its changed basis |
-| Preview response was shortened | Read the saved snapshot with its returned reference and cursor |
-| Original data was never saved | State the missing context; do not claim complete reconstruction |
-| Native project metadata changed | Check desktop project membership separately; CLI-created Codex session association remains unresolved |
-| Updated files but an older MCP connection is still running | Reconnect that connection and check which tools and behavior are active |
-
-`provider_recover` restores the issuer's recorded provider execution. `memory_pull` lets a different native receiver adopt available context and work; it does not impersonate or resume the source. Ordinary [project memory and learning](memory-reference.md) remain available, and imported recovery examples still need the existing validation process before becoming active guidance.
-
-## Implementation and verification scope
-
-[Migration](../../../src/neurath/memory/migration.py) owns snapshots and atomic adoption. [Transcript recovery](../../../src/neurath/memory/migration_transcript.py) owns registered-log lookup and bounded extraction. [The task schema](../../../src/neurath/runtime/task_schema.py) defines inputs, and [provider policy](../../../src/neurath/runtime/provider_policy.py) handles target-native settings.
-
-[Adoption tests](../../../tests/test_memory_pull.py), [MCP tests](../../../tests/test_memory_pull_mcp.py), [transcript tests](../../../tests/test_migration_transcript.py), and [target-policy tests](../../../tests/test_target_native_policy.py) cover deterministic behavior. Native checks cover pull in both directions through adoption, task completion, lease release, and preservation of the existing file. Simulated quota exhaustion does not demonstrate an actual billing-limit event or universal production readiness. Keep delegation, goal-reminder, and source-resumption-fencing evidence attached to the candidate on which each was observed. See [validation](validation.md) for these evidence boundaries. No check establishes perfect semantic recovery or recovery of data the provider never stored.
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `action` | optional; default `"list"` | text: `"list"`, `"preview"`, `"read"`, `"adopt"` |
+| `source_host` | optional; default `"codex"` | text: `"codex"`, `"claude-code"` |
+| `source_session` | optional; default `""` | text; 0–256 characters |
+| `reference` | optional; default `""` | text; 0–71 characters |
+| `key` | optional; default `""` | text; 0–512 characters |
+| `expected_revision` | optional; default `0` | integer; 0–9007199254740991 |
+| `scan_transcript` | optional; default `true` | boolean |
+| `limit` | optional; default `20` | integer; 1–50 |
+| `before_offset` | optional; default `0` | integer; 0–9007199254740991 |
+| `offset` | optional; default `0` | integer; 0–9007199254740991 |
+| `memory_before` | optional; default `0` | integer; 0–9007199254740991 |

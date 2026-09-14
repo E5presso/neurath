@@ -1,85 +1,70 @@
-<!-- date: 2026-09-13; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
+<!-- date: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
 
-# File ownership, transactions, and shared-state cutover
+# How installation preserves a project's work
 
-[한국어](../../ko/contributing/installation-design.md)
+[한국어](../../ko/contributing/installation-design.md) · [Install walkthrough](installation.md)
 
-The installation engine must add a working harness without taking ownership of the surrounding application. It therefore models each managed path as an observed before-state and a proposed after-state, and retains enough private information to reverse a known operation. File placement, canonical installation state, and native runtime activation remain separate responsibilities.
+The installer must add a working agent harness to an existing project without losing the project's instructions, hooks, dependencies, or later edits. It does this by preparing an exact change, checking that the target still matches, and retaining enough information to reverse the change. These mechanisms are shared by installation, updates, uninstall, and restore.
 
-## Project the host integration
+## One package, several owned surfaces
 
-| Target | Managed contribution | Existing content |
-| --- | --- | --- |
-| `AGENTS.md` | Marked instruction block | Surrounding bytes and block placement preserved |
-| `.agents/skills/<name>` | Shared/Codex skill projection | Unowned name collisions rejected |
-| `.codex/hooks.json` | Command hook groups | Other groups preserved |
-| `.codex/config.toml` | Neurath MCP configuration | User configuration and inline hooks preserved |
-| `CLAUDE.md` | New symlink to `AGENTS.md`, or import block in a regular file | Existing regular-file content preserved; conflicting links rejected |
-| `.claude/skills/<name>` | Link to `../../.agents/skills/<name>` | Unowned links and names checked |
-| `.claude/settings.json` | Claude hook groups | Permissions, model preferences, and other groups preserved |
-| `.mcp.json` | Claude MCP server entry | Other servers preserved; reserved-name collisions rejected |
+Neurath's executable source and bundled assets live under `src/neurath`; `src/neurath/_assets` is the independent asset source. Installed skills and rules are projections: generated versions adapted to the target's public names, host configuration, and project bindings. They are not the development source.
 
-A generic profile supplies common rules and empty project-specific binding slots. It does not choose the target's framework, test runner, model, sandbox, or approval preferences. The installer merges its known pieces and refuses configurations whose managed part cannot be isolated safely. Existing inline Codex hooks can coexist with `.codex/hooks.json`; the host may load both and warn, and diagnostics report that condition.
-
-Managed blocks in `AGENTS.md`, a regular `CLAUDE.md`, and `.gitignore` allow edits around the block. A changed block, missing separator whose ownership is ambiguous, or changed owned configuration produces a conflict. A user-edited project binding is deliberately released from installer ownership before later update or uninstall processing.
-
-The common hook events are `SessionStart`, `SessionEnd`, `SubagentStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PreCompact`, `Stop`, and `SubagentStop`. Claude additionally receives `PostToolUseFailure` and `PermissionDenied`. Codex `SessionEnd` has a three-second command timeout. Neurath invokes its own handlers sequentially within one hook command; existing external hook groups retain the host's concurrency behavior. Installation does not introduce model, sandbox, or approval preferences.
-
-## Freeze a plan before writing
-
-[The transaction engine](../../../src/neurath/install/transaction.py) computes a plan containing a schema version, canonical target root, distribution identity, action, profile, hosts, prefix, before/after installation state, checked paths, and ordered changes. Each change retains before/after file bytes, modes, or link targets. Parent paths are observed too, so a symlink introduced after planning cannot redirect a reviewed write.
-
-The plan ID is a digest of canonical plan content. Plans are private: raw plans can contain original credentials or project configuration. [Plan storage](../../../src/neurath/install/plan.py) creates non-overwriting files with mode `0600`, normally below the Git administrative `neurath-plans` directory. Existing destinations and symlink outputs are rejected. The MCP layer exposes an opaque session-artifact reference and a path/action summary, bound to the native actor and target. A plan prepared by another actor or for another worktree is unavailable to the caller.
-
-## Apply under a lock and retain recovery state
-
-Application takes the installation lock and checks for unfinished journals. It then compares all observed paths, recomputes the plan with the current distribution, and requires exact equality. A stale target, modified plan, or changed distribution stops before application. An empty change set returns the plan ID with zero changes.
-
-For a nonempty plan, the installer begins a durable journal, checks each path again immediately before mutation, and uses atomic path replacements. If an error interrupts writes, it reverses already-applied changes whose contents still match the known after-state. Concurrent edits are retained. A rollback conflict keeps the journal so supported recovery can inspect it later. On successful completion, installation state and record are finalized and eligible empty skill directories are pruned.
-
-Canonical installation state and records use the shared runtime database through [InstallStateStore](../../../src/neurath/install/state_store.py); the target's state file is a validated projection. Private plan files and recovery originals remain feature-specific artifacts. A projection that disagrees with canonical state is an error, not an alternative authority.
-
-## Select recovery from the observed state
-
-| Condition | Result and next step |
+| Surface | Installation behavior |
 | --- | --- |
-| Checked file or parent changed since planning | `stale plan`; preserve changes and prepare again after resolving intent |
-| Plan target/distribution/content differs | Reject application; obtain a plan from the correct target and runtime |
-| Managed block, skill, server entry, or link was edited | Ownership conflict; inspect the specific path before deciding how to reconcile |
-| Interrupted installation journal exists | `installation-recovery-required` through MCP; run `installation_recover`, inspect diagnostics, then replan |
-| Recovery path matches neither recorded before nor after | Recovery conflict; preserve that path and journal for explicit reconciliation |
-| Restore ID is missing, corrupt, or from another target | Reject restore; identify the actual installation record |
-| Completed-operation restore sees a changed after-state | `restore conflict`; do not overwrite the later change |
+| `AGENTS.md` | Adds a marked Neurath block while preserving surrounding instructions. |
+| `CLAUDE.md` | A new file can link to `AGENTS.md`; an existing regular file receives a managed import. |
+| `.agents/skills` and `.claude/skills` | Installs selected public skill names and shares them with Claude through managed links. |
+| `.neurath/policy.md`, `.neurath/rules`, `.neurath/reference` | Projects portable policy, rules, contracts, and references. |
+| `.neurath/project.json` | Initializes missing bindings; preserves subsequent user changes. |
+| Host hooks and MCP settings | Adds Neurath entries while preserving existing groups and unrelated settings. |
+| `.neurath/run` | Executes an absolute interpreter with isolated Python imports. |
 
-`restore` reverses a completed installation operation using its record. `recover` rolls an interrupted operation back to its known before-state. Neither is a general reset of the repository. Installation records retain exact source originals privately, including file modes and links. A successful restore uses the retained prior runtime where recorded; deleting runtime environments independently can remove that capability.
+Codex uses `.codex/hooks.json` and `.codex/config.toml`; Claude uses `.claude/settings.json` and `.mcp.json`. Existing inline Codex hooks remain, and diagnostics can point out that the host loads both formats. The installer does not select a model, sandbox, or approval preference for the user.
 
-## Retire legacy shared database writers explicitly
+Hooks cover session start/end, subagent start/stop, user prompt submission, pre/post tool use, compaction, and Stop. Claude also receives tool-failure and permission-denial events. Installed command timeouts are 30 seconds except Codex SessionEnd, which uses 3 seconds; Neurath handlers within one command execute sequentially. Hook registration is installation evidence. An actual host event is needed to establish activation.
 
-Mutable runtime state is canonical in `.neurath/local/runtime.sqlite3` under the Git-common-derived control root. Linked worktrees share that database; independent clones and computers do not automatically share it. Domain namespaces and codecs preserve task, ownership, message, memory, and installation semantics within the shared store.
+## Review a change before it becomes a transaction
 
-Importing a retained legacy database stages data. It does not retire an old process that can still write to the old location. A dormant linked checkout can also launch an old writer later. The [cutover service](../../../src/neurath/install/cutover.py) therefore inspects the four declared SQLite sources, import guards, and all linked-worktree launchers before retiring legacy paths.
+A plan records the resolved worktree root, distribution identity, selected profile/hosts/prefix, observed paths, and before/after file contents, modes, or links. Its identifier is a digest of the plan. A **receipt** is the retained record of that installation operation; its ID supports later restore.
 
-The bootstrap diagnostic path is available independently of normal runtime initialization:
+Native administration exposes an opaque `plan_ref` and a path/action summary through `installation_plan`. Original file contents stay in a private plan file. `installation_apply` accepts a plan prepared for the same actor and worktree. See [exact inputs](setup-reference.md#administer-an-installed-worktree).
+
+Private plan files may contain original configuration and credentials. `write_plan` publishes a complete mode-`0600` file without replacing an existing file or symlink. The default private plan directory uses mode `0700`. This is why a change summary belongs in a report while the full plan belongs in private state.
+
+Apply takes an installation lock, checks the observed target again, and regenerates the expected plan from the current distribution. It journals the transaction before replacing files. It also rechecks each path immediately before writing. An unchanged repeated install returns `changed: 0`.
+
+If a write fails, rollback restores a path only while it still equals the planned before or after state. An unrelated edit is preserved and leaves a recoverable conflict. `stale plan`, `stale or modified plan`, and `concurrent change` identify different points at which that comparison failed.
+
+## Distinguish project edits from managed edits
+
+An edit outside a Neurath instruction block can be preserved on update or uninstall. An edit inside the owned block, an altered managed hook/server setting, or a modified installed skill requires an explicit resolution. The installer will not infer that its old version should replace the new bytes.
+
+A project binding is deliberately editable: `.neurath/project.json` survives update and uninstall after the user changes it. Uninstall restores retained originals and removes owned additions where current state permits. Restore reverses a selected installation record, rather than choosing an arbitrary older package. A prefix is part of installation identity, so an installed prefix change requires uninstall first.
+
+## Understand private state before recovery
+
+Canonical mutable runtime state resides in `.neurath/local/runtime.sqlite3` beneath the Git-common-derived control root. Linked worktrees share that database, with separate roots, namespaces, codecs, revisions, and digests retaining the meaning of each record. Separate clones or computers do not synchronize merely because their repository names match.
+
+Installation states, journals, and receipts are canonical SQLite records. `.neurath/install.json` is a schema-2 reference projection containing `authority: "reference-only"`, a `state_ref`, and a digest; editing it does not rewrite canonical installation state. Plans, restoration originals, and private process artifacts still use purpose-specific files. A shared database does not imply every private file moved into it.
+
+`installation_recover` reverses an interrupted journal after verifying that every affected path is still a known before/after value. A path with other bytes produces `recovery conflict`. Preserve those bytes and inspect the journal and current target before further work. There is no safe interpretation in which that error authorizes overwriting the concurrent edit.
+
+## Retire legacy SQLite sources deliberately
+
+Importing legacy state and preventing an old process from writing it again are separate steps. A shared-store cutover is the explicit retirement procedure for retained legacy databases and launchers, including dormant linked worktrees.
+
+Stop the relevant writers and close SQLite handles before using the bootstrap sequence:
 
 ```sh
-neurath --root /absolute/path/to/project cutover inspect
-neurath --root /absolute/path/to/project cutover prepare
+neurath cutover inspect
+neurath cutover prepare
+neurath cutover inspect
+neurath cutover apply --expected-token RETURNED_INSPECTION_TOKEN
 ```
 
-`inspect` returns status, blockers, sources, launchers, digests, and a token describing the observed state. `prepare` imports only when the canonical database is absent; otherwise it inspects. Stop the relevant database writers before preparation or application. Open SQLite handles, unfinished journals, unknown or modified launchers, changed guards, and unsupported late rows block retirement. Handle inspection requires Unix `lsof`.
+Use `prepare` when initial legacy import must be staged; inspect again afterward and apply only the returned, reviewed token. The procedure requires Unix `lsof` and rejects open handles, journals, unknown launchers, changed guards, and unrecognized late rows. It temporarily fences known launchers, retains originals, replaces legacy database paths with directory tombstones, and commits canonical guards and an audit record.
 
-After reviewing a ready inspection and stopping writers, use that exact returned token:
+For interruption, `neurath cutover recover` restores originals before commit or finishes launcher restoration after commit. Changed paths or damaged backups remain explicit recovery errors. After retirement, update affected worktrees through supported installation and observe placement, protocol, and native activation separately. The ordinary installer stops with an explicit cutover-required error while this prerequisite is unresolved.
 
-```sh
-neurath --root /absolute/path/to/project cutover apply --expected-token TOKEN_FROM_INSPECTION
-```
-
-The service temporarily fences known generated launchers, stores private backups, and replaces old SQLite file locations with directory tombstones. Guards and audit state are updated transactionally while preserving canonical application data. New messages, changed bodies or recipients, and unsupported changes are rejected; only supported lifecycle differences against terminal canonical message records can be reconciled. Permanent tombstones prevent an old runtime from reopening legacy database files. Launchers are restored afterward, and affected worktrees are identified for supported runtime updates.
-
-If interrupted, use:
-
-```sh
-neurath --root /absolute/path/to/project cutover recover
-```
-
-Recovery restores precommit paths or completes postcommit launcher restoration according to the durable journal. Conflicting files and damaged backups are preserved and reported. Installation stays blocked while the cutover journal remains. After affected worktrees are updated, verify placement, protocol, and actual native activation separately. Cutover itself does not certify host activation.
+Source: [transaction engine](../../../src/neurath/install/transaction.py), [private plans](../../../src/neurath/install/plan.py), [state store](../../../src/neurath/install/state_store.py), [cutover](../../../src/neurath/install/cutover.py). Tests: [transaction preservation](../../../tests/test_installer.py), [installation tools](../../../tests/test_installation_tasks.py), [cutover compatibility](../../../tests/test_install_cutover_compatibility.py), [shared state](../../../tests/test_sqlite_install_maintenance.py).

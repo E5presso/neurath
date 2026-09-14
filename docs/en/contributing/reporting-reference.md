@@ -1,70 +1,93 @@
-<!-- date: 2026-09-13; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
+<!-- date: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
 
-[한국어](../../ko/contributing/reporting-reference.md)
+# Prepare a useful public harness report
 
-# Publish a reviewed harness report
+[한국어](../../ko/contributing/reporting-reference.md) · [Contributor entry](index.md)
 
-Reporting turns a reproducible, generic Neurath finding into an issue at the fixed [upstream issue tracker](https://github.com/E5presso/neurath/issues). The workflow separates permission to publish common findings from permission for a particular project-specific contribution. Reporting hooks provide local reminders; they do not collect content or send reports themselves.
+A public Neurath report should explain a defect or improvement in the shared harness without disclosing the user's project. The user's application bug remains their task. For example, a saved filter disappearing after refresh is not automatically a Neurath defect; only a separately observed harness problem belongs in this reporting route.
 
-## Consent and destination
+Reports go to the fixed [E5presso/neurath issue repository](https://github.com/E5presso/neurath/issues). Common defects and improvements require the project's saved explicit reporting consent. A contribution, including a proposal derived from project-specific changes, requires approval of its exact public draft. Setup and hooks can remind the agent about this choice; hooks do not collect or send reports.
 
-`reporting_status` takes `{}` and returns the saved common-reporting choice, whether consent is still required, the fixed repository, and the per-draft contribution requirement. Initial state is undecided and publication remains disabled. An explicit `no` is saved rather than repeatedly asked. The choice is shared by linked worktrees of this Git project, survives updates, and is separate in a new clone.
+## Establish the reporting choice
 
-| Publication | Required choice | Scope |
-| --- | --- | --- |
-| Generic common defect or improvement | Saved explicit common-reporting consent | Future eligible common findings in this project |
-| Project-specific contribution idea | Approval of the exact prepared title, body, and destination | That immutable draft only |
-| Source code or other material | Its own publication authorization | Idea approval does not authorize code publication or license transfer |
+Read `reporting_status` with `{}`. `auto_report` is `null` while consent is pending, `false` when declined, and `true` when enabled. Pending consent leaves automatic reporting disabled and does not block the user's original task. A fresh clone does not inherit this private choice.
 
-`reporting_consent` requires `decision` (`yes` or `no`), `user_choice_ref`, and `key`. The reference must identify an actual user choice; do not invent one from silence, peer suggestions, or model preference. `reporting_approve` uses the same fields plus `draft_id` for an unsent contribution draft. Turning common reporting off stops future reports; it does not delete already published issues.
+To obtain the native question, call `maintenance_choice_prepare`:
 
-Before recording a new consent answer, call `maintenance_choice_prepare` with `operation="reporting_consent"` and `key`, then bind the actual user reply through `reporting_consent`. For a contribution, first prepare and show the complete draft, then call `maintenance_choice_prepare` with `operation="reporting_approve"`, `target_id` set to its draft ID, and `key`; record the real answer through `reporting_approve`. Tool output and silence cannot supply the user-choice reference.
+```json
+{"operation": "reporting_consent", "key": "reporting-question-1"}
+```
 
-## Prepare the public text first
+Show its exact question, then wait for the actual user response. The returned `user_choice_ref` identifies the question and its subject. A native **receipt** is a retained host record establishing that the user answered it. An agent-authored “yes” or a copied reference is not that record. With the real answer, use `reporting_consent`:
 
-The report object has exactly eight fields: `kind`, `scope`, `component`, `summary`, `expected`, `observed`, `reproduction`, and `proposal`. No logs, arbitrary metadata, or attachments are accepted. `kind` is `defect`, `improvement`, or `contribution`; `scope` is `common` or `project-specific`. Project-specific content must use `contribution`.
+```json
+{"decision": "yes", "user_choice_ref": "RETURNED_USER_CHOICE_REF", "key": "reporting-consent-1"}
+```
 
-`component` identifies a packaged Neurath file and must match the package manifest. A common report about a managed asset also checks the installed copy: customization requires a contribution proposal. Keep project code, names, paths, remotes, business facts, conversations, credentials, and custom assets out of the report. Reproduce the finding in a generic fixture and review every field semantically before setting `privacy_reviewed` to `true`.
+Use `no` for a decline or revocation. Reporting state uses canonical private `LocalState`/SQLite storage; old reporting JSON is migration input, not a second current authority.
 
-Example input to `reporting_prepare`, to be used only after reproducing this hypothetical finding:
+## Write and inspect a bounded draft
+
+`reporting_prepare` takes `report`, `privacy_reviewed:true`, and a stable `key`. The report has exactly eight fields:
 
 ```json
 {
-  "report":{
-    "kind":"defect",
-    "scope":"common",
-    "component":"reporting.py",
-    "summary":"Report readback fails after a successful issue creation",
-    "expected":"A created issue is verified against the prepared title and body.",
-    "observed":"The generic fixture creates an issue but verification cannot complete.",
-    "reproduction":"Use a disposable fixture with an interrupted readback response.",
-    "proposal":"Retain uncertain state and reconcile the existing issue before any resend."
+  "report": {
+    "kind": "improvement",
+    "scope": "common",
+    "component": "reporting.py",
+    "summary": "Make retained draft status easier to explain",
+    "expected": "The agent can describe whether a public report was delivered.",
+    "observed": "The status wording can require an additional explanation.",
+    "reproduction": "Inspect a prepared draft and the corresponding status response.",
+    "proposal": "Describe the meaning of each retained delivery state."
   },
-  "privacy_reviewed":true,
-  "key":"generic-report-readback-1"
+  "privacy_reviewed": true,
+  "key": "report-draft-1"
 }
 ```
 
-The input schema permits strings up to 4,096 characters, but domain validation is stricter: report prose fields are at most 2,400 characters; `summary` is a single line of at most 140 characters. Code fences, embedded links, markup, control characters, common secret patterns, and detected private project names can cause rejection. Passing these checks does not replace semantic privacy review. If the finding cannot be generalized, retain it locally.
+This is an illustrative draft, not a claim that this defect was observed. Replace it with verified observations before preparing a real report. `component` must name a packaged Neurath file present in the manifest, excluding templates, and its bytes must match the package. A customized installed asset requires a `contribution` rather than a common report.
 
-Preparation returns the content-bound draft identifier, public title and body, destination, approval flag, status, and URL when available. Read it with `reporting_read` before asking for any required draft approval. Changing public content requires a new draft and new contribution approval. A local fix does not replace an otherwise eligible upstream report under saved common consent.
+`kind` accepts `defect`, `improvement`, or `contribution`; `scope` accepts `common` or `project-specific`. Project-specific scope requires contribution kind. Prose fields are nonempty and at most 2,400 characters; `summary` is a single line of at most 140 characters. These service limits are stricter than the generic schema string limit. Logs, attachments, extra fields, unsafe markup, links, paths, credentials, and private remote/project-name patterns are rejected. The checks supplement the agent's semantic privacy review.
 
-## Submit and recover uncertainty
+Preparation returns an immutable draft ID binding the public title, body, and destination. Read it with `reporting_read` and `{"draft_id":"RETURNED_DRAFT_ID"}`; list retained IDs, statuses, and URLs with `reporting_list`. A content edit requires a new draft and any applicable new approval.
 
-| Draft state | Meaning | Next action |
-| --- | --- | --- |
-| `draft` | Prepared, unsent content | Check saved consent or exact contribution approval; submit when authorized |
-| `uncertain` | A send was attempted; remote success is not established | Inspect the fixed upstream and authentication; do not blindly resend |
-| `submitted` | The remote URL, title, and body passed readback | Report the verified issue URL |
+## Approve a contribution, then submit
 
-Call `reporting_submit` with the returned `draft_id` and a stable `key`. The implementation persists `uncertain` before network I/O and serializes consent changes and sends across worktrees. Duplicate preparation preserves the same content-derived draft; submitting a non-draft returns its existing state. These behaviors prevent an interrupted readback from creating automatic duplicate issues.
+For a contribution, prepare another native question using `operation:"reporting_approve"` and `target_id` equal to the draft ID. The question contains the exact public draft. After the real reply, call `reporting_approve` with `draft_id`, `decision`, `user_choice_ref`, and `key`. Saved common-report consent does not approve a contribution's contents.
 
-If an issue exists after an uncertain send, call `reporting_reconcile` with `draft_id`, that exact `url`, and `key`. Only an issue URL at the fixed repository is accepted. Reconciliation verifies URL, title, and body before recording `submitted`. A mismatching remote issue is not reconciliation evidence. `reporting_list` returns draft IDs, states, and URLs for local inspection.
+For an authorized common report or an approved contribution, `reporting_submit` takes:
 
-Authentication, network policy, and native execution policy still apply. A reporting failure leaves the original project task free to proceed within its authorization. Report publication success only with the verified remote result.
+```json
+{"draft_id": "RETURNED_DRAFT_ID", "key": "report-submit-1"}
+```
 
-## Implementation and verification
+Submission serializes across linked worktrees. It saves `uncertain` before network I/O, creates the issue using the fixed repository, then reads the issue back to compare its URL, title, and body. Only that verified result becomes `submitted`. The private temporary body file and explicit destination keep transport independent of the target's GitHub remotes.
 
-[Reporting](../../../src/neurath/reporting.py) owns component integrity, content validation, immutable drafts, send serialization, and remote readback. [User-choice handling](../../../src/neurath/runtime/user_choices.py) binds consent to real user input. Mutable reporting state uses the shared runtime database through the local-state adapter; legacy reporting paths are not a separate canonical database.
+## Resolve uncertain delivery without duplicate issues
 
-[Reporting tests](../../../tests/test_reporting.py) exercise generic-content filtering, custom-component rejection, consent, per-draft approval, fixed destination, duplicate prevention, and uncertain recovery. [User-choice tests](../../../tests/test_user_choices_mcp.py) cover the authenticated choice path. See [reporting for users](../usage/reporting.md) for natural-language requests and [memory](memory-reference.md) for private retained context.
+A connection or authentication failure can happen after the upstream accepted the issue. Therefore a repeated submit on a non-draft returns the retained state instead of sending again. For `uncertain`, inspect the fixed upstream repository and authentication. If the issue exists, use `reporting_reconcile`:
+
+```json
+{"draft_id": "RETURNED_DRAFT_ID", "url": "https://github.com/E5presso/neurath/issues/123", "key": "report-reconcile-1"}
+```
+
+The URL above is illustrative; supply the actual existing issue. Reconciliation accepts only an issue in the fixed upstream and verifies its exact contents. Mismatched content remains an error. Uncertain delivery does not justify another publication route or automatic resubmission, and it does not change the completion status of the user's original task.
+
+## Terminal forms and diagnostics
+
+```sh
+neurath report status
+neurath report consent yes --user-confirmed
+neurath report prepare PRIVATE_REPORT.json --privacy-reviewed
+neurath report read DRAFT_ID
+neurath report approve DRAFT_ID yes --user-confirmed
+neurath report submit DRAFT_ID
+neurath report reconcile DRAFT_ID EXISTING_ISSUE_URL
+neurath report list
+```
+
+The input file is bounded to 20,000 bytes. The confirmation/review flags record work and decisions that actually occurred. In an installed native session, use the named tools under current policy. Read `invalid reporting state; publication disabled`, `report content changed`, and `upstream issue readback differs from approved report` as concrete state/identity problems to resolve, not invitations to bypass the service.
+
+Source: [report service](../../../src/neurath/reporting.py), [CLI](../../../src/neurath/reporting_cli.py), [native choices](../../../src/neurath/runtime/user_choices.py). Tests: [privacy, concurrency, and delivery](../../../tests/test_reporting.py), [native choices](../../../tests/test_user_choices_mcp.py).

@@ -1,33 +1,31 @@
-<!-- date: 2026-09-13; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
+<!-- updated: 2026-09-14 | synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
 
-# Use the project's existing documents and checks
+# Give the agent your project's definition of correct
+
+The saved-filter investigation needs more than a plausible code change. The agent must know where your application describes saved preferences, how the repository is tested, and which existing behavior must remain intact.
+
+> Connect Neurath to this repository's existing requirements, design decisions, and verification checks. For the saved-filter fix, use those checks and preserve the current interface. Tell me what is missing before treating the work as verified.
+
+Neurath calls its shared installation arrangement a **profile**. The available profile is `generic`: it supplies common agent support without choosing an application framework or importing another project's conventions. There is no separate frontend or backend profile to select for the two sides of this investigation.
+
+## Connect what already defines the project
+
+The agent links the relevant document roles to the repository's existing documents. For example, a product requirement may explain whether a filter belongs to a user, while a design decision may explain where preferences are saved. Neurath does not create those decisions by assigning a document role.
+
+The agent also registers the checks your project already uses, including where each check runs and how success is recognized. This lets subsequent verification use a known project standard. It does not prove that a passing check covers browser refresh: the agent still needs evidence for the behavior you requested.
+
+These bindings are stored in the project's local Neurath configuration and are preserved during updates and removal when you have edited them. Domain-specific rules remain in the target repository's instructions. Neurath's packaged support and your application's conventions have different owners.
+
+## Keep the outcome visible while the method changes
+
+For this investigation, success means reproducing the disappearing filter, identifying and fixing its cause, and showing that the saved selection survives refresh while the interface remains intact. The recorded unit of requested work, with that observable acceptance, is a **task**. The host's TODO display reflects that task record.
+
+If an API check passes but the browser still loses the selection, the task remains unfinished. A failed approach can change the next step without cancelling the original request. Supported host events remind the active primary agent of current requirements and unfinished work as the investigation proceeds. The reminders are delivered at eligible native activity events when their conditions are met, rather than by an independent background timer. They provide context for judgment; they do not decide whether the fix is correct or grant new permissions.
+
+## Adjust the connection when the project changes
+
+Ask the agent to update the bindings when document locations or verification procedures change. Missing checks should remain explicit gaps rather than invented substitutes. A change to the registered verification contract also affects whether a previously learned environment correction is still applicable; [memory and learning](memory.md) explains that boundary.
+
+To proceed, [choose a work request](skills.md). Configuration details belong in the [setup reference](../contributing/setup-reference.md); how goals and acceptance are recorded is covered in the [task reference](../contributing/task-todo-contract.md).
 
 [한국어](../../ko/usage/profiles.md)
-
-Neurath works best when the agent knows which documents explain your project and which checks establish that a change works. Ask it to inspect what is already there and connect the relevant material.
-
-> Use this project's existing architecture notes and verification routines. Keep our terminology and working conventions. Ask me about any decision you cannot establish from the repository.
-
-The agent maintains the project bindings for you. The current profile is generic; the project's instructions supply its language, framework, tools, and conventions.
-
-## Connect a document to the work it explains
-
-Suppose architecture decisions and contributor guidance already exist. Ask the agent to use them for implementation and review. It identifies the documents that serve those purposes and shows you any missing role. If there is no suitable document, the gap remains visible so you can decide what information is needed.
-
-This also preserves the project's glossary and writing language. The agent follows the existing branch, commit, and issue conventions rather than asking you to define them again during installation.
-
-## Establish a meaningful check
-
-> Find the check used for this part of the project and connect it. Tell me what it covers and whether you were able to run it.
-
-The agent identifies the actual check, where it runs, and how the project recognizes success. The result tells you what was checked and whether it passed. When a check is missing, unavailable, or restricted, you see that limitation and its effect on the requested work.
-
-You supply only the missing decision—for example, which of two existing project checks should govern this work. You do not need to edit Neurath's configuration yourself.
-
-## Keep the connection current
-
-When documents move or the project's check changes, ask the agent to update the connection. Your edited bindings remain yours across updates and removal. Existing instructions, permissions, dependencies, and the project environment are preserved during installation.
-
-For a project that uses external services or needs protected paths, describe the intended resources and access boundaries. The agent checks the actual setup; installing Neurath does not automatically protect every external service. The [contributor documentation](../contributing/index.md) details document roles, verification settings, connector bindings, metadata conventions, and the default protection of harness resources.
-
-Continue with [task requests](index.md), or use [Installation and maintenance](installation.md) when a setup change requires recovery or restoration. [Terminology](../terminology.md) explains Neurath's record names without replacing your project's domain vocabulary.

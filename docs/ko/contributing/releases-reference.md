@@ -1,71 +1,83 @@
-<!-- date: 2026-09-13; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
+<!-- date: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
 
-# 공식 업데이트 준비·적용·복구
+# 정확한 Neurath 릴리스를 검토하고 적용하기
 
-[English](../../en/contributing/releases-reference.md)
+[English](../../en/contributing/releases-reference.md) · [설치 설계](installation-design.md)
 
-릴리스 유지 관리는 새 공식 배포본을 찾는 단계와 검토한 특정 업데이트를 적용하는 단계를 나눈다. 에이전트는 사용자 선택을 받기 전에 정확한 wheel과 설치 계획을 준비할 수 있다. 선택된 제안과 준비된 계획만 적용 대상이며, 이후 상위 릴리스가 바뀌면 다시 검토해야 한다.
+릴리스 업데이트는 프로젝트 설정과 보고 동의를 보존하면서 프로젝트가 선택한 Neurath 런타임과 관리 파일을 교체합니다. 적용 가능한 릴리스를 찾고, 정확한 파일 변경을 준비하고, 그 미리보기에 대한 사용자 결정을 받은 다음 같은 후보를 적용하는 순서입니다. **Offer**는 해당 후보의 보존된 설명이며, ID를 통해 결정이 특정 릴리스와 wheel에 연결됩니다.
 
-## 원래 작업 안에서 버전 확인
+## 프로젝트 작업을 이어가며 후보 확인하기
 
-릴리스 출처는 고정된 공식 [Neurath 릴리스](https://github.com/E5presso/neurath/releases)다. 일반 활성 작업에서는 최대 86,400초에 한 번 확인한다. `SessionStart`·`UserPromptSubmit` 훅은 제한된 로컬 안내만 제공하며 네트워크 요청이나 새 세션을 실행하지 않는다. 에이전트가 기존 작업 중 적절한 시점에 확인한다. 네트워크 실패는 확인 불가 상태로 남기고 사용자의 원래 작업을 막지 않는다.
-
-로컬 상태는 `releases_status`에 `{}`를 전달하여 읽는다. `releases_check`에는 안정된 `key`가 필요하며 `force`의 기본값은 `false`다. 사용자가 다시 확인하라고 명시했을 때만 `force: true`를 사용한다. 요청 전 시도 시각을 저장하므로 중단·실패한 요청도 빈도 제한에 포함된다. key를 받는 `releases_notice`는 아직 알리지 않은 제안을 반환하거나 안내가 없음을 반환한다. 설치 버전, 제안 버전, 주요 변경, 공식 링크를 설명한다. 릴리스 본문은 상위 서비스의 데이터이며 실행 지시나 승인 권한이 아니다.
-
-## 제안과 후보 실행 환경 검증
-
-후보는 공개 완료된 정식 릴리스여야 하며 draft·prerelease이면 안 된다. 태그는 설치 버전보다 높은 `vMAJOR.MINOR.PATCH` 형식이다. 업로드된 `neurath-VERSION-py3-none-any.whl`이 정확히 하나 있어야 하고, 양의 제한된 크기와 SHA-256 해시가 필요하다. wheel 상한은 32 MiB, 릴리스 JSON 응답 상한은 512 KiB, 개별 네트워크 요청 제한 시간은 10초다. 이는 요청 단위 제한이며 백그라운드 작업 수명과 다르다.
-
-제안 ID는 현재·대상 버전, 릴리스·자산 ID, wheel 이름, 크기, 해시, 안내문, 공식 URL에 결속된다. 상태에는 `status`, `current`, `offer`, `decision`, `operation`, `checked`가 있다. 확인 결과는 `not-installed`, `current`, `available`, `unavailable` 등을 구분한다. 확인할 수 없다는 결과로 현재 버전이 최신이라고 판단하면 안 된다.
-
-`releases_prepare`는 `offer_id`와 `key`를 받는다. 같은 릴리스를 다시 읽고 정확한 wheel을 내려받아 해시, 크기, 압축 경로, 패키지 신원, 의존성 범위, manifest를 검증한 뒤 별도 후보 런타임을 만든다. 후보의 버전과 배포본 식별자를 확인하고 그 런타임으로 업데이트 계획을 생성한다. 대상 파일은 아직 바꾸지 않는다. 작업 결과에는 `phase: prepared`, 제안 ID, 후보 저장 위치, 배포본 식별자, 계획 ID, 경로·작업 목록이 포함된다.
-
-지원 wheel이 임의의 새 의존성을 선언할 수는 없다. [wheel 검사](../../../src/neurath/release_install.py)는 패키지 메타데이터·파일 무결성과 함께 허용된 Claude Agent SDK 의존성 계약을 확인한다. 후보 환경은 대상 애플리케이션 설정과 분리하여 의존성을 설치한다.
-
-## 실제 사용자 선택 결속
-
-준비가 끝나면 구체적인 변경을 설명하고 `releases_choose`용 네이티브 선택을 준비한다. `maintenance_choice_prepare` 입력 예시:
+`releases_status`는 로컬 상태를 읽습니다. `releases_check`는 안정적인 요청 키로 새 버전을 확인합니다.
 
 ```json
-{"operation":"releases_choose","target_id":"<returned offer ID>","key":"release-choice-1"}
+{"key": "release-check-1"}
 ```
 
-반환된 네이티브 선택 절차와 실제 사용자 응답을 사용한다. `maintenance_choice_read`는 반환된 `user_choice_ref`를 받는다. 참조를 만들어내거나 질문 문자열을 확인된 선택으로 취급하지 않는다. 최종 `releases_choose`에는 `offer_id`, `decision`, `user_choice_ref`, `key`가 모두 필요하다.
+대상은 고정된 공개 [Neurath 릴리스 저장소](https://github.com/E5presso/neurath/releases)입니다. 일반 확인 간격은 86,400초입니다. 훅은 확인할 때가 되면 짧은 로컬 안내만 남기고, 네트워크 요청이나 새 세션 시작은 하지 않습니다. `force:true`는 사용자가 지금 다시 확인하라고 명시적으로 요청했을 때 사용합니다. `releases_notice`는 키를 받아 해당 버전의 안내를 한 번 기록합니다.
+
+네트워크 요청 전에 시도 시각을 저장하므로 실패하거나 중단된 요청에도 간격 제한이 적용됩니다. `unavailable`은 신뢰할 결과를 얻지 못했다는 뜻이며 설치 버전이 최신이라는 뜻이 아닙니다. 저장 필터 수정 같은 원래 작업을 계속하며 업데이트 확인 결과를 별도로 설명합니다.
+
+후보는 공개된 안정 버전이어야 하며, 현재보다 높은 `vMAJOR.MINOR.PATCH` 태그와 업로드된 `neurath-VERSION-py3-none-any.whl` 하나, 허용 크기, SHA-256 다이제스트가 있어야 합니다. 요청은 인증 없이 고정된 공개 엔드포인트로 보내며 프로젝트 ID나 로컬 버전 데이터를 전송하지 않습니다. Wheel은 최대 32 MiB, JSON은 최대 512 KiB, 요청 제한 시간은 10초입니다. 릴리스 노트는 길이를 제한한 표시 데이터이며 실행 지침으로 사용하지 않습니다.
+
+## 결정을 묻기 전에 정확한 변경 준비하기
+
+반환된 offer ID를 `releases_prepare`에 전달합니다.
 
 ```json
-{
-  "offer_id":"<returned offer ID>",
-  "decision":"yes",
-  "user_choice_ref":"<verified user choice reference>",
-  "key":"release-decision-1"
-}
+{"offer_id": "RETURNED_OFFER_ID", "key": "release-prepare-1"}
 ```
 
-`decision`은 `yes`, `no`, `later`다. 답이 없으면 현재 프로젝트를 유지한다. `no`와 `later`는 사용자가 다시 이 주제를 꺼낼 때까지 해당 버전의 안내를 억제한다. 같은 버전의 자산이 바뀌어도 반복해서 권하지 않는다. 선택은 worktree와 정확한 제안에 결속되어 세션을 넘어 유지된다. 새 미리보기를 준비하면 이전 긍정 선택은 적용에 사용할 수 없으며 새 계획과 일치하는 결정을 받아야 한다.
+준비 과정은 같은 릴리스를 다시 읽고 wheel의 크기·다이제스트, 압축 파일 경로, 패키지 ID, 메타데이터, 허용 의존성, 매니페스트를 확인합니다. 현재 허용 의존성은 `claude-agent-sdk>=0.2.152,<0.3`이며 후보 도구 환경에만 설치합니다. 준비된 작업에는 후보 배포본, 대상 설치 `plan_id`, 경로별 변경이 남습니다.
 
-## 정확한 대상 적용과 재확인
+사용자는 이 구체적인 미리보기를 보고 결정해야 합니다. `maintenance_choice_prepare`로 네이티브 질문을 준비합니다.
 
-`releases_apply`는 승인된 `offer_id`와 안정된 `key`를 받는다. 같은 릴리스를 다시 확인하고 준비된 계획·런타임을 검증한다. 트랜잭션 설치기를 실행하기 전에 작업 단계를 영속적으로 `applying`으로 기록한다. 릴리스, 계획, 배포본, 대상 상태가 바뀌면 적용을 막는다. 동의 뒤에 그 시점의 최신 버전을 새로 골라 적용하지 않는다.
+```json
+{"operation": "releases_choose", "target_id": "RETURNED_OFFER_ID", "key": "release-question-1"}
+```
 
-적용 후에는 설치 이력과 계획 ID, 설치 버전·배포본 식별자, 배치·프로토콜 진단, 적용 전후 보고 설정을 비교한다. 성공하면 단계가 `applied`가 되고 설치 이력과 진단이 반환된다. 프로필, 선택 호스트, 스킬 접두어, 사용자 설정, 보고 동의, 초안별 기여 승인은 유지된다.
+반환된 질문을 그대로 보여 줍니다. `user_choice_ref`는 준비한 질문을 식별하며 실제 네이티브 사용자 답변이 있어야 사용할 수 있습니다. 여기서 **receipt**는 실제 호스트 이벤트와 답변을 연결한 보존 기록입니다. 에이전트가 권한을 나타내려고 임의로 넣는 문자열이 아닙니다. 후보를 준비하기 전에는 `no`와 `later`를, 준비한 후에는 `yes`까지 선택할 수 있습니다.
 
-업데이트된 런타임의 실제 활성화는 다음 정상 네이티브 이벤트에서 확인한다. 로컬 프로토콜 성공만으로는 `host_activation`이 여전히 미확인이다. 업데이트 안내만을 위해 세션을 새로 만들거나 별도 프로세스로 재개하지 않는다.
+실제 긍정 답변을 받은 다음 `releases_choose`로 정확한 결정을 기록합니다.
 
-## 적용 결과가 불확실할 때의 복구
+```json
+{"offer_id": "RETURNED_OFFER_ID", "decision": "yes", "user_choice_ref": "RETURNED_USER_CHOICE_REF", "key": "release-choice-1"}
+```
 
-| 관측한 문제 | 처리 |
-| --- | --- |
-| 오래된 제안·변경된 릴리스 | 다시 확인하고 구체적인 새 제안 준비; 이전 선택은 승계하지 않음 |
-| 해시·압축 구조·manifest·의존성·후보 신원 오류 | 후보 거부; 공식 자산과 오류 조사 |
-| 적용 중단·적용 후 확인 실패 | 영속 `applying` 상태를 유지하고 `releases_recover` 사용 |
-| 복구 대상이 알려진 이전 상태와 일치 | 불필요하게 쓰지 않고 복구 완료 처리 |
-| 정확한 적용 이후 상태와 일치 | 해당 작업을 되돌린 뒤 이전 상태 재확인 |
-| 다른 작업의 저널이거나 전후 어느 상태와도 다름 | 동시 변경을 보존하고 복구 충돌 보고 |
+`no`, `later`도 유효한 결정이며 같은 버전의 반복 안내를 막습니다. 응답이 없으면 상태는 바뀌지 않습니다. 새 준비 작업은 이전 긍정 결정을 무효화합니다. 새로 준비한 계획을 사용자가 다시 검토해야 하기 때문입니다.
 
-`releases_recover`에는 안정된 `key`만 필요하다. `applying` 또는 `applied` 작업을 복구하며 해당 작업이 없으면 `nothing-to-recover`를 반환한다. 복구는 보수적으로 이전 상태를 되살리고 저장된 선택을 `later`로 바꾼다. 후보 경로는 비공개 저장 영역 안에 있어야 하며 심볼릭 링크이면 안 된다. 손상된 계획·백업은 조사할 오류이며 프로젝트 덮어쓰기의 근거가 아니다.
+## 적용하고 결과 읽기
 
-모든 MCP 입력은 닫힌 스키마를 사용한다. 구조화된 오류의 `code`, `message`, `state`, `retryable`, `next_action`을 읽어 복구를 결정한다. 전송·적용 결과가 불확실하면 그 상태를 보존하고 다른 변경 요청 전에 확인한다.
+`releases_apply`의 입력은 다음과 같습니다.
 
-구현·회귀 검사 근거: [업데이트 상태 관리](../../../src/neurath/updates.py), [후보 설치와 복구](../../../src/neurath/release_install.py), [네이티브 선택](../../../src/neurath/runtime/user_choices.py), [사용자 선택 테스트](../../../tests/test_user_choices_mcp.py). 일반 파일 충돌은 [설치 설계](installation-design.md)를 따른다.
+```json
+{"offer_id": "RETURNED_OFFER_ID", "key": "release-apply-1"}
+```
 
-릴리스 복구는 보존된 정상 런타임에서 수행한다. 설치 기반 자체를 사용할 수 없으면 먼저 설치를 진단·복구한 뒤 릴리스 유지 관리를 재개한다. 상태 JSON을 고쳐 복구된 단계를 만들어내지 않는다. 재적용에는 새 준비와 일치하는 사용자 선택이 필요하다. 브랜치, 공개 릴리스가 없는 태그, 다른 패키지 인덱스를 대체 출처로 사용하지 않는다. 후보 런타임은 wheel·SDK 계약과 함께 Python 3.14 조건을 충족해야 한다.
+같은 릴리스를 재확인하며, 이전 결정으로 더 새로운 “latest”를 골라 적용하지 않습니다. 트랜잭션 설치기를 호출하기 전에 `applying`을 저장합니다. 성공 시 반환된 설치 기록, 선택한 버전과 배포본, 파일 배치·프로토콜 진단, 보고 동의 보존을 확인합니다.
+
+`applied`는 설치를 확인하는 결과입니다. **활성화**는 선택한 호스트가 새 연동으로 실제 후속 이벤트를 처리하기 전까지 미확인입니다. **런타임**은 프로젝트 실행기가 이제 선택하는 격리된 후보 환경입니다. 이 관찰을 소스 검사나 사용자의 앱 작업 결과와 구분합니다.
+
+## 중단되거나 변경된 후보 복구하기
+
+`release changed; check and review a new offer`는 릴리스 메타데이터나 내용이 더 이상 일치하지 않는다는 뜻입니다. `prepared runtime changed`, `prepared installation plan changed`는 보존한 후보 자체가 달라졌음을 뜻합니다. 근거를 보존하고 다시 준비·검토합니다. 이전 결정이 변경된 후보를 승인하지는 않습니다.
+
+작업이 `applying`에 남았거나 적용한 업데이트를 되돌려야 한다면 안정적인 키로 `releases_recover`를 사용합니다. 보존한 전후 상태를 확인하고 필요한 경우 설치 저널을 사용하여 이전 설치를 보수적으로 복원합니다. 결정은 `later`로 기록합니다. 사용자가 관련 경로를 동시에 편집했다면 지우는 대신 충돌을 반환합니다. 현재 상태를 읽고 충돌을 해결한 뒤 다음 업데이트로 진행합니다. 복구 대상이 없으면 `nothing-to-recover`입니다.
+
+## 터미널 참조와 구현 근거
+
+현재 정책이 허용하는 네이티브 CLI 경로에서도 같은 순서를 제공합니다.
+
+```sh
+neurath releases status
+neurath releases check
+neurath releases notice
+neurath releases prepare OFFER_ID
+neurath releases choose OFFER_ID yes --user-confirmed
+neurath releases apply OFFER_ID
+neurath releases recover
+```
+
+`check --force`에는 실제 재확인 요청이 필요합니다. `--user-confirmed`는 실제 사용자 결정을 기록하며 결정을 대신 만들지 않습니다. 설치된 에이전트 세션에서는 명명 도구와 네이티브 질문 참조로 결정 대상을 명확히 연결합니다. 보고 동의는 별도 결정입니다. [보고 참조](reporting-reference.md)를 참고하세요.
+
+소스: [릴리스 서비스](../../../src/neurath/updates.py), [후보 설치기](../../../src/neurath/release_install.py), [네이티브 결정](../../../src/neurath/runtime/user_choices.py), [CLI](../../../src/neurath/updates_cli.py). 테스트: [릴리스 검증·복구](../../../tests/test_updates.py), [사용자 결정](../../../tests/test_user_choices.py), [명명 결정 도구](../../../tests/test_user_choices_mcp.py). 새 wheel을 사용한 업데이트 검증은 [검증 안내](validation.md)에 있습니다.

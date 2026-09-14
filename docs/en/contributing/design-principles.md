@@ -1,94 +1,68 @@
-<!-- date: 2026-09-14; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
+<!-- last_updated: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
+# Design decisions behind reliable continuation
 
 [한국어](../../ko/contributing/design-principles.md)
 
-# Decisions that keep the harness understandable
+A coding agent should keep pursuing the user's requested result while changing ineffective methods. Neurath's design makes that distinction explicit in durable state. For a saved filter that disappears after refresh, the goal is persistence across save and reload; a particular debugging command, implementation plan, or reviewer is a method.
 
-A harness should make the user's requested outcome easier to reach and easier to verify. Every new state record, required transition or injected instruction should have one identifiable responsibility. A design that records the same completion decision several times needs a simpler authority model before it needs more automation.
+Before reading the rules below, use these terms consistently. A **task** binds a goal to instruction sources and observable **acceptance conditions**. The **root actor** owns that task list within a native **session**. A **worktree claim** records coordinated ownership of the checkout. A **receipt** records one event or report with a specific provenance. A **phase** organizes a skill's procedure, and a **review** assesses a defined scope of work. Their relationships are explained in [architecture](architecture.md).
 
-## Begin with the user's outcome
+## Keep the requested outcome stable and methods replaceable
 
-Define work in terms of an observable result, its source and acceptance conditions. A repository fact, a current user decision and a reversible assumption are different inputs. The goal and gap models retain those differences so that the agent can continue independent work without converting an assumption into permission.
+Task definitions retain the goal, source revisions, and acceptance conditions. The owner selects work that still advances an unmet requirement and reuses results that already cover it. When necessary follow-up becomes concrete, it belongs in the task list before the current task is resolved.
 
-Current user instructions and current source take precedence over memory, peer suggestions and generated plans. A side question can refine an active task without cancelling it. A cancelled or superseded task is recorded explicitly with its reason; deleting it from a display loses the requested-work history.
+A failed persistence approach may justify a new implementation task. It does not justify silently abandoning save/reload behavior, nor does it justify an unrelated framework rewrite. Record the actual outcome of the attempt, retain its history, and define the remaining bounded work from the original requirement. A status question adds conversational context; it does not itself authorize new scope.
 
-## Support reflection without becoming the judge
+The task tools and automatic goal reminder reinforce this judgment. The reminder is reference context, not a classifier that evaluates task necessity or a second completion ledger.
 
-Neurath's central strategy is to return the original task purpose and acceptance conditions to the agent's attention during work. The agent can then ask whether the next step advances an unmet user requirement or only improves its chosen method. A method may be replaced or dropped while the original task remains in force.
+## Use one task list as the task-completion authority
 
-The reminder is context for metacognition, not a quantitative measure of semantic goal convergence. It creates no separate reflection report, task, evaluation loop, or completion gate. Time and token limits constrain waste; they do not authorize weaker acceptance or turn one failed attempt into task cancellation. A status question likewise does not authorize new scope.
+The ledger records `pending`, `in_progress`, `succeeded`, `failed`, and `invalidated`. A native TODO list displays those records in the host's smaller set of visual states. Updating that display cannot create task success. Likewise, a phase label or checkpoint saying “completed” cannot replace task resolution.
 
-Keep investigations proportional to the relevant acceptance conditions. The harness evaluation skill does not require unlimited inventory or generation merely to satisfy its own process. Other skills retain their applicable iteration contracts. Checks use the existing project runner. See [runtime reminders](runtime-lifecycle.md) for the delivery contract.
+This removes duplicate completion accounting while preserving the checks that answer distinct questions: current identity, ownership, exact revisions, delegation results, and the foreground turn. See the [task and TODO contract](task-todo-contract.md) for the distinction between all execution being terminal and all outcomes being successful.
 
-## Give each decision one owner
+## Let the host establish who is acting
 
-| Decision | Authority | Useful supporting information |
-| --- | --- | --- |
-| Is registered work settled at Stop? | Latest canonical task list, checked atomically with root-turn closure | Native TODO display, owner result references |
-| May this participant change this worktree? | Verified caller plus current owner lease and fencing token | Session diagnostics and worktree identity |
-| May a contracted workflow advance? | Its current phase contract and applicable evaluation authority | Evidence artifacts, findings and reports |
-| Has a delegated result been accepted? | Authenticated report and the required owner's consumption | Transport status and peer discussion |
-| Was an installation applied? | Transaction outcome and installed content verification | Plan preview and retained restoration material |
-| May content be published externally? | Applicable user authorization and exact publication contract | Prepared draft and local validation |
+The native host provides session, actor, prompt, and invocation evidence. Named MCP calls use an exact host-issued binding. A tool argument naming a session or project identifies a target; it does not authenticate its caller.
 
-For ordinary tasks, the owner records a terminal result once. A separate workflow, material batch, per-criterion acceptance report or independent task reviewer is not required. Explicit evaluation and review workflows continue to enforce their own contracts when invoked. Their evidence should not become an additional generic Stop vote for a session that has a task list.
+This matters when an implementation agent asks another agent to review the filter API. A same-session subagent and an independent provider session have different native identities and execution arrangements. A recorded assignment or `prepared` result is not proof that either ran. A child cannot inherit root write authority merely because the parent included an identifier in its prompt.
 
-## Use native authority at the boundary
+## Keep ownership explicit and local
 
-The host supplies session identity, current turn and child lineage. Neurath validates those facts before it accepts a mutation. Neither a payload field, a copied environment value, an arbitrary process identifier nor a peer's claim can create this authority.
+A worktree claim coordinates which native actor owns work in a checkout. A successful status read neither acquires that claim nor replaces another actor's ownership. Release requires the observed lease epoch and fencing token, so a delayed release cannot retire a newer owner.
 
-Keep admission tied to the exact operation and input. An approval for a concrete action cannot be expanded to another action by changing arguments after review. A native tool's completed test result also remains a completed observation when the user later asks a question; later turn state must not rewrite what the test actually did.
+Ownership is also separate from host permissions. A valid claim does not widen a sandbox or approve an external effect. Provider plans preserve or explicitly compare execution policy, and the implementation rejects mismatches instead of treating routing success as policy evidence.
 
-Failure should identify which boundary is unavailable: caller identity, active turn, worktree ownership, provider mode or external delivery. A rejected mode is a supported-limit result. Do not introduce a less constrained shell path to make the same request appear successful.
+## Make state changes conditional and replayable
 
-## Make concurrency and retries part of the contract
+Mutations use revisions to compare the caller's observed state with the current state. Idempotency keys identify logical operations. Repeating the same operation with the same key and content can return its recorded result; reusing a key for different content is rejected.
 
-State changes use returned identifiers and expected revisions. A list revision protects a collection; a task revision protects a particular task. A fencing token protects the current generation of worktree ownership. These values cannot be inferred from a title, a previous session or a neighboring worktree.
+The two mechanisms solve different problems. Revision checks prevent an old view from overwriting a new one. Idempotency prevents an uncertain response from duplicating an already accepted operation. Neither permits guessing a new revision or changing a request while keeping its old key.
 
-An idempotency key names one exact request. Retry the same uncertain request with the same key. If the intended input changes, obtain current state and use a new key. Reusing a key with different input is a conflict, not an update mechanism.
+For example, after an API reviewer reports new evidence, the owner rereads the current task state before resolving the filter task. It does not assume that the list revision captured before review remains current.
 
-Put read-and-decide operations that must agree in one transaction. The task Stop check and turn closure are the representative case: a concurrent append must either be visible to that closure or occur after it under valid admission. Checking an old snapshot and then closing separately permits lost work.
+## Describe the strength of evidence precisely
 
-## Keep reporting proportional to assurance
+Native tool submission, task outcome reporting, review consumption, installation, and app observation establish different facts. A task result artifact identifies the owner, task definition, references, and report. Its `agent-report` assurance does not claim independent semantic verification.
 
-| Observation | What it establishes |
-| --- | --- |
-| `accepted` or queued operation | Admission of a request |
-| Native process start | An execution began |
-| Check output and exit status | The observed check result within that execution's scope |
-| Owner task result | The owner's authenticated account of the outcome |
-| Independent evaluation consumed | The required evaluator assessed the exact candidate and the owner consumed that result |
-| Remote readback | The external system contains the observed publication or update |
+The same discipline applies to provider execution. `accepted` establishes durable admission, a lifecycle event reports progress, and a final authenticated result supplies content to assess. Delivery acknowledgement says the recipient read a message. The owner still decides whether the reported behavior meets the task's acceptance conditions.
 
-A message acknowledgement does not consume an assignment result. A checkpoint preserves context and progress. Neither is a worktree ownership transfer. Keep these distinctions in result objects and in user-facing reports without repeating every boundary in every paragraph.
+## Preserve unfinished work across interruptions
 
-## Preserve the host and the project
+Memory stores context and supports explicit migration. A checkpoint is an agent-authored handoff. A preview is reference data. Adoption is a separate state transition with source-quiescence and revision checks; it does not impersonate the source session. Once migration commits, the source is fenced from further execution writes and retains its historical outcomes.
 
-The generic profile binds to real project documents and checks. It does not prescribe an application framework or replace existing dependencies. Installation preserves user instructions, hooks, host permissions and edited project settings. Immutable plans allow conflicts to be reviewed before applying exact replacements.
+For the filter example, a useful handoff includes the save/reload reproduction, the changed persistence path, the API review result, the outstanding observation, and the verified project test command. The receiver uses these facts to continue the same goal rather than repeating every earlier command.
 
-Host adapters should translate native events into the common model while retaining host-specific evidence. Codex and Claude Code need different child verification procedures; forcing identical payload shapes would conceal that difference. Runtime execution environments remain separate from the target application environment.
+## A normal Stop must satisfy the current domain checks
 
-## Bound retained context
+Neurath rejects each current normal Stop until the kernel prerequisites are met. There is no exemption for a status question, elapsed time, repeated rejection, or `stop_hook_active`. The host owns explicit user interruption separately.
 
-Memory should retain decisions and facts needed for future work, with provenance and size limits. It should not collect hidden reasoning or make every remembered preference an active rule. Keep recent-session facts, project history, learned strategies and approved repository rules distinct. Recheck mutable repository and runtime facts before relying on them.
+The Stop adapter revalidates the current root, turn, transcript, and connection before requesting continuation. A stale or foreign event cannot close newer work or grant another execution turn. A denial means the agent must inspect and address the actual unresolved prerequisite; it is not evidence that a task failed or was cancelled.
 
-Publish reusable behavior and source references. Keep installation originals, native transcripts, host identifiers, private paths and detailed validation receipts in private storage. Public documentation explains how to reproduce a verification dimension without presenting an old run as current acceptance.
+## Keep the product independent of its development environment
 
-## Review a proposed change
+The package owns its executable assets. Installed projects retain their existing instructions, hooks, permissions, and dependencies. Public documentation describes supported behavior and reproductions without embedding private repository origins, local runtime state, or installation receipts.
 
-Ask whether it has a clear user-visible outcome, one completion authority, exact source and identity binding, bounded failure recovery and a relevant regression test. Remove duplicate help probes and redundant bookkeeping where the named schema already supplies the information. Claims of speed or token savings need measurements; schema simplicity alone establishes a design intention.
+When extending Neurath, locate the requirement at its natural boundary: host evidence in the adapter, a domain invariant in the kernel, an operation's input contract in its schema, or a reusable procedure in the source skill. Add validation that observes that boundary. Avoid adding a new ledger, status flag, or gate to restate an existing decision.
 
-Use [architecture](architecture.md) for module boundaries, [task tools](task-tools.md) for operation contracts and [validation](validation.md) for the observations needed to substantiate a change.
-
-## Sources for design review
-
-Use these implementation references to test whether a change preserves the responsibilities described above. Compatibility code is relevant only when reviewing a retained saved-call path.
-
-| Responsibility | Source and regression reference |
-| --- | --- |
-| Goals, phases and evaluation | [adaptive_control.py](../../../src/neurath/_assets/scripts/agent_harness/adaptive_control.py), [adaptive_control_authority.py](../../../src/neurath/_assets/scripts/agent_harness/adaptive_control_authority.py), [efficiency_assessment.py](../../../src/neurath/_assets/scripts/agent_harness/efficiency_assessment.py), [evaluation_loop.py](../../../src/neurath/_assets/scripts/agent_harness/evaluation_loop.py) |
-| Host and exact-call admission | [harness_persona_policy.py](../../../src/neurath/_assets/scripts/harness_persona_policy.py), [mcp.py](../../../src/neurath/agents/mcp.py), [hooks.py](../../../src/neurath/hosts/hooks.py), [identity.py](../../../src/neurath/hosts/identity.py), [tasks.py](../../../src/neurath/runtime/tasks.py), [test_prompt_delivery.py](../../../tests/test_prompt_delivery.py) |
-| Messages and provider lifetime | [delivery.py](../../../src/neurath/agents/delivery.py), [store.py](../../../src/neurath/agents/store.py), [permission_inheritance.py](../../../src/neurath/providers/permission_inheritance.py), [supervision.py](../../../src/neurath/providers/supervision.py) |
-| Bounded retained context | [graphify](../../../src/neurath/_assets/.agents/skills/graphify/SKILL.md), [promote-memory](../../../src/neurath/_assets/.agents/skills/promote-memory/SKILL.md), [enclave_store.py](../../../src/neurath/_assets/scripts/agent_harness/enclave_store.py), [learning.py](../../../src/neurath/memory/learning.py), [store.py](../../../src/neurath/memory/store.py), [test_learning.py](../../../tests/test_learning.py) |
-| Preserving installation and user choices | [projection.py](../../../src/neurath/install/projection.py), [transaction.py](../../../src/neurath/install/transaction.py), [release_install.py](../../../src/neurath/release_install.py), [reporting.py](../../../src/neurath/reporting.py), [maintenance_tasks.py](../../../src/neurath/runtime/maintenance_tasks.py), [user_choices.py](../../../src/neurath/runtime/user_choices.py) |
-| Saved-call compatibility | [material_action.py](../../../src/neurath/_assets/scripts/agent_harness/material_action.py), [verification.py](../../../src/neurath/runtime/verification.py) |
+Use [runtime lifecycle](runtime-lifecycle.md) for transitions and [task tools](task-tools.md) for exact calls.

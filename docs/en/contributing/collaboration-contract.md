@@ -1,84 +1,265 @@
-<!-- date: 2026-09-13; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
+<!-- updated: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
 
-[한국어](../../ko/contributing/collaboration-contract.md)
+# Share findings and delegate bounded work
 
-# Deliver work without losing who said what
+[한국어](../../ko/contributing/collaboration-contract.md) · [Contributor start](index.md)
 
-A collaboration message is a durable, attributed envelope addressed to a logical recipient. The delivery contract preserves its identity and content across transport retries, while task acceptance and task effects remain separately observable. It assumes intact durable storage and an eventually available, authorized receiver. Until those conditions hold, pending delivery or a repair requirement is the accurate result.
+A second agent is useful when it has relevant knowledge or can investigate a separate question. Neurath gives that cooperation durable messages and explicit ownership. In the running example, the user's web application loses a saved filter after refresh. The current agent checks how the page restores the value while a peer investigates API storage and responses. A useful collaboration result says which question was answered, what was observed, and what remains for the original owner to verify.
 
-## Persist first, notify second
+## Choose the relationship before sending work
 
-The envelope retains `message_id`, sender, logical recipient, kind, conversation, payload and digest, creation time, and optional task or reply linkage. The store commits before returning success or notifying a transport. A caller's stable key remains visible to the recipient even when the immediate notice includes only a lookup ID.
+A **peer** is an existing independent native session. Discover a peer before addressing it; its own user instructions still govern what it can do. A **native child** is a direct child of the current session with host-attested lineage. A **provider session** is a new independent native root whose execution Neurath supervises. These relationships have different creation and reporting paths.
 
-Use `collaboration_register` to announce the authenticated participant and `collaboration_discover` to find an exact address. Never substitute a guessed native UUID, PID, actor, or socket for a discovered logical recipient. Shared state belongs to the Git-common project runtime database; separate clones do not automatically share a mailbox.
+`collaboration_register(name, summary)` describes the current native participant. `collaboration_discover(query, limit)` searches the same local Git project and returns exact addresses. For example, search for saved-filter persistence before asking a peer whether the API stores the selection. An address is a destination, not authority to make that peer edit files. Registration, discovery, and assignment acceptance do not confer a worktree claim.
 
-`collaboration_send` accepts either the single-message fields `to`, `message`, `key`, `kind`, or a `messages` array. Do not mix the forms. Each batch entry has a nonempty recipient array, message, and key; a batch commits atomically to its exact recipients. The same key and same content deduplicate; changed content under that key conflicts. For example, after replacing the illustrative address with an actual discovered address:
+Linked worktrees share this project's local communication store through their Git common directory. Independent clones and different computers do not acquire a shared conversation merely because their repository URLs match.
 
-```json
-{
-  "messages":[
-    {
-      "to":["DISCOVERED_PEER_ADDRESS"],
-      "message":"Please check whether the documented response matches the current API test. Read-only analysis only.",
-      "key":"response-contract-question-1",
-      "kind":"question"
-    }
-  ]
-}
-```
+## Use a message for a question and an assignment for work
 
-The single form accepts up to 16,000 characters of message text. A batch allows up to 32 entries, up to 32 unique recipients per entry, and up to 32,768 characters per entry. These structural limits do not authorize a wider audience or new work.
+`collaboration_send` sends a question, proposal, update, or result. Supply either `to`, `message`, and `key`, or a `messages` batch. The forms cannot be mixed. A batch accepts up to 32 items, each with up to 32 distinct recipients; after fan-out the request is limited to 100 deliveries and 262,144 UTF-8 body bytes. A batch body is capped at 32,768 UTF-8 bytes. Retrying an uncertain send keeps its key and identical content.
 
-## Read the body before acknowledging
+`collaboration_assign(to, message, key)` records an authorized assignment to a discovered peer. The receiver uses `collaboration_accept(task_id)` in its actual native turn; this emits `started`. The receiver's turn is then bound to the lifecycle, so an unrelated later turn cannot finish the assignment. A disconnected receiver must return through a fresh verified turn before continuing.
 
-| State | Established fact | Still unestablished |
+A precise assignment might ask: “Investigate API storage and responses for the saved filter. Determine whether saving persists the selected value and returns it. Return observations and source locations.” It should also state any authorized write scope. The original agent continues its reload investigation and integrates the evidence against the original acceptance conditions.
+
+## Delivery, reading, and success are different events
+
+| Observation | What it establishes |
+| --- | --- |
+| `queued` | The send was durably admitted. |
+| Native submission | The selected transport accepted a notification. |
+| Full message read | The authenticated participant retrieved the body. |
+| Acknowledgement | The recipient acknowledged an already-read message. |
+| Assignment accepted / `started` | The bound native turn accepted execution. |
+| Lifecycle/result report | The executor or provider supervisor reported a particular outcome. |
+| Original task resolved | The owner recorded an outcome against the original task and its evidence. |
+
+Use `collaboration_inbox` to find pending messages and `collaboration_message(message_id)` to read a complete body. A notification preview is insufficient for acknowledgement. `collaboration_ack` accepts either one `message_id` or up to 100 `message_ids`; every item must belong to the recipient and have full read evidence. One invalid item rejects the entire batch. Re-acknowledging an already-read duplicate is allowed.
+
+`collaboration_reply(message_id, message, key)` replies and acknowledges atomically. `collaboration_forward` prepares a native notification route; it does not send the notification itself. Execute the returned tool through its owning host, then call `collaboration_submitted` only after that native tool reports successful submission. A sender's submission report remains distinct from the receiver's acknowledgement.
+
+For ordinary peer assignments, `collaboration_report` allows `started`, `waiting`, `error`, `failed`, `cancelled`, and `completed` from the bound executor. Independent provider sessions have lifecycle and final responses forwarded by their supervisor. They do not need to imitate the supervisor with duplicate reports; explicit peer messages still use send/reply when requested. `collaboration_task` is a diagnostic read after an event or problem, not a polling loop.
+
+## Publish discoveries that more than one peer may need
+
+The **Newsroom** is a shared, attributed discussion of findings. For the filter investigation, an agent might publish “Reload skips saved filter” with the relevant source and test evidence in the body. Currently active native peers receive only the title, article identifier, and revision. They choose whether the body is relevant and call `newsroom_read` to retrieve it.
+
+`newsroom_publish` takes a title of at most 30 Unicode characters, a bounded body, and a stable key. The named tool caps body text at 16,000 characters and the storage layer additionally enforces a 32,768-byte limit. `newsroom_revise` preserves correction history, while `newsroom_comment` adds attributed discussion to the specified revision. `newsroom_read(history=true, after=..., limit=...)` explicitly pages history and comments; the default body read does not expand them. `newsroom_seen` marks the delivered event as seen.
+
+Headlines are delivered at eligible hooks to active peers without subscription. The mechanism does not wake inactive sessions or replay the backlog from an inactive period. It also does not insert article bodies into ordinary shared memory. Publishing, reading, commenting, and subscribing are knowledge-sharing actions; each remains separate from a user's authorization or task completion.
+
+## Recover the original conversation
+
+An uncertain transport outcome keeps the original message identity and sender/recipient binding. Unacknowledged messages are retained across delivery budgets, TTL, and connection closure unless explicitly cancelled. Service recovery can redeliver an uncertain message; stale generations must not undo a newer acknowledgement or owner.
+
+Use `delivery_status` for an observed delivery problem. After a real repair, `delivery_redrive` needs the exact message ID, current revision, repair reference, and stable key. It retries the same message. It cannot rebind a message to an arbitrary recipient or revive a cancelled message. A closed or expired participation binding needs valid native reconnection; inventing an address or ownership record is not recovery.
+
+For native children, `delegation_prepare` records one immediate spawn intent and can bind an exact task revision. The subsequent native spawn must prove a direct parent relationship; copied parent references and nested spawning do not establish supported lineage. Preparation alone is not execution. Independent roots instead follow [provider planning and execution](provider-transports.md). A received peer report also does not confer independent evaluator authority: an explicit review requires the correct role, exact candidate, and authenticated consumption.
+
+## Implementation and regression references
+
+Communication state lives in [src/neurath/agents/store.py](../../../src/neurath/agents/store.py), `lifecycle.py`, `delivery.py`, `delivery_recovery.py`, and `newsroom.py`; named inputs are defined in [src/neurath/runtime/task_schema.py](../../../src/neurath/runtime/task_schema.py) and `communication_schema.py`. Focused coverage includes [tests/test_agent_delivery.py](../../../tests/test_agent_delivery.py), [tests/test_newsroom.py](../../../tests/test_newsroom.py), [tests/test_provider_reply_route.py](../../../tests/test_provider_reply_route.py), and [tests/runtime/agent_harness/test_delegation_evidence.py](../../../tests/runtime/agent_harness/test_delegation_evidence.py). Delivery tests cover body-read ACK checks, restarts, old generations, and resumed native turns; Newsroom tests cover title-only delivery, corrections, and inactive periods.
+## Named input reference
+
+The tables below are the current named-tool input contract. Nested required fields are required when their parent object or array item is supplied. Schema acceptance is only the first check; native identity, ownership, source, revision, and operation-specific prerequisites still apply. The host supplies `_neurath_binding`; do not synthesize it.
+
+Every response has `ok` and `operation`. A successful call carries its canonical `result`; a failure carries `error.code`, `error.message`, `error.state`, `error.retryable`, and `error.next_action`. An `ok` envelope establishes the stated operation only, not the user goal. Preserve returned IDs and revisions for dependent calls.
+
+### `collaboration_register`
+
+| Field | Presence / default | Type and limits |
 | --- | --- | --- |
-| `queued` | Envelope stored durably | Transport acceptance |
-| `submitted` | Host transport accepted the input | Recipient read or ACK |
-| `received` | Intended recipient acknowledged receipt | Work acceptance or effects |
-| `replied` | Recipient response stored | Issuer acceptance of the task result |
+| `name` | required | text; 1–256 characters |
+| `summary` | optional; default `""` | text; 0–4096 characters |
 
-The recipient uses `collaboration_inbox` and `collaboration_message` to read the complete body. `collaboration_ack` can take one `message_id` or a `message_ids` array for bodies already read. An ID-only notice or failed body lookup is insufficient. `collaboration_reply` takes `message_id`, `message`, and `key`; it records ACK and response atomically.
+### `collaboration_discover`
 
-ACK is authenticated as the intended recipient, durable, and idempotent. An already-read duplicate can be acknowledged again. ACK stops delivery retries; it does not accept a task or certify an external effect. The contract tolerates duplicate transport delivery and ACK. Exactly-once external effects are not guaranteed, so effectful task code must handle its own deduplication where required.
-
-Ordinary peer work uses `collaboration_assign` → `collaboration_accept` → `collaboration_report`. Report states are `started`, `waiting`, `error`, `failed`, `cancelled`, and `completed`. The issuer reads the result and retains follow-up responsibility until accepted completion, cancellation, or verified handoff. A peer request is subordinate to the real user's authority. An ordinary peer report does not become an independent evaluator result for an explicit phase contract.
-
-## Retry the same envelope
-
-Owned transports redeliver the same ID, key, recipient, and body. Per-attempt deadlines and backoff control frequency; they do not expire an ordinary task or exhaust its durable chances. Database changes, native readiness, reconnection, and per-message deadlines drive attempts. Approval and input waits need the relevant readiness event. Unavailable endpoints back off instead of spinning or polling task status.
-
-A sending, uncertain, failed, or unacknowledged submitted attempt remains eligible for supported retry. Receiver process absence or a lost ACK is not by itself a dead-letter condition. A receiver endpoint generation and ACK fence late old-attempt results, while leases prevent identity takeover. A new native session UUID does not automatically inherit another mailbox.
-
-When `collaboration_forward` returns an exact supported host tool and arguments, execute that route and call `collaboration_submitted` only after actual tool success. A route proposal is not submission. If no supported immediate bridge exists, the message stays queued for a supported hook or resume. Reading shared history cannot create a Desktop wakeup bridge.
-
-`collaboration_conversation` reads conversation state. The ordinary default budget is 32 messages over 24 hours; this can limit new activity without deleting accepted pending messages. `collaboration_close` retains pending obligations or records explicit authorized cancellation. Closing does not transfer ownership. Durable subscriptions use `collaboration_subscribe`, `collaboration_publish`, and `collaboration_unsubscribe`.
-
-## Diagnose a held delivery
-
-`delivery_status` requires `message_id` and returns current delivery state, recent attempts, and any repair hold. A dead-letter hold retains the body, failure history, and repair requirement. Current classifications include envelope-version and recipient-binding problems.
-
-After repairing the actual cause, the authenticated owner calls `delivery_redrive` with the same `message_id`, the returned `expected_revision`, `repair_reference`, and a stable `key`. The reference documents the repair; it does not prove that the transport is now valid. The real route revalidates while preserving the original recipient and content. Redrive cannot widen permissions, revive cancelled work, or rebind a recipient by editing private database rows.
-
-| Interruption | Required retained information | Recovery observation |
+| Field | Presence / default | Type and limits |
 | --- | --- | --- |
-| Receiver dies before send | Original envelope and key | Delivery resumes to the authorized restored receiver |
-| Receiver dies after input, before ACK | Same body and attempt history | Duplicate body can be read and ACKed |
-| Transport or ACK response is lost | Uncertain or unACKed attempt | Supported retry converges without inventing receipt |
-| Old attempt completes after endpoint changes | Generation and current ACK | Late result cannot undo the new state |
-| Conversation expires or closes with pending input | Accepted obligations | Pending or explicit cancellation remains visible |
-| Repair hold is released | Revision, repair reference, original envelope | Actual transport validation determines progress |
+| `query` | optional; default `""` | text; 0–16000 characters |
+| `limit` | optional; default `20` | integer; 1–100 |
 
-## Share findings with active peers
+### `collaboration_inbox`
 
-The newsroom distributes concise findings without copying entire conversations. `newsroom_publish` takes `title` (1–30 characters), `body` (1–16,000 characters), and `key`. Normal host events expose a title and lookup ID; interested peers read the body with `newsroom_read`. `newsroom_headlines` and `newsroom_peers` support discovery, and `newsroom_seen` records observation.
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `limit` | optional; default `20` | integer; 1–100 |
+| `conversation` | optional; default `""` | text; 0–512 characters |
+| `include_read` | optional; default `false` | boolean |
 
-Corrections use `newsroom_revise` with `article_id`, current `revision`, `title`, `body`, and `key`; comments use `newsroom_comment` with the same identity and revision plus body and key. Attribution and revisions are retained. Currently active attested sessions and children participate; activity expires after 10 minutes. Hook notices are bounded to 3,000 bytes, and publish/revise/comment operations are limited to 20 per author per minute.
+### `collaboration_send`
 
-Idle, paused, and ended peers are not woken. Notices missed while inactive are not replayed. Article bodies are not automatically copied into memory, a parent conversation, or upstream reporting. An article is a report with attribution, not an approved specification or certified result.
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `to` | optional; default `""` | text; 0–512 characters |
+| `message` | optional; default `""` | text; 0–16000 characters |
+| `key` | optional; default `""` | text; 0–512 characters |
+| `kind` | optional; default `"question"` | text: `"question"`, `"proposal"`, `"update"`, `"result"` |
+| `messages` | optional; default `[]` | array; 0–32 items |
+| `messages[].to` | required | array; 1–32 items; text; 1–512 characters; distinct |
+| `messages[].message` | required | text; 1–32768 characters |
+| `messages[].key` | required | text; 1–512 characters |
+| `messages[].kind` | optional | text: `"question"`, `"proposal"`, `"update"`, `"result"` |
 
-## Implementation and acceptance
+### `collaboration_message`
 
-[Agent storage](../../../src/neurath/agents/store.py), [delivery](../../../src/neurath/agents/delivery.py), [recovery](../../../src/neurath/agents/delivery_recovery.py), and [newsroom](../../../src/neurath/agents/newsroom.py) own these behaviors. [Communication tests](../../../tests/test_communication_mcp.py), [delivery-recovery tests](../../../tests/test_delivery_recovery.py), and [newsroom tests](../../../tests/test_newsroom_mcp.py) cover schema and fixture behavior.
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `message_id` | required | text; 1–512 characters |
 
-Native acceptance additionally needs all four Codex/Claude directions, idle issuer delivery through the owned connection, death before and after send, lost ACK, stale generations, retained pending messages, repair redrive, and a long-running task that still receives messages and cancellation. This is an acceptance matrix, not a claim that every current host combination has been freshly certified. See [provider transports](provider-transports.md) for connection ownership and [agents](agents-reference.md) for identity.
+### `collaboration_ack`
+
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `message_id` | optional; default `""` | text; 0–512 characters |
+| `message_ids` | optional; default `[]` | array; 0–100 items; text; 1–512 characters |
+
+### `collaboration_reply`
+
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `message_id` | required | text; 1–512 characters |
+| `message` | required | text; 1–16000 characters |
+| `key` | required | text; 1–512 characters |
+
+### `collaboration_assign`
+
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `to` | required | text; 1–512 characters |
+| `message` | required | text; 1–16000 characters |
+| `key` | required | text; 1–512 characters |
+
+### `collaboration_accept`
+
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `task_id` | required | text; 1–128 characters |
+
+### `collaboration_report`
+
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `task_id` | required | text; 1–128 characters |
+| `state` | required | text: `"started"`, `"waiting"`, `"error"`, `"failed"`, `"cancelled"`, `"completed"` |
+| `key` | required | text; 1–512 characters |
+| `detail` | optional; default `""` | text; 0–16000 characters |
+
+### `collaboration_task`
+
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `task_id` | required | text; 1–128 characters |
+
+### `collaboration_forward`
+
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `message_id` | required | text; 1–512 characters |
+
+### `collaboration_submitted`
+
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `message_id` | required | text; 1–512 characters |
+| `transport` | required | text; 1–100 characters |
+
+### `collaboration_conversation`
+
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `conversation` | required | text; 1–512 characters |
+
+### `collaboration_close`
+
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `conversation` | required | text; 1–512 characters |
+
+### `collaboration_subscribe`
+
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `to` | required | text; 1–512 characters |
+
+### `collaboration_unsubscribe`
+
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `to` | required | text; 1–512 characters |
+
+### `collaboration_publish`
+
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `message` | required | text; 1–16000 characters |
+| `key` | required | text; 1–512 characters |
+
+### `newsroom_headlines`
+
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `limit` | optional; default `20` | integer; 1–100 |
+
+### `newsroom_read`
+
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `article_id` | required | text; 1–512 characters |
+| `history` | optional; default `false` | boolean |
+| `after` | optional; default `0` | integer; 0–2147483647 |
+| `limit` | optional; default `10` | integer; 1–100 |
+
+### `newsroom_publish`
+
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `title` | required | text; 1–30 characters |
+| `body` | required | text; 1–16000 characters |
+| `key` | required | text; 1–512 characters |
+
+### `newsroom_revise`
+
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `article_id` | required | text; 1–512 characters |
+| `revision` | required | integer; 1–9007199254740991 |
+| `title` | required | text; 1–30 characters |
+| `body` | required | text; 1–16000 characters |
+| `key` | required | text; 1–512 characters |
+
+### `newsroom_comment`
+
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `article_id` | required | text; 1–512 characters |
+| `revision` | required | integer; 1–9007199254740991 |
+| `body` | required | text; 1–16000 characters |
+| `key` | required | text; 1–512 characters |
+
+### `newsroom_peers`
+
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `limit` | optional; default `20` | integer; 1–100 |
+
+### `newsroom_seen`
+
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `event_id` | required | text; 1–512 characters |
+
+### `delivery_status`
+
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `message_id` | required | text; 1–64 characters |
+
+### `delivery_redrive`
+
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `message_id` | required | text; 1–64 characters |
+| `expected_revision` | required | integer; 1–9007199254740991 |
+| `repair_reference` | required | text; 1–1024 characters |
+| `key` | required | text; 1–512 characters |

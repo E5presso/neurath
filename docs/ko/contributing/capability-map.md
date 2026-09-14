@@ -1,117 +1,235 @@
-<!-- date: 2026-09-14; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
+<!-- last_updated: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
+# 필요한 작업에서 도구 찾기
 
 [English](../../en/contributing/capability-map.md)
 
-# 스킬, 도구, 구현을 찾는 기능 지도
+사용자가 원하는 결과를 먼저 확인하고 그 결과를 만드는 데 필요한 도구를 선택합니다. **태스크**는 목표와 관찰 가능한 완료 조건을 기록합니다. 호스트 **세션**의 **루트 에이전트**가 태스크 목록을 소유합니다. **워크트리 claim**은 체크아웃의 작업 소유권을 조정합니다. **receipt**는 특정 이벤트나 보고의 기록입니다. 워크플로의 **phase**는 절차를 나누고 **리뷰**는 정해진 범위를 평가합니다. 각 요소의 관계는 [아키텍처](architecture.md)에서 설명합니다.
 
-요청한 동작을 어디에서 담당할지, 함께 바꿔야 할 소스와 회귀 계약이 무엇인지 이 지도에서 찾는다. 공개 스킬 이름은 에이전트가 수행할 일을 설명하고 내부 이름은 배포 원본의 위치를 가리킨다. 이름이 있는 도구는 지속 상태를 다룬다. 스킬 이름 자체가 도구 호출이나 워크플로 실행 근거가 되지는 않는다.
+사용자의 웹앱에서 저장한 필터가 새로고침 후 사라지는 예시라면, 기본 경로는 태스크 등록, 호스트 도구로 재현·구현, 필요한 API 리뷰, 근거 확인, 결과 기록입니다. 메모리와 학습은 재현 방법과 올바른 테스트 명령을 보존합니다. 제공자 실행·공개 보고·릴리스 설치·모니터링은 요청이나 선택한 절차에서 필요할 때 사용합니다.
 
-## 공개 스킬 목록
+아래는 현재 소스의 **공개 도구 128개 전체**입니다. **내부 작업은 138개**이며 저장된 호출의 호환 경로와 내부 material/verification 작업은 추가 공개 도구가 아닙니다. 표에는 최상위 필수 인자와 스키마의 읽기 전용 표시를 적었습니다. 선택 인자·중첩 구조·도메인 선행 조건은 실제 발견된 스키마에서 확인합니다. 읽기 전용 표시가 권한을 부여하지 않으며, 상태 변경 표시가 제품 파일 편집을 뜻하지도 않습니다.
 
-공개 스킬은 31개이고 이 중 29개에 단계 계약이 있다. `explain-code`, `graphify`는 단계 계약이 없는 지원 스킬이다. 설치 접두사는 소스 신원을 유지하면서 표시 이름을 바꾼다. 예를 들어 `neurath-` 접두사를 쓰면 `debug`를 `neurath-debug`로 설치한다.
+`_neurath_binding`은 호스트 훅이 제공하므로 표에서 생략했습니다. 에이전트가 만들어 넣으면 안 됩니다. `harness_bypass`를 제외한 도구에는 유효한 호스트 호출이 필요하며 우회 중에는 사용할 수 없습니다. 입력·오류·재시도 규칙은 [태스크 도구](task-tools.md)를 참고하세요.
 
-| 수행할 일 | 공개 스킬 | 내부 소스 이름 | 계약 |
-| --- | --- | --- | --- |
-| 보안·라이선스·최신성·선언 불일치 조사 | `audit-deps` | [dependency-audit](../../../src/neurath/_assets/.agents/skills/dependency-audit/SKILL.md) | 단계 |
-| 명시적으로 요청한 여러 이슈의 수행 조정 | `autopilot` | [autopilot](../../../src/neurath/_assets/.agents/skills/autopilot/SKILL.md) | 단계 |
-| 되돌릴 수 있는 진행 중 상태 저장 | `checkpoint` | [checkpoint](../../../src/neurath/_assets/.agents/skills/checkpoint/SKILL.md) | 단계 |
-| 검증된 승인 변경 커밋 | `commit` | [commit](../../../src/neurath/_assets/.agents/skills/commit/SKILL.md) | 단계 |
-| 승인된 작업 항목 생성 | `create-issue` | [create-ticket](../../../src/neurath/_assets/.agents/skills/create-ticket/SKILL.md) | 단계 |
-| 승인된 push와 PR 생성 | `create-pr` | [create-pr](../../../src/neurath/_assets/.agents/skills/create-pr/SKILL.md) | 단계 |
-| 이슈별 격리 작업 공간 준비 | `create-worktree` | [create-worktree](../../../src/neurath/_assets/.agents/skills/create-worktree/SKILL.md) | 단계 |
-| 결함 재현과 원인 분리 | `debug` | [investigate](../../../src/neurath/_assets/.agents/skills/investigate/SKILL.md) | 단계 |
-| 설계 대안 탐색과 정확한 캔버스 선택 확보 | `design-ui` | [explore-ui](../../../src/neurath/_assets/.agents/skills/explore-ui/SKILL.md) | 단계 |
-| 개발자 문서 갱신 | `dev-docs` | [sync-dev-docs](../../../src/neurath/_assets/.agents/skills/sync-dev-docs/SKILL.md) | 단계 |
-| 현재 소스와 테스트에 근거한 동작 설명 | `explain-code` | [explain-code](../../../src/neurath/_assets/.agents/skills/explain-code/SKILL.md) | 지원 |
-| 승인된 커밋·push·그래프 갱신·소유권 해제 | `finish-session` | [finish-session](../../../src/neurath/_assets/.agents/skills/finish-session/SKILL.md) | 단계 |
-| 코드·문서 관계 그래프 탐색 | `graphify` | [graphify](../../../src/neurath/_assets/.agents/skills/graphify/SKILL.md) | 지원 |
-| 승인된 단일 이슈 구현 | `implement-issue` | [process-ticket](../../../src/neurath/_assets/.agents/skills/process-ticket/SKILL.md) | 단계 |
-| 승인된 정확한 디자인 노드 구현 | `implement-ui` | [implement-ui](../../../src/neurath/_assets/.agents/skills/implement-ui/SKILL.md) | 단계 |
-| 반복되는 비공개 지식을 검토해 승인된 프로젝트 규칙으로 반영 | `memory-to-rules` | [promote-memory](../../../src/neurath/_assets/.agents/skills/promote-memory/SKILL.md) | 단계 |
-| 기능을 보존하며 주입 프롬프트 줄이기 | `optimize-harness` | [optimize-harness](../../../src/neurath/_assets/.agents/skills/optimize-harness/SKILL.md) | 단계 |
-| 제품 결정 명확화와 문서·이슈 분해 | `plan` | [plan-issues](../../../src/neurath/_assets/.agents/skills/plan-issues/SKILL.md) | 단계 |
-| 검토 의견 평가와 대응 | `pr-feedback` | [triage-comments](../../../src/neurath/_assets/.agents/skills/triage-comments/SKILL.md) | 단계 |
-| 배포된 화면·API·저장 결과 확인 | `qa` | [automate-qa](../../../src/neurath/_assets/.agents/skills/automate-qa/SKILL.md) | 단계 |
-| 변경에서 근거 있는 결함 찾기 | `review-code` | [review-code](../../../src/neurath/_assets/.agents/skills/review-code/SKILL.md) | 단계 |
-| 정확한 PR head에서 확인한 검토 게시 | `review-pr` | [pr-review](../../../src/neurath/_assets/.agents/skills/pr-review/SKILL.md) | 단계 |
-| 구현 전 요구사항의 누락과 모순 검토 | `review-spec` | [audit-spec](../../../src/neurath/_assets/.agents/skills/audit-spec/SKILL.md) | 단계 |
-| 승인된 디자인과 실행 화면을 비교해 사용자 판단 지원 | `review-ui` | [review-ui](../../../src/neurath/_assets/.agents/skills/review-ui/SKILL.md) | 단계 |
-| 저장소 토큰과 컴포넌트 연결을 캔버스에 반영 | `sync-design` | [sync-design](../../../src/neurath/_assets/.agents/skills/sync-design/SKILL.md) | 단계 |
-| 문서 변경 범위 분류 | `sync-docs` | [sync-docs](../../../src/neurath/_assets/.agents/skills/sync-docs/SKILL.md) | 단계 |
-| 실패 시나리오로 하네스 통제 검증 | `test-harness` | [evaluate-harness](../../../src/neurath/_assets/.agents/skills/evaluate-harness/SKILL.md) | 단계 |
-| 범위를 통제한 의존성 업데이트와 검사 | `update-deps` | [update-dependencies](../../../src/neurath/_assets/.agents/skills/update-dependencies/SKILL.md) | 단계 |
-| 이슈·프로젝트 메타데이터 갱신 | `update-status` | [update-project-status](../../../src/neurath/_assets/.agents/skills/update-project-status/SKILL.md) | 단계 |
-| 승인되고 구현된 사용자 동작 문서화 | `user-docs` | [sync-user-docs](../../../src/neurath/_assets/.agents/skills/sync-user-docs/SKILL.md) | 단계 |
-| PR 변경 관찰 | `watch-pr` | [monitor-pr](../../../src/neurath/_assets/.agents/skills/monitor-pr/SKILL.md) | 단계 |
+## 현재 세션과 작업 소유권 확인
 
-수정할 원본은 `src/neurath/_assets/.agents/skills` 아래에 있다. 설치된 `.agents/skills`와 `.neurath/rules`는 투영 결과다. 이름 연결은 [skill_names.py](../../../src/neurath/skill_names.py)에 있으며 공개 검사는 스킬 목록, 로케일 구성, 패키지 내용을 확인한다.
+세션은 호스트의 대화이며 루트 에이전트가 태스크 목록을 소유합니다. 워크트리 claim은 체크아웃의 작업 소유권을 조정합니다. claim을 얻기 전에 현재 상태를 확인합니다. isolation은 기존 이슈·루트 워크트리 관계를 검증하며 워크트리를 만들거나 전환하지 않습니다. cleanup에는 실제 브랜치·참조와 소유권 근거가 필요합니다. bypass는 Neurath 훅 제약만 바꿉니다. enabled 생략은 조회, true는 우회, false는 복원이며 호스트 권한과 기록은 유지됩니다.
 
-`create-package`, `local-dev`, `onboard`, `refactor-code`, `impact-analysis`, `improve-coverage`, `property-test`는 공개 단독 스킬 목록에서 제외된 이름이다. 설치된 독립 기능으로 안내하지 않고 실제 요청을 현재 담당 스킬과 프로젝트 절차로 연결한다.
+| 도구 | 스키마상 효과 | 필수 인자 |
+| --- | --- | --- |
+| `harness_bypass` | 상태 변경 | 없음 |
+| `session_status` | 조회 | 없음 |
+| `session_inspect` | 조회 | 없음 |
+| `turn_inspect` | 조회 | 없음 |
+| `worktree_inspect` | 조회 | 없음 |
+| `worktree_claim` | 상태 변경 | 없음 |
+| `worktree_release` | 상태 변경 | `expected_lease_epoch`, `fencing_token` |
+| `worktree_isolation` | 상태 변경 | `issue_number`, `key` |
+| `worktree_cleanup` | 상태 변경 | `workflow_id`, `base_branch`, `remote_ref`, `key` |
 
-## 공개 도구 계열
+## 관찰 가능한 목표를 태스크로 기록
 
-현재 공개 조회 스키마의 도구는 128개이며 아래 표에 각각 한 번씩 실었다. 내부 실행 연결표의 138개와는 범위가 다르다. 저장된 기존 호출의 호환성을 위해 남은 작업 일부는 공개 조회에 없다. 정확한 필드는 설치된 `tools/list` 스키마를 사용하고 공통 결과 형식과 기본 예제는 [작업 도구](task-tools.md)를 참고한다.
+태스크는 목표·지시 출처·완료 조건을 연결합니다. 필요한 작업을 정의하고 반환된 리비전으로 시작한 뒤 실제 관찰에 따른 소유자 보고를 기록합니다. 목록은 실행 종료와 성공을 구분하고 호스트 TODO 표시값을 제공합니다. [태스크 도구](task-tools.md)와 [태스크 계약](task-todo-contract.md)을 참고하세요.
 
-| 목적 | 이름이 있는 도구 |
-| --- | --- |
-| 요청 작업과 현재 세션 | `harness_bypass`, `session_status`, `session_inspect`, `turn_inspect`, `turn_yield`, `task_define`, `task_list`, `task_start`, `task_resolve` |
-| 작업 공간 소유권 | `worktree_inspect`, `worktree_claim`, `worktree_release`, `worktree_isolation`, `worktree_cleanup` |
-| 제공자 선택과 실행 | `provider_run`, `provider_status`, `provider_cancel`, `provider_recover`, `provider_capabilities`, `provider_route`, `provider_models`, `provider_plan`, `provider_plan_read` |
-| 동료 메시지와 할당 | `collaboration_discover`, `collaboration_inbox`, `collaboration_send`, `collaboration_reply`, `collaboration_message`, `collaboration_ack`, `collaboration_forward`, `collaboration_submitted`, `collaboration_assign`, `collaboration_accept`, `collaboration_report`, `collaboration_task`, `collaboration_register`, `collaboration_conversation`, `collaboration_close`, `collaboration_subscribe`, `collaboration_unsubscribe`, `collaboration_publish` |
-| 전달 복구 | `delivery_status`, `delivery_redrive` |
-| 공통 소식 | `newsroom_headlines`, `newsroom_read`, `newsroom_publish`, `newsroom_revise`, `newsroom_comment`, `newsroom_peers`, `newsroom_seen` |
-| 메모리와 세션 사실 | `memory_recall`, `memory_checkpoint`, `memory_pull`, `artifact_put`, `artifact_read`, `enclave_read`, `enclave_set`, `enclave_delete` |
-| 학습 | `learning_status`, `learning_pending`, `learning_history`, `learning_defer` |
-| 계약이 있는 단계 | `phase_start`, `phase_current`, `phase_evidence_prepare`, `phase_complete`, `phase_finalize` |
-| 적응형 판단과 독립 평가 | `adaptive_read`, `adaptive_preflight`, `adaptive_replace`, `adaptive_override_goal`, `delegation_prepare`, `delegation_assign`, `evaluation_prepare`, `evaluation_read`, `evaluation_execute`, `evaluation_report`, `evaluation_consume`, `evaluation_loop_open`, `evaluation_loop_read`, `evaluation_loop_round`, `evaluation_loop_close` |
-| 고정 검토와 게시 | `review_begin`, `review_report`, `review_consume`, `review_abort`, `review_publish`, `review_comments` |
-| 진단과 하네스 문제 | `diagnostics_integrity`, `diagnostics_project`, `diagnostics_profile`, `diagnostics_continuation`, `incident_record`, `incident_validate`, `incident_resolve`, `incident_escalate`, `incident_refresh`, `incident_supersede`, `process_evidence_record` |
-| 설치와 업데이트 | `releases_status`, `releases_check`, `maintenance_choice_read`, `maintenance_choice_prepare`, `releases_notice`, `releases_recover`, `releases_prepare`, `releases_apply`, `releases_choose`, `installation_plan`, `installation_apply`, `installation_recover` |
-| 공개 보고 | `reporting_status`, `reporting_list`, `reporting_read`, `reporting_prepare`, `reporting_submit`, `reporting_reconcile`, `reporting_consent`, `reporting_approve` |
-| 백그라운드 관찰 | `monitor_start`, `monitor_status`, `monitor_cancel`, `monitor_recover`, `monitor_readback`, `monitor_event`, `monitor_ack`, `monitor_external_wait`, `monitor_handoff` |
+| 도구 | 스키마상 효과 | 필수 인자 |
+| --- | --- | --- |
+| `task_define` | 상태 변경 | `tasks`, `expected_revision`, `key` |
+| `task_list` | 조회 | 없음 |
+| `task_start` | 상태 변경 | `task_id`, `expected_revision`, `expected_task_revision`, `key` |
+| `task_resolve` | 상태 변경 | `task_id`, `expected_revision`, `expected_task_revision`, `key`, `status`, `references`, `summary` |
 
-공개 단계 진입점은 `phase_start`, `phase_complete`, `phase_finalize`다. 이전 워크플로 이름은 저장된 호출과 호환된다. material batch, 등록 검사 도구, `agent(argv)` 역시 호환 기능이며 일반 편집·검사의 공개 필수 절차가 아니다.
+## 스킬 절차와 의사결정 관리
 
-## 상황에 맞는 판단 기준
+워크플로는 스킬 실행이며 phase는 그 절차의 한 단계입니다. 선택한 계약을 읽은 뒤 단계를 진행합니다. 근거는 정확한 현재 단계와 리비전에 연결됩니다. 적응형 의사결정과 목표 변경에는 해당 권한이 필요하고 yield의 결과 이름만으로 Stop 조건을 면제할 수 없습니다. 공개 스킬 이름과 고정 내부 계약 ID는 [스킬 참조](skills-reference.md)에 정리되어 있습니다.
 
-| 상황 | 따라야 할 계약 |
-| --- | --- |
-| 측정 가능한 일반 작업 | 작업을 정의하고 네이티브 편집·검사를 수행한 뒤 소유자 결과를 한 번 기록한다. 작업 목록이 있으면 Stop의 기준이 된다. |
-| 명시적인 적응형 스킬 | 실제 독립 평가 권한을 확보하고 정확한 후보를 연결하며 인증된 결과를 소비한 뒤 계약 전이를 수행한다. |
-| 고정 코드·PR 검토 | 별도 검토 기준을 적용하고 게시는 현재 PR head에 묶는다. |
-| 동료 할당 | 실제 동료를 찾아 전체 할당을 전달하고 네이티브 수락과 보고를 받는다. 수신 확인은 전송 진행 상태다. |
-| 워크트리 변경·정리 | 현재 소유권과 반환된 fencing 세대를 사용하고 정리 전 실제 Git 참조를 확인한다. |
-| 설치·업데이트·보고 | 정확한 변경이나 초안을 준비하고 해당 사용자 선택을 유지하며 이름이 있는 도메인 작업으로 적용해 실제 결과를 확인한다. |
+| 도구 | 스키마상 효과 | 필수 인자 |
+| --- | --- | --- |
+| `phase_start` | 상태 변경 | `workflow_id`, `key`, `skill`, `run_id`, `north_star` |
+| `phase_current` | 조회 | `workflow_id` |
+| `phase_evidence_prepare` | 상태 변경 | `workflow_id`, `expected_revision`, `key` |
+| `phase_complete` | 상태 변경 | `workflow_id`, `expected_revision`, `key`, `phase_id`, `status`, `summary` |
+| `phase_finalize` | 상태 변경 | `workflow_id`, `expected_revision`, `key`, `terminal_state` |
+| `adaptive_read` | 조회 | `workflow_id` |
+| `adaptive_preflight` | 조회 | 없음 |
+| `adaptive_replace` | 상태 변경 | `workflow_id`, `expected_revision`, `key`, `state` |
+| `adaptive_override_goal` | 상태 변경 | `workflow_id`, `expected_revision`, `key`, `state` |
+| `turn_yield` | 상태 변경 | `expected_turn_revision`, `outcome`, `key` |
 
-이 판단을 뒷받침하는 상태와 네이티브 근거는 [작업과 TODO 계약](task-todo-contract.md), [실행 수명주기](runtime-lifecycle.md), [호스트 통합](hosts.md)에 설명한다.
+## 범위가 정해진 작업 위임과 평가
 
-## 구현과 회귀 검사 담당
+위임은 참여자에게 범위가 정해진 작업을 맡깁니다. 준비 결과는 spawn 의도이며 실제 실행 증거가 아닙니다. 독립 평가에는 검증된 역할, 정확한 평가 대상, 인증된 보고의 수용이 추가로 필요합니다. 소스·목표·의도·소유자·리비전이 바뀌면 이전 평가 보고를 재사용할 수 없을 수 있습니다. 평가 루프는 open/round/close 계약을 따릅니다.
 
-각 동작을 담당하는 소스와 테스트를 연결했다. 검증할 범위를 찾기 위한 목록이며 특정 설치에서 테스트나 실제 호스트 시나리오가 통과했다는 주장은 아니다.
+| 도구 | 스키마상 효과 | 필수 인자 |
+| --- | --- | --- |
+| `delegation_prepare` | 상태 변경 | `delegation_id`, `assignment`, `key` |
+| `delegation_assign` | 상태 변경 | `workflow_id`, `delegation_id`, `assignment`, `target`, `key` |
+| `evaluation_prepare` | 상태 변경 | `workflow_id`, `key`, `state` |
+| `evaluation_read` | 조회 | `workflow_id`, `assignment` |
+| `evaluation_execute` | 상태 변경 | `workflow_id`, `key`, `state`, `criterion_id`, `evidence_kind`, `pytest_node` |
+| `evaluation_report` | 상태 변경 | `delegation_id`, `key`, `verdict`, `summary`, `outcome_ref` |
+| `evaluation_consume` | 상태 변경 | `delegation_id`, `key` |
+| `evaluation_loop_open` | 상태 변경 | `workflow_id`, `loop_id`, `goal`, `acceptance`, `key` |
+| `evaluation_loop_read` | 조회 | `workflow_id`, `loop_id` |
+| `evaluation_loop_round` | 상태 변경 | `workflow_id`, `loop_id`, `number`, `findings`, `key` |
+| `evaluation_loop_close` | 상태 변경 | `workflow_id`, `loop_id`, `outcome`, `summary`, `key` |
 
-| 책임 | 구현과 회귀 계약 |
-| --- | --- |
-| 배포 자산 무결성 | [resources.py](../../../src/neurath/resources.py), [manifest.json](../../../src/neurath/manifest.json), [test_installer.py](../../../tests/test_installer.py) |
-| 설치 보존 | [projection.py](../../../src/neurath/install/projection.py), [transaction.py](../../../src/neurath/install/transaction.py), [test_installer.py](../../../tests/test_installer.py), [test_publication.py](../../../tests/test_publication.py) |
-| 실제 신원과 프롬프트 | [identity.py](../../../src/neurath/hosts/identity.py), [hooks.py](../../../src/neurath/hosts/hooks.py), [test_host_lifecycle.py](../../../tests/test_host_lifecycle.py), [test_prompt_delivery.py](../../../tests/test_prompt_delivery.py) |
-| 상태와 쓰기 소유권 | [session_kernel.py](../../../src/neurath/_assets/scripts/agent_harness/session_kernel.py), [state_handle.py](../../../src/neurath/_assets/scripts/agent_harness/state_handle.py), [worktree_registry.py](../../../src/neurath/_assets/scripts/agent_harness/worktree_registry.py), [runtime_database.py](../../../src/neurath/_assets/scripts/agent_harness/runtime_database.py), [test_session_kernel.py](../../../tests/runtime/agent_harness/test_session_kernel.py), [test_worktree_registry.py](../../../tests/runtime/agent_harness/test_worktree_registry.py) |
-| 요청 작업과 결과 | [task_ledger_tasks.py](../../../src/neurath/runtime/task_ledger_tasks.py), [task_ledger.py](../../../src/neurath/_assets/scripts/agent_harness/task_ledger.py), [task_service.py](../../../src/neurath/_assets/scripts/agent_harness/task_service.py), [test_task_acceptance_review.py](../../../tests/test_task_acceptance_review.py), [test_task_tools.py](../../../tests/test_task_tools.py), [test_task_todo.py](../../../tests/test_task_todo.py) |
-| 단계와 평가 권한 | [phase_runner.py](../../../src/neurath/_assets/scripts/skill_harness/phase_runner.py), [adaptive_control_authority.py](../../../src/neurath/_assets/scripts/agent_harness/adaptive_control_authority.py), [evaluation_loop.py](../../../src/neurath/_assets/scripts/agent_harness/evaluation_loop.py), [test_phase_runner.py](../../../tests/runtime/skill_harness/test_phase_runner.py), [test_adaptive_control_authority.py](../../../tests/runtime/agent_harness/test_adaptive_control_authority.py) |
-| 이름이 있는 API와 조회 | [task_schema.py](../../../src/neurath/runtime/task_schema.py), [tasks.py](../../../src/neurath/runtime/tasks.py), `src/neurath/runtime/*_tasks.py`, [mcp.py](../../../src/neurath/agents/mcp.py), [mcp_guidance.py](../../../src/neurath/install/mcp_guidance.py), [test_communication_mcp.py](../../../tests/test_communication_mcp.py), [test_mcp_guidance.py](../../../tests/test_mcp_guidance.py) |
-| 모델과 제공자 실행 | [model_planning.py](../../../src/neurath/providers/model_planning.py), [permission_inheritance.py](../../../src/neurath/providers/permission_inheritance.py), [jobs.py](../../../src/neurath/providers/jobs.py), [job_recovery.py](../../../src/neurath/providers/job_recovery.py), [supervision.py](../../../src/neurath/providers/supervision.py), [provider_execution.py](../../../src/neurath/runtime/provider_execution.py), [provider_policy.py](../../../src/neurath/runtime/provider_policy.py), [test_model_planning.py](../../../tests/test_model_planning.py), [test_inherited_provider_modes.py](../../../tests/test_inherited_provider_modes.py), [test_provider_jobs.py](../../../tests/test_provider_jobs.py) |
-| 지속 메시지와 전달 | [store.py](../../../src/neurath/agents/store.py), [lifecycle.py](../../../src/neurath/agents/lifecycle.py), [delivery.py](../../../src/neurath/agents/delivery.py), [delivery_recovery.py](../../../src/neurath/agents/delivery_recovery.py), [newsroom.py](../../../src/neurath/agents/newsroom.py), [test_delivery_recovery.py](../../../tests/test_delivery_recovery.py), [test_newsroom_mcp.py](../../../tests/test_newsroom_mcp.py) |
-| 메모리·enclave·학습 | [store.py](../../../src/neurath/memory/store.py), [hooks.py](../../../src/neurath/memory/hooks.py), [transcript.py](../../../src/neurath/memory/transcript.py), [learning.py](../../../src/neurath/memory/learning.py), [enclave_store.py](../../../src/neurath/_assets/scripts/agent_harness/enclave_store.py), [test_project_memory.py](../../../tests/test_project_memory.py), [test_learning.py](../../../tests/test_learning.py), [test_enclave_store.py](../../../tests/runtime/agent_harness/test_enclave_store.py) |
-| 업데이트와 보고 | [updates.py](../../../src/neurath/updates.py), [release_install.py](../../../src/neurath/release_install.py), [reporting.py](../../../src/neurath/reporting.py), [user_choices.py](../../../src/neurath/runtime/user_choices.py), [test_user_choices_mcp.py](../../../tests/test_user_choices_mcp.py), [test_reporting.py](../../../tests/test_reporting.py) |
+## 리뷰를 요청하고 결과 수용
 
-저장된 호출이 material·등록 검사 경로를 사용한다면 남아 있는 호환 구현도 확인해야 한다. 관련 소스는 [material_action.py](../../../src/neurath/_assets/scripts/agent_harness/material_action.py), [verification.py](../../../src/neurath/runtime/verification.py), 검사는 [material 동작 회귀](../../../tests/runtime/agent_harness/test_material_action.py)다. 네이티브 검사 실행이 이 호환 경로의 근거를 자동으로 생성하지는 않는다.
+리뷰는 명시한 범위를 평가합니다. 리뷰어와 해당 커밋을 정해 시작하고 보고를 받은 뒤 정확한 결과를 수용합니다. 게시 시 현재 PR 커밋과 리뷰 범위를 확인하며, 리뷰 수용이 게시 권한을 자동으로 만들지는 않습니다. 필터 예시에서는 API 리뷰가 구현 및 저장·새로고침 회귀 검증과 함께 근거를 제공합니다.
 
-## 기능 지도 변경 검증
+| 도구 | 스키마상 효과 | 필수 인자 |
+| --- | --- | --- |
+| `review_begin` | 상태 변경 | `workflow_id`, `to`, `kind`, `label`, `scope`, `key` |
+| `review_report` | 상태 변경 | `workflow_id`, `delegation_id`, `verdict`, `summary`, `key` |
+| `review_consume` | 상태 변경 | `workflow_id`, `delegation_id`, `outcome_ref`, `key` |
+| `review_abort` | 상태 변경 | `workflow_id`, `delegation_id`, `outcome_ref`, `key` |
+| `review_publish` | 상태 변경 | `workflow_id`, `repo`, `pr_number`, `key` |
+| `review_comments` | 상태 변경 | `repo`, `pr_number` |
 
-목록, 패키지, 링크 변경은 공개 회귀 검사부터 실행한다. 필요한 전체 검사는 최종 소스에서 수행한다.
+## 독립 제공자 세션 선택과 실행
 
-```sh
-uv run --locked pytest -q tests/test_publication.py
-uv run --locked python tools/check.py
-```
+실제 모델 목록을 확인하고 리비전이 있는 계획을 만든 다음 그 계획을 실행합니다. 모델 선택의 inherit와 실행 정책의 inherit는 다릅니다. target-native는 별도 명시적 선택이 필요하며 대상 설정을 유지합니다. 작업을 맡기기 전에 실제 모델·정책·활성화·도구·소유권을 확인합니다. status는 이벤트·실패 진단이며 완료를 반복 조회하는 용도가 아닙니다. [모델 계획](model-planning-mcp.md)과 [제공자 전송](provider-transports.md)을 참고하세요.
 
-실행 자산을 바꿨다면 [개발 안내](index.md)에 따라 manifest 갱신, 빌드, 자기 설치 업데이트도 수행한다. 문장만 바꾼 경우 그 이유만으로 설치할 필요는 없다. 결과를 설명할 때 원문 무결성, 패키지 동작, 설치 위치, 실제 활성화 관찰을 구분한다.
+| 도구 | 스키마상 효과 | 필수 인자 |
+| --- | --- | --- |
+| `provider_models` | 상태 변경 | `provider` |
+| `provider_plan` | 상태 변경 | `provider`, `worktree`, `assignment`, `inventory_id`, `execution`, `selection`, `difficulty`, `confidence`, `rationale`, `key` |
+| `provider_plan_read` | 조회 | `plan_id` |
+| `provider_capabilities` | 조회 | `provider` |
+| `provider_route` | 조회 | `provider`, `operation` |
+| `provider_run` | 상태 변경 | `worktree`, `assignment` |
+| `provider_status` | 조회 | `run_id` |
+| `provider_cancel` | 상태 변경 | `run_id` |
+| `provider_recover` | 상태 변경 | `run_id`, `key` |
+
+## 인증된 동료 메시지 교환
+
+정확한 수신자를 발견하고 승인된 범위에서 메시지를 보냅니다. ACK 전에 본문 전체를 읽습니다. 전송 접수·호스트 알림 제출·수신 확인·작업 수락·작업 완료는 별도 관찰입니다. 복구는 원래 메시지 ID를 유지하며 오래된 전송 세대가 새 ACK를 되돌릴 수 없습니다. [협업 계약](collaboration-contract.md)을 참고하세요.
+
+| 도구 | 스키마상 효과 | 필수 인자 |
+| --- | --- | --- |
+| `collaboration_register` | 상태 변경 | `name` |
+| `collaboration_discover` | 조회 | 없음 |
+| `collaboration_inbox` | 조회 | 없음 |
+| `collaboration_send` | 상태 변경 | 없음 |
+| `collaboration_reply` | 상태 변경 | `message_id`, `message`, `key` |
+| `collaboration_message` | 조회 | `message_id` |
+| `collaboration_ack` | 상태 변경 | 없음 |
+| `collaboration_forward` | 조회 | `message_id` |
+| `collaboration_submitted` | 상태 변경 | `message_id`, `transport` |
+| `collaboration_assign` | 상태 변경 | `to`, `message`, `key` |
+| `collaboration_accept` | 상태 변경 | `task_id` |
+| `collaboration_report` | 상태 변경 | `task_id`, `state`, `key` |
+| `collaboration_task` | 조회 | `task_id` |
+| `collaboration_conversation` | 조회 | `conversation` |
+| `collaboration_close` | 상태 변경 | `conversation` |
+| `collaboration_subscribe` | 상태 변경 | `to` |
+| `collaboration_unsubscribe` | 상태 변경 | `to` |
+| `collaboration_publish` | 상태 변경 | `message`, `key` |
+| `delivery_status` | 조회 | `message_id` |
+| `delivery_redrive` | 상태 변경 | `message_id`, `expected_revision`, `repair_reference`, `key` |
+
+## 프로젝트 발견 사항 공유
+
+뉴스룸은 출처가 있는 프로젝트 참고 자료와 논의를 공유합니다. 제목을 보고 필요한 본문을 선택해 읽습니다. 글·댓글·열람 상태는 사용자 지시 권한, 소유권, 태스크 완료 승인을 만들지 않습니다.
+
+| 도구 | 스키마상 효과 | 필수 인자 |
+| --- | --- | --- |
+| `newsroom_headlines` | 조회 | 없음 |
+| `newsroom_read` | 조회 | `article_id` |
+| `newsroom_publish` | 상태 변경 | `title`, `body`, `key` |
+| `newsroom_revise` | 상태 변경 | `article_id`, `revision`, `title`, `body`, `key` |
+| `newsroom_comment` | 상태 변경 | `article_id`, `revision`, `body`, `key` |
+| `newsroom_peers` | 조회 | 없음 |
+| `newsroom_seen` | 상태 변경 | `event_id` |
+
+## 근거·문맥·학습 지식 보존
+
+artifact는 크기가 제한된 JSON 근거를, enclave는 변경 전 상태를 확인하는 최신 사실을, memory는 출처가 있는 기록을 보관합니다. 회상과 체크포인트는 참고 자료 또는 소유자 보고입니다. pull의 adopt는 원본 정지와 정확한 미리보기를 요구하는 별도 이전입니다. 학습은 같은 동작의 실패·복구와 등록 검증을 연결하고, 다른 세션에 실제 전달되어 재현과 검증에 성공해야 승격됩니다. 올바른 테스트 명령도 제안만으로는 부족하고 실제 관찰이 필요합니다. [메모리 참조](memory-reference.md)와 [제공자 연속성](provider-continuity.md)을 참고하세요.
+
+| 도구 | 스키마상 효과 | 필수 인자 |
+| --- | --- | --- |
+| `artifact_put` | 상태 변경 | `document`, `key` |
+| `artifact_read` | 조회 | `reference` |
+| `memory_recall` | 조회 | 없음 |
+| `memory_checkpoint` | 상태 변경 | `summary`, `key` |
+| `memory_pull` | 상태 변경 | 없음 |
+| `enclave_read` | 조회 | 없음 |
+| `enclave_set` | 상태 변경 | `fact_key`, `value`, `expected_digest`, `key` |
+| `enclave_delete` | 상태 변경 | `fact_key`, `expected_digest`, `key` |
+| `learning_status` | 조회 | 없음 |
+| `learning_pending` | 조회 | 없음 |
+| `learning_history` | 조회 | `strategy_id` |
+| `learning_defer` | 상태 변경 | `reason`, `key` |
+
+## 하네스 문제 진단과 복구
+
+진단은 문제가 발생한 경계를 찾습니다. incident는 하네스 문제와 수정 또는 책임 있는 이관을 기록하며 상태 이름만으로 수정이 입증되지는 않습니다. 실제 재현·근본 원인·해당 회귀 근거를 남깁니다. 파일 배치·프로토콜 진단과 실제 호스트 활성화는 별도입니다. [검증](validation.md)을 참고하세요.
+
+| 도구 | 스키마상 효과 | 필수 인자 |
+| --- | --- | --- |
+| `diagnostics_integrity` | 조회 | 없음 |
+| `diagnostics_project` | 상태 변경 | 없음 |
+| `diagnostics_profile` | 조회 | 없음 |
+| `diagnostics_continuation` | 조회 | 없음 |
+| `incident_record` | 상태 변경 | `rule_id`, `symptom`, `key` |
+| `incident_validate` | 조회 | 없음 |
+| `incident_resolve` | 상태 변경 | `incident_id`, `root_cause`, `fixes`, `checks`, `key` |
+| `incident_escalate` | 상태 변경 | `incident_id`, `summary`, `checks`, `key` |
+| `incident_refresh` | 상태 변경 | `incident_ids`, `key` |
+| `incident_supersede` | 상태 변경 | `incident_id`, `fixes`, `checks`, `key` |
+| `process_evidence_record` | 상태 변경 | `workflow_id`, `field`, `value`, `key` |
+
+## 승인된 진행 작업 관찰
+
+모니터는 특정 관찰·재개 계약을 담당합니다. 실행 접수와 첫 실제 관찰은 다릅니다. 워크플로·PR 범위, 소유자 정책, 프로세스 세대를 유지합니다. 이벤트 ACK는 정확한 이벤트를 소비하고 external_wait는 리뷰어가 맡은 미해결 이벤트를 남기며 handoff는 검증된 자원을 종료하거나 이전합니다. 취소도 최종 결과 확인이 필요합니다.
+
+| 도구 | 스키마상 효과 | 필수 인자 |
+| --- | --- | --- |
+| `monitor_start` | 상태 변경 | `workflow_id`, `repo`, `pr_number`, `key` |
+| `monitor_status` | 조회 | `run_id` |
+| `monitor_cancel` | 상태 변경 | `run_id`, `key` |
+| `monitor_recover` | 상태 변경 | `run_id`, `key` |
+| `monitor_readback` | 조회 | `run_id` |
+| `monitor_event` | 조회 | `workflow_id` |
+| `monitor_ack` | 상태 변경 | `workflow_id`, `event_id`, `key` |
+| `monitor_external_wait` | 상태 변경 | `workflow_id`, `event_id`, `key` |
+| `monitor_handoff` | 상태 변경 | `workflow_id`, `pr_number`, `key` |
+
+## 명시적인 설치·업데이트 선택 적용
+
+계획은 대상·배포본과 정확한 변경 전후 상태를 묶습니다. 릴리스 확인은 고정된 공식 공개 릴리스 소스를 사용하며 자동 훅은 로컬 확인 시점 안내만 제공합니다. 업데이트 선택은 실제 사용자 응답과 변경 불가능한 준비 제안에 연결되어야 합니다. 적용 후 설치 결과를 검증해도 실제 다음 호스트 이벤트 전까지 새 활성화는 미관찰 상태입니다. [설치 설계](installation-design.md)와 [릴리스 참조](releases-reference.md)를 참고하세요.
+
+| 도구 | 스키마상 효과 | 필수 인자 |
+| --- | --- | --- |
+| `installation_plan` | 상태 변경 | `key` |
+| `installation_apply` | 상태 변경 | `plan_ref`, `key` |
+| `installation_recover` | 상태 변경 | `key` |
+| `releases_status` | 조회 | 없음 |
+| `releases_check` | 상태 변경 | `key` |
+| `releases_notice` | 상태 변경 | `key` |
+| `releases_prepare` | 상태 변경 | `offer_id`, `key` |
+| `releases_choose` | 상태 변경 | `decision`, `user_choice_ref`, `key`, `offer_id` |
+| `releases_apply` | 상태 변경 | `offer_id`, `key` |
+| `releases_recover` | 상태 변경 | `key` |
+| `maintenance_choice_read` | 조회 | `user_choice_ref` |
+| `maintenance_choice_prepare` | 상태 변경 | `operation`, `key` |
+
+## 검토한 공개 보고 준비
+
+보고는 고정 업스트림 목적지와 내용에 연결된 비공개 초안을 사용합니다. 공통 결함·개선 보고에는 저장된 명시적 프로젝트 동의가, 기여에는 정확한 초안 승인이 필요합니다. 준비 전에 개인정보 검토를 수행합니다. 게시 결과가 불확실하면 다시 보내기 전에 기존 원격 결과와 대조합니다. 보고 실패가 원래 사용자 목표를 대체하지 않습니다. [보고 참조](reporting-reference.md)를 참고하세요.
+
+| 도구 | 스키마상 효과 | 필수 인자 |
+| --- | --- | --- |
+| `reporting_status` | 조회 | 없음 |
+| `reporting_list` | 조회 | 없음 |
+| `reporting_read` | 조회 | `draft_id` |
+| `reporting_prepare` | 상태 변경 | `report`, `privacy_reviewed`, `key` |
+| `reporting_consent` | 상태 변경 | `decision`, `user_choice_ref`, `key` |
+| `reporting_approve` | 상태 변경 | `decision`, `user_choice_ref`, `key`, `draft_id` |
+| `reporting_submit` | 상태 변경 | `draft_id`, `key` |
+| `reporting_reconcile` | 상태 변경 | `draft_id`, `url`, `key` |
+
+## 반환된 결과에서 다음 단계 결정하기
+
+준비된 작업은 실행 결과가 아니며 전송 접수는 수신 확인이 아닙니다. 종료 상태의 태스크도 항상 성공한 것은 아닙니다. 현재 결과와 `next_action`에 따라 다음 호출을 선택하고 정확한 참조·리비전·작업 키를 유지합니다. 소스 정의는 `src/neurath/runtime/task_schema.py`와 가져온 도메인 모듈에 있고, `src/neurath/agents/mcp.py`가 호스트 호출을 검증합니다. [기여 안내](index.md)에서 개발 절차와 이 참조 문서의 연결을 확인할 수 있습니다.

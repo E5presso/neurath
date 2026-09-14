@@ -1,53 +1,46 @@
-<!-- date: 2026-09-14; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
+<!-- updated: 2026-09-14 | synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
 
-# Install, update, or restore Neurath
+# Prepare the agent before the investigation
+
+Before asking an agent to fix a disappearing saved filter in your web application, make sure Neurath is connected to the repository where that work will happen. Neurath adds working instructions, reusable procedures, and event handling to Claude Code or Codex. The application that runs the agent is called its **host**.
+
+> Install Neurath in this repository for Codex and Claude Code. Preserve the existing instructions, hooks, permissions, and development environment. Connect the project's existing checks, then tell me which parts are installed and which are active in the hosts.
+
+You can name just one host. The agent checks that the target is a Git repository on a supported macOS or Linux system and prepares Neurath's separate runtime, which currently requires Python 3.14. Your application's language and dependencies do not need to match it. Host sign-in and project trust still belong to the host; installation does not supply credentials or approve trust on your behalf.
+
+## See the proposed change before it is applied
+
+The agent inspects existing project guidance and settings, then prepares an installation plan. Ask to see the preview if you want to review the affected files first. Existing instructions, permissions, and project dependencies are preserved. Neurath also preserves **hooks**, the host's event handlers that run when a session starts, a tool finishes, or another supported event occurs.
+
+A file already using a managed name, or a Neurath-managed file that has been edited, can make installation or an update conflict. The agent should identify the conflicting content and resolve it within your request. A successful plan does not justify overwriting it silently.
+
+The agent connects existing project documents and checks so later work can follow your repository's own standards. If a needed decision or test is missing, the result should name that gap. [Project conventions](profiles.md) explains what this connection provides.
+
+## Ask what is actually active
+
+A useful installation result separates four observations:
+
+- The planned files were placed in the repository.
+- Neurath's installed runtime can execute.
+- A real event from the chosen host reached Neurath's hooks.
+- The current host connection can use Neurath's tools.
+
+Those tools are exposed through **MCP**, the connection protocol the host uses to call Neurath. A host that was already open can retain an older connection after the files change. Ask the agent to reconnect or use a fresh host session when needed, and verify the result there. Whether it can restart the host for you depends on the controls that host exposes.
+
+This is also where the agent may ask once whether common Neurath problems may be reported publicly. You can decline or leave the question unanswered and still use Neurath. See [reporting choices](reporting.md).
+
+## Keep the installation current
+
+During active work, supported hooks can remind the agent that a release check is due. The agent can then check for a stable release and present an update notice; the hook itself does not make a network request or start another session. Routine checks are spaced at least a day apart, and you can request a fresh check. A notice does not install the update. A failed network check leaves availability unknown and does not stop your original task.
+
+> Show the available Neurath update and its effect on this installation. Apply the prepared version when I choose it, and verify the active host connection afterward.
+
+The choice applies to the prepared release. If that preview changes, the agent needs a new choice. A version you postpone stays deferred. Updates continue to preserve project bindings and local settings; changed managed content remains a conflict to resolve.
+
+## Recover or remove it when needed
+
+You can ask the agent to recover an interrupted installation, restore an earlier installation, or uninstall Neurath. Recovery uses the recorded operation state. Restoration and removal preserve unrelated edits and user-edited project bindings. Local installation history and empty directories can remain, so removal is not a promise to erase every local record.
+
+After preparation, return to [the first investigation](start-here.md). Agents needing executable installation instructions should use the [installation reference](../contributing/installation.md), [setup reference](../contributing/setup-reference.md), and [release reference](../contributing/releases-reference.md).
 
 [한국어](../../ko/usage/installation.md)
-
-Ask the agent to install Neurath in the Git project where you want to work. It inspects the existing setup, preserves the project's settings, and connects the documents and checks already used there.
-
-> Install Neurath here for Claude Code and Codex. Keep my existing instructions and hooks, use this project's real checks, and tell me when it is ready to use.
-
-## Get the first session ready
-
-You need macOS or Linux, Git, and Claude Code or Codex. Neurath requires Python 3.14; the quick installer can provision it. The initial defaults use the generic profile and both hosts. You can ask to install for just one host.
-
-The agent prepares the integration and checks what it can. You may then need to log in, accept the host's trust prompt, start a new session, or reload its tool catalog. The result should identify the remaining action, for example: “Files are installed for Codex. Start a new session so the integration can be checked there.”
-
-If your project already has a harness or similarly named skills, ask the agent to inspect their overlap before installing. A skill prefix can resolve a name collision; responsibility for shared hooks and state still needs to be clear.
-
-## Keep the project's existing setup
-
-Installation preserves existing instructions, hooks, permissions, your edited project bindings, project dependencies, and the project's virtual environment. Neurath uses a separate runtime environment. Updating one project leaves other projects on their installed runtime, and previous runtimes remain available for restoration.
-
-If a managed file has been edited manually, the agent shows the conflict. Installation plans and backups can contain private configuration, so they stay local.
-
-As part of setup, the agent connects real documentation and verification routines. If a needed document or check is missing, it explains what is absent and which decision it needs from you. See [Connect Neurath to your project](profiles.md).
-
-## Decide when to update
-
-> Check for an official stable update, prepare the change, and explain what it would affect before applying it.
-
-During active work, Neurath checks for official stable releases at most daily unless you ask again. An update notice gives the installed and offered versions, material changes, and an official link. It does not start a separate session or apply the update automatically.
-
-The agent prepares the proposed update before asking for your choice. An explicit yes applies to that prepared offer. No answer leaves the installation unchanged. If you decline or postpone a version, it stays deferred until you resume it. The choice carries across sessions, and updates preserve your reporting and contribution consent.
-
-A failed release check does not interrupt your original task. If an earlier update was interrupted, ask the agent to inspect the installation and prepare a recovery before trying to apply it again.
-
-An update changes the installed files, but an already-running tool connection may still use the older version. If new tools or behavior are missing, ask the agent to reconnect the affected MCP connection and verify the active version. A successful on-disk update alone does not show that an existing connection has reloaded it.
-
-You can also ask:
-
-> Save the current work, restart the app if needed, and continue this same task without asking me to operate the machine.
-
-When the host provides scheduling and an independent restart mechanism, the agent can prepare both before closing the app. Neurath preserves the task history and work ownership; after returning, the agent checks the new connection and continues the unfinished work. The agent verifies that the restart mechanism actually runs, protects other active work, and stops the continuation schedule after it has served its purpose. App restart remains a host operation, and its available controls determine whether this route can run unattended.
-
-## Restore or remove an installation
-
-> Restore this project's previous Neurath installation, preserve my changes, and check the restored integration.
-
-You can also request an update preview, installation in another project, recovery of an interrupted installation, or removal of the managed integration. The agent uses the installation history to work out what can be restored while preserving your edits.
-
-After removal, empty directories, installation history, and user-edited project bindings may remain. The result should explain what was removed and what was retained.
-
-Continue with [Working with Neurath](index.md). Detailed runtime requirements, update validation, installation records, and executable procedures are in the [contributor documentation](../contributing/index.md).

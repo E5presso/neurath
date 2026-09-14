@@ -1,62 +1,152 @@
-<!-- date: 2026-09-13; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
+<!-- updated: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
 
-[English](../../en/contributing/agents-reference.md)
+# 작업을 책임지는 에이전트
 
-# 참여자의 역할과 권한 확인
+[English](../../en/contributing/agents-reference.md) · [기여자 시작 안내](index.md)
 
-Neurath는 사용자의 현재 에이전트, 네이티브 직접 자식, 별도로 소유한 provider 세션을 구분합니다. 이 구분에 따라 worktree 편집, 할당 수락, 후보 평가, 중단 후 재개 권한이 달라집니다. 표시 이름이나 역할을 설명하는 메시지만으로 해당 권한을 얻을 수 없습니다.
+Neurath는 코딩 에이전트가 받은 사용자 요청을 작업 기록, 호스트의 관측 정보, 체크아웃을 수정할 권한과 연결합니다. 이 문서는 도구 이름에 앞서 각 주체가 무엇을 책임지는지 설명합니다. 제품을 처음 접한다면 [사용 흐름](../usage/start-here.md)부터 읽어도 좋습니다.
 
-## 협업 형태 선택
+사용자가 개발하는 가상의 웹앱에서 저장한 필터가 새로고침하면 사라진다고 가정해 보겠습니다. Neurath 기능이 아닌 대상 앱의 예시입니다. 사용자는 원인을 고치고, 새로고침 뒤에도 선택이 유지되며, 기존 화면은 보존되기를 원합니다. 에이전트는 저장 API와 다시 불러오는 동작을 조사하거나 다른 에이전트에게 재현을 맡길 수 있습니다. 모두 같은 요청을 해결하는 방법입니다. 조사를 끝냈거나 토큰 한도에 도달했거나 인계 내용을 작성했다고 해서 사용자의 요청이 달라지지는 않습니다.
 
-| 필요한 일 | 참여자 | 권한과 수명 |
+## 작업, 대화, 체크아웃의 구분
+
+| 용어 | 필터 문제에서의 의미 |
+| --- | --- |
+| 작업(task) | 사용자가 원하는 결과와 관측 가능한 수락 조건입니다. 작업 원장에 보존됩니다. |
+| 세션(session) | 호스트가 식별하고 관측하는 하나의 Codex 또는 Claude Code 대화 실행입니다. |
+| 루트(root) | 해당 네이티브 세션의 주 에이전트로, 작업 판단을 책임집니다. |
+| 네이티브 자식(native child) | 호스트가 직접적인 부모 관계를 확인한 하위 에이전트입니다. 필터 문제의 제한된 부분을 조사할 수 있습니다. |
+| 동료(peer) | 같은 로컬 Git 프로젝트에 참여하는 별도의 독립 세션입니다. 발견했다고 자식이 되지는 않습니다. |
+| provider 실행 | Neurath가 감독하는 독립 네이티브 루트 실행입니다. 설정과 소유권을 별도로 확인합니다. |
+| 워크트리(worktree) | 특정 Git 체크아웃입니다. 연결된 워크트리끼리는 프로젝트 기록을 공유할 수 있지만 수정 대상은 구분됩니다. |
+| claim | 해당 워크트리의 현재 쓰기 리스입니다. epoch와 fencing token으로 오래된 소유자의 접근을 거부합니다. |
+| receipt | 특정 관측 사건을 남긴 기록입니다. 그 사건이 입증하는 범위까지만 의미가 있습니다. |
+
+완료 상태의 기준은 작업 원장이고, 호스트의 TODO 목록은 그 원장을 보여 주는 화면입니다. 네이티브 신원과 실제 권한은 호스트가 관리합니다. Neurath의 현재 바인딩은 도구 호출을 그 신원과 연결합니다. 이름, 경로, 복사한 세션 ID, 예전에 기억한 claim으로 유효한 바인딩을 대신할 수 없습니다.
+
+## 지금 실행 가능한 상태인지 확인하기
+
+`session_status`는 설치, 네이티브 활성화, 실제 실행 모드, 워크트리 소유권을 보고합니다. 기본값은 `detail="summary"`이며 `detail="full"`은 기능 목록을 추가합니다. 각 항목을 따로 판단해야 합니다. 파일이 설치되었다고 훅이 활성화된 것은 아니며, 세션이 활성화되었다고 현재 루트가 체크아웃을 소유한 것도 아닙니다.
+
+`session_inspect`, `turn_inspect`, `worktree_inspect`는 더 좁은 범위의 상태를 보여 줍니다. 승인된 작업에 현재 루트의 claim이 필요하면 `worktree_claim`을 사용합니다. 강제로 소유권을 빼앗는 기능은 없습니다. 반환된 리스 정보는 비공개 작업 상태에 함께 보관합니다. 해제에는 반환된 `expected_lease_epoch`와 `fencing_token`이 필요하며, 오래되었거나 다른 소유자의 토큰은 거부되어야 합니다. 토큰을 공개하거나 임의로 만들어서는 안 됩니다.
+
+활성 호스트는 명명된 MCP 호출에 `_neurath_binding`을 공급합니다. 진단 결과로 바인딩을 만들어 넣으면 안 됩니다. 네이티브 등록, 사용자 프롬프트 receipt, 현재 소유권 중 필요한 것이 없다면 실제 누락 원인을 해결해야 합니다.
+
+### 앱의 프로젝트 배정 정보가 뜻하는 것
+
+활성 상태가 확인된 Codex 루트에는 `app_project`가 포함될 수 있습니다. 앱이 소유한 로컬 배정 기록을 정해진 범위 안에서 읽기만 한 결과입니다. `assigned`는 일치하는 로컬 프로젝트 기록을 찾았다는 뜻이고, `unassigned`는 앱이 프로젝트 없는 작업으로 명시적으로 기록했다는 뜻입니다. `unobserved`는 기록이 없거나, 모순되거나, 지원하지 않는 형태이거나, 읽기 한도를 넘었다는 뜻입니다. 상태 파일은 최대 16 MiB까지만 검사하고 해당 작업의 배정 필드만 반환합니다.
+
+이 정보는 진단용입니다. 작업 권한이나 실행 준비 상태를 바꾸지 않고, 원격 앱을 조사하거나 현재 창에 무엇이 표시되는지 증명하지도 않습니다. 네이티브 실행 메타데이터의 `project_id` 역시 별개의 사실입니다. 사용자가 앱에서 새 루트를 만들도록 요청했다면 앱의 `create_thread` 기능과 프로젝트·플러그인 컨텍스트를 함께 사용하고 앱의 결과를 확인해야 합니다. `provider_run`은 감독되는 provider 작업을 시작하는 경로이며 앱 프로젝트 배정의 증거를 대신하지 않습니다.
+
+## 요청을 확인 가능한 작업으로 기록하기
+
+루트는 먼저 `task_list`를 읽습니다. `task_define`은 반환된 원장 revision을 사용해 목표, prompt·ticket·spec 출처, 수락 조건, 의존성을 기록합니다. `task_start`는 원장과 작업의 revision을 모두 확인하고 실행할 작업을 선택합니다. `task_resolve`는 같은 revision 검사 아래 근거 참조와 요약을 붙여 `succeeded`, `failed`, `invalidated` 중 하나를 기록합니다.
+
+원장의 상태는 `pending`, `in_progress`, `succeeded`, `failed`, `invalidated`이며 종결 이력은 바꿀 수 없습니다. `all_terminal`은 `all_succeeded`, `unsuccessful_task_ids`와 별도로 표시됩니다. 실패로 끝났다고 성공적으로 전달한 것은 아닙니다. 최초 정의에는 실제 네이티브 사용자 지시 receipt 또는 같은 세션에 보존된 검증된 프롬프트 출처가 필요합니다. 이후 프롬프트가 들어오면 새 정의가 원래 요구를 이어가는지 새 요청을 구현하는지 명시적으로 선택해야 합니다. 상태 질문을 조용히 새 목표로 만들면 안 됩니다. 동료 메시지로 재개한 턴은 새 사용자 receipt를 꾸미지 않고 보존된 검증 프롬프트 출처를 사용할 수 있습니다.
+
+시작과 성공 해결에는 의존 작업의 종결이 필요합니다. 실패·무효화 결과는 의존 작업이 정리되기 전에도 기록할 수 있습니다. 해결은 `assurance="agent-report"`인 소유자 보고이며 독립 인증이 아닙니다. 마지막 원장 검사와 루트 종료는 하나의 SQLite 트랜잭션에서 이루어져 동시에 추가된 작업을 놓치지 않습니다. TODO 화면이 오래되었거나 표시 실패해도 이 사실은 바뀌지 않습니다.
+
+필터 문제의 수락 조건에는 재현, 원인 확인, 새로 불러온 화면에서 선택 유지, 기존 화면 보존이 포함되어야 합니다. “저장 API가 성공을 반환했다”는 하나의 관측일 뿐 새로고침 검증을 대신하지 않습니다. 시도가 실패해도 원래 사용자 요구는 남으므로 필요한 후속 작업을 계속 표현해야 합니다.
+
+네이티브 목표 알림은 이 구분을 놓치지 않도록 돕습니다. 첫 유효 이벤트, 프롬프트 변경, 서로 다른 완료 도구 이벤트 12개, 또는 300초가 지난 뒤의 다음 유효 이벤트에서 동작합니다. 작업 정의·시작·해결 직전에도 판단에 필요한 내용을 즉시 제공합니다. 알림은 최대 2,400바이트, 작업 발췌 최대 네 개로 제한됩니다. 작업 상태를 바꾸거나 의미상 성공 여부를 판정하는 기능은 아닙니다.
+
+## 사용자에게 응답을 마치는 것도 작업 판단
+
+일반 Stop은 진행 중인 작업 상태를 확인합니다. 질문을 했거나, 예산 한도에 도달했거나, 검증 한 단계를 끝냈거나, 체크포인트를 준비했다는 이유만으로 미완료 사용자 목표를 우회할 수 없습니다. 한도에 도달하면 방법을 바꾸거나 승인된 방식으로 이어가야 할 수 있습니다. 체크포인트는 확인한 내용과 남은 일을 기록합니다. 자세한 내용은 [기억과 학습](memory-reference.md)을 참고하세요.
+
+루트가 새로고침 복원을 조사하는 동안 네이티브 자식에게 API 저장과 응답을 맡기거나, 발견한 동료에게 기존 조사 결과를 물을 수 있습니다. 자식의 제한된 과업과 부모 관계를 명확히 유지해야 합니다. `delegation_prepare`는 준비를 기록할 뿐 자식을 생성하지 않습니다. 실제 호스트 동작과 관측된 자식 신원이 있어야 실행 준비가 이어집니다. 메시지와 위임 결과는 [협업 계약](collaboration-contract.md), 독립 루트는 [provider 실행](provider-transports.md)에서 설명합니다.
+
+## 구현과 확인할 테스트
+
+신원과 작업 규칙은 [src/neurath/hosts/identity.py](../../../src/neurath/hosts/identity.py), [src/neurath/_assets/scripts/agent_harness/task_service.py](../../../src/neurath/_assets/scripts/agent_harness/task_service.py), `task_ledger.py`, `worktree_registry.py`에 있습니다. 앱 배정 진단은 [src/neurath/hosts/app_projects.py](../../../src/neurath/hosts/app_projects.py), 목표 알림은 [src/neurath/runtime/goal_reminders.py](../../../src/neurath/runtime/goal_reminders.py)에 있습니다.
+
+관련 회귀 검사는 [tests/test_app_project_observation.py](../../../tests/test_app_project_observation.py), [tests/test_goal_reminders.py](../../../tests/test_goal_reminders.py), [tests/runtime/agent_harness/test_foreground_stop_aggregate.py](../../../tests/runtime/agent_harness/test_foreground_stop_aggregate.py)에서 확인할 수 있습니다. 이는 소스 수준의 확인 위치이며, 특정 설치나 현재 MCP 연결, 실제 앱 세션의 활성화를 보증하는 결과는 아닙니다.
+
+현재 검색에 노출되는 명명 공개 도구는 128개이고 내부 연산은 138개입니다. 도구가 존재해도 활성 네이티브 바인딩이 필요합니다. `UNATTESTED`인 세션·턴·자식은 실행 상태를 바꿀 수 없습니다. Codex 자식 검증은 실제 생성 결과와 자식 트랜스크립트의 부모·세션 메타데이터를, Claude는 자식 트랜스크립트의 일회성 부모 Agent 호출 근거를 사용합니다. 등록이 늦었다면 첫 상태 동작에서 신원 검증을 다시 시도할 수 있지만 실제 계보가 확인되기 전에는 셸·쓰기가 `child-identity-unverified`로 남습니다.
+
+## 명명 도구 입력 참조
+
+아래는 현재 명명 도구의 입력 계약입니다. 중첩 필드의 필수 조건은 상위 객체나 배열 항목을 제공했을 때 적용됩니다. 스키마 통과는 첫 검사일 뿐이며 네이티브 신원, 소유권, 출처, revision, 각 동작의 전제 조건도 적용됩니다. `_neurath_binding`은 호스트가 제공하므로 임의로 만들지 않습니다.
+
+모든 응답에는 `ok`, `operation`이 있습니다. 성공 호출에는 표준 `result`, 실패에는 `error.code`, `error.message`, `error.state`, `error.retryable`, `error.next_action`이 포함됩니다. `ok`는 해당 동작의 성공만 뜻하며 사용자 목표 달성을 뜻하지 않습니다. 후속 호출에는 반환된 ID와 revision을 유지합니다.
+
+### `session_status`
+
+| 필드 | 필수 여부·기본값 | 형식·제한 |
 | --- | --- | --- |
-| 현재 작업에서 분리 가능한 제한된 일 | 네이티브 말단 자식 | 호스트가 확인한 직접 부모·자식 관계 |
-| 독립 수명, 다른 provider, 필요한 격리 | 소유한 provider 세션 | 별도 실행 기록과 해당 worktree의 준비 확인 |
-| 기존 협업자의 정보 | 발견한 동료 | 인증된 메시지 출처와 동료 자신의 사용자 지시 범위 |
-| 명시적 계약이 요구하는 독립 검토 | 연결된 검토자 | 정확한 후보·할당 권한과 소유자의 결과 소비 |
+| `detail` | 선택; 기본 `"summary"` | 문자열: `"summary"`, `"full"` |
 
-현재 작업에서 이미 승인된 일을 나눌 때는 네이티브 말단 자식이 기본입니다. 독립 provider 실행에는 이유와 기존 승인이 필요합니다. 받은 동료 요청이 새 세션 생성이나 사용자 목표 확대를 허용하지는 않습니다. fork는 자체 시작 확인과 자체 worktree 소유권이 필요한 별도 루트입니다.
+### `session_inspect`
 
-## 상태 변경 전 호출자 확인
+에이전트가 제공할 입력 필드가 없습니다.
 
-네이티브 훅은 실제 호스트·세션·현재 턴·worktree·정확한 도구 입력을 연결합니다. 호출자가 입력한 ID만으로 권한이 생기지 않습니다. MCP 입력 스키마는 닫혀 있으며, 선택 필드 `_neurath_binding`은 호스트가 제공하는 인증 자료입니다. 예제에 임의로 채우거나 다른 호출자의 값을 복사하면 안 됩니다.
+### `turn_inspect`
 
-`session_status`에 `{"detail":"full"}`을 전달하면 설치, 활성화, 정책, 세션, 소유권을 진단할 수 있습니다. `session_inspect`, `turn_inspect`, `worktree_inspect`는 해당 상태를 좁혀 읽습니다. 설치 파일 존재, 실제 호스트 활성화, 적용된 정책, 소유권 획득은 각각 확인해야 합니다. 실행 경로 제안만으로 준비가 완료되지 않습니다.
+에이전트가 제공할 입력 필드가 없습니다.
 
-직접 자식을 만들 때는 부모가 네이티브 spawn 직전에 `delegation_prepare`로 `delegation_id`, `assignment`, 안정적인 `key`를 기록합니다. 일회용 의도는 실제 호스트 근거와 일치해야 합니다. Codex는 실제 spawn 결과와 자식 대화 기록의 메타데이터를, Claude는 자식 대화 기록의 부모 Agent 호출 참조를 확인합니다. 오래되거나 재사용·복사한 참조로 관계를 만들 수 없습니다. 대화 기록 등록이 늦으면 첫 상태 작업에서 재확인할 수 있지만, 확인 전에는 자식의 셸·쓰기 동작이 `child-identity-unverified`로 차단됩니다.
+### `worktree_inspect`
 
-이 구조에서는 네이티브 직접 자식만 지원합니다. 중첩 spawn에 부모 식별자를 복사해도 유효해지지 않습니다. 관계 확인 후 `delegation_assign`에 `workflow_id`, `delegation_id`, `assignment`, `target`, `key`를 전달해 명시적 workflow에 연결합니다. 독립 평가에는 실제 평가 계약과 인증된 보고 소비도 필요합니다.
+에이전트가 제공할 입력 필드가 없습니다.
 
-## worktree별 쓰기 소유자 유지
+### `worktree_claim`
 
-인증된 호출자는 `{}`로 `worktree_claim`을 호출하고 반환된 lease epoch와 fencing token을 보존합니다. lease는 현재 소유자를 식별하고 token은 소유권이 바뀐 뒤 이전 소유자가 쓰는 것을 막습니다. 다른 에이전트의 탐색 결과, 작업 수락, checkpoint, 루트 식별자는 소유권을 대신하지 않습니다.
+에이전트가 제공할 입력 필드가 없습니다.
 
-`worktree_release`에는 실제 소유권 기록의 `expected_lease_epoch`와 `fencing_token`이 필요합니다. 값이 오래되었다면 새 token을 추측하거나 강제로 인수하지 말고 현재 소유자를 확인합니다. 여러 에이전트가 같은 worktree를 읽을 수 있지만 쓰기는 한 명이 맡아야 합니다. 독립 provider가 편집하기 전에는 자기 대상의 설치·실제 활성화·적용 정책·선택 모델·소유권을 확인합니다.
+### `worktree_release`
 
-격리가 필요하면 [기능별 실행 경로](capability-map.md)의 worktree 준비·정리 절차를 사용합니다. 정리에는 독립적으로 확인한 기준 브랜치와 remote 참조가 필요하며 저장소 관례를 추측하거나 기존 소유자를 밀어내면 안 됩니다.
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `expected_lease_epoch` | 필수 | 정수; 1–9007199254740991 |
+| `fencing_token` | 필수 | 문자열; 1–256 자 |
 
-## 기존 동료 찾기와 할당
+### `task_list`
 
-동료는 `collaboration_register`로 간결한 이름과 소개를 등록하며 실제 식별자는 런타임이 연결합니다. 전체 대화를 복사하지 않고 필요한 동료를 찾을 수 있습니다.
+에이전트가 제공할 입력 필드가 없습니다.
 
-```json
-{"tool":"collaboration_discover","arguments":{"query":"API","limit":10}}
-```
+### `task_define`
 
-반환된 정확한 주소를 사용합니다. 질문·제안은 `collaboration_send`, 일반 작업 할당은 `to`, `message`, `key`를 받는 `collaboration_assign`으로 보냅니다. 수신자는 반환된 작업 ID로 `collaboration_accept`를 호출하고, `collaboration_report`에서 `started`, `waiting`, `error`, `failed`, `cancelled`, `completed` 상태를 보고합니다. `collaboration_task`는 할당 기록을 읽습니다.
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `tasks` | 필수 | 배열; 1–64 항목 |
+| `tasks[].key` | 필수 | 문자열; 1–512 자 |
+| `tasks[].title` | 필수 | 문자열; 1–512 자 |
+| `tasks[].goal` | 필수 | 문자열; 1–16000 자 |
+| `tasks[].sources` | 필수 | 배열; 0–31 항목 |
+| `tasks[].sources[].kind` | 필수 | 문자열: `"prompt"`, `"ticket"`, `"spec"` |
+| `tasks[].sources[].reference` | 필수 | 문자열; 1–4096 자 |
+| `tasks[].sources[].revision` | 필수 | 문자열; 1–4096 자 |
+| `tasks[].acceptance` | 필수 | 배열; 1–32 항목; 문자열; 1–16000 자 |
+| `tasks[].dependencies` | 필수 | 배열; 0–64 항목; 문자열; 1–128 자 |
+| `expected_revision` | 필수 | 정수; 0–9007199254740991 |
+| `key` | 필수 | 문자열; 1–512 자 |
 
-메시지 수신 확인과 작업 수락은 별개입니다. 연결이 끊긴 수신자는 새로 확인된 네이티브 턴에서 다시 수락해야 하며, 무관한 과거 턴으로 재개할 수 없습니다. 완료 보고를 받으면 발행자가 요청한 실제 효과를 확인해야 합니다. 본문 읽기·ACK·응답·복구는 [메시지 전달 계약](collaboration-contract.md)에 설명합니다.
+### `task_start`
 
-## 원래 작업 재개
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `task_id` | 필수 | 문자열; 1–128 자 |
+| `expected_revision` | 필수 | 정수; 0–9007199254740991 |
+| `expected_task_revision` | 필수 | 정수; 0–9007199254740991 |
+| `key` | 필수 | 문자열; 1–512 자 |
 
-일반 호스트 `SessionEnd`는 재개 가능한 세션·작업·enclave·소유권을 보존합니다. 재개 근거가 확인된 `SessionStart`에서 네이티브 관계를 복원합니다. 커널의 명시적 `SessionEnded`는 영구 종료이며 시작 문자열로 되살릴 수 없습니다. 올바른 루트 요청이나 네이티브 재개는 이전에 중단된 현재 턴을 닫되 남은 작업과 위임은 보존합니다.
+### `task_resolve`
 
-작업 목록이 있으면 Stop은 공통 데이터베이스에서 최신 목록 확인과 종료를 원자적으로 처리합니다. 일반 작업은 인증된 소유자가 직접 근거와 결과 요약으로 해결합니다. checkpoint·학습·TODO·독립 검토가 추가 완료 투표를 하지는 않습니다. 명시적 단계와 검토 workflow에는 해당 요구가 유지됩니다. [작업 도구](task-tools.md)와 [작업·TODO 계약](task-todo-contract.md)을 참고합니다.
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `task_id` | 필수 | 문자열; 1–128 자 |
+| `expected_revision` | 필수 | 정수; 0–9007199254740991 |
+| `expected_task_revision` | 필수 | 정수; 0–9007199254740991 |
+| `key` | 필수 | 문자열; 1–512 자 |
+| `status` | 필수 | 문자열: `"succeeded"`, `"failed"`, `"invalidated"` |
+| `references` | 필수 | 배열; 1–32 항목; 문자열; 1–4096 자 |
+| `summary` | 필수 | 문자열; 1–4096 자 |
 
-확인된 루트 턴에는 무한 반복을 막는 Stop 계속 실행 기회가 한 번 있습니다. 남은 작업은 미완료로 반환하며 이후 확인된 사용자 턴은 자체 기회를 갖습니다. 늦게 온 Stop이 더 최신 턴을 닫을 수 없습니다. 일치하는 턴이 없는 Stop은 상태 변경 없이 비차단 진단을 남깁니다. 지원되는 앱 동료 전달도 실제 대화 기록과 네이티브 턴 근거가 있을 때 기존 목표를 이어갈 수 있으며 사용자 승인을 생성하지는 않습니다.
+### `delegation_prepare`
 
-## 구현과 확인 대상
-
-[호스트 식별](../../../src/neurath/hosts/identity.py)과 [훅](../../../src/neurath/hosts/hooks.py)이 호출자를 확인합니다. [SessionKernel](../../../src/neurath/_assets/scripts/agent_harness/session_kernel.py), [StateHandle](../../../src/neurath/_assets/scripts/agent_harness/state_handle.py), [WorktreeRegistry](../../../src/neurath/_assets/scripts/agent_harness/worktree_registry.py)는 생명주기·접근·소유권을 담당합니다.
-
-[호스트 생명주기 테스트](../../../tests/test_host_lifecycle.py), [프롬프트 전달 테스트](../../../tests/test_prompt_delivery.py), [worktree 테스트](../../../tests/runtime/agent_harness/test_worktree_registry.py)는 이 경계를 검사합니다. 실제 호스트 수락 검증에서는 새 시작, 실제 자식 관계, 중단·재개, 조기 완료 거절, 인증된 결과 소비, 소유권 해제를 추가로 관찰해야 합니다. 프로토콜 모의 검사나 소스 테스트의 통과는 각각 검사한 범위의 근거입니다.
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `delegation_id` | 필수 | 문자열; 1–128 자 |
+| `assignment` | 필수 | 문자열; 1–8192 자 |
+| `task_id` | 선택; 기본 `null` | 문자열; 1–128 자 / null |
+| `expected_task_revision` | 선택; 기본 `null` | 정수; 1–9007199254740991 / null |
+| `key` | 필수 | 문자열; 1–512 자 |

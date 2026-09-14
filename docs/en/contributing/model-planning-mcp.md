@@ -1,124 +1,137 @@
-<!-- date: 2026-09-14; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
+<!-- updated: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
 
-[한국어](../../ko/contributing/model-planning-mcp.md)
+# Choose a model against an observed assignment
 
-# Bind an observed model choice to one assignment
+[한국어](../../ko/contributing/model-planning-mcp.md) · [Contributor start](index.md)
 
-Model planning records why a particular observed model is sufficient for authorized independent work, then binds that choice to the actual provider execution. It preserves user constraints and prevents a changed assignment, stale policy, or different created model from silently reusing an old decision. It does not authorize creating a session.
+A model plan records why a particular available model can carry out an authorized assignment under the intended execution settings. It makes that choice inspectable before a new native session does substantive work. It does not grade model quality or replace the agent's judgment about the task.
 
-## Decide whether a provider run is needed
+For the user's hypothetical saved-filter bug, an independent agent might only inspect API storage and responses, or it might need to trace API persistence and UI restoration together. Those assignments can have different difficulty and capability requirements. The plan must explain the actual question and constraints rather than select a model by a fixed name or presume that the most expensive option is necessary.
 
-Use native leaf children for bounded work within the current task when their supported topology is enough. An independent lifetime, cross-provider work, or required isolation can justify an owned provider session. Record the reason before planning one. A peer message, a model recommendation, or an available catalog is not creation authority.
+## Start with the destination's observed inventory
 
-Assess the role using ambiguity, change breadth, reasoning depth, failure impact, required tools/modalities/context, and the strength of available verification. `difficulty` is `routine`, `standard`, or `complex`; `confidence` is `low`, `medium`, or `high`. These are reasoned judgments with evidence, not a rigid point score or token-count gate.
+`provider_models(provider, worktree, refresh)` returns an inventory with an `inventory_id` for the target. `provider` is `codex` or `claude-code`; `worktree` scopes the destination and `refresh` requests a fresh observation. Model IDs, reasoning settings, capabilities, aliases, default-model provenance, context, price, and latency must come from actual adapter observations where available.
 
-| Example assignment | Assessment to record | Selection consequence |
-| --- | --- | --- |
-| Mechanically compare an explicit field list against tests | Narrow scope, little ambiguity, direct check | Smallest observed model meeting the constraints |
-| Resolve a lifecycle race across ownership and recovery | Multiple state transitions, uncertain effects, failure impact | A model supported by evidence of the required capabilities |
-| Use a specific provider/model requested by the user | Fixed constraint regardless of preferred ranking | Use that exact observed model or report why unavailable |
-| Stay below an explicit cost or latency limit | Requires observed values for the constrained dimension | Unknown values cannot establish compliance |
+Unknown values remain unknown. An unknown price cannot satisfy a price ceiling as if it were zero. A reasoning mode absent from the observed model cannot be inferred from another model. Native aliases need source and revision provenance to resolve to a concrete model ID. An installed CLI and a remembered model catalog are insufficient substitutes for current inventory.
 
-There is no fixed model ranking or hardcoded price table. Unknown capability, cost, or latency remains unknown. Planning does not buy quota, silently substitute a provider, or authorize a new data destination.
+## Record the choice and what could invalidate it
 
-## Observe inventory once, reuse it deliberately
+`provider_plan` requires the provider, worktree, exact assignment, inventory reference, execution settings, selection, difficulty, confidence, rationale, and stable key. Supply nonempty `evidence` and `replan_triggers` as well: the planning contract requires them even though their schema has empty defaults. `assignment_revision` begins at 1.
 
-`provider_models` requires `provider` (`codex` or `claude-code`); `worktree` is optional and `refresh` defaults to `false`.
+The fields serve distinct purposes:
 
-```json
-{"provider":"codex","worktree":"/absolute/path/to/authorized-worktree","refresh":false}
-```
-
-The result records an inventory identity, models, source, and observation revision. Reuse the observation for the native issuer/provider session across turns and worktrees. A new assignment may need a new plan without needing another catalog query. Refresh only after an explicit user request or concrete evidence invalidating the observation.
-
-Codex uses its native adapter. Claude uses a short official SDK metadata handshake without a model query, retaining applicable settings and removing the parent identity environment. Catalog availability does not itself prove authentication, successful inference, or the actual configured default.
-
-## Prepare the exact plan
-
-`provider_plan` requires provider, target worktree, assignment, inventory ID, execution object, selection, difficulty, confidence, rationale, and stable key. Provide nonempty `evidence` and `replan_triggers` as well: their default empty arrays do not satisfy the domain contract. Each list supports at most 32 items. The assignment is limited to 16,000 characters and revisions are positive integers.
-
-Example input below is structurally valid after replacing the three illustrative target/inventory/model values with actual authorized and observed values. `evidence` describes observations that must actually have been made.
-
-```json
-{
-  "provider":"codex",
-  "worktree":"/absolute/path/to/authorized-worktree",
-  "assignment":"Compare the documented response fields with the current API tests; report discrepancies without editing.",
-  "assignment_revision":1,
-  "inventory_id":"RETURNED_INVENTORY_ID",
-  "execution":{"mode":"inherit"},
-  "selection":{"model":"OBSERVED_MODEL_ID"},
-  "constraints":{"allowed_providers":["codex"]},
-  "difficulty":"routine",
-  "evidence":["The assignment names a bounded field comparison and direct test evidence."],
-  "confidence":"high",
-  "rationale":"The observed model supports the tools and context required for this bounded comparison.",
-  "rejected_alternatives":["A larger model has no evidenced benefit for this assignment."],
-  "replan_triggers":["The assignment expands to implementation or the observed model becomes unavailable."],
-  "key":"response-contract-plan-1"
-}
-```
-
-The execution object can carry `mode`, approval fields, collaboration mode, Claude permission mode, and optional project ID as supported by the actual route. The selection object accepts `model` and optional `reasoning`. Constraints may include `explicit_model`, `allowed_providers`, `required_capabilities`, `min_context_tokens`, `max_input_price_per_million`, and `max_latency_ms`. A reasoning setting must be supported by the observed model; omitted reasoning is not an instruction to invent one.
-
-The saved result binds the assignment digest and revision, issuer/provider, effective policy digest and mapping revision, inventory observation, choice, rationale, constraints, and rejected alternatives. It returns `plan_id`, `revision`, a selection status, and `resolved_model_id`; default provenance is retained when relevant. `provider_plan_read` reads a specific `plan_id` and `plan_revision`.
-
-To revise a plan, provide its `plan_id`, the actual latest `expected_revision`, and a new stable request key. The same key with changed input conflicts. Revisions remain attributable instead of mutating an earlier decision in place.
-
-## Keep model inheritance separate from permissions
-
-`execution.mode="inherit"` and `provider_run.mode="inherit"` concern execution policy. They do not select a model. Current model selection represents the inherited-model sentinel as `selection.model="inherit"`; there is no `selection.mode` field in the public schema.
-
-For model inheritance, the target provider's observed configured default is the subject. It is not the cross-provider parent's model or a catalog recommendation. A resolved default requires `default_source` and `default_observation_revision` alongside `resolved_model_id`. Without a resolved default, a plan can be `preparation-only` only when it has no hard model/capability/context/price/latency constraints or reasoning selection that require proof. Substantive validation requires a ready plan.
-
-Preparation may observe the default on the same already-authorized session and produce a new plan revision before the assignment. It must not create an extra discovery session. If the user constrains paid calls and the required observation cannot satisfy that constraint, retain the gap. Permission inheritance is separately bounded by [the transport policy contract](provider-transports.md); neither form of inheritance implies every provider-native setting has been copied.
-
-## Choose target-native execution explicitly
-
-When the user wants each provider to retain its own native settings, set `execution.mode="target-native"` in `provider_plan` and `mode="target-native"` in `provider_run`. The plan revision and assignment must match, just as in the inheritance example. Model selection remains separate: it can name an observed model or use `selection.model="inherit"` for the target's observed configured default.
-
-The target's effective defaults must be observed and supported. Do not add conflicting explicit approval, reviewer, collaboration, or permission settings, copy the source's configuration, or switch strategies merely because `inherit` failed. [Provider transports](provider-transports.md) describes this policy boundary; [continuity](provider-continuity.md) covers taking over existing work rather than creating an independent assignment.
-
-## Admit and verify the actual execution
-
-Call `provider_run` with the exact plan ID and returned revision, the unchanged assignment and assignment revision, and a stable key. For the plan above, the binding has this shape:
-
-```json
-{
-  "provider":"codex",
-  "worktree":"/absolute/path/to/authorized-worktree",
-  "assignment":"Compare the documented response fields with the current API tests; report discrepancies without editing.",
-  "assignment_revision":1,
-  "model":"OBSERVED_MODEL_ID",
-  "mode":"inherit",
-  "plan_id":"RETURNED_PLAN_ID",
-  "plan_revision":1,
-  "key":"response-contract-run-1"
-}
-```
-
-Use the actual returned revision rather than assuming `1` outside this new-plan example. Validation happens before durable admission. After native creation, the actual model is checked before substantive assignment; a missing model or mismatch blocks work while retaining diagnostic native identity. Alias equivalence requires an authoritative mapping rather than similarity of names.
-
-The shared tool result envelope contains `ok` and `operation`, plus `result` on success or an error containing `code`, `message`, `state`, `retryable`, and `next_action`. Read the structured outcome. A valid plan or accepted run does not prove the requested effects occurred.
-
-## Replan only for a material change
-
-| Condition | Required response |
+| Field | Decision it records |
 | --- | --- |
-| Assignment, target, provider, constraints, or effective policy changed | New plan revision bound to the current context |
-| Policy mapping revision or observed default changed | Refresh the invalidated observation as needed, then replan |
-| Inventory has concrete invalidating evidence | Observe current catalog and revalidate selection |
-| Elapsed time or an ordinary message only | Retain the selection; time alone does not expire it |
-| Create response is uncertain | Reconcile the existing request/key/plan before another attempt |
-| A different model is now needed | New plan revision plus reconciliation of the already-authorized attempt |
-| Created model differs or is missing | Block substantive assignment and inspect retained native diagnostics |
+| `selection.model` | An observed model ID/verified alias, or the literal `"inherit"` for the destination's observed default. |
+| `selection.reasoning` | An observed reasoning setting supported by that model, when explicitly chosen. |
+| `execution` | The requested policy route: mode, approval policy/reviewer, collaboration mode, Claude permission mode, and optional project metadata. |
+| `difficulty` | `routine`, `standard`, or `complex`, based on this assignment. |
+| `confidence` | `low`, `medium`, or `high` confidence in the plan. |
+| `evidence` and `rationale` | Concrete assignment/inventory observations and the reasoning for this choice. |
+| `rejected_alternatives` | Alternatives considered and why they were not selected. |
+| `replan_triggers` | Changes that require reconsideration, such as scope, capability, or policy changes. |
+| `constraints` | Hard provider, model, capability, context, price, and latency requirements. |
 
-Resume and normal messages preserve the selection; ending a turn is not a reason to restart or switch models. An uncertain create must not become two independent sessions. `provider_status` is diagnostic after relevant events or errors, and recovery uses the recorded owned session as described in [provider transports](provider-transports.md).
+`constraints` supports `explicit_model`, `allowed_providers`, `required_capabilities`, `min_context_tokens`, `max_input_price_per_million`, and `max_latency_ms`. A supplied hard requirement must be established by observations. Missing capability, unknown constrained price, unsupported reasoning, or a provider mismatch rejects creation of a usable plan.
 
-## Verify planning and named-tool behavior
+A minimal *shape* for inheritance is shown below. Replace every placeholder with current values and preserve the assignment unchanged at dispatch.
 
-[Model planning](../../../src/neurath/providers/model_planning.py) implements typed observations, selection validation, immutable revisions, and staleness. [Task schemas](../../../src/neurath/runtime/task_schema.py), [provider execution](../../../src/neurath/runtime/provider_execution.py), and [the MCP server](../../../src/neurath/agents/mcp.py) carry the named interfaces. Deterministic checks validate structure, constraints, and bindings; they do not certify the subjective difficulty assessment or final task quality.
+```json
+{
+  "provider": "codex",
+  "worktree": "<authorized absolute worktree>",
+  "assignment": "Investigate API storage and responses for the saved filter; return persistence and response evidence.",
+  "assignment_revision": 1,
+  "inventory_id": "<returned inventory id>",
+  "execution": {"mode": "inherit"},
+  "selection": {"model": "inherit"},
+  "difficulty": "standard",
+  "evidence": ["<actual scope and inventory observations>"],
+  "confidence": "medium",
+  "rationale": "<why this observed default fits the bounded investigation>",
+  "replan_triggers": ["The assignment expands from diagnosis to implementation."],
+  "key": "saved-filter-model-plan-1"
+}
+```
 
-[Model-planning tests](../../../tests/test_model_planning.py), [provider-job tests](../../../tests/test_provider_jobs.py), and [MCP guidance tests](../../../tests/test_mcp_guidance.py) cover the corresponding contracts. Acceptance includes fixed or unavailable models, unknown constrained properties, unsupported reasoning, changed plans, alias/mismatch checks, and uncertainty after admission. Installed policies, skills, notifications, and error `next_action` must lead callers through named tools. Recall, peer messages, newsroom, and status should use those named operations; normal editing and tests remain native host work.
+## Keep the two meanings of inheritance separate
 
-An unavailable MCP or unsupported mode is an explicit limitation, not permission to route routine work through an arbitrary CLI or `agent(argv)` gateway. Source tests, installed guidance, and real native model/tool-choice observations are separate evidence in [validation](validation.md).
+`selection.model="inherit"` chooses the target's observed default model. `execution.mode="inherit"` preserves the immediate creator's supported native execution policy. `execution.mode="target-native"` uses explicitly authorized destination settings. None of these choices adopts another session's unfinished work or establishes app project membership.
+
+If the default model cannot yet be resolved, the system can permit `preparation-only` for the same authorized session when that preparation does not violate hard constraints. A constrained unknown default or an unsupported explicit reasoning setting cannot be guessed into validity. Substantive work waits for actual model/default readback. Do not create an unrelated discovery session to evade this boundary.
+
+## Preserve revisions through dispatch and change
+
+The returned plan includes its identity and revision, the resolved model or preparation-only state, and binding to the assignment, inventory facts, policy, owner, and target. `provider_plan_read(plan_id, plan_revision)` retrieves that exact version. Pass the returned reference to `provider_run`; use actual returned revisions instead of assuming every plan is still revision 1.
+
+To update a plan, provide `plan_id`, the current `expected_revision`, a new stable request key, and the complete revised proposal. Compare-and-swap rejects stale writers. Repeating an identical accepted request with its original key is durable and idempotent; a failed proposal does not consume its request key.
+
+Assignment, provider/host target, policy, constraints, or relevant model facts can invalidate the plan. Inventory refresh alone is not expiry: changed facts that affect selection are what matter. An explicit model choice need not become stale because an unrelated default changed. At session creation, actual model readback must match the resolved plan or verified alias; otherwise the substantive assignment is not admitted as successful creation.
+
+## Diagnose a rejected plan without weakening its requirements
+
+If inventory is missing, obtain the target observation. If a hard requirement is unverified, obtain evidence or return to the authorized requirement decision. If the plan is stale, read current state and create a revision that describes the current assignment. If the created native session has a policy/model mismatch, retain that mismatch and do not submit the assignment under an invented success state.
+
+Model choice does not authorize a more permissive execution mode, additional sessions, app actions, or worktree takeover. The returned tool error envelope supplies `code`, `message`, `state`, `retryable`, and `next_action`. Read the precise prerequisite instead of treating any rejection as a reason to retry with fewer constraints.
+
+## Source and tests
+
+[src/neurath/providers/model_inventory.py](../../../src/neurath/providers/model_inventory.py) collects observations; `model_planning.py` validates and persists plans; [src/neurath/runtime/model_tasks.py](../../../src/neurath/runtime/model_tasks.py) exposes the named tools. Execution binds them through [src/neurath/providers/execution_plan.py](../../../src/neurath/providers/execution_plan.py).
+
+[tests/test_model_planning.py](../../../tests/test_model_planning.py) covers owner fencing, durable replay, revisions, stale bindings, unknown constrained values, unresolved defaults, and alias/default provenance. These tests validate the plan contract. They do not establish a universal model ranking or prove that a particular model solves the user's filter bug.
+## Named input reference
+
+The tables below are the current named-tool input contract. Nested required fields are required when their parent object or array item is supplied. Schema acceptance is only the first check; native identity, ownership, source, revision, and operation-specific prerequisites still apply. The host supplies `_neurath_binding`; do not synthesize it.
+
+Every response has `ok` and `operation`. A successful call carries its canonical `result`; a failure carries `error.code`, `error.message`, `error.state`, `error.retryable`, and `error.next_action`. An `ok` envelope establishes the stated operation only, not the user goal. Preserve returned IDs and revisions for dependent calls.
+
+### `provider_models`
+
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `provider` | required | text: `"codex"`, `"claude-code"` |
+| `worktree` | optional; default `""` | text; 0–4096 characters |
+| `refresh` | optional; default `false` | boolean |
+
+### `provider_plan`
+
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `provider` | required | text: `"codex"`, `"claude-code"` |
+| `worktree` | required | text; 1–4096 characters |
+| `assignment` | required | text; 1–16000 characters |
+| `assignment_revision` | optional; default `1` | integer; 1–2147483647 |
+| `inventory_id` | required | text; 1–128 characters |
+| `execution` | required | object; declared fields only |
+| `execution.mode` | optional | text: `"inherit"`, `"target-native"`, `"read-only"`, `"workspace-write"`, `"danger-full-access"`, `"native"` |
+| `execution.approval_policy` | optional | text: `"never"`, `"on-request"`, `"untrusted"` |
+| `execution.approvals_reviewer` | optional | text: `"user"`, `"auto_review"` |
+| `execution.collaboration_mode` | optional | text: `"default"`, `"plan"` |
+| `execution.permission_mode` | optional | text: `"plan"`, `"dontAsk"`, `"default"`, `"acceptEdits"`, `"bypassPermissions"`, `"auto"` |
+| `execution.project_id` | optional | text; 1–256 characters |
+| `selection` | required | object; declared fields only |
+| `selection.model` | required | text; 1–256 characters |
+| `selection.reasoning` | optional | text; 1–100 characters |
+| `constraints` | optional; default `{}` | object; declared fields only |
+| `constraints.explicit_model` | optional | text; 1–256 characters |
+| `constraints.allowed_providers` | optional; default `[]` | array; 0–32 items; text; 1–16000 characters |
+| `constraints.required_capabilities` | optional; default `[]` | array; 0–32 items; text; 1–16000 characters |
+| `constraints.min_context_tokens` | optional | integer; 0–∞ |
+| `constraints.max_input_price_per_million` | optional | number; 0–∞ |
+| `constraints.max_latency_ms` | optional | number; 0–∞ |
+| `difficulty` | required | text: `"routine"`, `"standard"`, `"complex"` |
+| `evidence` | optional; default `[]` | array; 1–32 items; text; 1–16000 characters |
+| `confidence` | required | text: `"low"`, `"medium"`, `"high"` |
+| `rationale` | required | text; 1–16000 characters |
+| `rejected_alternatives` | optional; default `[]` | array; 0–32 items; text; 1–16000 characters |
+| `replan_triggers` | optional; default `[]` | array; 1–32 items; text; 1–16000 characters |
+| `key` | required | text; 1–512 characters |
+| `plan_id` | optional; default `""` | text; 0–128 characters |
+| `expected_revision` | optional; default `0` | integer; 0–2147483647 |
+
+### `provider_plan_read`
+
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `plan_id` | required | text; 1–128 characters |
+| `plan_revision` | optional; default `1` | integer; 1–2147483647 |

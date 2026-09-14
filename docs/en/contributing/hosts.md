@@ -1,78 +1,103 @@
-<!-- date: 2026-09-14; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
+<!-- last_updated: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
+# Connecting native host events to project work
 
 [한국어](../../ko/contributing/hosts.md)
 
-# Native host integration
+Neurath integrates with Claude Code and Codex through installed instructions, skills, hooks, and a named MCP server. The host runs the agent and its native tools. Neurath uses host events to connect that activity to the current request and project state.
 
-Claude Code and Codex execute the project work. Neurath installs instructions, skills and event adapters that connect each host's actual session to the shared runtime. The adapter's most important job is to preserve native evidence: who called, which turn was active and whether a child was really created by the claimed parent.
+A **session** is the native conversation, an **actor** is a participating agent, and the **root actor** owns the session's task list. A **foreground turn** is the current period of work on a native request. A **worktree claim** records the actor that owns coordinated work in the checkout. A **receipt** records an event or report; here, native receipts establish which host invocation occurred. These definitions matter because the same tool name can appear in several sessions at once.
 
-## Installed surfaces
+## Inspect four separate prerequisites
 
-| Surface | Installation behavior |
-| --- | --- |
-| `AGENTS.md` | Add a marked managed block while preserving surrounding user text. |
-| `.agents/skills/<name>` | Install shared skill projections used by Codex. |
-| `.codex/hooks.json` | Merge command hook groups with existing hooks. |
-| `CLAUDE.md` | Create a symlink to `AGENTS.md` when new; add an import block to an existing regular file. |
-| `.claude/skills/<name>` | Link to `../../.agents/skills/<name>`. |
-| `.claude/settings.json` | Merge Claude Code hook configuration. |
+Use `session_status` to inspect installation, native activation, effective execution mode, and ownership. Its default summary avoids the full capability catalog; `detail: "full"` includes it. Follow with `session_inspect`, `turn_inspect`, or `worktree_inspect` when the relevant state needs closer examination.
 
-The installer does not set a user's model, sandbox or approval preferences. Existing inline hooks in `.codex/config.toml` are retained; a host may load both formats and warn, and diagnostics report the condition. Managed content changed by a user produces a conflict instead of being overwritten.
-
-Neurath runs its own handlers sequentially within one event command. Other pre-existing hook groups retain the host's own scheduling behavior. The installed Codex `SessionEnd` command has a three-second timeout.
-
-## Event responsibilities
-
-| Native event | Runtime purpose |
-| --- | --- |
-| `SessionStart` | Establish or verify session recovery and load bounded project context. |
-| `UserPromptSubmit` | Retain the new user instruction and establish the current request's native evidence. |
-| `SubagentStart` | Observe a prospective child and verify its native relationship before granting authority. |
-| `PreToolUse` | Admit the exact caller, current turn and tool input before a protected state or project action. |
-| `PostToolUse` | Bind the actual result to the prepared invocation; record observations such as TODO submission outcome. |
-| `PreCompact` | Preserve the supported bounded context before compaction. |
-| `Stop`, `SubagentStop` | Check the applicable turn or child completion contract. |
-| `SessionEnd` | Close the host connection without treating process exit as permanent domain-session termination. |
-
-Claude Code additionally supplies `PostToolUseFailure` and `PermissionDenied`. Those events retain failure and refusal observations; a failure-shaped response must not be interpreted as a successful tool result.
-
-For root `UserPromptSubmit`, a failure in internal recording or reconciliation still allows the user input through and adds a `prompt bookkeeping deferred` diagnostic. That diagnostic establishes no new execution or ownership authority; existing tool and ownership checks continue to apply. The behavior is implemented in [host hooks](../../../src/neurath/hosts/hooks.py) and covered by [prompt-delivery tests](../../../tests/test_prompt_delivery.py).
-
-### Goal context on root events
-
-Root prompt and tool-completion hooks can also supply a periodic reminder of task purpose and acceptance. The [runtime reminder contract](runtime-lifecycle.md) defines eligibility, cadence, and byte limits. This hook adds reference context while leaving task state and permissions unchanged; it does not ask the user or agent to start a reflection workflow.
-
-## Native identity and direct children
-
-A session or participant with `unattested` lineage cannot mutate execution state. The MCP binding associates a real connection with the native session and invocation. Do not manufacture `_neurath_binding`, native session IDs or actor identifiers in an example or recovery command.
-
-For Codex, child verification compares the actual spawn result's path with the child transcript's parent and session metadata. `CODEX_THREAD_ID` is checked against the real child record. For Claude Code, a one-time reference to the parent's `Agent` call must be visible in the child transcript. Shell identity references are tied to the exact shell invocation. A copied, stale or reused reference provides no lineage authority.
-
-Prepare delegation with `delegation_prepare` from the current parent foreground immediately before native spawn. After the real direct child exists, bind the assignment with `delegation_assign`. Late transcript registration may be checked again at the child's first state-tool call. Until verification succeeds, the child receives `child-identity-unverified` for shell or write attempts.
-
-The supported delegation topology is native direct children. Nested spawning is rejected. A separate provider session and a fork are not direct children merely because they have a similar assignment. A verified fork becomes an independent root and must obtain its own worktree claim.
-
-## Interruption, resume and delayed events
-
-A host process ending preserves resumable session work, task history, enclave facts and the current claim. A later `SessionStart` with `source=resume` must verify native recovery. The kernel's explicit `SessionEnded` event is different: it permanently ends the domain session and cannot be automatically revived.
-
-When the user interrupts an active request, a verified native resume or root prompt may close the previous foreground turn while preserving pending work and ownership. A delayed Stop for that previous turn must leave the newer verified turn intact. An unmatched Stop emits a nonblocking diagnostic and does not mutate unrelated state.
-
-Some app peer deliveries arrive without `UserPromptSubmit`. Continuation of an existing goal then requires actual transcript delivery or completion plus native turn evidence. A peer message cannot create fresh user approval. These rules concern evidence available to the adapter; they do not establish arbitrary app project association or provider credit inheritance.
-
-## Diagnose the layer that failed
-
-Use `diagnostics_project` and `session_status` to obtain the installed project's observations. `session_status` accepts `detail=summary` or `detail=full`. The default is a compact summary; request full state when identity, turn or ownership needs diagnosis.
-
-| Reported layer | Meaning | Next investigation |
+| Observation | What it establishes | What remains to check |
 | --- | --- | --- |
-| `placement=passed` | Installed files and links match the installation record. | Confirm the intended host has loaded this installation. |
-| `protocol=passed` | Isolated hook subprocess fixtures handled startup JSON and rejected malformed input. | Exercise the actual host session. |
-| `host_activation=unverified` | No sufficient live native observation is recorded. | Start or reload the intended native host and inspect actual events. |
-| Child identity rejected | Required parent/child evidence is unavailable or inconsistent. | Inspect the real spawn and transcript relationship; do not insert identity fields. |
-| Current turn changed | The invocation no longer belongs to the admitted foreground request. | Re-enter through a verified current native turn and read present state. |
-| Ownership conflict | Another current lease controls this worktree. | Keep inspection read-only and use a properly owned worktree or supported handoff. |
+| Installed projections exist | Project configuration and assets were written | The current host loaded them |
+| Native activation is observed | This host supplied the required activation evidence | Current prompt, policy, and ownership |
+| Effective mode is observed | The current execution settings are known | Whether the intended action fits those settings |
+| Current actor owns the claim | Coordinated ownership of this worktree | Task scope and action-specific prerequisites |
 
-Native validation should exercise fresh start, a real command and state operation, interruption and resume, direct-child evaluation of an exact artifact, premature-completion rejection and authenticated result consumption. Its observations are private evidence. Fixture success alone cannot certify this host's current activation.
+A diagnostic result does not authorize the agent to invent missing identity, acquire a foreign claim, or change mode. If the host has not supplied a required prerequisite, resolve that prerequisite through the supported native route.
 
-See [runtime lifecycle](runtime-lifecycle.md) for state transitions, [task tools](task-tools.md) for public inputs and [validation](validation.md) for reproducible verification dimensions.
+## What the event adapter does
+
+| Native event | Neurath responsibility |
+| --- | --- |
+| `SessionStart` | Validate startup and record the native connection and transcript relationship |
+| `UserPromptSubmit` | Reconcile the foreground turn and the native instruction receipt |
+| `PreToolUse` | Validate the current foreground, bind named MCP calls, enforce relevant worktree and capability checks, and observe native TODO submissions |
+| `PostToolUse` | Close exact invocation capabilities and record applicable native results |
+| `PostToolUseFailure` / `PermissionDenied` | Handle supported Claude Code failure or denial events without inventing success |
+| `SubagentStart` | Reconcile child identity against the host's spawn evidence |
+| `SubagentStop` | Validate the child's continuation and owned delegation obligations |
+| `PreCompact` | Retain eligible context through the memory event path |
+| `Stop` | Evaluate the current root's normal completion prerequisites |
+| `SessionEnd` | Record disconnection and retire outstanding native call bindings |
+
+The common installed event set and host-specific additions are defined in the installation projection and host adapter. The presence of a handler in source is implementation coverage; observed events from a real host establish native behavior.
+
+## The exact-call binding
+
+A named MCP tool appears to the host with a name such as `mcp__neurath_collaboration__task_list`. Before it runs, `PreToolUse` validates the native participant and issues `_neurath_binding` for that exact request. The binding includes the request identity and current turn context in durable state. It is closed by the corresponding host result.
+
+The agent supplies task arguments and lets the hook supply the binding. It must not manufacture `_neurath_binding`, reuse a closed binding, or add caller identity fields to a tool's arguments. The MCP process itself starts without inherited actor authority. Its dispatcher accepts only the operation's schema and the host-bound invocation.
+
+The current implementation limits a named task request to 64 KiB and the MCP frame to 128 KiB. Those transport limits are independent of smaller field and document limits in individual schemas.
+
+```mermaid
+sequenceDiagram
+    participant H as Native host
+    participant A as Host adapter
+    participant M as Named MCP tool
+    participant D as Durable domain state
+    H->>A: PreToolUse with native invocation
+    A->>D: Verify participant and bind exact request
+    A-->>H: Input with native binding
+    H->>M: Invoke named tool
+    M->>D: Validate binding, scope, and revisions
+    D-->>M: Result or structured prerequisite error
+    M-->>H: Tool result
+    H->>A: PostToolUse or supported failure event
+    A->>D: Close invocation capability
+```
+
+## Root, child, and independent sessions
+
+A root actor has no parent. A same-session subagent has a persisted parent and a delegated scope. Host-attested lineage proves the immediate parent when that evidence is available; a retained parent pointer alone can have weaker assurance.
+
+Child startup can arrive before the host's spawn return receipt. In that interval the child may receive the assignment as context, while stateful tools remain gated. The adapter rejects shell and write tools for an unverified child instead of allowing inherited root authority.
+
+The supported child route is a direct native child. Copied parent references or nested spawning do not establish supported lineage. A peer-resumed delegation can bind an exact in-progress task revision and definition digest; migration or a changed task scope invalidates that grant.
+
+An independent provider run creates another native session with its own root. Its plan and execution policy must match the authorized assignment. `provider_capabilities` describes implemented routes; current native availability requires observation. A durable `run_id` confirms admission, and app visibility remains a separate observation.
+
+In the shared documentation example, the user's web application loses a saved filter on reload. The implementer may ask a child or independent participant to inspect the API contract, when that participation is authorized. The reviewer needs a real native identity and bounded assignment whichever route is used. The filter feature belongs to the example application, not to Neurath.
+
+## Session resume and app affiliation
+
+Normal host `SessionEnd` records disconnection while preserving resumable session state, tasks, enclave facts, and the claim. The kernel `SessionEnded` transition is permanent. A verified resume or root prompt can retire an interrupted older foreground while preserving unfinished work. A fork creates a new root that needs its own claim.
+
+`session_status.app_project` is a bounded, read-only diagnosis of local app-owned affiliation for a verified root. It distinguishes `assigned`, `unassigned`, and `unobserved`. A matching local project record proves assignment; an explicit projectless record proves unassignment. Missing, conflicting, invalid, unsupported, unavailable, or oversized local state stays unobserved. The read is capped at 16 MiB and returns only relevant affiliation data. Native provider project metadata is not app-membership evidence, and affiliation is not remote UI observation or permission evidence.
+
+An app-created root can be reconciled from paired actual creation/message delivery and completion with a matching native turn. Known host context may accompany it; missing completion, wrong turns, unknown context, or conflicting human input reject reconciliation. This can establish an active native turn without a new user prompt receipt or approval. Use the app creation route when the user requests an app-associated task; provider execution and app affiliation remain distinct.
+
+## Host TODO tools
+
+Neurath projects the task list to Codex `update_plan` or Claude Code `TodoWrite`. Native `PreToolUse` and result events pair the exact submitted rows with their outcome. The receipt's scope is `native-tool-submission`; it does not prove that the app rendered the list or that the underlying tasks succeeded.
+
+A host capability begins as `unobserved` until a relevant native submission is observed. An unsupported runtime returns `unsupported-runtime`. Read [task and TODO contract](task-todo-contract.md) before treating a native “completed” marker as a successful task outcome.
+
+## Normal Stop and native interruption
+
+For a current normal root Stop, Neurath requires the domain prerequisites to be satisfied and rechecks the native root, turn, transcript, and connection. Every unresolved current normal Stop is rejected. The `stop_hook_active` flag does not waive checks. Neither a status question nor a retry count supplies completion evidence.
+
+Stale or already terminal events have a separate read-only route. Such an acknowledgement leaves current state unchanged and does not prove the new turn completed. Invalid or foreign events cannot request continuation with another actor's authority. Explicit user interruption is controlled by the host.
+
+## Diagnosing a missing observation
+
+When installation is present but activation is absent, inspect the installed host configuration and current native event path. When a child is unverified, reconcile actual spawn evidence. When a call reports a changed prompt or turn, read current native state and make a new valid invocation. When a claim belongs to another actor, preserve it and use an authorized work arrangement.
+
+Do not substitute synthetic environment variables, copied tokens, edited SQLite rows, or status output for missing native evidence. Source tests can demonstrate rejection behavior and state transitions; a real-host observation is still required for claims about the host currently running the harness.
+
+The [runtime lifecycle](runtime-lifecycle.md) explains how these events surround task work. [Task tools](task-tools.md) explains the public call contract.

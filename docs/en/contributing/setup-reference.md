@@ -1,105 +1,106 @@
-<!-- date: 2026-09-13; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
+<!-- date: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
 
-# Bootstrap and setup execution reference
+# Installation and diagnostic command reference
 
-[한국어](../../ko/contributing/setup-reference.md)
+[한국어](../../ko/contributing/setup-reference.md) · [First installation](installation.md)
 
-Bootstrap prepares Neurath's own execution environment and then invokes its transactional installer. An active installation uses named MCP operations for routine administration. This reference covers the source launcher and CLI used before that integration exists, by setup fixtures, and for the explicit diagnostic recovery paths.
+Use this page after identifying the target Git root and reading its instructions. A bootstrap command prepares the runtime before native integration is available. Once working inside an installed session, use the named tools exposed by that session and the current `.neurath/policy.md`. A command example is an execution reference, not permission to bypass a host restriction.
 
-## Runtime selection and prerequisites
-
-Run source setup from the Neurath checkout with an explicit target:
+## Bootstrap from source
 
 ```sh
-./setup /absolute/path/to/your-project
+./setup TARGET [--host codex|claude-code] [--profile generic] [--skill-prefix PREFIX] [--dry-run] [--json]
+./setup --self [--host codex|claude-code] [--json]
 ```
 
-On macOS or Linux, the launcher requires Git and can obtain `uv` from its official installer when it is unavailable. It provisions Python 3.14, builds the bundled distribution, and installs a persistent content-addressed tool environment. The global `neurath` entry point switches only after target installation succeeds. Reusing identical distribution content verifies and reuses the existing tool environment.
+`TARGET` must be an existing Git worktree root. On a new project, initialize Git as an explicit project action first. `--self` is required for installation into the source checkout itself. The host flag can be repeated; a new installation otherwise chooses both hosts. The only current profile is `generic`.
 
-The project `.venv`, dependency declarations, lockfiles, and shell startup files are preserved. Neurath's developer `.venv`, its installed tool environment, and the target application's runtime are separate environments. Updating one project's integration does not repoint every other project's installed launcher. Retained prior tool environments support recorded restoration.
+`--skill-prefix` accepts an empty prefix or a lowercase slug matching `[a-z][a-z0-9-]*-`. Omitting it preserves an installed prefix. `--dry-run` previews target writes while the outer source bootstrap may still create a persistent runtime. `--json` returns structured results. `--auto-report yes|no` is also accepted by setup when recording the user's explicit reporting decision; omission preserves the existing choice, and a dry run does not save consent.
+
+The runtime needs Python `>=3.14,<3.15`; the bootstrap prepares Python 3.14 on macOS/Linux. Git must already be available. `NEURATH_NO_BOOTSTRAP=1` prevents the automatic `uv` download. The runtime remains separate from the target's `.venv`, lockfiles, and dependency manifests.
+
+## Administer an installed worktree
+
+Prepare the exact change with `installation_plan`:
+
+```json
+{"action": "update", "hosts": ["codex"], "key": "installation-update-preview-1"}
+```
+
+Optional fields are `profile`, `hosts`, `installation_id`, and `skill_prefix`; `action` defaults to `install` and also accepts `update`, `uninstall`, and `restore`. Empty selections reuse the service defaults or recorded installation. Restore requires the actual existing installation ID. The result provides `plan_ref`, `plan_id`, `action`, and a `changes` array of paths and write/remove actions.
+
+Apply that returned reference with `installation_apply`:
+
+```json
+{"plan_ref": "RETURNED_PLAN_REF", "key": "installation-update-apply-1"}
+```
+
+These capitalized values are placeholders, not usable references. Preserve a stable key for retries of the same logical operation and the identical input. Use a new key for a new request; reusing a key with changed content fails. The native binding is supplied by the host integration and must not be invented or copied.
+
+`installation_recover` takes `{"key":"installation-recover-1"}`. It reaches the conservative journal recovery service even when ordinary placement is degraded. `installation-recovery-required` directs the agent there; afterward inspect `diagnostics_project` and prepare anew. `plan-unavailable` indicates a reference not prepared for this actor/worktree; `plan-changed` indicates private plan content no longer matches its retained identity.
+
+## Native terminal forms for bootstrap and maintenance
+
+All four lifecycle actions share the same planning engine:
 
 ```sh
-NEURATH_NO_BOOTSTRAP=1 ./setup /absolute/path/to/your-project
+neurath --root TARGET plan --action install --output PRIVATE_NEW_PLAN.json
+neurath --root TARGET apply PRIVATE_NEW_PLAN.json
+neurath --root TARGET install --host codex
+neurath --root TARGET update --host codex
+neurath --root TARGET uninstall
+neurath --root TARGET restore INSTALLATION_ID
+neurath --root TARGET recover
 ```
 
-This disables the fallback `uv` download; it does not make missing prerequisites available. If Git is absent or the target is not a Git worktree root, resolve that prerequisite before retrying. A newly requested target can be initialized with `git init` as part of setup.
+`--root` belongs before the subcommand. `neurath setup TARGET --json` is the shorter install-plus-diagnostics entry when the executable is already available. `neurath wizard --output PRIVATE_NEW_PLAN.json` prepares a plan interactively; it does not apply it. For a restore plan, use `--installation-id INSTALLATION_ID`; `--receipt` remains its compatibility alias. Private output must be a new path: an existing output or symlink is refused.
 
-## Supported setup forms
+A retained installation **receipt** identifies what changed and can be restored. It is not evidence that the coding host loaded the change. For installed administrative use, prefer the opaque named-tool references above to passing private plan paths through a conversation.
 
-| Invocation | Effect |
-| --- | --- |
-| `./setup /absolute/path/to/your-project` | Bootstrap the tool runtime and install the target |
-| `./setup --self` | Install this source checkout using the built tool runtime |
-| `neurath setup` | Install or reconcile the current project using the available distribution |
-| `neurath setup /absolute/path/to/another-project` | Install the selected target |
-| `neurath setup --dry-run` | Return target path/action changes without writing target files |
-| `neurath setup --json` | Return the structured setup result |
-| `./setup /path/to/project --host codex` | Select the Codex integration |
-| `./setup /path/to/project --host claude-code` | Select the Claude Code integration |
-| `./setup /path/to/project --skill-prefix neurath-` | Place Neurath skills under prefixed public names |
+## Read diagnostics at the right level
 
-The first default is `generic` with both hosts. `--host` can be repeated. Subsequent omitted profile, hosts, and prefix retain installed values. Only `generic` is supported. The prefix is empty or matches `[a-z][a-z0-9-]*-`; `neurath-` maps `debug` to `neurath-debug`. Setup, plan, install, update, and wizard support prefix selection. An installed prefix cannot be changed in place; uninstall first. A default or prefixed name already owned by a user skill remains a conflict.
+| Named tool | Input | What it establishes |
+| --- | --- | --- |
+| `diagnostics_integrity` | `{}` | Packaged files agree with the manifest. |
+| `diagnostics_project` | `{"protocol":true}` | Distribution, owned placement, and local hook protocol observations. |
+| `diagnostics_profile` | `{}` | Installed profile check information. |
+| `diagnostics_continuation` | `{}` | Current continuation diagnostics. |
 
-A source `./setup --dry-run` may still prepare the separate tool environment before computing the target preview. The installed `neurath setup --dry-run` writes no target files. The preview contains paths and actions, rather than exposing original file contents.
+The corresponding terminal forms include `neurath integrity`, `neurath doctor --protocol`, `neurath profile-check`, and `neurath session-status`. Doctor reports `host_activation.status: "unverified"` even after local protocol success: only a real host event establishes activation.
 
-`--auto-report yes|no` records an explicit user reporting choice when supplied. Omitting it preserves the current choice. Setup authorization alone does not establish reporting consent; the [reporting guide](../usage/reporting.md) explains its scope.
+A named-tool response has `ok` and `operation`; its `result` is distinct from the transport succeeding. On failure, read `code`, `message`, `state`, `retryable`, and `next_action`. For example, a successfully delivered diagnostic response can describe failed placement.
 
-## Interpret structured output
+## Configure a project verifier
 
-A setup preview has `status: planned`, `root`, `profile`, `hosts`, `skill_prefix`, reporting status, and `changes` entries containing `path` and `action`. Applied setup additionally returns `receipt` with the installation ID and changed count, `doctor`, and next steps. Its final `status` is `passed` or `failed` according to local diagnostics. A failed diagnostic can follow a completed file application, so retain the installation ID for investigation.
-
-The diagnostics separate distribution, placement, protocol, and host activation. Startup JSON accepted by an isolated hook subprocess and malformed input rejected by it establish protocol compatibility. Native host activation remains unverified until observed in the actual host. A user may still need to trust the project, authenticate the provider, or reload the session. These are specific host interactions, not configuration chores to delegate back to the user.
-
-## Save a plan without applying it
-
-The interactive wizard uses the same `make_plan` and `apply_plan` engine and supports a plan-only result:
-
-```sh
-neurath --root /absolute/path/to/project wizard --output /private/path/neurath-plan.json
-```
-
-A private explicit plan can also be created and then applied by the bootstrap CLI:
-
-```sh
-neurath --root /absolute/path/to/project plan --action update --output /private/path/neurath-plan.json
-neurath --root /absolute/path/to/project apply /private/path/neurath-plan.json
-```
-
-The output must be new and must not be a symlink. The default wizard storage is a mode-`0600` plan under the Git administrative `neurath-plans` directory. Plans contain original file information; retain them privately. Applying them rechecks the target and distribution. Do not edit a plan to work around a conflict.
-
-For restore planning, pass `--action restore --installation-id INSTALLATION_ID`; `--receipt` is a compatibility alias for that same identifier. The ID names the completed operation to reverse. The [transaction reference](installation-design.md) explains how restore differs from interrupted-operation recovery.
-
-## Bind the real application procedures
-
-Agents maintain `.neurath/project.json` from the project's actual instructions. This illustrative generic binding connects document roles and a real check; substitute only verified project paths and commands:
+A verifier is a repository-selected command used to check project work. This example assumes the saved-filter application already has the stated test script:
 
 ```json
 {
   "schema": 1,
-  "documents": {
-    "intent": "docs/product.md",
-    "glossary": "docs/glossary.md",
-    "decisions": "docs/decisions/"
-  },
+  "documents": {"intent": "SPEC.md"},
   "verification": {
-    "check": {
-      "argv": ["npm", "test", "--", "--run"],
+    "project-check": {
+      "argv": ["npm", "test"],
       "cwd": ".",
       "success_codes": [0],
       "timeout_seconds": 300
     }
-  },
-  "protected_capabilities": {
-    "connectors": [],
-    "paths": ["docs/product.md"]
   }
 }
 ```
 
-`argv` is an argument array, not shell text. `stdout_contains` can add a required output condition. For exact pytest selection, use the actual project environment through `verification.pytest.argv`, such as `uv run --locked pytest`, and preserve the requested selector, for example `tests/test_example.py::test_example`. Missing checks remain unverified; empty document roles must not be filled with unrelated files.
+The verification runner accepts a nonempty array of nonempty strings for `argv`, with no null bytes. It executes without shell expressions. `cwd` is repository-relative and must resolve to an existing directory inside the repository. `success_codes` is a nonempty list of integers from 0 through 123, default `[0]`; typed regression checks specifically require `[0]`. `timeout_seconds` defaults to 300 and must be finite, positive, and at most 3600. Optional `stdout_contains` must be a nonempty string and match standard output.
 
-The internal registered verification path compares repository fingerprints before and after and rejects changes even if the process exit code is accepted. Running a normal native command does not automatically create that compatibility verification record. A `worktree_cleanup` binding requires an independently checked `base_branch` and `remote_ref`; do not infer them from a naming convention.
+The retained verification record includes the command, configuration digest, before/after worktree fingerprints, exit status, and timeout information. A changed worktree fails the verification receipt even if the process exited successfully. `unbound verifier` means the named entry is missing; connect the real project command before claiming it ran. [Validation](validation.md) explains how to use these records alongside ordinary native test results.
 
-To copy the independent packaged corpus for inspection, use `neurath corpus /path/to/new-directory`. It requires a new directory and reads bundled resources, without importing another project's files.
+## Inspect bundled resources without depending on the source checkout
 
-Sources: [bootstrap launcher](../../../setup), [CLI parser](../../../src/neurath/cli.py), [setup service](../../../src/neurath/install/setup.py), [transaction engine](../../../src/neurath/install/transaction.py), [bootstrap fixture](../../../tools/validate_setup.py).
+```sh
+neurath corpus NEW_DESTINATION
+neurath --root TARGET engine scripts.agent_harness.state_cli --help
+neurath --root TARGET skill watch-pr monitor_runtime_readback.py --help
+```
+
+`corpus` copies the independent bundled resource tree and refuses an existing destination. Engine and skill commands use the installed isolated interpreter. They are developer/bootstrap references subject to current execution policy; the installed skill instructions guide ordinary work through named tools.
+
+Source: [CLI](../../../src/neurath/cli.py), [installation schema](../../../src/neurath/runtime/installation_tasks.py), [verification runner](../../../src/neurath/runtime/verification.py), [typed commands](../../../src/neurath/runtime/commands.py). Tests: [setup](../../../tests/test_setup.py), [installation tools](../../../tests/test_installation_tasks.py), [verification](../../../tests/test_verification.py).

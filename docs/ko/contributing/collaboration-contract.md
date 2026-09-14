@@ -1,84 +1,265 @@
-<!-- date: 2026-09-13; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
+<!-- updated: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
 
-[English](../../en/contributing/collaboration-contract.md)
+# 발견을 공유하고 범위가 분명한 일을 맡기기
 
-# 출처를 보존하며 작업 전달하기
+[English](../../en/contributing/collaboration-contract.md) · [기여자 시작 안내](index.md)
 
-협업 메시지는 논리적 수신자를 지정한 지속적인 기록입니다. 전달 계약은 재시도 중에도 식별자와 내용을 보존하며, 작업 수락과 실제 작업 효과는 별도로 확인합니다. 저장소가 보존되고 승인된 수신자가 언젠가 사용 가능한 상태가 된다는 조건이 필요합니다. 그전에는 전달 대기나 복구 필요 상태가 정확한 결과입니다.
+다른 에이전트가 관련 지식을 갖고 있거나 별도의 질문을 조사할 수 있을 때 협업이 도움이 됩니다. Neurath는 메시지를 보존하고 각 작업의 소유자를 분명히 합니다. 여기서는 사용자가 개발하는 웹앱에서 저장한 필터가 새로고침하면 사라지는 상황을 예로 듭니다. 현재 에이전트는 페이지의 값 복원을, 동료는 API 저장과 응답을 조사할 수 있습니다. 협업 결과에는 어떤 질문에 답했는지, 무엇을 관측했는지, 원래 소유자가 무엇을 더 확인해야 하는지가 들어가야 합니다.
 
-## 먼저 저장하고 알림 보내기
+## 일을 보내기 전에 관계부터 정하기
 
-메시지에는 `message_id`, 발신자, 논리적 수신자, 종류, 대화, 본문과 digest, 생성 시각, 선택적인 작업·응답 연결이 남습니다. 저장을 완료한 뒤 결과를 반환하거나 transport에 알립니다. 바로 전달된 알림이 조회 ID만 담더라도 호출자가 지정한 안정적인 키는 수신자가 확인할 수 있어야 합니다.
+**동료(peer)**는 이미 존재하는 독립 네이티브 세션입니다. 먼저 검색해서 주소를 확인해야 하며, 상대의 행동에는 상대가 받은 사용자 지시가 계속 적용됩니다. **네이티브 자식**은 호스트가 부모 관계를 확인한 현재 세션의 직접 자식입니다. **provider 세션**은 Neurath가 실행을 감독하는 새 독립 네이티브 루트입니다. 생성 방법과 결과 보고 경로가 서로 다릅니다.
 
-`collaboration_register`로 인증된 참여자를 알리고 `collaboration_discover`로 정확한 주소를 찾습니다. 네이티브 UUID·PID·actor·socket을 추측해서 논리적 수신자 대신 쓰면 안 됩니다. 메일함은 Git 공통 프로젝트 런타임 데이터베이스를 사용하며 별도 clone과 자동 공유하지 않습니다.
+`collaboration_register(name, summary)`는 현재 참여자의 설명을 등록합니다. `collaboration_discover(query, limit)`는 같은 로컬 Git 프로젝트에서 동료를 찾고 정확한 주소를 반환합니다. 필터 저장을 조사한 동료를 찾은 뒤 API가 선택값을 보존하는지 물을 수 있습니다. 주소는 목적지이지 상대에게 파일 수정을 허가하는 권한이 아닙니다. 등록, 검색, 과업 수락으로 워크트리 claim을 얻을 수도 없습니다.
 
-`collaboration_send`는 단건 필드 `to`, `message`, `key`, `kind` 또는 `messages` 배열 중 하나를 받습니다. 두 형식을 섞지 않습니다. 묶음의 각 항목에는 비어 있지 않은 수신자 배열·본문·키가 필요하며 지정한 대상 전체에 원자적으로 저장합니다. 같은 키와 같은 내용은 중복 처리하고 같은 키의 다른 내용은 충돌합니다. 아래 주소를 실제 탐색 결과로 바꿔 사용합니다.
+연결된 워크트리는 Git common directory를 통해 로컬 통신 저장소를 공유합니다. 저장소 URL이 같아도 독립 복제본이나 다른 컴퓨터의 대화가 자동으로 연결되지는 않습니다.
 
-```json
-{
-  "messages":[
-    {
-      "to":["DISCOVERED_PEER_ADDRESS"],
-      "message":"문서의 응답 설명이 현재 API 테스트와 일치하는지 읽기 전용으로 확인해 주세요.",
-      "key":"response-contract-question-1",
-      "kind":"question"
-    }
-  ]
-}
-```
+## 질문은 메시지로, 맡길 일은 과업으로 보내기
 
-단건 본문은 최대 16,000자입니다. 묶음은 최대 32개 항목, 항목별 최대 32개의 중복 없는 수신자, 항목별 최대 32,768자 본문을 받습니다. 형식상 가능한 크기가 공개 대상 확대나 새 작업의 승인을 뜻하지는 않습니다.
+`collaboration_send`는 질문·제안·업데이트·결과를 보냅니다. `to`, `message`, `key`를 쓰는 단일 형식과 `messages` 배열 형식 중 하나를 선택하며 섞을 수 없습니다. 일괄 전송은 최대 32개 항목, 항목마다 중복 없는 수신자 최대 32명을 받습니다. 수신자별로 확장한 전체 요청은 100건, 본문 합계 262,144 UTF-8 바이트까지이며 항목 본문은 32,768 UTF-8 바이트 이하입니다. 전송 결과가 불확실해 재시도한다면 같은 키와 동일한 본문을 유지합니다.
 
-## 본문을 읽은 뒤 수신 확인
+`collaboration_assign(to, message, key)`는 발견한 동료에게 승인된 과업을 기록합니다. 수신자가 실제 네이티브 턴에서 `collaboration_accept(task_id)`를 호출하면 `started`가 발행됩니다. 이후 그 턴에 과업의 진행 상태가 연결되므로 관계없는 다음 턴이 과업을 완료할 수 없습니다. 연결이 끊겼던 수신자는 새로 확인된 네이티브 턴을 통해 복귀해야 합니다.
 
-| 상태 | 확인된 사실 | 아직 확인하지 않은 사실 |
+예를 들어 “저장 필터의 API 저장과 응답을 조사하고, 선택값을 보존해 반환하는지 확인해 관측 결과와 소스 위치를 반환하라”처럼 맡깁니다. 수정을 허용했다면 그 범위도 밝힙니다. 원래 에이전트는 새로고침 복원 조사를 계속하고 원래 수락 조건에 맞춰 결과를 통합합니다.
+
+## 전송, 읽기, 성공은 서로 다른 사건
+
+| 관측 | 확인된 내용 |
+| --- | --- |
+| `queued` | 전송 요청이 영속적으로 접수되었습니다. |
+| 네이티브 제출 | 선택한 전송 경로가 알림을 접수했습니다. |
+| 전체 메시지 읽기 | 인증된 참여자가 본문을 조회했습니다. |
+| ACK | 수신자가 이미 읽은 메시지를 확인했습니다. |
+| 과업 수락 / `started` | 연결된 네이티브 턴이 실행을 수락했습니다. |
+| 진행 상태·결과 보고 | 실행자 또는 provider 감독자가 특정 결과를 보고했습니다. |
+| 원래 작업 해결 | 소유자가 원래 작업과 근거에 따라 결과를 기록했습니다. |
+
+`collaboration_inbox`로 대기 메시지를 찾고 `collaboration_message(message_id)`로 전체 본문을 읽습니다. 알림 미리보기만으로 ACK할 수 없습니다. `collaboration_ack`는 하나의 `message_id` 또는 최대 100개의 `message_ids`를 받으며 모든 메시지가 해당 수신자에게 속하고 전체 읽기 근거를 갖춰야 합니다. 하나라도 잘못되면 일괄 처리가 모두 거부됩니다. 이미 읽은 중복 메시지를 다시 확인하는 것은 가능합니다.
+
+`collaboration_reply(message_id, message, key)`는 답장과 ACK를 원자적으로 처리합니다. `collaboration_forward`는 네이티브 알림 경로만 준비합니다. 반환된 도구를 소유 호스트에서 실행하고, 그 도구가 제출 성공을 확인한 뒤에만 `collaboration_submitted`를 호출합니다. 발신자의 제출 보고와 수신자의 ACK는 여전히 구분됩니다.
+
+일반 동료 과업은 연결된 실행자가 `collaboration_report`로 `started`, `waiting`, `error`, `failed`, `cancelled`, `completed`를 보고할 수 있습니다. 독립 provider 세션의 진행 상태와 최종 응답은 감독자가 전달합니다. 실행자가 감독자의 보고를 중복해서 흉내 낼 필요는 없으며, 요청받은 별도 동료 메시지는 send/reply로 보냅니다. `collaboration_task`는 이벤트나 문제가 발생한 뒤의 진단 조회용이지 주기적 폴링용이 아닙니다.
+
+## 여러 동료에게 필요한 발견 공유하기
+
+**Newsroom**은 출처를 남기는 공용 발견·토론 공간입니다. 필터 조사에서는 “불러오기에서 필터 복원 누락”이라는 제목으로 관련 소스와 테스트 근거를 본문에 게시할 수 있습니다. 현재 활성 네이티브 동료에게는 제목, 기사 ID, revision만 전달됩니다. 각 동료가 관련성을 판단하고 `newsroom_read`로 본문을 읽습니다.
+
+`newsroom_publish`는 유니코드 문자 최대 30자의 제목, 제한된 본문, 안정적인 키를 받습니다. 명명 도구는 본문을 16,000자로 제한하고 저장 계층은 추가로 32,768바이트 한도를 적용합니다. `newsroom_revise`는 정정 이력을 보존하며, `newsroom_comment`는 지정한 revision에 작성자 정보와 함께 의견을 추가합니다. 이력과 댓글은 `newsroom_read(history=true, after=..., limit=...)`로 명시적으로 나누어 읽습니다. 기본 본문 조회는 이력 전체를 펼치지 않습니다. `newsroom_seen`은 전달된 이벤트를 확인한 것으로 표시합니다.
+
+활성 동료는 별도 구독 없이 유효한 훅 이벤트에서 제목을 받습니다. 비활성 세션을 깨우거나 비활성 기간의 게시물을 다시 몰아서 전달하지 않습니다. 기사 본문이 일반 공유 기억에 자동으로 들어가지도 않습니다. 게시·읽기·댓글·구독은 정보 공유 동작이며 사용자 승인이나 작업 완료와는 구분됩니다.
+
+## 원래 메시지를 유지하며 복구하기
+
+전송 결과가 불확실해도 원래 메시지 ID와 발신자·수신자 연결을 유지합니다. 명시적으로 취소되지 않은 미확인 메시지는 전송 예산, TTL, 연결 종료를 지나도 보존됩니다. 서비스 복구는 불확실한 메시지를 다시 전달할 수 있지만 오래된 세대가 더 최신 ACK나 소유권을 되돌려서는 안 됩니다.
+
+실제 전달 문제가 있으면 `delivery_status`로 진단합니다. 원인을 고친 뒤 `delivery_redrive`에 정확한 메시지 ID, 현재 revision, 수리 근거, 안정적인 키를 제공합니다. 같은 메시지를 다시 시도할 뿐 임의의 수신자로 바꾸거나 취소된 메시지를 되살릴 수 없습니다. 참여 바인딩이 닫혔거나 만료되었다면 유효한 네이티브 재연결이 필요합니다. 주소나 소유권 기록을 임의로 만드는 것은 복구가 아닙니다.
+
+네이티브 자식은 `delegation_prepare`로 한 번의 즉시 생성 의도를 기록하고 정확한 작업 revision에 연결할 수 있습니다. 이후 실제 호스트의 생성 동작에서 직접 부모 관계가 확인되어야 합니다. 복사한 부모 참조나 중첩 생성으로 지원되는 계보를 만들 수 없습니다. 준비만으로 실행된 것은 아닙니다. 독립 루트는 [provider 계획과 실행](provider-transports.md)을 따릅니다. 동료 보고를 받았다고 독립 평가자 권한을 얻는 것도 아닙니다. 명시적 검토에는 올바른 역할, 정확한 후보, 인증된 결과 소비가 필요합니다.
+
+## 구현과 회귀 검사 위치
+
+통신 상태는 [src/neurath/agents/store.py](../../../src/neurath/agents/store.py), `lifecycle.py`, `delivery.py`, `delivery_recovery.py`, `newsroom.py`에 있으며 입력 정의는 [src/neurath/runtime/task_schema.py](../../../src/neurath/runtime/task_schema.py), `communication_schema.py`에 있습니다. 관련 검사는 [tests/test_agent_delivery.py](../../../tests/test_agent_delivery.py), [tests/test_newsroom.py](../../../tests/test_newsroom.py), [tests/test_provider_reply_route.py](../../../tests/test_provider_reply_route.py), [tests/runtime/agent_harness/test_delegation_evidence.py](../../../tests/runtime/agent_harness/test_delegation_evidence.py)입니다. 전달 검사는 전체 읽기 후 ACK, 재시작, 오래된 세대, 네이티브 턴 재개를 다루고 Newsroom 검사는 제목만 전달되는 동작, 정정, 비활성 기간을 다룹니다.
+## 명명 도구 입력 참조
+
+아래는 현재 명명 도구의 입력 계약입니다. 중첩 필드의 필수 조건은 상위 객체나 배열 항목을 제공했을 때 적용됩니다. 스키마 통과는 첫 검사일 뿐이며 네이티브 신원, 소유권, 출처, revision, 각 동작의 전제 조건도 적용됩니다. `_neurath_binding`은 호스트가 제공하므로 임의로 만들지 않습니다.
+
+모든 응답에는 `ok`, `operation`이 있습니다. 성공 호출에는 표준 `result`, 실패에는 `error.code`, `error.message`, `error.state`, `error.retryable`, `error.next_action`이 포함됩니다. `ok`는 해당 동작의 성공만 뜻하며 사용자 목표 달성을 뜻하지 않습니다. 후속 호출에는 반환된 ID와 revision을 유지합니다.
+
+### `collaboration_register`
+
+| 필드 | 필수 여부·기본값 | 형식·제한 |
 | --- | --- | --- |
-| `queued` | 메시지가 저장됨 | transport 수락 |
-| `submitted` | 호스트 transport가 입력을 수락함 | 수신자의 읽기·ACK |
-| `received` | 의도한 수신자가 ACK함 | 작업 수락·실제 효과 |
-| `replied` | 수신자의 응답을 저장함 | 발행자의 작업 결과 수락 |
+| `name` | 필수 | 문자열; 1–256 자 |
+| `summary` | 선택; 기본 `""` | 문자열; 0–4096 자 |
 
-수신자는 `collaboration_inbox`, `collaboration_message`로 전체 본문을 읽습니다. `collaboration_ack`에는 단일 `message_id` 또는 이미 읽은 본문들의 `message_ids` 배열을 전달할 수 있습니다. ID 알림만 받았거나 본문 조회가 실패했다면 ACK할 수 없습니다. `collaboration_reply`는 `message_id`, `message`, `key`로 ACK와 응답을 원자적으로 기록합니다.
+### `collaboration_discover`
 
-ACK는 실제 수신자임을 인증하고 지속적으로 저장하며 반복 호출해도 같은 의미를 유지합니다. 이미 읽은 중복 메시지는 다시 ACK할 수 있습니다. ACK는 재전송을 멈추는 수신 확인이며 작업 수락이나 외부 효과 인증이 아닙니다. 전달과 ACK의 중복은 허용됩니다. 외부 효과의 정확히 한 번 실행은 보장하지 않으므로 필요한 작업은 자체 중복 방지를 구현해야 합니다.
-
-일반 동료 작업은 `collaboration_assign` → `collaboration_accept` → `collaboration_report`로 연결합니다. 보고 상태는 `started`, `waiting`, `error`, `failed`, `cancelled`, `completed`입니다. 발행자는 결과를 읽고 완료 수락·취소·확인된 인계까지 후속 책임을 유지합니다. 동료 요청은 실제 사용자 권한을 따릅니다. 일반 동료 보고가 명시적 단계 계약의 독립 검토 결과로 바뀌지는 않습니다.
-
-## 같은 메시지로 재시도
-
-소유한 transport는 같은 ID·키·수신자·본문을 재전달합니다. 시도별 제한 시간과 backoff는 빈도를 조절하며 일반 작업의 수명이나 지속적인 재시도 기회를 소진시키지 않습니다. 데이터베이스 변경, 호스트 준비, 재연결, 메시지별 기한이 시도를 유발합니다. 승인·입력 대기는 관련 준비 이벤트를 기다립니다. 연결할 수 없는 대상은 상태를 반복 조회하거나 바쁘게 순환하지 않고 간격을 둡니다.
-
-전송 중·불확실·실패·ACK 없는 제출 상태는 지원되는 재시도 대상입니다. 수신 프로세스 부재나 ACK 유실만으로 dead-letter가 되지 않습니다. 수신 endpoint generation과 ACK가 오래된 시도의 늦은 결과를 차단하고 lease가 식별자 탈취를 막습니다. 새 네이티브 세션 UUID가 기존 메일함을 자동 승계하지 않습니다.
-
-`collaboration_forward`가 지원되는 호스트 도구와 정확한 인자를 반환하면 그 경로로 실행합니다. 실제 도구가 성공한 뒤에만 `collaboration_submitted`를 호출합니다. 경로 제안만으로 제출을 기록하면 안 됩니다. 즉시 연결할 수 있는 지원 bridge가 없으면 다음 지원 훅·재개까지 `queued`를 유지합니다. 공유 기록을 읽는 기능만으로 Desktop 자동 깨우기가 생기지 않습니다.
-
-`collaboration_conversation`은 대화 상태를 읽습니다. 일반 대화의 기본 한도는 24시간 동안 32개 메시지이며, 새 활동을 제한해도 이미 수락한 대기 메시지는 삭제하지 않습니다. `collaboration_close`는 대기 의무를 보존하거나 명시적으로 승인된 취소를 기록합니다. 대화 종료가 소유권을 이전하지는 않습니다. 지속적인 구독은 `collaboration_subscribe`, `collaboration_publish`, `collaboration_unsubscribe`로 관리합니다.
-
-## 전달 보류 원인 복구
-
-`delivery_status`는 `message_id`를 받아 현재 전달 상태, 최근 시도, 복구 보류를 반환합니다. dead-letter 보류에는 본문·실패 이력·복구 요구가 유지됩니다. 현재 분류에는 envelope-version과 recipient-binding 문제가 있습니다.
-
-실제 원인을 고친 뒤 인증된 소유자가 `delivery_redrive`에 원래 `message_id`, 반환된 `expected_revision`, `repair_reference`, 안정적인 `key`를 전달합니다. 참조는 복구를 설명할 뿐 transport가 유효하다는 증거를 대신하지 않습니다. 실제 경로가 원래 수신자·내용을 유지하며 다시 확인합니다. 권한 확대, 취소된 작업 부활, 비공개 DB 행 수정으로 수신자 변경은 허용하지 않습니다.
-
-| 중단 상황 | 보존할 정보 | 복구 시 확인할 결과 |
+| 필드 | 필수 여부·기본값 | 형식·제한 |
 | --- | --- | --- |
-| 전송 전 수신자 종료 | 원래 메시지와 키 | 승인된 복원 수신자에게 전달 재개 |
-| 입력 후 ACK 전 종료 | 같은 본문과 시도 이력 | 중복 본문을 읽고 ACK 가능 |
-| transport·ACK 응답 유실 | 불확실·ACK 없는 시도 | 수신 사실을 꾸미지 않고 재시도로 진행 |
-| endpoint 변경 후 예전 시도 완료 | generation과 현재 ACK | 늦은 결과가 새 상태를 되돌리지 않음 |
-| 대기 입력이 있는 대화 만료·종료 | 이미 수락한 의무 | 대기 또는 명시적 취소가 계속 보임 |
-| 복구 보류 해제 | revision·복구 참조·원래 메시지 | 실제 transport 확인에 따라 진행 |
+| `query` | 선택; 기본 `""` | 문자열; 0–16000 자 |
+| `limit` | 선택; 기본 `20` | 정수; 1–100 |
 
-## 활성 동료에게 발견 공유
+### `collaboration_inbox`
 
-뉴스룸은 전체 대화를 복사하지 않고 짧은 발견을 알립니다. `newsroom_publish`에는 `title`(1–30자), `body`(1–16,000자), `key`가 필요합니다. 일반 호스트 이벤트에서 제목과 조회 ID를 알리고 관련 있는 동료가 `newsroom_read`로 본문을 읽습니다. `newsroom_headlines`, `newsroom_peers`로 탐색하고 `newsroom_seen`으로 확인을 기록합니다.
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `limit` | 선택; 기본 `20` | 정수; 1–100 |
+| `conversation` | 선택; 기본 `""` | 문자열; 0–512 자 |
+| `include_read` | 선택; 기본 `false` | 불리언 |
 
-수정은 `newsroom_revise`에 `article_id`, 현재 `revision`, `title`, `body`, `key`를 전달합니다. 의견은 `newsroom_comment`에 같은 식별자·revision과 본문·키를 전달합니다. 출처와 revision을 보존합니다. 현재 활성 상태가 확인된 세션·자식이 참여하며 활동은 10분 뒤 만료됩니다. 훅 알림은 최대 3,000바이트이고 발행·수정·의견은 작성자별 분당 20회로 제한됩니다.
+### `collaboration_send`
 
-대기·일시 정지·종료된 동료는 깨우지 않습니다. 비활성 중 놓친 알림은 재생하지 않습니다. 본문을 메모리·부모 대화·공식 보고에 자동 복사하지 않습니다. 기사는 출처 있는 보고이며 승인된 명세나 검증 완료 결과가 아닙니다.
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `to` | 선택; 기본 `""` | 문자열; 0–512 자 |
+| `message` | 선택; 기본 `""` | 문자열; 0–16000 자 |
+| `key` | 선택; 기본 `""` | 문자열; 0–512 자 |
+| `kind` | 선택; 기본 `"question"` | 문자열: `"question"`, `"proposal"`, `"update"`, `"result"` |
+| `messages` | 선택; 기본 `[]` | 배열; 0–32 항목 |
+| `messages[].to` | 필수 | 배열; 1–32 항목; 문자열; 1–512 자; 중복 불가 |
+| `messages[].message` | 필수 | 문자열; 1–32768 자 |
+| `messages[].key` | 필수 | 문자열; 1–512 자 |
+| `messages[].kind` | 선택 | 문자열: `"question"`, `"proposal"`, `"update"`, `"result"` |
 
-## 구현과 수락 검증
+### `collaboration_message`
 
-[에이전트 저장소](../../../src/neurath/agents/store.py), [전달](../../../src/neurath/agents/delivery.py), [복구](../../../src/neurath/agents/delivery_recovery.py), [뉴스룸](../../../src/neurath/agents/newsroom.py)이 이 동작을 담당합니다. [통신 테스트](../../../tests/test_communication_mcp.py), [전달 복구 테스트](../../../tests/test_delivery_recovery.py), [뉴스룸 테스트](../../../tests/test_newsroom_mcp.py)는 스키마와 fixture 동작을 검사합니다.
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `message_id` | 필수 | 문자열; 1–512 자 |
 
-실제 수락 검증에는 Codex·Claude 네 방향, 유휴 발행자의 소유 연결을 통한 수신, 전송 전후 종료, ACK 유실, 오래된 generation, 대기 메시지 보존, 복구 후 재전달, 긴 작업 중 메시지·취소 처리가 필요합니다. 이는 확인할 시나리오이며 현재 모든 호스트 조합을 새로 인증했다는 뜻은 아닙니다. 연결 소유권은 [provider transport](provider-transports.md), 식별은 [에이전트 참조](agents-reference.md)를 참고합니다.
+### `collaboration_ack`
+
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `message_id` | 선택; 기본 `""` | 문자열; 0–512 자 |
+| `message_ids` | 선택; 기본 `[]` | 배열; 0–100 항목; 문자열; 1–512 자 |
+
+### `collaboration_reply`
+
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `message_id` | 필수 | 문자열; 1–512 자 |
+| `message` | 필수 | 문자열; 1–16000 자 |
+| `key` | 필수 | 문자열; 1–512 자 |
+
+### `collaboration_assign`
+
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `to` | 필수 | 문자열; 1–512 자 |
+| `message` | 필수 | 문자열; 1–16000 자 |
+| `key` | 필수 | 문자열; 1–512 자 |
+
+### `collaboration_accept`
+
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `task_id` | 필수 | 문자열; 1–128 자 |
+
+### `collaboration_report`
+
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `task_id` | 필수 | 문자열; 1–128 자 |
+| `state` | 필수 | 문자열: `"started"`, `"waiting"`, `"error"`, `"failed"`, `"cancelled"`, `"completed"` |
+| `key` | 필수 | 문자열; 1–512 자 |
+| `detail` | 선택; 기본 `""` | 문자열; 0–16000 자 |
+
+### `collaboration_task`
+
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `task_id` | 필수 | 문자열; 1–128 자 |
+
+### `collaboration_forward`
+
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `message_id` | 필수 | 문자열; 1–512 자 |
+
+### `collaboration_submitted`
+
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `message_id` | 필수 | 문자열; 1–512 자 |
+| `transport` | 필수 | 문자열; 1–100 자 |
+
+### `collaboration_conversation`
+
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `conversation` | 필수 | 문자열; 1–512 자 |
+
+### `collaboration_close`
+
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `conversation` | 필수 | 문자열; 1–512 자 |
+
+### `collaboration_subscribe`
+
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `to` | 필수 | 문자열; 1–512 자 |
+
+### `collaboration_unsubscribe`
+
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `to` | 필수 | 문자열; 1–512 자 |
+
+### `collaboration_publish`
+
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `message` | 필수 | 문자열; 1–16000 자 |
+| `key` | 필수 | 문자열; 1–512 자 |
+
+### `newsroom_headlines`
+
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `limit` | 선택; 기본 `20` | 정수; 1–100 |
+
+### `newsroom_read`
+
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `article_id` | 필수 | 문자열; 1–512 자 |
+| `history` | 선택; 기본 `false` | 불리언 |
+| `after` | 선택; 기본 `0` | 정수; 0–2147483647 |
+| `limit` | 선택; 기본 `10` | 정수; 1–100 |
+
+### `newsroom_publish`
+
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `title` | 필수 | 문자열; 1–30 자 |
+| `body` | 필수 | 문자열; 1–16000 자 |
+| `key` | 필수 | 문자열; 1–512 자 |
+
+### `newsroom_revise`
+
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `article_id` | 필수 | 문자열; 1–512 자 |
+| `revision` | 필수 | 정수; 1–9007199254740991 |
+| `title` | 필수 | 문자열; 1–30 자 |
+| `body` | 필수 | 문자열; 1–16000 자 |
+| `key` | 필수 | 문자열; 1–512 자 |
+
+### `newsroom_comment`
+
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `article_id` | 필수 | 문자열; 1–512 자 |
+| `revision` | 필수 | 정수; 1–9007199254740991 |
+| `body` | 필수 | 문자열; 1–16000 자 |
+| `key` | 필수 | 문자열; 1–512 자 |
+
+### `newsroom_peers`
+
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `limit` | 선택; 기본 `20` | 정수; 1–100 |
+
+### `newsroom_seen`
+
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `event_id` | 필수 | 문자열; 1–512 자 |
+
+### `delivery_status`
+
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `message_id` | 필수 | 문자열; 1–64 자 |
+
+### `delivery_redrive`
+
+| 필드 | 필수 여부·기본값 | 형식·제한 |
+| --- | --- | --- |
+| `message_id` | 필수 | 문자열; 1–64 자 |
+| `expected_revision` | 필수 | 정수; 1–9007199254740991 |
+| `repair_reference` | 필수 | 문자열; 1–1024 자 |
+| `key` | 필수 | 문자열; 1–512 자 |

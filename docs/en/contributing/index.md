@@ -1,73 +1,75 @@
-<!-- date: 2026-09-14; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
+<!-- last_updated: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
 
-# Develop and verify Neurath
+# Begin a Neurath development task
 
-[한국어](../../ko/contributing/index.md)
+[한국어](../../ko/contributing/index.md) · [Project introduction](../../../README.md)
 
-Neurath installs a shared harness into an existing Git project. Work on Neurath changes the installer, its independently packaged runtime, or the contracts that connect Claude Code and Codex to project work. Work on an application using Neurath belongs in that application's source and project bindings. For that workflow, begin with the [usage guide](../usage/index.md).
+This is the entry point for a developer or a newly started coding-agent session changing Neurath itself. The objective is to make an authorized change, preserve existing work, and report exactly what has been verified. For using Neurath in another repository, read the [first walkthrough](../usage/start-here.md) and [installation guide](../usage/installation.md); the [agent execution reference](agents-reference.md) covers operation inside that target project.
 
-This section provides execution references for agents developing and operating Neurath. It explains where to change behavior, which checks establish which results, and how an authorized installation reaches a target project.
+## Read the instructions that apply to this checkout
 
-## Find the change boundary
+Start with the current user request, the repository's `AGENTS.md`, and any applicable instructions in the directory being changed. Inspect the current branch, worktree, and uncommitted changes before editing. Preserve another session's work and any existing handoff.
 
-| Intended change | Source to inspect | Reference |
-| --- | --- | --- |
-| Preserve or project project files differently | `src/neurath/install/` and installer tests | [Installation transaction design](installation-design.md) |
-| Change startup, setup options, or runtime selection | `setup`, `src/neurath/cli.py`, `src/neurath/install/setup.py` | [Bootstrap and setup](setup-reference.md) |
-| Change bundled rules, skills, or engine behavior | `src/neurath/_assets` and corresponding runtime tests | [Packaged assets](assets.md) |
-| Modify authenticated task operations | `src/neurath/runtime/task_schema.py`, domain task modules, `src/neurath/agents/mcp.py` | [Task tools](task-tools.md) |
-| Change host activation or caller identity | `src/neurath/hosts/identity.py`, `src/neurath/hosts/hooks.py` | [Validation](validation.md) |
-| Change official update preparation or recovery | `src/neurath/updates.py`, `src/neurath/release_install.py` | [Release updates](releases-reference.md) |
+Where installed, read `.neurath/policy.md` for execution policy and explicit native exceptions, `.neurath/project.json` for the repository's document and verification bindings, and the relevant installed skill instructions. Treat memory and earlier reports as leads to inspect, not present-day permission or evidence. A former successful check says nothing about a changed checkout.
 
-The package supports macOS and Linux with Python `>=3.14,<3.15`. POSIX process groups, `fcntl`, and Bash are part of its operating assumptions; Windows is outside the supported platform contract. The runtime declares `claude-agent-sdk>=0.2.152,<0.3`. Target projects may use another language and retain their own dependency environment. The package metadata is in [pyproject.toml](../../../pyproject.toml).
+Neurath owns the originals under `src/neurath/_assets`. Installed `.agents/skills` and `.neurath/rules` are projections; changing a projection does not change the packaged source. Other repositories are not build inputs. [Asset development](assets.md) explains the ownership boundary, and [architecture](architecture.md) shows how the runtime parts relate.
 
-For the strategy behind periodic goal context, read [design principles](design-principles.md) and [runtime delivery](runtime-lifecycle.md). [Provider continuity](provider-continuity.md) covers retaining target-native settings and adopting another provider's interrupted work; it separates context retrieval, task transfer, and source resumption fencing.
+## Establish what is actually running
 
-## Prepare a reproducible development environment
+Record the source checkout separately from the installed distribution and current host connection. Check installation, runtime execution, observed native activation, effective policy, and current worktree ownership as distinct facts. A file on disk does not prove its hook ran; a working protocol check does not prove an existing MCP connection reloaded; `session_status` diagnoses state without granting authority.
 
-Run from the Neurath checkout:
+If Neurath is not installed or its named tools are absent, report that condition. Do not invent a native binding or assume an unavailable runtime gate applies. Continue only through the current repository instructions and applicable native execution exceptions; use the [installation execution guide](installation.md) for authorized bootstrap work. Conversely, an active runtime rejection is a real prerequisite failure, not an invitation to recreate its operation through another route.
+
+For an active native session, establish verified session participation and the worktree claim before writes. The claim is a write lease. Another session's claim, a peer's acceptance, or a recovered checkpoint cannot stand in for your own ownership. Retain returned lease values for the matching authorized release; keep those values out of public documents. See [host integration](hosts.md) and [runtime lifecycle](runtime-lifecycle.md) for activation and ownership details.
+
+## Start from the current task contract
+
+Discover the named MCP tools exposed in the current connection. Inspect their current argument schemas; when maintaining Neurath, compare against `src/neurath/runtime/task_schema.py`. Current source exposes 128 public tools backed by 138 internal operations, but a count or saved example cannot prove a particular connection is ready. Use [task tools](task-tools.md) for the contract and [capability map](capability-map.md) to locate a relevant operation.
+
+With native participation established, read `task_list` and reuse the returned list revision. Define the requested work through `task_define` with its real requirement source, observable acceptance, and dependencies. Initial intake needs a native user instruction receipt or a valid retained same-session prompt source. A status question must not be silently substituted as a new requirement.
+
+Start the selected task with `task_start`, using the returned task ID and exact current list and task revisions. Do not invent `_neurath_binding`, actor identity, or revision values. A changed revision requires reading and reconciling the new state. For an inherited task from another root, reference reads are insufficient: follow [provider continuity](provider-continuity.md) and complete authorized adoption before continuing writes.
+
+The ledger holds task truth; the native TODO is its display. Ordinary source edits and tests use native tools without duplicate material or verification bookkeeping. If the user selected a skill with an explicit phase or review contract, follow that contract as well; [skill contracts](skills-reference.md) explain the additional evidence it requires.
+
+## Make and verify the authorized change
+
+Prepare Neurath's development environment from the lockfile:
 
 ```sh
 uv sync --locked
 ```
 
-This creates or updates the development environment from the committed lockfile. It does not install the harness into a target project. For a new installation behavior, first add a test that fails for the intended before/after case. Start with the relevant test; once the implementation is stable, run the required check:
+For implementation changes, the repository check is:
 
 ```sh
 uv run --locked python tools/check.py
 ```
 
-The check executes package integrity, Python diagnostics, package and installation tests, and runtime contracts in a disposable Git fixture. Its success applies to the source tested. [Validation](validation.md) describes distribution, bootstrap, and native-host checks that establish additional facts.
+The check stops at the first failure and reports `NEURATH_CHECK_OK` only after its actual stages succeed. Record what ran against which source state. For a documentation-only change, use the publication convention tests and link/schema checks appropriate to that change; prose work alone does not require an installation or native host experiment.
 
-For a runtime or asset change, regenerate package integrity data before checking and building:
+Define new installation behavior with a failing test before implementing it. When execution assets change, rebuild the manifest before the required checks and package build:
 
 ```sh
 uv run --locked python tools/build_manifest.py
-uv run --locked python tools/check.py
-uv build
+```
+
+The self-installation command is:
+
+```sh
 ./setup --self
 ```
 
-Self-installation updates the harness used by this checkout through the normal installer. Its persistent tool environment is separate from development `.venv`; record build output and installed runtime separately. A documentation-only change does not require self-installation solely to deliver new prose.
+Use it when the authorized development scope calls for updating the installed harness. It uses a persistent tool runtime separate from the development `.venv`. Installation does not establish actual host activation; observe a subsequent native host event to make that claim. [Validation](validation.md) separates source checks, package execution, installation behavior, and real-host scenarios, and [setup reference](setup-reference.md) covers bootstrap details.
 
-## Maintain the product contract
+Keep both documentation languages aligned at matching relative paths. Link within the same language except for translation links. Public `usage` pages explain natural-language requests and observable outcomes; executable commands and configuration belong in contributor references. Exclude private project information, raw validation records, and installation receipts from public documentation and distributions.
 
-Edit managed runtime sources under `src/neurath/_assets`. Installed `.agents/skills` and `.neurath/rules` are projections and will be checked against the installation record. Editing a projection directly creates an installation conflict rather than a reusable source change.
+## Finish against the original acceptance criteria
 
-Public detailed documents use matching relative paths below `docs/en` and `docs/ko`. Each locale's `usage` explains natural-language requests and user-visible outcomes; `contributing` contains execution and configuration examples. Keep both locales equivalent in scope, supported behavior, errors, and limitations. Navigation stays in the reader's language except the reciprocal language link. Only root README and CONTRIBUTING entry points use `.md` / `.ko.md` pairs.
+Use `task_resolve` with current revisions, concrete references, and an outcome summary that accounts for the acceptance criteria. It records an owner report, not independent certification. Task states are `pending`, `in_progress`, `succeeded`, `failed`, and `invalidated`; the last three are terminal. Check `all_succeeded` and unsuccessful task IDs as well as `all_terminal`. A failed attempt does not cancel a still-feasible user requirement; retain the necessary follow-up.
 
-For a public documentation change, the focused convention check is:
+When Stop reports unfinished prerequisites, use the actual reason to continue or recover the authorized work. An unanswered question, side question, elapsed time, or exhausted continuation budget does not waive those prerequisites. Explicit user interruption remains a native-host action. A normal host session end can preserve resumable work and claims, while the kernel's `SessionEnded` is permanent. A checkpoint marked completed is neither of those state transitions.
 
-```sh
-uv run --locked pytest -q tests/test_publication.py
-```
+Resolve required work and any explicit phase/review contract, consume outstanding results where applicable, and release ownership only at the authorized point using the actual returned lease data. If an applicable prerequisite cannot be met, report the concrete blocker and next action without relabeling the user's goal as delivered. The [task/TODO contract](task-todo-contract.md) and [runtime lifecycle](runtime-lifecycle.md) define these boundaries precisely.
 
-Public packages and documentation must not contain private source originals, installation plans, diagnostic logs, receipts, credentials, personal paths, or provenance from other repositories. Store evidence in ignored private storage such as `.validation`. The [asset reference](assets.md) explains distribution ownership and inclusion.
-
-## Describe the result for a reviewer
-
-Explain the concrete trigger, changed behavior, compatibility or installation impact, and actual checks performed. Link relevant source and tests. State whether the evidence concerns source integrity, built-package execution, target placement, protocol simulation, or a real native session. An authenticated owner task result records the owner's outcome; explicit review workflows have their own independent reviewer contracts.
-
-Use current operation results and revisions when working through named MCP tasks. Ordinary native edits and commands do not require a separate material batch or per-criterion acceptance document. The task ledger is completion authority when a session has a task list; visible TODO state is its display projection. See [task and TODO contracts](task-todo-contract.md).
-
-Building or checking does not authorize GitHub creation, push, or public release. Carry out those steps when the current user request authorizes them, and report the actual remote result separately from local work.
+Your final report should identify the change, its user-visible consequence, what was observed, and what remains unverified. Build, installation, host activation, review or merge, and public release remain separate evidence. A development request alone does not authorize GitHub creation, push, or public release; follow [release operations](releases-reference.md) only within the requested scope.

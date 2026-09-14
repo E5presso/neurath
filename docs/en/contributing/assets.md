@@ -1,68 +1,62 @@
-<!-- date: 2026-09-13; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
+<!-- date: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
 
-# Own and package the runtime assets
+# Change the assets that Neurath installs
 
-[한국어](../../ko/contributing/assets.md)
+[한국어](../../ko/contributing/assets.md) · [Contributor entry](index.md)
 
-The installed harness must run independently of its source checkout and independently of the application it supports. Neurath therefore owns its distributable runtime assets under `src/neurath/_assets`. The target receives projections and launchers that refer to a separately installed tool environment. Another repository is never a build input.
+An asset change should reach a target project through a built Neurath distribution. Edit the independent source under `src/neurath/_assets`, regenerate its derived metadata, and verify the package and installation behavior appropriate to the change. Editing an installed `.agents/skills` or `.neurath/rules` file changes only that installation and may create an update conflict.
 
-## Choose the source of a change
+## Locate the source by its purpose
 
-| Area | Responsibility |
-| --- | --- |
-| `src/neurath/_assets` | Independently executable rules, skill resources, and harness engines |
-| `src/neurath/install/projection.py` | Host-neutral projection and host-specific installation contributions |
-| `src/neurath/runtime` | Named task contracts and domain-operation dispatch |
-| `src/neurath/hosts` | Actual host lifecycle and identity integration |
-| `src/neurath/resources.py` | Package resource location and distribution identity |
-| `src/neurath/manifest.json` | Expected package file digests |
-| `tests/runtime` | Runtime contracts executed against a disposable standalone corpus |
+| Purpose | Source | Installed or runtime use |
+| --- | --- | --- |
+| Agent procedures | `_assets/.agents/skills` | Projected to public skill names in `.agents/skills`. |
+| Shared operating rules | `_assets/.agents/rules` | Portable rules under `.neurath/rules`. |
+| Workflow contracts and routing data | `_assets/.agents/skills/contracts.json` and related JSON | References under `.neurath/reference`; stable internal contract identities. |
+| Runtime implementation | `_assets/scripts` | Imported by the isolated installed runtime. |
+| Policy, host wiring, path rewriting | `install/projection.py` | Generates policy, hooks, references, launcher, and operation map. |
+| Public naming | `skill_names.py` | Maps internal source names to public invocations. |
 
-Edit the package source, then regenerate and check the manifest. Installed `.agents/skills`, Claude skill links, `.neurath/rules`, and launchers are installation outputs. Directly editing an owned projection makes the installed state diverge from its record and can block update or uninstall.
+All source paths above are beneath `src/neurath`. Other repositories are not build inputs. The target project supplies its own product documents and verification commands through `.neurath/project.json`.
 
-The `generic` profile supplies common behavior. Project-specific document roles, test commands, vocabulary, and metadata conventions belong to the target's instructions and `.neurath/project.json`. The package does not embed a private application's terminology, source paths, or dependencies to make its runtime work.
+The current inventory has 31 public skills: 29 have phase contracts, while `explain-code` and `graphify` support work without those contracts. Public names describe the work a reader requests; internal identifiers keep persisted workflows stable. For example, source contract `investigate` is invoked as `debug`, and `monitor-pr` as `watch-pr`. A configured `neurath-` prefix changes the invocation to `/neurath-debug` without renaming its internal contract. See [skill reference](skills-reference.md) for the complete mapping.
 
-## Understand the public surface
+## Follow a source change into its projection
 
-The current surface contains 31 public skills. Twenty-nine have phase contracts; `explain-code` and `graphify` are supporting skills without those contracts. A public skill name and its internal contract identifier serve different roles; a configured prefix changes the public projection name without renaming the internal contract.
+Projection rewrites bundled paths, public skill names, and engine references for an installed project. It places project-specific document references behind the `documents` bindings and adds the installed policy boundary before skill instructions. Markdown command references are mapped to currently available named tools, with `.neurath/reference/task-operation-map.json` recording the mapping.
 
-The named stdio MCP API exposes 127 operations from 137 internal operations. Closed input schemas reject undeclared fields, and structured responses separate results from failures. Saved-call compatibility dispatch is not public discovery: `workflow_start`, `workflow_advance`, and `workflow_finalize` remain accepted for stored calls while new explicit phase workflows use `phase_start`, `phase_complete`, and `phase_finalize`. The legacy arbitrary-argument and material/verification bookkeeping paths are also compatibility infrastructure, rather than an ordinary agent execution interface.
+This matters when changing a procedure: a working source command is not enough if the generated skill tells an installed agent to use an unavailable operation. Check the source procedure, projected text, current tool schema, and relevant contract together. Current source discovers 128 named tools and retains 138 internal operations; compatibility operations are not automatically public tools. Ordinary edits and tests use native tools without duplicate material or verification bookkeeping. See [task tools](task-tools.md) for the public boundary.
 
-The current [task schema](../../../src/neurath/runtime/task_schema.py) and [MCP server](../../../src/neurath/agents/mcp.py) define that surface. Use their named operations and actual returned revisions; do not add a CLI string, Python module, or direct state-editing gateway as a second routine interface. Ordinary project file edits and commands run through the host's normal tools.
+For a saved-filter investigation, the skill should help the agent trace why the user's application loses state after refresh and keep that result in view. Product behavior and repository commands come from the target; the shared asset supplies the investigation procedure.
 
-## Preserve package integrity and runtime independence
+## Retain meaningful workflow evidence
 
-[Resource handling](../../../src/neurath/resources.py) locates `_assets` inside the installed package. Distribution identity hashes package-relative paths and file bytes, excluding Python cache artifacts. The [manifest builder](../../../tools/build_manifest.py) records file integrity expected by diagnostics. A stale manifest is a source/package mismatch and must be regenerated after changing executable assets.
+A phase contract records what a requested procedure needs before advancing. Reading the procedure or writing “passed” does not complete a phase. The current public operations are `phase_start`, `phase_current`, `phase_evidence_prepare`, `phase_complete`, and `phase_finalize`; old `workflow_*` calls remain compatibility paths.
 
-The development sequence for a runtime change is:
+`phase_evidence_prepare` retains immutable evidence tied to the current phase and revision, distinguishing a source observation from an owner's report. Adaptive evaluation additionally needs an independently verified role, the exact candidate, and an authenticated consumed report. Changed source, intent, owner, or workflow revision invalidates stale candidate evidence. Some operational final phases finalize atomically using `terminal_state`; do not finalize the same phase again.
+
+A native test result can support the user task directly. Only create explicit phase/review state where the selected procedure requires it. [Runtime lifecycle](runtime-lifecycle.md) and [skill reference](skills-reference.md) describe the detailed transitions; [collaboration contract](collaboration-contract.md) explains independent evaluation.
+
+## Rebuild the derived metadata and package
+
+For an executable asset change, use the development sequence:
 
 ```sh
+uv sync --locked
 uv run --locked python tools/build_manifest.py
 uv run --locked python tools/check.py
 uv build
-./setup --self
+./setup --self --json
 ```
 
-`uv run --locked python -m build` is another available build entry point. The built package, installed runtime, and native loaded instance are different artifacts. Keep the actual wheel identity in private validation results when correlating those observations.
+The final command is a separate installation action when authorized. New installation behavior starts with a failing test before implementation. The manifest builder also regenerates the catalog's rule and audit indexes, then hashes independent package files. It excludes bytecode/cache files and refuses symlink payload dependencies. Hand-editing a digest to hide a changed asset defeats this check.
 
-Installed launchers use an isolated Python import path. A target application package named `scripts` must not shadow the bundled engine. Wheel validation imports bundled modules in a fresh external environment while denying access to the source checkout. Setup validation also moves the original source away before exercising the installed launcher. These checks substantiate independent packaging; the native-host scenarios in [validation](validation.md) establish actual host behavior separately.
+`tools/check.py` stops at the first failing stage; `NEURATH_CHECK_OK` appears only after integrity, static diagnostics, package tests, and runtime regressions succeed. A package build verifies a different surface from those source checks. A self-install changes the development project's installed files and still needs a later actual host event to establish activation. Use [validation](validation.md) to choose and report each required observation.
 
-## Keep mutable state outside the corpus
+## Keep distribution contents portable
 
-The canonical database for mutable runtime domains is `.neurath/local/runtime.sqlite3` under the Git-common-derived control root. Linked worktrees share this root while namespaces and domain codecs keep ownership, revisions, messages, task truth, memory, and installation state distinct. Independent clones or computers have no automatic synchronization.
+The wheel packages `src/neurath`, including its independent assets and manifest. The source distribution includes both documentation locales and development sources. Private validation output, environment state, Git data, installation records, and provenance stay outside the public payload. The declared runtime dependency belongs to Neurath's tool environment, not the target's dependencies.
 
-This database does not make every private file interchangeable. Immutable installation plans, retained originals, recovery backups, and diagnostic artifacts have their own formats and lifecycles. Installed configuration projections also remain on disk. Preserve these distinctions when adding a state domain or documenting a storage migration. [Installation design](installation-design.md) describes explicit legacy-writer retirement.
+Test import independence in a fresh installed wheel environment, including a target with its own `scripts` package. Test projection changes for public names, prefixes, host selections, and preservation of user configuration. A documentation-only edit instead uses publication and structural checks; it does not require rebuilding an unchanged executable payload.
 
-Session state access is mediated by the session kernel and caller-bound state handle. Worktree leases and fencing tokens exclude stale writers. A caller-supplied session ID or an artifact string is not a replacement for native host identity. Package assets must retain this boundary when exposing new operations.
-
-## Verify publication contents
-
-Public documentation has matching English and Korean paths and is included in the source distribution. Package and publication tests verify metadata, locale links, path conventions, independence, and exclusion of private artifacts:
-
-```sh
-uv run --locked pytest -q tests/test_publication.py
-```
-
-Do not package raw host transcripts, installation originals, receipts, personal paths, credentials, private project names, or debugging fixtures. Keep those in ignored storage such as `.validation`. Public examples should be generic and reproducible using only Neurath-owned resources. `neurath corpus /path/to/new-directory` copies those standalone resources into a new directory for inspection.
-
-Sources and checks: [package metadata](../../../pyproject.toml), [publication tests](../../../tests/test_publication.py), [distribution validation](../../../tools/validate_distribution.py), [runtime fixture runner](../../../tools/run_core_regressions.py).
+Source: [projection](../../../src/neurath/install/projection.py), [public names](../../../src/neurath/skill_names.py), [manifest builder](../../../tools/build_manifest.py), [package configuration](../../../pyproject.toml). Tests: [independent package](../../../tests/test_independence.py), [skill import boundary](../../../tests/test_skill_import_boundary.py), [prefix behavior](../../../tests/test_skill_prefix.py), [tool guidance](../../../tests/test_mcp_guidance.py).

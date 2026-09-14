@@ -1,62 +1,154 @@
-<!-- date: 2026-09-13; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
+<!-- updated: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
 
-[한국어](../../ko/contributing/agents-reference.md)
+# The agent that owns the work
 
-# Give each participant a verifiable role
+[한국어](../../ko/contributing/agents-reference.md) · [Contributor start](index.md)
 
-Neurath distinguishes the user's active agent, a native direct child, and a separately owned provider session. The distinction determines who may edit a worktree, accept an assignment, evaluate a candidate, and resume after interruption. A visible name or a message describing a role cannot establish that role.
+Neurath connects a coding agent's current user request to durable work records, host observations, and the right to change a checkout. This reference explains those roles before introducing their tools. For a first encounter with the product, begin with [the user walkthrough](../usage/start-here.md).
 
-## Select the collaboration shape
+Suppose a saved filter in the user's hypothetical web application disappears after refresh. This is a target-application example, not a Neurath feature. The user wants the cause fixed, the selection to survive refresh, and the existing interface preserved. The agent may investigate the save API, inspect reload behavior, or ask another agent to reproduce the failure. These are ways to fulfill the same request. Finishing an investigation, reaching a token limit, or writing a handoff does not change what the user asked for.
 
-| Need | Participant | Authority and lifetime |
+## Distinguish work, conversation, and checkout
+
+| Term | Meaning in this example |
+| --- | --- |
+| Task | The requested outcome and observable acceptance conditions, retained in the task ledger. |
+| Session | One native Codex or Claude Code interaction, identified and observed by that host. |
+| Root | The primary actor in a native session; the owner of its task decisions. |
+| Native child | A direct subordinate actor whose parent relationship the host attests. It can investigate a bounded part of the filter defect. |
+| Peer | Another independent session participating in the same local Git project. Discovering it does not make it a child. |
+| Provider run | Neurath-supervised execution in an independent native root, with separately checked settings and ownership. |
+| Worktree | A particular Git checkout. Linked worktrees can share project records while remaining distinct write targets. |
+| Claim | A current write lease for that worktree. Its epoch and fencing token reject stale owners. |
+| Receipt | A record of a particular observed event. Its meaning is limited to that event. |
+
+The task ledger owns completion state; a host TODO list is a view of that ledger. The host owns native identity and effective permissions. Neurath's current binding connects a tool call to that identity. Names, paths, copied session IDs, and remembered claims cannot replace a valid binding.
+
+## Establish the current operating state
+
+`session_status` reports installation, native activation, effective mode, and worktree ownership. `detail="summary"` is the default; `detail="full"` adds the capability catalog. Read the dimensions separately: installed files do not prove an active hook, and an active session does not prove that this root owns the checkout.
+
+`session_inspect`, `turn_inspect`, and `worktree_inspect` provide narrower observations. Use `worktree_claim` when the authorized work needs the current root's claim; it does not provide a force-takeover path. Save returned lease data together in private working state. A release needs the returned `expected_lease_epoch` and `fencing_token`; a stale or foreign token must fail. Never publish that token or invent a replacement.
+
+The active host supplies `_neurath_binding` to named MCP calls. The agent must not construct it from diagnostics. Missing native registration, a missing user-prompt receipt, or a foreign live claim is a prerequisite failure to resolve at its actual source.
+
+### What app project membership tells you
+
+For a verified active Codex root, the status report can include `app_project`. This is a bounded, read-only observation of app-owned local assignment records. `assigned` identifies a matching local project record, `unassigned` means the app explicitly recorded a projectless task, and `unobserved` means the evidence is absent, inconsistent, unsupported, or too large to inspect. The reader caps the app state file at 16 MiB and returns only the relevant assignment fields.
+
+This field is diagnostic. It does not grant task authority, alter readiness, inspect a remote app, or prove what a window currently displays. A `project_id` in native execution metadata is a separate fact. When the user requests an app-created root, use the app's `create_thread` capability together with its project/plugin context and assess the app result. `provider_run` creates supervised provider work; it is not a substitute proof of app membership.
+
+## Turn the request into accountable work
+
+The root first reads `task_list`. `task_define` records a bounded goal, its prompt/ticket/spec sources, acceptance conditions, and dependencies using the returned ledger revision. `task_start` chooses a task using both the ledger and task revisions. `task_resolve` records `succeeded`, `failed`, or `invalidated`, with evidence references and a summary under the same revision checks.
+
+The ledger distinguishes `pending`, `in_progress`, `succeeded`, `failed`, and `invalidated`. Terminal history is immutable. `all_terminal` is separate from `all_succeeded` and `unsuccessful_task_ids`: a terminal failure is not successful delivery. Initial definition needs the actual native user instruction receipt or a retained validated same-session prompt source. After a later prompt arrives, choose explicitly whether a new definition continues the original requirement or implements the new request; a status question must not silently become a new goal. A peer-resumed turn can use retained validated prompt sources without fabricating a fresh user receipt.
+
+Starting and successful resolution require terminal dependencies; failed or invalidated outcomes can be recorded before dependency settlement. Resolution is an owner report with `assurance="agent-report"`, not independent certification. The final ledger check and root closure share one SQLite transaction so a concurrent task append cannot disappear. A stale or failed TODO display cannot rewrite that truth.
+
+For the filter defect, acceptance should include reproduction, a confirmed cause, retained selection after a fresh reload, and interface preservation. “The save API returned success” establishes one observation. It cannot stand in for the reload test. A failed attempt also leaves the original user requirement in force; necessary follow-up work must remain represented.
+
+Native goal reminders help the agent keep that distinction visible. They run on eligible prompt/tool events at the first event, a changed prompt, 12 distinct completed tool events, or the next eligible event after 300 seconds. Task definition, start, and resolution also receive decision context immediately before the tool call. Reminders are bounded to 2,400 bytes and at most four task excerpts. They provide context for judgment without changing task state or deciding semantic success.
+
+## Returning to the user is a work decision
+
+An ordinary Stop is checked against the active work. Asking a question, reaching a budget limit, finishing a verification step, or preparing a checkpoint does not itself permit the agent to bypass an unfinished user goal. A limit can require a different method or an authorized continuation. A checkpoint records what is known and what remains; see [memory and learning](memory-reference.md).
+
+Normal host `SessionEnd` preserves resumable sessions, tasks, bounded session facts (the enclave), and claims. The kernel's `SessionEnded` is permanent. A verified resume can retire an interrupted older foreground while preserving unfinished work; a fork is a new root with a separate claim requirement. Explicit user interruption remains a native host operation. A Stop block requests another model turn and is not a security boundary; stale Stop ingress has a read-only diagnostic route and cannot close a newer verified turn.
+
+The root can ask a native child to inspect API storage and responses while it investigates reload behavior, or contact a discovered peer for an existing finding. Keep the child's bounded assignment and parent relationship explicit. `delegation_prepare` records preparation; it does not spawn the child. The actual native host action and its observed child identity complete that part of the setup. [The collaboration contract](collaboration-contract.md) explains messages and delegated results; [provider execution](provider-transports.md) explains independent roots.
+
+## Source and focused evidence
+
+The identity and task rules are implemented in [src/neurath/hosts/identity.py](../../../src/neurath/hosts/identity.py), [src/neurath/_assets/scripts/agent_harness/task_service.py](../../../src/neurath/_assets/scripts/agent_harness/task_service.py), `task_ledger.py`, and `worktree_registry.py`. Diagnostic app membership is in [src/neurath/hosts/app_projects.py](../../../src/neurath/hosts/app_projects.py); reminders are in [src/neurath/runtime/goal_reminders.py](../../../src/neurath/runtime/goal_reminders.py).
+
+Relevant regression coverage includes [tests/test_app_project_observation.py](../../../tests/test_app_project_observation.py), [tests/test_goal_reminders.py](../../../tests/test_goal_reminders.py), and [tests/runtime/agent_harness/test_foreground_stop_aggregate.py](../../../tests/runtime/agent_harness/test_foreground_stop_aggregate.py). These references identify source-level checks. They do not certify a particular installation, current MCP connection, or visible native app session.
+
+Current discovery exposes 128 public named tools over 138 internal operations. Tool presence still needs a live native binding. An `UNATTESTED` session, turn, or child cannot mutate execution state. Codex child verification uses the actual spawn result and child transcript parent/session metadata; Claude uses one-time parent Agent-call evidence in the child transcript. Late registration can retry identity verification at the first state operation, but shell and writes remain `child-identity-unverified` until real lineage is established.
+
+## Named input reference
+
+The tables below are the current named-tool input contract. Nested required fields are required when their parent object or array item is supplied. Schema acceptance is only the first check; native identity, ownership, source, revision, and operation-specific prerequisites still apply. The host supplies `_neurath_binding`; do not synthesize it.
+
+Every response has `ok` and `operation`. A successful call carries its canonical `result`; a failure carries `error.code`, `error.message`, `error.state`, `error.retryable`, and `error.next_action`. An `ok` envelope establishes the stated operation only, not the user goal. Preserve returned IDs and revisions for dependent calls.
+
+### `session_status`
+
+| Field | Presence / default | Type and limits |
 | --- | --- | --- |
-| Bounded, independent work within the current task | Native leaf child | Verified direct lineage under its native host |
-| A separate lifetime, another provider, or required isolation | Owned provider session | Its own recorded provider execution and worktree readiness |
-| Information from an existing collaborator | Discovered peer | Authenticated message attribution; its own user's scope remains in force |
-| An independent review required by an explicit contract | Bound evaluator | Exact candidate and assignment authority consumed by the owner |
+| `detail` | optional; default `"summary"` | text: `"summary"`, `"full"` |
 
-Native leaf children are the default for divisible work already authorized by the task. Creating an independent provider run needs a reason and existing authorization. A received peer request does not authorize new sessions or expand the user's goal. A fork is a separate root with its own verified start and its own worktree claim.
+### `session_inspect`
 
-## Establish the caller before state changes
+No agent-supplied input fields.
 
-Native hooks bind the actual host, session, foreground turn, worktree, and exact tool input. Caller-supplied IDs do not grant authority. The named MCP schemas are closed; their optional `_neurath_binding` field is host-provided authentication material, not a field to invent in examples or copy between callers.
+### `turn_inspect`
 
-`session_status` with `{"detail":"full"}` diagnoses installation, activation, policy, session state, and ownership. `session_inspect`, `turn_inspect`, and `worktree_inspect` provide focused state views. Keep their findings separate: installed files do not establish native activation, and a route proposal does not establish effective policy or an acquired claim.
+No agent-supplied input fields.
 
-For direct children, the parent calls `delegation_prepare` immediately before the native spawn, with the intended `delegation_id`, `assignment`, and stable `key`. The one-time intent must match actual native evidence. Codex checks the real spawn result and child transcript metadata; Claude checks the parent Agent call reference in the child transcript. A stale, reused, or copied reference cannot create lineage. Late transcript registration may be retried by the first state operation; until verified, child shell and write actions are blocked as `child-identity-unverified`.
+### `worktree_inspect`
 
-Only native direct children are supported in this topology. A nested spawn does not become valid through copied parent identity. Once lineage exists, `delegation_assign` binds `workflow_id`, `delegation_id`, `assignment`, `target`, and `key` for the explicit workflow. Independent evaluation additionally requires the actual evaluation contract and authenticated report consumption.
+No agent-supplied input fields.
 
-## Keep one writer per worktree
+### `worktree_claim`
 
-An authenticated caller claims its worktree with `worktree_claim` using `{}`. Retain the returned lease epoch and fencing token. A lease identifies the current owner; the token prevents a previous owner from writing after ownership changes. Another agent's discovery record, task acceptance, checkpoint, or root identity is not a claim.
+No agent-supplied input fields.
 
-To release ownership, `worktree_release` requires `expected_lease_epoch` and `fencing_token` from the actual claim. If the values are stale, inspect the current owner rather than guessing a new token or taking over. A shared worktree can have several readers but must have one authorized writer. Independent provider editing must verify its own target's install, actual activation, effective policy, selected model, and claim first.
+### `worktree_release`
 
-For isolated work, use the supported worktree preparation and cleanup procedures described in [the capability map](capability-map.md). Cleanup needs an independently verified base branch and remote reference; it must not assume repository conventions or force an existing owner out.
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `expected_lease_epoch` | required | integer; 1–9007199254740991 |
+| `fencing_token` | required | text; 1–256 characters |
 
-## Discover and assign existing peers
+### `task_list`
 
-A peer registers a concise name and summary through `collaboration_register`; the runtime binds the actual identity. Search relevant peers without copying complete conversations:
+No agent-supplied input fields.
 
-```json
-{"tool":"collaboration_discover","arguments":{"query":"API","limit":10}}
-```
+### `task_define`
 
-Use the exact returned address. A question or proposal uses `collaboration_send`; an ordinary work assignment uses `collaboration_assign` with `to`, `message`, and `key`. The receiver explicitly calls `collaboration_accept` with the returned task ID and reports `started`, `waiting`, `error`, `failed`, `cancelled`, or `completed` through `collaboration_report`. `collaboration_task` reads the assignment record.
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `tasks` | required | array; 1–64 items |
+| `tasks[].key` | required | text; 1–512 characters |
+| `tasks[].title` | required | text; 1–512 characters |
+| `tasks[].goal` | required | text; 1–16000 characters |
+| `tasks[].sources` | required | array; 0–31 items |
+| `tasks[].sources[].kind` | required | text: `"prompt"`, `"ticket"`, `"spec"` |
+| `tasks[].sources[].reference` | required | text; 1–4096 characters |
+| `tasks[].sources[].revision` | required | text; 1–4096 characters |
+| `tasks[].acceptance` | required | array; 1–32 items; text; 1–16000 characters |
+| `tasks[].dependencies` | required | array; 0–64 items; text; 1–128 characters |
+| `expected_revision` | required | integer; 0–9007199254740991 |
+| `key` | required | text; 1–512 characters |
 
-Receipt acknowledgement and assignment acceptance are different events. A disconnected receiver must accept again in a fresh verified native turn before doing resumed work; an old unrelated turn cannot be reused. A completed report still needs the issuer's inspection of the requested effects. The [delivery contract](collaboration-contract.md) explains durable full-body reading, ACK, reply, and recovery.
+### `task_start`
 
-## Resume the original work
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `task_id` | required | text; 1–128 characters |
+| `expected_revision` | required | integer; 0–9007199254740991 |
+| `expected_task_revision` | required | integer; 0–9007199254740991 |
+| `key` | required | text; 1–512 characters |
 
-Normal host `SessionEnd` preserves resumable session state, tasks, enclave, and claims. A verified `SessionStart` with resume evidence restores the native relationship. Explicit kernel `SessionEnded` is permanent and cannot be revived by another start string. A proper root prompt or native resume can close an interrupted previous foreground turn while preserving unfinished tasks and delegations.
+### `task_resolve`
 
-When a task list exists, Stop checks and closes against the latest list atomically in the shared database. Ordinary tasks are resolved by their authenticated owner with direct references and a result summary. There is no additional mandatory checkpoint, learning, TODO, or independent-review completion vote. Explicit phase and review workflows retain their own requirements. See [task tools](task-tools.md) and [the task/TODO contract](task-todo-contract.md).
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `task_id` | required | text; 1–128 characters |
+| `expected_revision` | required | integer; 0–9007199254740991 |
+| `expected_task_revision` | required | integer; 0–9007199254740991 |
+| `key` | required | text; 1–512 characters |
+| `status` | required | text: `"succeeded"`, `"failed"`, `"invalidated"` |
+| `references` | required | array; 1–32 items; text; 1–4096 characters |
+| `summary` | required | text; 1–4096 characters |
 
-A verified root turn has one Stop continuation budget to avoid an endless loop. Remaining work is reported as incomplete; a later verified user turn has its own budget. A late Stop cannot close a newer verified turn. An unmatched Stop provides a nonblocking diagnostic without mutating state. Supported app peer delivery can continue an existing goal only with actual transcript and native-turn evidence; it creates no user approval.
+### `delegation_prepare`
 
-## Where to inspect and test
-
-[Host identity](../../../src/neurath/hosts/identity.py) and [hooks](../../../src/neurath/hosts/hooks.py) establish native callers. [SessionKernel](../../../src/neurath/_assets/scripts/agent_harness/session_kernel.py), [StateHandle](../../../src/neurath/_assets/scripts/agent_harness/state_handle.py), and [WorktreeRegistry](../../../src/neurath/_assets/scripts/agent_harness/worktree_registry.py) govern lifecycle, caller access, and ownership.
-
-[Host-lifecycle tests](../../../tests/test_host_lifecycle.py), [prompt-delivery tests](../../../tests/test_prompt_delivery.py), and [worktree-registry tests](../../../tests/runtime/agent_harness/test_worktree_registry.py) exercise these boundaries. A native acceptance run must additionally observe fresh start, actual child lineage, interruption/resume, rejected premature completion, authenticated result consumption, and claim release. A passing simulated protocol or source test is evidence for its own scope.
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `delegation_id` | required | text; 1–128 characters |
+| `assignment` | required | text; 1–8192 characters |
+| `task_id` | optional; default `null` | text; 1–128 characters / null |
+| `expected_task_revision` | optional; default `null` | integer; 1–9007199254740991 / null |
+| `key` | required | text; 1–512 characters |

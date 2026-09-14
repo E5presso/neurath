@@ -1,105 +1,106 @@
-<!-- date: 2026-09-13; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
+<!-- date: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
 
-# 초기 설치와 설정 실행 참조
+# 설치와 진단 실행 참조
 
-[English](../../en/contributing/setup-reference.md)
+[English](../../en/contributing/setup-reference.md) · [첫 설치](installation.md)
 
-초기 설치는 Neurath 전용 실행 환경을 준비한 뒤 트랜잭션 설치기를 호출한다. 이미 활성화된 설치에서는 일반 관리 작업에 명명된 MCP 도구를 사용한다. 이 문서는 연동이 아직 없을 때의 소스 실행기·CLI, 설치 검증 환경, 명시적 진단·복구 경로를 설명한다.
+대상 Git 루트와 해당 프로젝트 지침을 확인한 뒤 이 문서를 사용합니다. 초기 설치 명령은 네이티브 연동이 아직 없을 때 런타임을 준비합니다. 설치된 세션에서는 그 세션에 노출된 명명 도구와 현재 `.neurath/policy.md`를 따릅니다. 아래 명령 예시는 실행 참조이며 호스트 제한을 우회할 권한은 아닙니다.
 
-## 실행 환경과 준비 조건
-
-Neurath 체크아웃에서 대상을 명시하여 실행한다.
+## 소스에서 초기 설치하기
 
 ```sh
-./setup /absolute/path/to/your-project
+./setup TARGET [--host codex|claude-code] [--profile generic] [--skill-prefix PREFIX] [--dry-run] [--json]
+./setup --self [--host codex|claude-code] [--json]
 ```
 
-macOS·Linux에서 Git이 필요하며 `uv`가 없으면 공식 설치기로 확보할 수 있다. Python 3.14를 준비하고 배포본을 빌드한 뒤 내용 기반으로 구분되는 영속 도구 환경에 설치한다. 전역 `neurath` 진입점은 대상 설치가 성공한 뒤에만 바뀐다. 같은 배포 내용을 다시 사용하면 기존 도구 환경을 검증하여 재사용한다.
+`TARGET`은 기존 Git 작업 트리 루트여야 합니다. 새 프로젝트라면 Git 초기화를 별도 프로젝트 작업으로 먼저 수행합니다. 소스 체크아웃 자체에 설치할 때는 `--self`가 필요합니다. 호스트 플래그를 반복할 수 있으며, 새 설치에서 생략하면 두 호스트를 모두 선택합니다. 현재 프로필은 `generic` 하나입니다.
 
-프로젝트 `.venv`, 의존성 선언, 잠금 파일, 셸 시작 파일을 보존한다. Neurath 개발 `.venv`, 설치된 도구 환경, 대상 애플리케이션 환경은 각각 분리된다. 한 프로젝트를 업데이트해도 다른 프로젝트의 설치 실행기가 모두 바뀌지 않는다. 기록된 이전 상태로 되돌릴 수 있도록 이전 도구 환경을 유지한다.
+`--skill-prefix`는 빈 접두어나 `[a-z][a-z0-9-]*-`에 맞는 소문자 이름을 받습니다. 생략하면 설치된 접두어를 유지합니다. `--dry-run`은 대상 쓰기를 미리 보는 옵션이며 외부 소스 설치 스크립트는 영구 런타임을 준비할 수 있습니다. `--json`은 구조화된 결과를 반환합니다. 설정은 `--auto-report yes|no`도 받으며, 사용자가 실제로 결정한 보고 동의를 기록할 때 사용합니다. 생략하면 기존 결정을 유지하고 dry run에서는 동의를 저장하지 않습니다.
+
+런타임은 Python `>=3.14,<3.15`가 필요하며 macOS/Linux 초기 설치는 Python 3.14를 준비합니다. Git은 이미 있어야 합니다. `NEURATH_NO_BOOTSTRAP=1`은 `uv` 자동 다운로드를 막습니다. 런타임은 대상의 `.venv`, 잠금 파일, 의존성 명세와 분리됩니다.
+
+## 설치된 작업 트리 관리하기
+
+`installation_plan`으로 정확한 변경을 준비합니다.
+
+```json
+{"action": "update", "hosts": ["codex"], "key": "installation-update-preview-1"}
+```
+
+선택 필드는 `profile`, `hosts`, `installation_id`, `skill_prefix`입니다. `action`의 기본값은 `install`이며 `update`, `uninstall`, `restore`도 받습니다. 빈 선택은 서비스 기본값이나 설치 기록을 사용합니다. 복원에는 실제 존재하는 설치 ID가 필요합니다. 결과는 `plan_ref`, `plan_id`, `action`, 경로별 쓰기·제거를 담은 `changes` 배열입니다.
+
+반환된 참조를 `installation_apply`에 전달합니다.
+
+```json
+{"plan_ref": "RETURNED_PLAN_REF", "key": "installation-update-apply-1"}
+```
+
+대문자 값은 실제 참조로 바꿔야 하는 자리 표시자입니다. 같은 논리 작업을 재시도할 때는 동일한 입력과 안정적인 키를 유지합니다. 새 요청에는 새 키를 쓰며, 같은 키로 내용을 바꾸면 실패합니다. 네이티브 바인딩은 호스트 연동이 제공하는 값이므로 만들어 넣거나 다른 세션에서 복사하지 않습니다.
+
+`installation_recover`는 `{"key":"installation-recover-1"}`을 받습니다. 일반 파일 배치 상태가 손상되어도 보수적인 저널 복구 서비스에 접근합니다. `installation-recovery-required` 오류가 이 경로를 안내합니다. 복구 후 `diagnostics_project`를 확인하고 새 계획을 준비합니다. `plan-unavailable`은 현재 주체·작업 트리에서 준비한 참조가 아니며, `plan-changed`는 비공개 계획이 보존된 ID와 일치하지 않음을 뜻합니다.
+
+## 초기 설정과 관리를 위한 네이티브 터미널 명령
+
+네 가지 설치 동작은 같은 계획 엔진을 사용합니다.
 
 ```sh
-NEURATH_NO_BOOTSTRAP=1 ./setup /absolute/path/to/your-project
+neurath --root TARGET plan --action install --output PRIVATE_NEW_PLAN.json
+neurath --root TARGET apply PRIVATE_NEW_PLAN.json
+neurath --root TARGET install --host codex
+neurath --root TARGET update --host codex
+neurath --root TARGET uninstall
+neurath --root TARGET restore INSTALLATION_ID
+neurath --root TARGET recover
 ```
 
-이 설정은 대체 `uv` 다운로드를 끈다. 누락된 준비 도구를 대신 제공하지 않는다. Git이 없거나 대상이 Git worktree 루트가 아니라면 해당 조건을 해결한 뒤 실행한다. 새로 요청된 대상은 설치의 일부로 `git init`을 수행할 수 있다.
+`--root`는 하위 명령 앞에 둡니다. 실행 파일이 준비되어 있다면 `neurath setup TARGET --json`으로 설치와 진단을 함께 실행할 수 있습니다. `neurath wizard --output PRIVATE_NEW_PLAN.json`은 대화형으로 계획만 준비하며 적용하지 않습니다. 복원 계획에서는 `--installation-id INSTALLATION_ID`를 사용하고, `--receipt`는 호환 별칭으로 남아 있습니다. 출력은 새 비공개 경로여야 하며 기존 파일과 심볼릭 링크를 거부합니다.
 
-## 지원하는 설치 형태
+설치 **receipt**는 무엇을 바꿨는지 보관하는 기록이며 복원에 사용합니다. 코딩 호스트가 변경을 불러왔다는 근거는 아닙니다. 설치된 환경의 관리에서는 비공개 계획 경로를 대화에 노출하는 대신 앞의 명명 도구 참조를 우선합니다.
 
-| 실행 | 효과 |
-| --- | --- |
-| `./setup /absolute/path/to/your-project` | 도구 환경 준비와 대상 설치 |
-| `./setup --self` | 빌드된 도구 환경으로 현재 소스 체크아웃 설치 |
-| `neurath setup` | 사용 가능한 배포본으로 현재 프로젝트 설치·정합성 조정 |
-| `neurath setup /absolute/path/to/another-project` | 지정 대상 설치 |
-| `neurath setup --dry-run` | 대상 파일을 쓰지 않고 경로·작업 목록 반환 |
-| `neurath setup --json` | 구조화된 설치 결과 반환 |
-| `./setup /path/to/project --host codex` | Codex 연동 선택 |
-| `./setup /path/to/project --host claude-code` | Claude Code 연동 선택 |
-| `./setup /path/to/project --skill-prefix neurath-` | 공개 스킬 이름에 접두어 적용 |
+## 진단 결과의 범위 읽기
 
-최초 기본값은 `generic`과 두 호스트다. `--host`는 반복할 수 있다. 재설치에서 생략한 프로필·호스트·접두어는 기존 값을 유지한다. 프로필은 `generic`만 지원한다. 접두어는 빈 값이거나 `[a-z][a-z0-9-]*-` 형식이어야 한다. `neurath-`라면 `debug`가 `neurath-debug`로 배치된다. setup, plan, install, update, wizard에서 접두어를 선택할 수 있다. 설치된 접두어를 바꾸려면 먼저 제거한다. 기본 이름과 접두어 이름 모두 기존 사용자 소유 스킬과 겹치면 충돌이다.
+| 명명 도구 | 입력 | 확인하는 내용 |
+| --- | --- | --- |
+| `diagnostics_integrity` | `{}` | 패키지 파일이 매니페스트와 일치하는지 확인합니다. |
+| `diagnostics_project` | `{"protocol":true}` | 배포본, 관리 파일 배치, 로컬 훅 프로토콜을 관찰합니다. |
+| `diagnostics_profile` | `{}` | 설치된 프로필의 검사 정보를 읽습니다. |
+| `diagnostics_continuation` | `{}` | 현재 작업 지속 관련 진단을 읽습니다. |
 
-소스 `./setup --dry-run`은 대상 미리보기를 계산하기 전에 별도 도구 환경을 준비할 수 있다. 설치된 `neurath setup --dry-run`은 대상 파일을 쓰지 않는다. 미리보기에는 경로와 작업이 나오며 기존 파일의 본문은 드러내지 않는다.
+터미널에서는 `neurath integrity`, `neurath doctor --protocol`, `neurath profile-check`, `neurath session-status` 등을 사용합니다. Doctor는 로컬 프로토콜이 통과해도 `host_activation.status: "unverified"`를 반환합니다. 실제 활성화는 호스트 이벤트로 확인해야 합니다.
 
-`--auto-report yes|no`는 사용자가 명시한 보고 선택을 기록한다. 생략하면 기존 선택을 유지한다. 설치 요청만으로 보고 동의가 성립하지 않으며 적용 범위는 [보고 안내](../usage/reporting.md)에 설명되어 있다.
+명명 도구 응답에는 `ok`와 `operation`이 있습니다. 전송 성공과 `result`의 실제 결과는 구분합니다. 실패 시 `code`, `message`, `state`, `retryable`, `next_action`을 읽습니다. 예를 들어 진단 응답을 정상 수신했더라도 그 안의 파일 배치 결과는 실패일 수 있습니다.
 
-## 구조화된 결과 해석
+## 프로젝트 검증 명령 설정하기
 
-미리보기에는 `status: planned`, `root`, `profile`, `hosts`, `skill_prefix`, 보고 상태, `path`·`action`을 담은 `changes`가 있다. 적용 후에는 설치 ID·변경 수를 담은 `receipt`, `doctor`, 다음 단계가 추가된다. 최종 `status`는 로컬 진단에 따라 `passed` 또는 `failed`다. 파일 적용 후 진단이 실패할 수 있으므로 조사할 때 설치 ID를 보존한다.
-
-진단은 배포본, 배치, 프로토콜, 실제 활성화를 구분한다. 독립 훅 subprocess가 시작 JSON을 받고 잘못된 입력을 거부한 것은 프로토콜 호환성 확인이다. 실제 호스트 활성화는 호스트에서 관측하기 전까지 미확인이다. 사용자에게 프로젝트 신뢰, provider 인증, 세션 새로고침이 필요할 수 있다. 이는 특정 호스트 조작이며 프로젝트 설정 전체를 사용자에게 넘기는 단계가 아니다.
-
-## 적용하지 않고 계획 저장
-
-대화형 wizard도 동일한 `make_plan`·`apply_plan` 엔진을 사용하며 계획만 저장할 수 있다.
-
-```sh
-neurath --root /absolute/path/to/project wizard --output /private/path/neurath-plan.json
-```
-
-초기 설치 CLI에서 명시적 계획을 만들고 적용하는 형태도 지원한다.
-
-```sh
-neurath --root /absolute/path/to/project plan --action update --output /private/path/neurath-plan.json
-neurath --root /absolute/path/to/project apply /private/path/neurath-plan.json
-```
-
-출력 경로는 새 파일이어야 하며 심볼릭 링크이면 안 된다. wizard의 기본 저장 위치는 Git 관리 영역 `neurath-plans`이며 파일 모드는 `0600`이다. 계획에는 이전 파일 정보가 있으므로 비공개로 보관한다. 적용 시 대상과 배포본을 다시 확인한다. 충돌을 피하려고 계획 본문을 수정하지 않는다.
-
-되돌리기 계획에는 `--action restore --installation-id INSTALLATION_ID`를 사용한다. `--receipt`는 동일한 ID를 받는 호환용 별칭이다. ID는 반전할 완료 작업을 가리킨다. 중단 작업 복구와의 차이는 [트랜잭션 설계](installation-design.md)를 참고한다.
-
-## 실제 프로젝트 절차 연결
-
-에이전트는 프로젝트의 실제 지침을 근거로 `.neurath/project.json`을 관리한다. 다음 예시는 문서 역할과 검사 명령을 연결하는 구조다. 확인한 경로와 명령으로만 대체한다.
+검증기는 프로젝트 작업을 확인하기 위해 저장소가 선택한 명령입니다. 아래 예시는 저장 필터 앱에 해당 테스트 스크립트가 이미 있다고 가정합니다.
 
 ```json
 {
   "schema": 1,
-  "documents": {
-    "intent": "docs/product.md",
-    "glossary": "docs/glossary.md",
-    "decisions": "docs/decisions/"
-  },
+  "documents": {"intent": "SPEC.md"},
   "verification": {
-    "check": {
-      "argv": ["npm", "test", "--", "--run"],
+    "project-check": {
+      "argv": ["npm", "test"],
       "cwd": ".",
       "success_codes": [0],
       "timeout_seconds": 300
     }
-  },
-  "protected_capabilities": {
-    "connectors": [],
-    "paths": ["docs/product.md"]
   }
 }
 ```
 
-`argv`는 인자 배열이며 셸 문자열이 아니다. 출력 조건이 필요하면 `stdout_contains`를 추가할 수 있다. 정확한 pytest 선택을 실행할 때는 `verification.pytest.argv`에 `uv run --locked pytest`처럼 실제 환경을 연결하고, `tests/test_example.py::test_example` 같은 요청된 선택자를 유지한다. 없는 검사는 미확인으로 남긴다. 비어 있는 문서 역할에 무관한 파일을 채우지 않는다.
+`argv`는 null 바이트가 없는, 비어 있지 않은 문자열의 비어 있지 않은 배열입니다. 셸 표현식으로 실행하지 않습니다. `cwd`는 저장소 상대 경로이며 저장소 안에 존재하는 디렉터리로 해석되어야 합니다. `success_codes`는 0부터 123까지 정수의 비어 있지 않은 목록이고 기본값은 `[0]`입니다. 타입이 지정된 회귀 검사는 특히 `[0]`을 요구합니다. `timeout_seconds`는 기본 300이며 유한한 양수, 최대 3600입니다. 선택 필드 `stdout_contains`는 비어 있지 않은 문자열이며 표준 출력에 포함되어야 합니다.
 
-내부 등록 검증 경로는 저장소의 실행 전후 지문을 비교하므로 종료 코드가 허용되어도 파일 변경이 있으면 거부한다. 일반 네이티브 명령 실행이 이 호환용 검증 기록을 자동으로 만드는 것은 아니다. `worktree_cleanup` 연결에는 독립적으로 확인한 `base_branch`와 `remote_ref`가 필요하며 이름 관례로 추정하면 안 된다.
+검증 보존 기록에는 명령, 설정 다이제스트, 실행 전후 작업 트리 지문, 종료 상태, 제한 시간 정보가 들어갑니다. 프로세스가 성공했어도 작업 트리가 바뀌면 검증 receipt는 실패합니다. `unbound verifier`는 요청한 이름의 연결이 없다는 뜻입니다. 실제 명령을 연결한 다음 실행 여부를 보고해야 합니다. 일반 네이티브 테스트 결과와 함께 사용하는 방법은 [검증](validation.md)을 참고하세요.
 
-독립 배포 자산을 살펴보려면 `neurath corpus /path/to/new-directory`로 새 디렉터리에 복사한다. 다른 프로젝트 파일을 가져오지 않고 패키지에 포함된 자산을 읽는다.
+## 소스 체크아웃 없이 번들 자원 살펴보기
 
-구현 근거: [초기 실행기](../../../setup), [CLI 구문](../../../src/neurath/cli.py), [설치 서비스](../../../src/neurath/install/setup.py), [트랜잭션 엔진](../../../src/neurath/install/transaction.py), [초기 설치 검증](../../../tools/validate_setup.py).
+```sh
+neurath corpus NEW_DESTINATION
+neurath --root TARGET engine scripts.agent_harness.state_cli --help
+neurath --root TARGET skill watch-pr monitor_runtime_readback.py --help
+```
+
+`corpus`는 독립 번들 자원 트리를 복사하며 기존 대상 디렉터리를 거부합니다. Engine과 skill 명령은 설치된 격리 인터프리터를 사용합니다. 개발·초기 설정용 실행 참조이므로 현재 정책을 따라야 합니다. 설치된 스킬은 일반 작업을 명명 도구로 수행하도록 안내합니다.
+
+소스: [CLI](../../../src/neurath/cli.py), [설치 입력 스키마](../../../src/neurath/runtime/installation_tasks.py), [검증 실행기](../../../src/neurath/runtime/verification.py), [타입 지정 명령](../../../src/neurath/runtime/commands.py). 테스트: [설정](../../../tests/test_setup.py), [설치 도구](../../../tests/test_installation_tasks.py), [검증](../../../tests/test_verification.py).

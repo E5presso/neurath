@@ -1,91 +1,105 @@
-<!-- date: 2026-09-14; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
+<!-- updated: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
 
-[한국어](../../ko/contributing/memory-reference.md)
+# Remember the investigation and validate useful lessons
 
-# Context that survives a session
+[한국어](../../ko/contributing/memory-reference.md) · [Contributor start](index.md)
 
-Project memory helps the next agent recover decisions, observations, and unfinished work. Its records are attributed context. The current request, current source, and current ownership determine what the agent may do. A remembered approval or a completed handoff note cannot grant a new caller authority.
+When an agent returns to the saved-filter investigation, it should be able to recover what the save API did, which reload behavior remains unexplained, and which verification still needs to run. Neurath retains attributed work records and presents a bounded selection to later sessions. It also recognizes some successful command recoveries and tests whether they are reliable enough to offer as guidance.
 
-## Choose the right store
+This page describes ordinary memory and learning. Moving unfinished tasks and write ownership into a different root uses [the separate pull-and-adopt procedure](provider-continuity.md).
 
-| Need | Interface | Meaning |
+## Understand what is stored and what is shown
+
+A **session** is a native host interaction. **Memory** is the project's retained information from those interactions; **context** is the selected information currently shown to an agent. A **checkpoint** is an explicit handoff report written by the agent. A **transcript** is the host's underlying JSONL history, which can contain more visible detail than ordinary recall includes.
+
+Project memory uses a SQLite runtime database selected by Git common directory. Linked worktrees and Claude/Codex sessions of that local project share the store. Separate clones and computers do not automatically share it. Attribution keeps host, session, event identity, sequence, kind, and relevant metadata attached to records. Current user instructions, current source, and current ownership remain authoritative when recalled material disagrees.
+
+Validated hooks record the user request at `UserPromptSubmit`, observed command events and their actual process outcomes, and eligible assistant/workflow reports at `PreCompact`, `Stop`, or `SessionEnd`. Reports remain agent reports. Text printed by a command, including JSON claiming an `exit_code`, is not native execution metadata. Private reasoning is excluded; common credential patterns are redacted before persistence. This is pattern-based redaction, so private project content still belongs in local records rather than public reports.
+
+At `SessionStart`, the host injects at most 3,000 bytes of selected memory context. Learned guidance is a separate contribution, capped at 6,000 bytes and twelve rules. Ordinary recall does not import Newsroom article bodies. Agents read relevant articles explicitly and retain their attribution.
+
+## Ask for a specific memory or save a handoff
+
+`memory_recall(query, limit)` finds relevant project history. The default limit is 12 and the maximum is 100. The underlying explicit context renderer has a 12,000-byte default, distinct from the smaller automatic SessionStart injection. Read the source and age of the returned observations, then verify facts that can have changed.
+
+`memory_checkpoint(summary, key, decisions, next_steps, lessons, status)` stores a handoff. The summary and key are required; lists default to empty. Each list accepts up to 32 nonempty strings. `status` is `active`, `paused`, `completed`, or `blocked`, with `paused` as default. Use the same key and identical content for an uncertain retry.
+
+For the filter defect, a useful checkpoint could say that the API stores the selected value, the reload path still needs investigation, and the next verification must exercise a fresh page load. Include actual evidence references when available. A `completed` checkpoint means the agent reported completion; it does not resolve a task, release a claim, finalize a review, or supply an extra ordinary completion vote.
+
+The runtime can request a checkpoint after meaningful work when a handoff is due. The agent must supply the factual summary; the request does not turn missing work into a completed task. Pull can use persisted SQLite and registered transcript records even if that final summary was never written.
+
+## A reflection is not yet validated guidance
+
+“Use the project's environment to run tests” is a reflection the agent might place in `lessons`. A learned command recovery requires stronger evidence. Suppose the filter investigator runs the same test selector unsuccessfully because the test runner is missing, then successfully runs that operation through the project's environment. The implementation's test fixture uses `pytest -q` followed by `uv run pytest -q`; in a real project, retain the actual command and selector observed there.
+
+The learning engine associates failure and changed successful recovery only within the same session, worktree, operation family, and verification contract. Running a different test, printing a success message, an unrelated green command, or returning an unknown process outcome does not create that association.
+
+| State | How it is reached | What later agents receive |
 | --- | --- | --- |
-| Recover previous decisions and work | `memory_recall` | Cross-session project history with source information |
-| Leave a concise handoff | `memory_checkpoint` | An agent's summary, decisions, next steps, and lessons |
-| Keep the latest facts of this session | `enclave_read`, `enclave_set`, `enclave_delete` | Bounded working state with digest-based concurrency checks |
-| Inspect command recovery guidance | `learning_status`, `learning_pending`, `learning_history` | Observed strategies and their validation history |
-| Turn recurring knowledge into a project rule | `memory-to-rules` skill | A separately reviewed, authorized rule change |
-| Explore source relationships | `graphify` skill | An exploratory graph whose conclusions need source checks |
+| `candidate` | A qualifying failed command is followed by an observed successful alternative. | No promoted guidance yet. |
+| `trial` | A complete matching configured project check passes in the source session. | Bounded trial guidance, explicitly awaiting independent use. |
+| `active` | A different session was actually shown the guidance, ran the exact recovery successfully, and passed the matching project check. | Validated scoped guidance while the verifier remains applicable. |
+| `reverted` | The recovery regresses, or a check fails after relevant trial/active use. | The withdrawn guidance is no longer offered. |
+| `stale` | The originating worktree's verification contract changed. | Old guidance is withheld until new evidence supports it. |
 
-Mutable state uses the shared `.neurath/local/runtime.sqlite3` below the Git-common-derived control root. Linked worktrees share project memory; unrelated clones and computers do not synchronize automatically. Domain namespaces keep memory, session state, and other runtime records distinct. Installation plans, original-file backups, and journals still have their own private file storage.
+**Exposure** means a particular lesson was actually included in the guidance delivered to a session. Merely storing it or listing it is insufficient for trial credit. The recovery must be executed unchanged as a standalone command so the native exit outcome remains observable. A successful run in the original session, or in a different session that never received the guidance, cannot promote a trial.
 
-## Automatic capture and bounded recall
+A complete check receipt ties together the configured verifier digest, worktree fingerprints, output digest, actual exit code, timeout state, and passed result. Missing or incompatible evidence cannot admit a candidate into trial. A different linked worktree's check does not arbitrarily invalidate the original worktree's guidance.
 
-Validated root host events record user requests and observed commands. `UserPromptSubmit` saves the request, including steering within a turn. Tool events retain the observed command and native outcome metadata. On `PreCompact`, `Stop`, and `SessionEnd`, the latest eligible assistant text can become an `agent-report`; workflow snapshots remain `reference-only`. Private reasoning channels are excluded.
+## Automatic maintenance follows evidence already produced
 
-| Context path | Limit | Trigger |
+At Stop, due learning can request the authorized project-registered verification and then a factual handoff. It does not run unrelated experiments or start unattended model sessions. If the check is unavailable, forbidden, failed, or deferred, the state remains unvalidated and no automatic duplicate retry loop is created.
+
+Use `learning_status` for current strategies, `learning_pending` for due checks, and `learning_history(strategy_id)` for the transition record. `learning_defer(reason, key)` records why the specific pending observation cannot be checked now. New qualifying evidence can make checking due again. A new valid failure/recovery pair can reset a candidate, reverted, or stale strategy, clearing old exposure records; promotion must then be earned again.
+
+Learning changes stored guidance, not model weights, permissions, or repository rules. The three activities are deliberately separate: reflection records a useful idea, execution learning validates a scoped recovery, and `memory-to-rules` proposes durable project guidance for an authorized, privacy-reviewed repository change. Its source skill identifier is `promote-memory`; a proposal alone does not edit the repository.
+
+## Source and useful regression cases
+
+Memory persistence and selection are in [src/neurath/memory/store.py](../../../src/neurath/memory/store.py); hooks are in `hooks.py`; recovery learning is in `learning.py`. The runtime's named memory and learning operations are defined in [src/neurath/runtime/task_schema.py](../../../src/neurath/runtime/task_schema.py) and `maintenance_tasks.py`.
+
+[tests/test_project_memory.py](../../../tests/test_project_memory.py) and [tests/test_memory_hooks.py](../../../tests/test_memory_hooks.py) cover retention, sharing, bounded context, and hook observations. [tests/test_learning.py](../../../tests/test_learning.py) covers candidate → trial → active → reverted, changed verifiers, unrelated commands, selector mismatches, incomplete receipts, actual exposure, and deferred checks. These are inspectable implementation cases; a stored lesson must still be read in its own scope before using it to finish the filter fix.
+## Named input reference
+
+The tables below are the current named-tool input contract. Nested required fields are required when their parent object or array item is supplied. Schema acceptance is only the first check; native identity, ownership, source, revision, and operation-specific prerequisites still apply. The host supplies `_neurath_binding`; do not synthesize it.
+
+Every response has `ok` and `operation`. A successful call carries its canonical `result`; a failure carries `error.code`, `error.message`, `error.state`, `error.retryable`, and `error.next_action`. An `ok` envelope establishes the stated operation only, not the user goal. Preserve returned IDs and revisions for dependent calls.
+
+### `memory_recall`
+
+| Field | Presence / default | Type and limits |
 | --- | --- | --- |
-| Automatic project-memory injection | 3,000 bytes | `SessionStart` only |
-| Explicit `ProjectMemory.context` rendering | 12,000 bytes by default | An explicit internal context request |
-| Learned guidance | At most 12 rules and 6,000 bytes | Separate guidance added during session startup |
-| Named recall | `limit` defaults to 12; allowed 1–100 | `memory_recall` |
+| `query` | optional; default `""` | text; 0–16000 characters |
+| `limit` | optional; default `12` | integer; 1–100 |
 
-`UserPromptSubmit` does not reinject the memory block. Do not interpret the explicit 12,000-byte default as the automatic startup budget. Commands or conversation never observed and saved cannot be reconstructed after a crash. Already committed records remain available without a final checkpoint.
+### `memory_checkpoint`
 
-```json
-{"query":"remaining work on export validation","limit":8}
-```
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `summary` | required | text; 1–16000 characters |
+| `key` | required | text; 1–512 characters |
+| `decisions` | optional; default `[]` | array; 0–32 items; text; 1–16000 characters |
+| `next_steps` | optional; default `[]` | array; 0–32 items; text; 1–16000 characters |
+| `lessons` | optional; default `[]` | array; 0–32 items; text; 1–16000 characters |
+| `status` | optional; default `"paused"` | text: `"active"`, `"paused"`, `"completed"`, `"blocked"` |
 
-Pass this input to `memory_recall`. Read the source and session attribution of relevant results, then inspect current code and checks before reusing a decision. Common credential patterns are redacted recursively, but semantic privacy review is still necessary before publishing anything derived from memory.
+### `learning_status`
 
-## Pull context and adopt unfinished work
+No agent-supplied input fields.
 
-`memory_pull` is a receiver-initiated continuity operation alongside ordinary recall. `list` finds source sessions, `preview` creates an immutable snapshot of an exact source, and `read` pages through that snapshot. Only `adopt` imports unfinished tasks and transfers their worktree lease after source execution has settled. A source checkpoint or final context push is not required.
+### `learning_pending`
 
-The snapshot combines SQLite tasks, memory, and peer results with available user-visible content from the registered native transcript JSONL. Source attribution and offsets are retained; private reasoning and recognized credentials are excluded. Saved text remains reference material and cannot prove an unobserved tool result. Provider data that was never persisted cannot be guaranteed recoverable.
+No agent-supplied input fields.
 
-[Provider continuity](provider-continuity.md) describes inputs, paging, quiescence checks, atomic adoption, and source resumption fencing. Importing a recovery example does not promote it to active learned guidance: the existing source and independent-session checks below still apply.
+### `learning_history`
 
-## Record a usable handoff
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `strategy_id` | required | text; 1–128 characters |
 
-The following is input to `memory_checkpoint`. It describes a fictional project task, not a Neurath export feature.
+### `learning_defer`
 
-```json
-{
-  "summary":"Export validation handles an empty collection; the integration case remains open.",
-  "key":"export-validation-handoff-1",
-  "decisions":["Keep the existing public response format."],
-  "next_steps":["Run the authorized integration case against the updated serializer."],
-  "lessons":["An empty collection needs its own observed result."],
-  "status":"paused"
-}
-```
-
-`summary` and `key` are required. The three list fields default to empty arrays and allow up to 32 entries each. `status` is `active`, `paused`, `completed`, or `blocked`; its default is `paused`. Use a stable key for the same operation. A checkpoint marked `completed` remains an owner report; it does not resolve task-ledger entries, release a claim, certify a test, or finalize an explicit review.
-
-For latest session facts, first call `enclave_read` with `{}`. Supply the returned digest as `expected_digest` when setting or deleting a fact. For example, `enclave_set` takes `fact_key`, `value`, `expected_digest`, and `key`. On a digest conflict, reread and reconcile the concurrent change rather than replacing the expected value with a guess.
-
-## Learn an execution recovery
-
-Learning connects failure and recovery for the same operation and selectors. For example, `pytest tests/test_export.py` and `uv run pytest tests/test_export.py` can describe the same selected test under a corrected environment. Running a different test does not establish recovery.
-
-1. An observed failure and successful equivalent alternative produce a candidate.
-2. A successful configured project check in the source session allows trial guidance.
-3. A different session must actually receive the guidance, use the exact recovery, and pass the matching check before promotion to active guidance.
-4. A recovery failure or subsequent project-check failure withdraws trial or active guidance. A change to the verification contract in the worktree where recovery was originally observed makes the guidance stale; a different check in another linked worktree does not invalidate it.
-
-A newly observed instance of the same failure and successful recovery clears its previous exposure records and returns a `reverted` or `stale` strategy to `candidate` for validation again.
-
-The process outcome supplied by the native host is authoritative. A command printing JSON containing `exit_code: 0`, a copied success report, an unknown outcome, or a different selected test cannot establish success. Standalone execution preserves the original exit status.
-
-When a configured check is missing, unavailable, or forbidden, retain unvalidated guidance with a reason. Use `learning_pending` to inspect outstanding validation and `learning_defer` with `reason` and a stable `key` to record deferral. Repeating the same failed check without changed evidence adds no validation. `learning_history` requires the returned `strategy_id` and exposes the strategy's progression.
-
-Learning is active-session behavior; it neither edits policy or permissions nor launches unattended model sessions. A project rule change belongs to the separate `memory-to-rules` workflow.
-
-## Implementation and checks
-
-Capture and authority boundaries are implemented in [host memory hooks](../../../src/neurath/memory/hooks.py), [project memory](../../../src/neurath/memory/store.py), [transcript synchronization](../../../src/neurath/memory/transcript.py), and [learning](../../../src/neurath/memory/learning.py). Latest-session concurrency belongs to [EnclaveStore](../../../src/neurath/_assets/scripts/agent_harness/enclave_store.py).
-
-[Project-memory tests](../../../tests/test_project_memory.py) cover shared-worktree behavior, source replay conflicts, limits, redaction, and recovery without a checkpoint. [Learning tests](../../../tests/test_learning.py) cover exposure, different-session promotion, invalid or forged outcomes, deferral, contract changes, and withdrawal. These checks establish their tested boundaries; actual host activation requires native observations described in [validation](validation.md).
-
-See [the skill reference](skills-reference.md) for rule promotion and [the agent reference](agents-reference.md) for session and ownership recovery.
+| Field | Presence / default | Type and limits |
+| --- | --- | --- |
+| `reason` | required | text; 1–2000 characters |
+| `key` | required | text; 1–512 characters |

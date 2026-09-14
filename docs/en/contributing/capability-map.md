@@ -1,117 +1,235 @@
-<!-- date: 2026-09-14; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
+<!-- last_updated: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
+# Find a capability by the work it supports
 
 [한국어](../../ko/contributing/capability-map.md)
 
-# Find the skill, operation and implementation
+Start with the user's result, then select the tools needed to carry it through. A **task** records that result and its acceptance conditions. The native **root actor** owns the task list in a **session**. A **worktree claim** coordinates the checkout owner. A **receipt** records an event or report. A workflow **phase** organizes a procedure, and a **review** assesses a defined scope. [Architecture](architecture.md) explains how these objects fit together.
 
-Use this map when deciding where a requested behavior belongs or which source and regression contract must change with it. Public skill names describe the agent's work; internal names locate bundled source. Named tools carry durable state operations. A skill name alone is neither a tool call nor proof that its workflow ran.
+For a user's web application whose saved filter disappears after reload, the main path is task intake, native reproduction and implementation, relevant API review, evidence, and resolution. Memory and learning help retain the reproduction and correct test command. Provider execution, public reporting, release installation, and monitoring enter only when the request or selected workflow needs them.
 
-## Public skill inventory
+This catalog covers all **128 public named tools** in the current source. There are **138 internal operations**; saved-call compatibility and internal material/verification operations are not additional public tools. The table lists required top-level arguments and whether the schema labels the operation read-only. Optional arguments, nested shapes and domain prerequisites remain part of the discovered schema. A read-only label grants no authority; a state-changing label does not mean the tool edits product files.
 
-There are 31 public skills. Twenty-nine have phase contracts. `explain-code` and `graphify` are supporting skills without a phase contract. An installed skill prefix changes the user-visible name while preserving the source identity; for example, prefix `neurath-` projects `debug` as `neurath-debug`.
+Native hooks supply `_neurath_binding`; it is omitted below because the agent must not invent it. Except for `harness_bypass`, the named operations require a valid native invocation and are unavailable during bypass. Use [task tools](task-tools.md) for input, error and retry conventions.
 
-| Intended work | Public skill | Internal source name | Contract |
-| --- | --- | --- | --- |
-| security/license/freshness/drift | `audit-deps` | [dependency-audit](../../../src/neurath/_assets/.agents/skills/dependency-audit/SKILL.md) | Phase |
-| coordinate explicitly requested multiple issues | `autopilot` | [autopilot](../../../src/neurath/_assets/.agents/skills/autopilot/SKILL.md) | Phase |
-| reversible WIP save | `checkpoint` | [checkpoint](../../../src/neurath/_assets/.agents/skills/checkpoint/SKILL.md) | Phase |
-| commit authorized verified change | `commit` | [commit](../../../src/neurath/_assets/.agents/skills/commit/SKILL.md) | Phase |
-| create approved work items | `create-issue` | [create-ticket](../../../src/neurath/_assets/.agents/skills/create-ticket/SKILL.md) | Phase |
-| authorized push and PR | `create-pr` | [create-pr](../../../src/neurath/_assets/.agents/skills/create-pr/SKILL.md) | Phase |
-| prepare isolated issue workspace | `create-worktree` | [create-worktree](../../../src/neurath/_assets/.agents/skills/create-worktree/SKILL.md) | Phase |
-| reproduce and isolate defects | `debug` | [investigate](../../../src/neurath/_assets/.agents/skills/investigate/SKILL.md) | Phase |
-| explore design and obtain exact canvas choice | `design-ui` | [explore-ui](../../../src/neurath/_assets/.agents/skills/explore-ui/SKILL.md) | Phase |
-| developer docs | `dev-docs` | [sync-dev-docs](../../../src/neurath/_assets/.agents/skills/sync-dev-docs/SKILL.md) | Phase |
-| explain current source/test-backed behavior | `explain-code` | [explain-code](../../../src/neurath/_assets/.agents/skills/explain-code/SKILL.md) | Supporting |
-| authorized commit/push/graph update/claim release | `finish-session` | [finish-session](../../../src/neurath/_assets/.agents/skills/finish-session/SKILL.md) | Phase |
-| explore code/document relationship graph | `graphify` | [graphify](../../../src/neurath/_assets/.agents/skills/graphify/SKILL.md) | Supporting |
-| implement one approved issue | `implement-issue` | [process-ticket](../../../src/neurath/_assets/.agents/skills/process-ticket/SKILL.md) | Phase |
-| build exact approved node | `implement-ui` | [implement-ui](../../../src/neurath/_assets/.agents/skills/implement-ui/SKILL.md) | Phase |
-| review recurring private knowledge for approved project rule | `memory-to-rules` | [promote-memory](../../../src/neurath/_assets/.agents/skills/promote-memory/SKILL.md) | Phase |
-| reduce injected prompt preserving capability | `optimize-harness` | [optimize-harness](../../../src/neurath/_assets/.agents/skills/optimize-harness/SKILL.md) | Phase |
-| clarify product decisions and decompose into docs/issues | `plan` | [plan-issues](../../../src/neurath/_assets/.agents/skills/plan-issues/SKILL.md) | Phase |
-| assess/respond to review comments | `pr-feedback` | [triage-comments](../../../src/neurath/_assets/.agents/skills/triage-comments/SKILL.md) | Phase |
-| verify deployed interface/API/persisted result | `qa` | [automate-qa](../../../src/neurath/_assets/.agents/skills/automate-qa/SKILL.md) | Phase |
-| find evidenced defects in changes | `review-code` | [review-code](../../../src/neurath/_assets/.agents/skills/review-code/SKILL.md) | Phase |
-| publish verified local review at exact PR head | `review-pr` | [pr-review](../../../src/neurath/_assets/.agents/skills/pr-review/SKILL.md) | Phase |
-| audit requirements before implementation | `review-spec` | [audit-spec](../../../src/neurath/_assets/.agents/skills/audit-spec/SKILL.md) | Phase |
-| compare approved design and runtime for user judgment | `review-ui` | [review-ui](../../../src/neurath/_assets/.agents/skills/review-ui/SKILL.md) | Phase |
-| repository tokens/component mappings into canvas | `sync-design` | [sync-design](../../../src/neurath/_assets/.agents/skills/sync-design/SKILL.md) | Phase |
-| route documentation scope | `sync-docs` | [sync-docs](../../../src/neurath/_assets/.agents/skills/sync-docs/SKILL.md) | Phase |
-| failure scenarios verify enforcement | `test-harness` | [evaluate-harness](../../../src/neurath/_assets/.agents/skills/evaluate-harness/SKILL.md) | Phase |
-| controlled updates/checks | `update-deps` | [update-dependencies](../../../src/neurath/_assets/.agents/skills/update-dependencies/SKILL.md) | Phase |
-| issue/project metadata | `update-status` | [update-project-status](../../../src/neurath/_assets/.agents/skills/update-project-status/SKILL.md) | Phase |
-| approved implemented user behavior | `user-docs` | [sync-user-docs](../../../src/neurath/_assets/.agents/skills/sync-user-docs/SKILL.md) | Phase |
-| observe PR changes | `watch-pr` | [monitor-pr](../../../src/neurath/_assets/.agents/skills/monitor-pr/SKILL.md) | Phase |
+## Establish the current session and ownership
 
-Implementation uses the source under `src/neurath/_assets/.agents/skills`; installed `.agents/skills` and `.neurath/rules` are projections. The name mapping lives in [skill_names.py](../../../src/neurath/skill_names.py). Publication checks verify the public catalog, locale layout and package contents.
+A session is the native conversation; its root actor owns the task list. A worktree claim coordinates the checkout owner. Inspect before claiming. Isolation verifies an existing issue/root topology and does not create or switch worktrees. Cleanup needs actual branch/ref and ownership evidence. Bypass changes Neurath hook constraints only; omitting enabled reads, true bypasses, and false restores. Host permissions and history remain intact.
 
-Standalone names `create-package`, `local-dev`, `onboard`, `refactor-code`, `impact-analysis`, `improve-coverage` and `property-test` are retired from the public skill inventory. Do not advertise them as installed standalone capabilities. Route the actual request through the applicable current skill and project procedure.
+| Tool | Schema effect | Required arguments |
+| --- | --- | --- |
+| `harness_bypass` | State change | None |
+| `session_status` | Read | None |
+| `session_inspect` | Read | None |
+| `turn_inspect` | Read | None |
+| `worktree_inspect` | Read | None |
+| `worktree_claim` | State change | None |
+| `worktree_release` | State change | `expected_lease_epoch`, `fencing_token` |
+| `worktree_isolation` | State change | `issue_number`, `key` |
+| `worktree_cleanup` | State change | `workflow_id`, `base_branch`, `remote_ref`, `key` |
 
-## Public tool families
+## Record measurable work
 
-The current discovery schema exposes 128 public tools. This table lists every one once. The internal dispatch count is 138 and is a different scope: saved-call compatibility includes operations that discovery no longer advertises. Use the installed `tools/list` schema for exact fields and [task tools](task-tools.md) for the common envelope and core examples.
+A task binds a goal, instruction sources and acceptance conditions. Define necessary work, start with returned revisions, and resolve an observed owner report. The list distinguishes terminal execution from successful outcomes and supplies the native TODO projection. See [task tools](task-tools.md) and the [task contract](task-todo-contract.md).
 
-| Purpose | Named tools |
-| --- | --- |
-| Requested work and current session | `harness_bypass`, `session_status`, `session_inspect`, `turn_inspect`, `turn_yield`, `task_define`, `task_list`, `task_start`, `task_resolve` |
-| Worktree ownership | `worktree_inspect`, `worktree_claim`, `worktree_release`, `worktree_isolation`, `worktree_cleanup` |
-| Provider choice and execution | `provider_run`, `provider_status`, `provider_cancel`, `provider_recover`, `provider_capabilities`, `provider_route`, `provider_models`, `provider_plan`, `provider_plan_read` |
-| Peer messages and assignments | `collaboration_discover`, `collaboration_inbox`, `collaboration_send`, `collaboration_reply`, `collaboration_message`, `collaboration_ack`, `collaboration_forward`, `collaboration_submitted`, `collaboration_assign`, `collaboration_accept`, `collaboration_report`, `collaboration_task`, `collaboration_register`, `collaboration_conversation`, `collaboration_close`, `collaboration_subscribe`, `collaboration_unsubscribe`, `collaboration_publish` |
-| Delivery repair | `delivery_status`, `delivery_redrive` |
-| Shared announcements | `newsroom_headlines`, `newsroom_read`, `newsroom_publish`, `newsroom_revise`, `newsroom_comment`, `newsroom_peers`, `newsroom_seen` |
-| Memory and session facts | `memory_recall`, `memory_checkpoint`, `memory_pull`, `artifact_put`, `artifact_read`, `enclave_read`, `enclave_set`, `enclave_delete` |
-| Learning | `learning_status`, `learning_pending`, `learning_history`, `learning_defer` |
-| Contracted phases | `phase_start`, `phase_current`, `phase_evidence_prepare`, `phase_complete`, `phase_finalize` |
-| Adaptive decisions and independent evaluation | `adaptive_read`, `adaptive_preflight`, `adaptive_replace`, `adaptive_override_goal`, `delegation_prepare`, `delegation_assign`, `evaluation_prepare`, `evaluation_read`, `evaluation_execute`, `evaluation_report`, `evaluation_consume`, `evaluation_loop_open`, `evaluation_loop_read`, `evaluation_loop_round`, `evaluation_loop_close` |
-| Fixed review and publication | `review_begin`, `review_report`, `review_consume`, `review_abort`, `review_publish`, `review_comments` |
-| Diagnostics and incidents | `diagnostics_integrity`, `diagnostics_project`, `diagnostics_profile`, `diagnostics_continuation`, `incident_record`, `incident_validate`, `incident_resolve`, `incident_escalate`, `incident_refresh`, `incident_supersede`, `process_evidence_record` |
-| Installation and releases | `releases_status`, `releases_check`, `maintenance_choice_read`, `maintenance_choice_prepare`, `releases_notice`, `releases_recover`, `releases_prepare`, `releases_apply`, `releases_choose`, `installation_plan`, `installation_apply`, `installation_recover` |
-| Public reporting | `reporting_status`, `reporting_list`, `reporting_read`, `reporting_prepare`, `reporting_submit`, `reporting_reconcile`, `reporting_consent`, `reporting_approve` |
-| Background observation | `monitor_start`, `monitor_status`, `monitor_cancel`, `monitor_recover`, `monitor_readback`, `monitor_event`, `monitor_ack`, `monitor_external_wait`, `monitor_handoff` |
+| Tool | Schema effect | Required arguments |
+| --- | --- | --- |
+| `task_define` | State change | `tasks`, `expected_revision`, `key` |
+| `task_list` | Read | None |
+| `task_start` | State change | `task_id`, `expected_revision`, `expected_task_revision`, `key` |
+| `task_resolve` | State change | `task_id`, `expected_revision`, `expected_task_revision`, `key`, `status`, `references`, `summary` |
 
-`phase_start`, `phase_complete` and `phase_finalize` are the public lifecycle entry points. The former workflow names remain compatible with saved calls. Material batches, registered-verification tools and `agent(argv)` are also compatibility surfaces rather than public requirements for ordinary edits and checks.
+## Organize a skill procedure and its decisions
 
-## Choose the correct authority
+A workflow is a skill run; a phase is a step in its procedure. Read the selected contract before advancing it. Evidence binds the exact current phase/revision. Adaptive decisions and goal changes need their applicable authority, and a yield label does not waive Stop prerequisites. Public skill names and stable internal contract IDs are mapped in [skills reference](skills-reference.md).
 
-| Situation | Contract to follow |
-| --- | --- |
-| Ordinary measurable task | Define the work, perform native edits/checks, record the owner result once. The task list governs Stop when present. |
-| Explicit adaptive skill | Establish actual independent evaluator authority, bind the exact candidate and consume its authentic result before the contracted transition. |
-| Fixed code or PR review | Apply its separate review matrix; publishing binds the current PR head. |
-| Peer assignment | Discover the real peer, deliver the complete assignment, obtain native acceptance and report; acknowledgement alone is transport progress. |
-| Worktree change or cleanup | Use the current owner lease and returned fencing generation; verify real Git references before cleanup. |
-| Installation, update or reporting | Prepare the exact change or draft, retain applicable user choice, apply through the named domain operation and inspect its actual outcome. |
+| Tool | Schema effect | Required arguments |
+| --- | --- | --- |
+| `phase_start` | State change | `workflow_id`, `key`, `skill`, `run_id`, `north_star` |
+| `phase_current` | Read | `workflow_id` |
+| `phase_evidence_prepare` | State change | `workflow_id`, `expected_revision`, `key` |
+| `phase_complete` | State change | `workflow_id`, `expected_revision`, `key`, `phase_id`, `status`, `summary` |
+| `phase_finalize` | State change | `workflow_id`, `expected_revision`, `key`, `terminal_state` |
+| `adaptive_read` | Read | `workflow_id` |
+| `adaptive_preflight` | Read | None |
+| `adaptive_replace` | State change | `workflow_id`, `expected_revision`, `key`, `state` |
+| `adaptive_override_goal` | State change | `workflow_id`, `expected_revision`, `key`, `state` |
+| `turn_yield` | State change | `expected_turn_revision`, `outcome`, `key` |
 
-The [task and TODO contract](task-todo-contract.md), [runtime lifecycle](runtime-lifecycle.md) and [host integration](hosts.md) explain the state and native evidence behind these choices.
+## Delegate and evaluate a bounded candidate
 
-## Implementation and regression ownership
+Delegation gives a participant a bounded assignment. Preparation creates spawn intent, not execution. Independent evaluation additionally requires a verified role, exact candidate and authenticated report consumption. Source, goal, intent, owner or revision changes can invalidate an old candidate report. Evaluation loops retain their explicit open/round/close contract.
 
-These links locate the code and tests that own each behavior. They identify verification scope, not a claim that those tests or live-host scenarios passed for a particular installation.
+| Tool | Schema effect | Required arguments |
+| --- | --- | --- |
+| `delegation_prepare` | State change | `delegation_id`, `assignment`, `key` |
+| `delegation_assign` | State change | `workflow_id`, `delegation_id`, `assignment`, `target`, `key` |
+| `evaluation_prepare` | State change | `workflow_id`, `key`, `state` |
+| `evaluation_read` | Read | `workflow_id`, `assignment` |
+| `evaluation_execute` | State change | `workflow_id`, `key`, `state`, `criterion_id`, `evidence_kind`, `pytest_node` |
+| `evaluation_report` | State change | `delegation_id`, `key`, `verdict`, `summary`, `outcome_ref` |
+| `evaluation_consume` | State change | `delegation_id`, `key` |
+| `evaluation_loop_open` | State change | `workflow_id`, `loop_id`, `goal`, `acceptance`, `key` |
+| `evaluation_loop_read` | Read | `workflow_id`, `loop_id` |
+| `evaluation_loop_round` | State change | `workflow_id`, `loop_id`, `number`, `findings`, `key` |
+| `evaluation_loop_close` | State change | `workflow_id`, `loop_id`, `outcome`, `summary`, `key` |
 
-| Responsibility | Implementation and regression contracts |
-| --- | --- |
-| Bundled asset integrity | [resources.py](../../../src/neurath/resources.py), [manifest.json](../../../src/neurath/manifest.json), [test_installer.py](../../../tests/test_installer.py) |
-| Installation preservation | [projection.py](../../../src/neurath/install/projection.py), [transaction.py](../../../src/neurath/install/transaction.py), [test_installer.py](../../../tests/test_installer.py), [test_publication.py](../../../tests/test_publication.py) |
-| Native identity and prompts | [identity.py](../../../src/neurath/hosts/identity.py), [hooks.py](../../../src/neurath/hosts/hooks.py), [test_host_lifecycle.py](../../../tests/test_host_lifecycle.py), [test_prompt_delivery.py](../../../tests/test_prompt_delivery.py) |
-| State and writer ownership | [session_kernel.py](../../../src/neurath/_assets/scripts/agent_harness/session_kernel.py), [state_handle.py](../../../src/neurath/_assets/scripts/agent_harness/state_handle.py), [worktree_registry.py](../../../src/neurath/_assets/scripts/agent_harness/worktree_registry.py), [runtime_database.py](../../../src/neurath/_assets/scripts/agent_harness/runtime_database.py), [test_session_kernel.py](../../../tests/runtime/agent_harness/test_session_kernel.py), [test_worktree_registry.py](../../../tests/runtime/agent_harness/test_worktree_registry.py) |
-| Requested work and outcomes | [task_ledger_tasks.py](../../../src/neurath/runtime/task_ledger_tasks.py), [task_ledger.py](../../../src/neurath/_assets/scripts/agent_harness/task_ledger.py), [task_service.py](../../../src/neurath/_assets/scripts/agent_harness/task_service.py), [test_task_acceptance_review.py](../../../tests/test_task_acceptance_review.py), [test_task_tools.py](../../../tests/test_task_tools.py), [test_task_todo.py](../../../tests/test_task_todo.py) |
-| Phase and evaluator authority | [phase_runner.py](../../../src/neurath/_assets/scripts/skill_harness/phase_runner.py), [adaptive_control_authority.py](../../../src/neurath/_assets/scripts/agent_harness/adaptive_control_authority.py), [evaluation_loop.py](../../../src/neurath/_assets/scripts/agent_harness/evaluation_loop.py), [test_phase_runner.py](../../../tests/runtime/skill_harness/test_phase_runner.py), [test_adaptive_control_authority.py](../../../tests/runtime/agent_harness/test_adaptive_control_authority.py) |
-| Named API and discovery | [task_schema.py](../../../src/neurath/runtime/task_schema.py), [tasks.py](../../../src/neurath/runtime/tasks.py), `src/neurath/runtime/*_tasks.py`, [mcp.py](../../../src/neurath/agents/mcp.py), [mcp_guidance.py](../../../src/neurath/install/mcp_guidance.py), [test_communication_mcp.py](../../../tests/test_communication_mcp.py), [test_mcp_guidance.py](../../../tests/test_mcp_guidance.py) |
-| Model and provider execution | [model_planning.py](../../../src/neurath/providers/model_planning.py), [permission_inheritance.py](../../../src/neurath/providers/permission_inheritance.py), [jobs.py](../../../src/neurath/providers/jobs.py), [job_recovery.py](../../../src/neurath/providers/job_recovery.py), [supervision.py](../../../src/neurath/providers/supervision.py), [provider_execution.py](../../../src/neurath/runtime/provider_execution.py), [provider_policy.py](../../../src/neurath/runtime/provider_policy.py), [test_model_planning.py](../../../tests/test_model_planning.py), [test_inherited_provider_modes.py](../../../tests/test_inherited_provider_modes.py), [test_provider_jobs.py](../../../tests/test_provider_jobs.py) |
-| Durable messages and delivery | [store.py](../../../src/neurath/agents/store.py), [lifecycle.py](../../../src/neurath/agents/lifecycle.py), [delivery.py](../../../src/neurath/agents/delivery.py), [delivery_recovery.py](../../../src/neurath/agents/delivery_recovery.py), [newsroom.py](../../../src/neurath/agents/newsroom.py), [test_delivery_recovery.py](../../../tests/test_delivery_recovery.py), [test_newsroom_mcp.py](../../../tests/test_newsroom_mcp.py) |
-| Memory, enclave and learning | [store.py](../../../src/neurath/memory/store.py), [hooks.py](../../../src/neurath/memory/hooks.py), [transcript.py](../../../src/neurath/memory/transcript.py), [learning.py](../../../src/neurath/memory/learning.py), [enclave_store.py](../../../src/neurath/_assets/scripts/agent_harness/enclave_store.py), [test_project_memory.py](../../../tests/test_project_memory.py), [test_learning.py](../../../tests/test_learning.py), [test_enclave_store.py](../../../tests/runtime/agent_harness/test_enclave_store.py) |
-| Updates and reporting | [updates.py](../../../src/neurath/updates.py), [release_install.py](../../../src/neurath/release_install.py), [reporting.py](../../../src/neurath/reporting.py), [user_choices.py](../../../src/neurath/runtime/user_choices.py), [test_user_choices_mcp.py](../../../tests/test_user_choices_mcp.py), [test_reporting.py](../../../tests/test_reporting.py) |
+## Obtain and consume a review
 
-Compatibility inspection still matters when a saved caller uses the retained material or registered-check path: [material_action.py](../../../src/neurath/_assets/scripts/agent_harness/material_action.py), [verification.py](../../../src/neurath/runtime/verification.py) and [material action regressions](../../../tests/runtime/agent_harness/test_material_action.py). A native check does not automatically produce a receipt from those compatibility paths.
+A review assesses a stated scope. Begin with the reviewer and relevant head, receive a report, and consume the exact outcome. Publication checks the current PR head and review scope; a consumed review is not automatic authorization to publish. In the filter example, API review supplies evidence alongside implementation and save/reload regression.
 
-## Validate changes to this map
+| Tool | Schema effect | Required arguments |
+| --- | --- | --- |
+| `review_begin` | State change | `workflow_id`, `to`, `kind`, `label`, `scope`, `key` |
+| `review_report` | State change | `workflow_id`, `delegation_id`, `verdict`, `summary`, `key` |
+| `review_consume` | State change | `workflow_id`, `delegation_id`, `outcome_ref`, `key` |
+| `review_abort` | State change | `workflow_id`, `delegation_id`, `outcome_ref`, `key` |
+| `review_publish` | State change | `workflow_id`, `repo`, `pr_number`, `key` |
+| `review_comments` | State change | `repo`, `pr_number` |
 
-For catalog, package and link behavior, run the publication regression first. Run the required full check on the final source when applicable:
+## Choose and run an independent provider
 
-```sh
-uv run --locked pytest -q tests/test_publication.py
-uv run --locked python tools/check.py
-```
+Use actual model inventory, a revisioned plan, then its exact run. Model selection inherit differs from execution policy inherit. Target-native requires its own explicit choice and preserves destination settings. Verify actual model, policy, activation, tools and ownership before assignment. Status is event/failure diagnosis, not completion polling. See [model planning](model-planning-mcp.md) and [provider transports](provider-transports.md).
 
-An execution-asset change additionally requires manifest regeneration, build and self-install update as described in [development](index.md). Prose-only changes do not by themselves require installation. Keep source integrity, package behavior, installed placement and native activation as separate observations when reporting the result.
+| Tool | Schema effect | Required arguments |
+| --- | --- | --- |
+| `provider_models` | State change | `provider` |
+| `provider_plan` | State change | `provider`, `worktree`, `assignment`, `inventory_id`, `execution`, `selection`, `difficulty`, `confidence`, `rationale`, `key` |
+| `provider_plan_read` | Read | `plan_id` |
+| `provider_capabilities` | Read | `provider` |
+| `provider_route` | Read | `provider`, `operation` |
+| `provider_run` | State change | `worktree`, `assignment` |
+| `provider_status` | Read | `run_id` |
+| `provider_cancel` | State change | `run_id` |
+| `provider_recover` | State change | `run_id`, `key` |
+
+## Exchange authenticated peer messages
+
+Discover exact recipients and send only authorized communications. Read the full message before ACK. Queued admission, native notification submission, recipient acknowledgement, assignment acceptance and task completion are separate observations. Repair preserves the original message identity; an old delivery generation cannot undo a newer ACK. See [collaboration contract](collaboration-contract.md).
+
+| Tool | Schema effect | Required arguments |
+| --- | --- | --- |
+| `collaboration_register` | State change | `name` |
+| `collaboration_discover` | Read | None |
+| `collaboration_inbox` | Read | None |
+| `collaboration_send` | State change | None |
+| `collaboration_reply` | State change | `message_id`, `message`, `key` |
+| `collaboration_message` | Read | `message_id` |
+| `collaboration_ack` | State change | None |
+| `collaboration_forward` | Read | `message_id` |
+| `collaboration_submitted` | State change | `message_id`, `transport` |
+| `collaboration_assign` | State change | `to`, `message`, `key` |
+| `collaboration_accept` | State change | `task_id` |
+| `collaboration_report` | State change | `task_id`, `state`, `key` |
+| `collaboration_task` | Read | `task_id` |
+| `collaboration_conversation` | Read | `conversation` |
+| `collaboration_close` | State change | `conversation` |
+| `collaboration_subscribe` | State change | `to` |
+| `collaboration_unsubscribe` | State change | `to` |
+| `collaboration_publish` | State change | `message`, `key` |
+| `delivery_status` | Read | `message_id` |
+| `delivery_redrive` | State change | `message_id`, `expected_revision`, `repair_reference`, `key` |
+
+## Share project discoveries
+
+Newsroom distributes attributed project reference material and discussion. Titles help peers select relevant bodies to read. Articles, comments and seen state do not grant user authority, ownership or task acceptance.
+
+| Tool | Schema effect | Required arguments |
+| --- | --- | --- |
+| `newsroom_headlines` | Read | None |
+| `newsroom_read` | Read | `article_id` |
+| `newsroom_publish` | State change | `title`, `body`, `key` |
+| `newsroom_revise` | State change | `article_id`, `revision`, `title`, `body`, `key` |
+| `newsroom_comment` | State change | `article_id`, `revision`, `body`, `key` |
+| `newsroom_peers` | Read | None |
+| `newsroom_seen` | State change | `event_id` |
+
+## Retain evidence, context and learned guidance
+
+Artifacts retain bounded JSON evidence; enclave holds revision-checked current facts; memory retains attributed history. Recall and checkpoint are reference/owner reports. Pull adoption is a separate transfer requiring a quiescent source and exact preview. Learning joins a matching failure/recovery and configured verification, then separate-session exposure and success for promotion. The corrected test command must be observed, not merely suggested. See [memory reference](memory-reference.md) and [provider continuity](provider-continuity.md).
+
+| Tool | Schema effect | Required arguments |
+| --- | --- | --- |
+| `artifact_put` | State change | `document`, `key` |
+| `artifact_read` | Read | `reference` |
+| `memory_recall` | Read | None |
+| `memory_checkpoint` | State change | `summary`, `key` |
+| `memory_pull` | State change | None |
+| `enclave_read` | Read | None |
+| `enclave_set` | State change | `fact_key`, `value`, `expected_digest`, `key` |
+| `enclave_delete` | State change | `fact_key`, `expected_digest`, `key` |
+| `learning_status` | Read | None |
+| `learning_pending` | Read | None |
+| `learning_history` | Read | `strategy_id` |
+| `learning_defer` | State change | `reason`, `key` |
+
+## Diagnose and repair harness problems
+
+Diagnostics identify the relevant boundary. An incident records a harness problem and its repair or accountable escalation; a label alone cannot prove the fix. Retain actual reproduction, root cause and applicable regression evidence. Placement/protocol diagnostics and native activation remain distinct. See [validation](validation.md).
+
+| Tool | Schema effect | Required arguments |
+| --- | --- | --- |
+| `diagnostics_integrity` | Read | None |
+| `diagnostics_project` | State change | None |
+| `diagnostics_profile` | Read | None |
+| `diagnostics_continuation` | Read | None |
+| `incident_record` | State change | `rule_id`, `symptom`, `key` |
+| `incident_validate` | Read | None |
+| `incident_resolve` | State change | `incident_id`, `root_cause`, `fixes`, `checks`, `key` |
+| `incident_escalate` | State change | `incident_id`, `summary`, `checks`, `key` |
+| `incident_refresh` | State change | `incident_ids`, `key` |
+| `incident_supersede` | State change | `incident_id`, `fixes`, `checks`, `key` |
+| `process_evidence_record` | State change | `workflow_id`, `field`, `value`, `key` |
+
+## Observe authorized ongoing work
+
+A monitor owns a specific observation/resume contract. Admission precedes the first actual observation. It preserves workflow/PR scope, owner policy and process generation. Event ACK consumes an exact event; external_wait preserves an unresolved reviewer-owned event; handoff retires or transfers verified resources. Cancellation needs a terminal result.
+
+| Tool | Schema effect | Required arguments |
+| --- | --- | --- |
+| `monitor_start` | State change | `workflow_id`, `repo`, `pr_number`, `key` |
+| `monitor_status` | Read | `run_id` |
+| `monitor_cancel` | State change | `run_id`, `key` |
+| `monitor_recover` | State change | `run_id`, `key` |
+| `monitor_readback` | Read | `run_id` |
+| `monitor_event` | Read | `workflow_id` |
+| `monitor_ack` | State change | `workflow_id`, `event_id`, `key` |
+| `monitor_external_wait` | State change | `workflow_id`, `event_id`, `key` |
+| `monitor_handoff` | State change | `workflow_id`, `pr_number`, `key` |
+
+## Apply a deliberate installation or release choice
+
+Plans bind target/distribution and exact before/after state. Release checks use the fixed official published-release source; automatic hooks only offer a local due hint. A release choice must refer to the actual user response and immutable prepared offer. Apply verifies installation results while subsequent native activation remains unobserved until a real host event. See [installation design](installation-design.md) and [releases reference](releases-reference.md).
+
+| Tool | Schema effect | Required arguments |
+| --- | --- | --- |
+| `installation_plan` | State change | `key` |
+| `installation_apply` | State change | `plan_ref`, `key` |
+| `installation_recover` | State change | `key` |
+| `releases_status` | Read | None |
+| `releases_check` | State change | `key` |
+| `releases_notice` | State change | `key` |
+| `releases_prepare` | State change | `offer_id`, `key` |
+| `releases_choose` | State change | `decision`, `user_choice_ref`, `key`, `offer_id` |
+| `releases_apply` | State change | `offer_id`, `key` |
+| `releases_recover` | State change | `key` |
+| `maintenance_choice_read` | Read | `user_choice_ref` |
+| `maintenance_choice_prepare` | State change | `operation`, `key` |
+
+## Prepare a reviewed public report
+
+Reporting uses a fixed upstream destination and private, content-bound drafts. Common reports require the saved explicit project consent; contributions require exact draft approval. Privacy review precedes preparation. An uncertain submission must reconcile its existing remote result before another send. Reporting failure does not replace the original user goal. See [reporting reference](reporting-reference.md).
+
+| Tool | Schema effect | Required arguments |
+| --- | --- | --- |
+| `reporting_status` | Read | None |
+| `reporting_list` | Read | None |
+| `reporting_read` | Read | `draft_id` |
+| `reporting_prepare` | State change | `report`, `privacy_reviewed`, `key` |
+| `reporting_consent` | State change | `decision`, `user_choice_ref`, `key` |
+| `reporting_approve` | State change | `decision`, `user_choice_ref`, `key`, `draft_id` |
+| `reporting_submit` | State change | `draft_id`, `key` |
+| `reporting_reconcile` | State change | `draft_id`, `url`, `key` |
+
+## Follow the returned boundary
+
+A prepared action is not execution, a queued message is not receipt, and a terminal task is not necessarily successful. Choose the next operation from the current result and its `next_action`, retaining exact references, revisions, and operation keys. Source definitions live in `src/neurath/runtime/task_schema.py` and its imported domain modules; `src/neurath/agents/mcp.py` supplies native call admission. The [contributor guide](index.md) connects these references to the development workflow.

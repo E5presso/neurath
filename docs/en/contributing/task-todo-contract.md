@@ -1,113 +1,91 @@
-<!-- date: 2026-09-14; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
+<!-- last_updated: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
+# Recording task outcomes and displaying progress
 
 [한국어](../../ko/contributing/task-todo-contract.md)
 
-# Requested work and the native TODO display
+Neurath's task ledger records the work required by the user. The host's TODO list displays that ledger. This contract lets an agent update visible progress without creating a competing definition of completion.
 
-The task ledger preserves what the user asked to accomplish. The host's plan or TODO list makes that work visible during execution. The ledger owns task state; the display is a projection that can lag or fail without changing the recorded outcome.
+A **goal** is the required result. A **task** binds a bounded goal to instruction sources and **acceptance conditions**, the observations needed to assess delivery. The native session's **root actor** owns the ledger. A **receipt** records a specific event or report; a task result receipt and a native TODO submission receipt have different meanings. A workflow **phase** organizes a procedure, while a **review** assesses a defined scope. Neither replaces the task's recorded outcome.
 
-## Define measurable work
+## Define behavior before implementation steps
 
-Each task has a stable ID, a revision and a definition containing `key`, `title`, `goal`, `sources`, `acceptance` and `dependencies`. A source records `kind` (`prompt`, `ticket` or `spec`), `reference` and `revision`. Source revisions and acceptance conditions are part of the definition digest, so an outcome cannot silently migrate to a different goal.
+In the running example, a user's web application loses its saved filter after refreshing. A task can require the chosen filter to survive reload, appear correctly in the UI, and still apply to the displayed results, with existing default behavior covered. Reproducing save/reload, changing persistence code, and reviewing the API contract support those observations.
 
-Only the authenticated native root owner in an active foreground turn can mutate tasks. Intake requires a native user-instruction receipt. When `sources` contains no prompt source, the service retains the current native prompt automatically. A supplied prompt source must match an existing receipt belonging to that owner; a fabricated prompt reference is rejected.
+A task definition contains:
 
-`task_define` appends definitions and preserves earlier task history and dependencies. The task key gives a definition stable identity within its session. Use returned IDs for dependencies, not titles or invented IDs. To represent a superseding request, retain the old terminal history and append the new measurable work.
+| Field | Meaning |
+| --- | --- |
+| `key` | Stable identity for this definition within the session |
+| `title` | Short, readable label used in progress display |
+| `goal` | Bounded result that advances the user's requirement |
+| `sources` | Instruction provenance: `prompt`, `ticket`, or `spec`, each with a reference and revision |
+| `acceptance` | One to 32 observable conditions |
+| `dependencies` | Existing task identifiers that must settle before this work starts |
 
-## Define follow-up as work becomes clear
+The runtime adds the canonical producer and result-evidence contract. Definition identity includes its source revisions and acceptance conditions. Reusing a definition key with different content is rejected. New necessary work is appended as a new definition; terminal history is immutable.
 
-Task planning is incremental. Begin with the requested outcome and the work already understood. When investigation, implementation or validation reveals a necessary next step, register it with `task_define` while the context is available, rather than leaving it only in a report. Before adding or selecting a task, judge which unmet user requirement it advances, whether existing results already cover it, and whether its scope merely perfects a chosen method. Record the bounded outcome in the existing `goal` and `acceptance`, using the original instruction `sources`; no additional judgment schema or approval step is required.
+## Admit tasks from real instructions
 
-Before `task_resolve`, ensure discovered necessary follow-up is tracked. Preserve old terminal history and reconcile it with later results; continue only the still-required work through `task_define` and `task_start`. Do not duplicate completed work, reopen cancelled requirements, or turn an answer-only request into execution. Task count is not a reason to omit necessary work or invent more work.
+Task mutations require the verified native root, an active foreground turn, and current native admission. Initial intake needs the current native user instruction receipt or an explicit retained prompt source from the same session. Ticket and specification references can supplement the native instruction source.
 
-In addition to periodic reminders, authenticated root `PreToolUse` hooks for the three named task mutation tools deliver a bounded goal reflection at each distinct invocation. This also covers the first definition when the ledger is empty and prioritizes the selected task when available. Tool descriptions provide the same guidance before choosing the call. Delivery preserves the ledger, native permissions and existing hook decisions; the agent judges relevance and scope. Tests can verify delivery and state preservation, but cannot prove every semantic judgment will be correct.
+When a new prompt arrives after tasks already exist, appending work must explicitly select the original requirement or an explicit new request. The service rejects implicitly treating a status question as fresh scope. A peer-resumed turn can use retained, validated same-session prompt sources without fabricating a new user receipt.
 
-## State and dependency rules
+`task_list` returns `current_prompt_source` and each task's stored sources. Copy observed source references and revisions when a call requires explicit provenance. Do not invent prompt identifiers.
 
-| State | Meaning | Native display status |
+## State transitions and revisions
+
+| State | Meaning | Terminal? |
 | --- | --- | --- |
-| `pending` | Defined work not started | `pending` |
-| `in_progress` | Work started | First active row: `in_progress`; further active rows: `pending` |
-| `succeeded` | Owner reports the acceptance outcome was achieved | `completed`, with `Succeeded` in the row text |
-| `failed` | Owner records an actual terminal failure | `completed`, with `Failed` in the row text |
-| `invalidated` | Owner records a real cancellation or superseding decision | `completed`, with `Invalidated` in the row text |
+| `pending` | Defined but not started | No |
+| `in_progress` | Selected for execution | No |
+| `succeeded` | Owner reports acceptance met | Yes |
+| `failed` | Owner reports an actual unsuccessful outcome | Yes |
+| `invalidated` | Owner reports why the task no longer applies | Yes |
 
-Both hosts have three visual states. The readable row therefore preserves the five-state task result and all parallel work. Showing only one active visual row does not mean only one task can be running.
+`task_start` starts only a pending task. It requires all dependencies to be terminal. A successful resolution also requires terminal dependencies; a failure or invalidation can be recorded before they settle. Settlement is the runtime check, so an agent must assess the meaning of failed dependencies rather than assume that every terminal dependency succeeded.
 
-`task_start` accepts only a pending task whose dependencies are terminal. Resolving as `succeeded` also requires terminal dependencies, even when no separate start was recorded. `failed` and `invalidated` can be recorded before dependencies settle. A terminal dependency can itself have failed or been invalidated; that condition establishes ordering, while the dependent task's acceptance criteria still control its claimed result.
+Resolution can record an outcome for a nonterminal task; the model is not limited to a strict pending → running → success chain. Each mutation compares the exact list revision, and start/resolve also compare the exact task revision. A stale comparison produces a conflict rather than silently changing the newest state.
 
-A terminal task has immutable evidence and cannot be reopened by editing its display. Failure and invalidation must describe the real outcome; they are not shortcuts for hiding unfinished requested work.
+Use the returned revision from a successful mutation or a fresh `task_list`. Stable operation keys support identical retries. A key reused with changed content is a contract error.
 
-## Record the result once
+## Result reports and the limits of assurance
 
-`task_resolve` takes the exact task and list revisions, a terminal status, a concise summary and 1–32 distinct references. References can point to the actual source, check, pull request or cancellation decision relevant to that result. The service stores a content-addressed result report that binds the task ID, definition digest, owner, status, references and summary.
+`task_resolve` requires `status`, `references`, and `summary` alongside identity and revision fields. The service creates a content-addressed `neurath.task-result.v1` report containing the task definition digest, owner, outcome, summary, and references. The ledger read checks that the artifact is present, intact, and identifies the same task.
 
-The report uses `schema=neurath.task-result.v1` and `assurance=agent-report`. This authenticates who reported what. It does not independently certify every acceptance condition. Ordinary completion does not require a separate material batch, workflow, per-criterion report or independent task reviewer. An explicitly requested review workflow keeps its own evaluation contract.
+The report's assurance is `agent-report`. The runtime preserves the report's origin and integrity; it does not independently prove that the application now retains its filter. The owner must connect observations to acceptance and describe any limits in the evidence.
 
-Use the mutation response's returned revisions for the next operation. A stale revision produces `revision-conflict`. Re-read after a real conflict or interruption, and preserve the same key only for an identical uncertain request. A changed request needs a new key. Reusing a key with different input is rejected.
+Before resolution, register any discovered necessary follow-up not already covered. A failed task should state the unmet condition, actual blocker, and next action. Elapsed time, a side question, or a rejected Stop does not establish failure or cancellation. Required work can continue through a new task while retaining the failed attempt's history.
 
-### Read terminal outcomes without losing the goal
+The list exposes three useful summaries:
 
-`all_terminal` reports that all execution records have ended. `all_succeeded` is true only for a nonempty list whose tasks all succeeded; `unsuccessful_task_ids` identifies failed or invalidated tasks. These are views of the same owner-reported ledger, not independent certification. A failed attempt, Stop rejection, elapsed time, or a status question is not evidence that the user cancelled the original goal. Failure reports retain the unmet condition, actual blocker, and next action.
+| Field | Interpretation |
+| --- | --- |
+| `all_terminal` | Every recorded task has a terminal outcome, and the list is nonempty |
+| `all_succeeded` | Every recorded task reports success, and the list is nonempty |
+| `unsuccessful_task_ids` | Tasks whose outcomes are `failed` or `invalidated` |
 
-Task intake requires a verified native user instruction source. A peer-resumed turn can explicitly reuse a retained prompt source from the same session even when `current_prompt_source` is null; each item in the request must supply that source. The service checks its owner, reference and digest without creating a new user receipt. After a prompt not yet referenced by the ledger, explicitly select the relevant source when defining work. Preserving provenance does not establish semantic approval for expanded scope. Periodic [goal reminders](runtime-lifecycle.md) help the agent retain this distinction without changing the ledger.
+A later successful follow-up does not erase an earlier failure. Explain how later evidence covers remaining requirements when reporting overall delivery.
 
-To prepare a native child on such a peer turn, supply the in-progress task's `task_id` and `expected_task_revision` together to `delegation_prepare`. The intent binds the task definition to the current native generation and turn. Spawn and attachment revalidate it, including at transaction commit; completed tasks and stale turns cannot authorize new child work. Native parent/child attestation and current execution permissions remain required. An accepted peer message alone does not provide this authority.
+## Project the full list to the native host
 
-An already-issued child can still store and return its result through the named `artifact_put` and `evaluation_report` tools after the parent task ends. This exception remains bound to the existing delegation and retained instruction source; it does not authorize further execution or let the child consume its own report.
+`task_list` and task mutations return `todo_projection` and `native_todo`. The latter supplies the host tool and exact arguments: `update_plan` for Codex, `TodoWrite` for Claude Code. Use that returned projection, including all current rows.
 
-## Submit the exact projection
+Both hosts have fewer visual states than the ledger. The projection maps every terminal task to native `completed`, and includes the real outcome in text. Only the first running task uses the native `in_progress` state; other running tasks remain identifiable through their text. Every row includes the task identifier and list revision.
 
-Task results provide `native_todo` with `tool`, `arguments`, `list_revision`, `projection_digest`, `task_ids` and a capability observation. The host adapter uses the specified native tool. For Codex it is `update_plan`; for Claude Code it is `TodoWrite`. The receipt's scope is `native-tool-submission`.
+Consequently, a native completed checkbox may represent `Failed` or `Invalidated`. Read the label or ledger outcome before describing success.
 
-A row has this exact form:
+## Observe submission without treating it as completion authority
 
-```text
-[Neurath] TITLE (DISPLAY_STATUS; TASK_ID; list LIST_REVISION)
-```
+Native `PreToolUse` records the prepared invocation after comparing its complete rows with the current ledger projection. The paired result must match that request. Codex may include a textual `explanation` in addition to the exact canonical rows.
 
-The following are structural examples. In a live call, copy all rows and values from the current `native_todo.arguments` rather than constructing the identifiers shown here.
+A submission receipt can be `submitted`, `current`, `stale`, or `failed`. `current` requires a successful native result and an unchanged projection digest. A successful submission becomes stale if the task list changed before its result was recorded. Capability observation is `unobserved`, `observed-supported`, or `unsupported-runtime`.
 
-```json
-{
-  "plan": [
-    {"step": "[Neurath] Verify parser behavior (In progress; TASK_ID; list 2)", "status": "in_progress"}
-  ],
-  "explanation": "The task has started; acceptance checks are in progress."
-}
-```
+These receipts have scope `native-tool-submission`. They do not establish task success or app rendering. A stale display or display failure cannot rewrite the ledger or become a duplicate ordinary task-completion gate. Refresh the display from current task state when the native capability is available.
 
-```json
-{
-  "todos": [
-    {
-      "content": "[Neurath] Verify parser behavior (In progress; TASK_ID; list 2)",
-      "activeForm": "[Neurath] Verify parser behavior (In progress; TASK_ID; list 2)",
-      "status": "in_progress"
-    }
-  ]
-}
-```
+## Close and migrate without losing work
 
-Codex may include a string-valued `explanation` beside the exact canonical `plan` rows. This field is excluded only when comparing the projection shape. The complete original input, including that explanation, remains in the request digest paired with the host result. Nontext explanations, omitted tasks, reordered or edited rows, extra projection fields, and substituted result input are rejected. Claude's `content` and `activeForm` are the same returned row text.
+The current ledger check shares the transaction that closes the root turn, so a newly appended task cannot be missed between an earlier read and closure. Unsettled tasks reject normal Stop. An already registered ledger is the task-completion authority; checkpoints, learning, TODO state, and independent review are not additional ordinary task-completion votes. Explicitly selected phase or review contracts retain their own requirements.
 
-## What the submission receipt proves
+A committed memory adoption preserves source outcomes and records `superseded_by`. The migrated source is barred from further task mutations, while the receiver continues imported unfinished work under its own native identity. Migration does not rewrite unfinished source history as success.
 
-| Receipt state | Observation | Recovery |
-| --- | --- | --- |
-| `submitted` | A verified root submitted the exact current projection under a native invocation ID. | Wait for that invocation's real result. |
-| `current` | The paired native result succeeded and the projection still matches the ledger. | Continue from ledger state. |
-| `stale` | The result succeeded after the task projection changed. | Submit the newly returned complete projection. |
-| `failed` | The native tool reported failure. | Retain task truth and diagnose the display failure. |
-
-A result needs its prepared native request. Host, tool and complete input digest must match. Duplicate consistent events are idempotent; contradictory outcomes or changed invocation identity are rejected. Only a successful current projection becomes the latest published projection record.
-
-Capability observation is `unobserved`, `observed-supported` or `unsupported-runtime`. A missing or failing native display must not be reported as a successful UI update. These submission records establish the native tool interaction; they are not independent inspection of rendered pixels.
-
-## Stop uses the latest task state
-
-When a canonical task list exists, the Stop transaction checks that its nonempty task set is entirely terminal before closing the root turn. The check and closure are atomic, so another accepted task cannot disappear between them. `task_list` returns `all_terminal=false` for an empty list; absence or emptiness does not establish completion.
-
-TODO display failure, stale display, unavailable display, checkpoint state and learned guidance do not add completion votes. Sessions without a task list retain their existing legacy Stop rules. The user-facing result should distinguish achieved work, real failure and cancelled scope rather than treating every visual `completed` row as success.
-
-Implementation: [task ledger](../../../src/neurath/_assets/scripts/agent_harness/task_ledger.py), [task service](../../../src/neurath/_assets/scripts/agent_harness/task_service.py), [TODO adapter](../../../src/neurath/_assets/scripts/agent_harness/task_todo.py). Regression contracts: [task tools](../../../tests/test_task_tools.py), [TODO receipts](../../../tests/test_task_todo.py), [result acceptance](../../../tests/test_task_acceptance_review.py). See [task tool reference](task-tools.md) for exact input limits and response shapes.
+Use [task tools](task-tools.md) for concrete argument examples and [runtime lifecycle](runtime-lifecycle.md) for goal reminders and normal Stop behavior. Source definitions are in `task_ledger.py`, `task_service.py`, and `task_todo.py` under `src/neurath/_assets/scripts/agent_harness/`, with native adapters under `src/neurath/runtime/`.

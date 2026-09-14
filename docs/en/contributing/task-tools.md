@@ -1,174 +1,127 @@
-<!-- date: 2026-09-14; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
+<!-- last_updated: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
+# Calling Neurath's named tools
 
 [한국어](../../ko/contributing/task-tools.md)
 
-# Named operations for project work
+Use native editing and command tools to change and check project code. Use Neurath's named MCP tools to record the task, coordinate authorized participants, retain evidence, and manage runtime state. This division keeps ordinary coding work direct while giving continuation a durable record.
 
-Use Neurath's named MCP tools to read and change harness state. Perform ordinary source edits and project checks with the host's native tools. The named API is a bounded domain interface: each operation admits a specific input, authenticates the native caller and returns a structured outcome.
+A **task** records a bounded user goal and observable **acceptance conditions**. The native session's **root actor** owns its task list. A **worktree claim** identifies the owner of coordinated work in the checkout. A **receipt** records a particular event or report. A workflow's **phases** organize a procedure; a **review** assesses defined work. Read [architecture](architecture.md) if these roles are new.
 
-## Discovery, caller binding and results
+## Discover the current contract
 
-The stdio server accepts JSON-RPC on standard input and writes protocol JSON on standard output. Diagnostics belong on standard error. `tools/list` advertises 128 current public tools; the internal task dispatch table contains 138 operations. Discovery is the source for the installed version's exact schemas.
+The MCP server publishes named tools through `tools/list`. The current source exposes 128 public tools from 138 internal operations. Use the discovered input schema for the installed version. The [capability map](capability-map.md) groups every public name by purpose.
 
-Inputs are closed objects with `additionalProperties=false`; nested domain schemas also define their allowed fields. The optional transport field `_neurath_binding` is a nonempty string of at most 64 characters. It represents a real host-bound connection and must not be invented or copied from another participant. The public inputs do not offer arbitrary `argv`, Python module execution or direct state patches.
+Each operation accepts a closed JSON object: unknown fields are rejected. A native hook supplies `_neurath_binding` for the current invocation; the agent must not supply invented actor, session, turn, or binding values. `harness_bypass` is the explicit exception: it can read or restore the bypass switch without a native binding, including while the other named operations are unavailable during bypass.
 
-Every named operation has a common outer result:
+For `harness_bypass`, omitting `enabled` or passing `null` reads the current worktree switch; `true` enables bypass and `false` restores Neurath hook constraints. The configured MCP connection handles this emergency read/change without a native binding or an available call-worker slot, including when kernel storage cannot supply normal admission. The switch leaves host permissions and existing history intact and grants no authority for another task or tool. Other named calls still need their own valid native admission after constraints are restored.
 
-```json
-{
-  "ok": true,
-  "operation": "task_start",
-  "result": {
-    "revision": 2,
-    "all_terminal": false,
-    "tasks": [{"id": "TASK_ID_FROM_DEFINE", "revision": 2, "status": "in_progress"}],
-    "native_todo": {}
-  }
-}
-```
+For source-level schema inspection, contributors can inspect `src/neurath/runtime/task_schema.py`, its imported definition modules, and `definitions()` / `arguments()`. Current discovery uses `phase_*`; `workflow_start`, `workflow_advance`, and `workflow_finalize` remain saved-call compatibility. `material_*`, `verification_*`, and generic `agent(argv)` infrastructure are outside public discovery. Ordinary edits and tests need no duplicate material or verification bookkeeping.
 
-This response is schematic: an actual `native_todo` contains the full returned projection instructions. Successful calls contain the operation-specific result. Failure contains `error` with `code`, `message`, `state`, `retryable` and `next_action`; some failures also retain a result describing the attempted execution. Read that state before deciding whether retry is appropriate.
+## Read the result envelope before continuing
 
-Task mutations return compact list revision, `all_terminal`, task IDs/revisions/statuses and `native_todo`. They omit full definitions and result-report details. `task_list` returns the full ledger view, `current_prompt_source`, definition digests, result report references when present, `assurance`, `todo_projection` and `native_todo`. Reuse mutation results rather than immediately issuing a duplicate list read.
+A successful response contains `ok`, `operation`, and its `result`. Failures contain `ok`, `operation`, and an `error` with these fields:
 
-## Diagnose execution readiness before changing permissions
-
-Execution tools report `execution-readiness-required` when a required installation, activation, ownership or policy-observation stage is not ready. The response identifies the failed stages. A running MCP package that differs from the installed distribution requires reconnecting that MCP host; repeating installation or changing permissions does not refresh an existing process. `session_status` gives the same recovery direction. When readiness passes but the observed execution policy is unsupported, `native-execution-required` remains a denial. Neither diagnostic authorizes transport replay, fabricated identity, ownership takeover or permission changes.
-
-## Register, start and resolve a task
-
-| Tool | Required input | Result or condition |
-| --- | --- | --- |
-| `task_list` | None | Read current list and display projection. No tasks yields `all_terminal=false`. |
-| `task_define` | `tasks`, `expected_revision`, `key` | Append 1–64 definitions and return stable IDs and updated revisions. |
-| `task_start` | `task_id`, `expected_revision`, `expected_task_revision`, `key` | Change a pending task to `in_progress`; dependencies must be terminal. |
-| `task_resolve` | Start fields plus `status`, `references`, `summary` | Record `succeeded`, `failed` or `invalidated`; success requires terminal dependencies. |
-
-List and task expected revisions are integers from 0 through 9,007,199,254,740,991. `task_id` is 1–128 characters; the operation key is 1–512 characters. Resolution takes 1–32 distinct nonempty references of at most 4,096 characters each and a nonempty summary of at most 4,096 characters.
-
-Every definition supplies all six fields:
-
-| Field | Exact input shape |
+| Field | How to use it |
 | --- | --- |
-| `key` | Nonempty string, at most 512 characters; stable definition key within the session. |
-| `title` | Nonempty string, at most 512 characters. |
-| `goal` | Nonempty string, at most 16,000 characters. |
-| `sources` | 0–31 objects, each with required `kind`, `reference`, `revision`; no extra fields. |
-| `acceptance` | 1–32 nonempty strings, each at most 16,000 characters. |
-| `dependencies` | 0–64 nonempty task IDs, each at most 128 characters. |
+| `code` | Identify the violated input, identity, revision, or domain prerequisite |
+| `message` | Read the concrete reason |
+| `state` | Determine whether execution started or reached another recorded state |
+| `retryable` | Learn whether the operation reports retry support |
+| `next_action` | Follow the supported correction or recovery route |
 
-Source `kind` is `prompt`, `ticket` or `spec`. Its `reference` and `revision` are each 1–4,096 characters. The service preserves the native user prompt even when the caller supplies an empty source array. Supplied prompt references must match real stored native receipts.
+A failed call is not permission to supply a guessed identity or broaden execution policy. On an uncertain response, retain the original logical operation key and identical content where the operation supports replay. If the intended request changes, it is a new operation.
 
-For a new empty ledger, this definition uses no invented prompt receipt:
+Transport uses JSON-RPC on stdout and diagnostics on stderr. Named request content is limited to 64 KiB. JSON document arguments also have explicit limits: 64 KiB, nesting depth 16, 128 properties per object, and 1,024 items per array; null bytes and nonfinite numbers are rejected.
+
+## Worked sequence: preserve a saved filter after reload
+
+The following is an illustrative request for a user's web application, not a Neurath feature. Values in angle brackets must be replaced with actual returned values. Revision examples show types only; read the live revisions instead of assuming a fresh ledger.
+
+First inspect `session_status`, `worktree_inspect`, and `task_list` as needed for the current work. Acquire the current worktree claim only when the authorized work requires it and the ownership state permits it. The task list supplies the native prompt source and existing work to reuse.
+
+Define the observable goal through `task_define`:
 
 ```json
 {
-  "tool": "task_define",
-  "arguments": {
-    "tasks": [{
-      "key": "parser-empty-input",
-      "title": "Handle empty parser input",
-      "goal": "Empty input returns the documented empty result.",
-      "sources": [],
-      "acceptance": ["The empty-input regression passes.", "Existing valid-input behavior is preserved."],
+  "tasks": [
+    {
+      "key": "persist-saved-filter",
+      "title": "Keep the saved filter after refresh",
+      "goal": "Preserve the selected filter across save and reload.",
+      "sources": [
+        {
+          "kind": "prompt",
+          "reference": "<returned prompt reference>",
+          "revision": "<returned prompt revision>"
+        }
+      ],
+      "acceptance": [
+        "The chosen filter survives saving and reloading the page.",
+        "The restored value is displayed and applied to the results.",
+        "Existing default-filter behavior remains covered."
+      ],
       "dependencies": []
-    }],
-    "expected_revision": 0,
-    "key": "define-parser-empty-input"
-  }
+    }
+  ],
+  "expected_revision": 0,
+  "key": "define-persist-saved-filter"
 }
 ```
 
-Use revision 0 only when the current list is actually empty at that revision. Copy the returned task ID and revisions into the next call:
+`tasks` accepts one to 64 definitions. Each needs all six fields shown. A definition accepts up to 31 caller-supplied sources, one to 32 acceptance conditions, and up to 64 dependencies. The runtime admits the native prompt provenance and adds its canonical evidence metadata.
+
+Start the returned task with `task_start`:
 
 ```json
 {
-  "tool": "task_start",
-  "arguments": {
-    "task_id": "TASK_ID_FROM_DEFINE",
-    "expected_revision": 1,
-    "expected_task_revision": 1,
-    "key": "start-parser-empty-input"
-  }
+  "task_id": "<returned task id>",
+  "expected_revision": 1,
+  "expected_task_revision": 1,
+  "key": "start-persist-saved-filter"
 }
 ```
 
-After the authorized edits and actual check, submit the result. The reference and numbers below illustrate their roles; replace them with the observed result and the previous operation's returned revisions.
+Use the actual list and task revisions from the preceding result. Reproduce save/reload through native tools, change the necessary code, and run the appropriate project check. When authorized and useful, delegate the API review with a bounded question and receive its result before relying on it.
+
+If this reveals a separate necessary fix, call `task_define` for that follow-up before resolving the current task. Preserve the original requirement source. A later status prompt does not implicitly become the source for newly expanded work.
+
+Resolve the observed result through `task_resolve`:
 
 ```json
 {
-  "tool": "task_resolve",
-  "arguments": {
-    "task_id": "TASK_ID_FROM_DEFINE",
-    "expected_revision": 2,
-    "expected_task_revision": 2,
-    "key": "resolve-parser-empty-input",
-    "status": "succeeded",
-    "references": ["tests/test_parser.py::test_empty_input"],
-    "summary": "The empty-input regression and existing valid-input checks passed."
-  }
+  "task_id": "<returned task id>",
+  "expected_revision": 2,
+  "expected_task_revision": 2,
+  "key": "resolve-persist-saved-filter",
+  "status": "succeeded",
+  "references": ["<actual reproduction or regression evidence reference>"],
+  "summary": "Save and reload preserve the selected filter; the restored value is displayed and applied, and the default behavior check passed."
 }
 ```
 
-The canonical result has `assurance=agent-report`: it is the authenticated owner's report. A test name alone is not an execution observation; the owner must describe the actual performed checks honestly. The [task and TODO contract](task-todo-contract.md) covers immutable terminal history, dependency ordering, native display receipts and the atomic Stop decision.
+That summary is appropriate only after those observations actually exist. `references` requires one to 32 distinct nonempty references; the service preserves an owner report with `agent-report` assurance. For `failed` or `invalidated`, describe the actual outcome and its basis. Do not use a failure label merely to pass Stop.
 
-## Ownership and session inspection
+## Keep the host plan consistent
 
-| Tool | Input | Purpose |
-| --- | --- | --- |
-| `session_status` | Optional `detail`: `summary` (default) or `full` | Inspect current participation, readiness and ownership. |
-| `session_inspect`, `turn_inspect`, `worktree_inspect` | No business fields | Read the relevant domain state before recovery or mutation. |
-| `worktree_claim` | No business fields | Claim the actual caller's current worktree. |
-| `worktree_release` | `expected_lease_epoch` (1–9,007,199,254,740,991), `fencing_token` (1–256 characters) | Release exactly the lease returned for this owner, under its release contract. |
-| `worktree_isolation` | `issue_number` (1–2,147,483,647), `key`; optional `initialize=false` | Prepare the issue's isolated workspace under the supported contract. |
-| `worktree_cleanup` | `workflow_id`, verified `base_branch`, verified `remote_ref`, `key` | Perform the contracted cleanup with ownership and Git-state checks. |
+Read the returned `native_todo` and submit its exact full argument object using the host's `update_plan` or `TodoWrite`. The native projection includes real outcome text because a host's completed visual state covers every terminal outcome. A display receipt proves native submission only. See the [task and TODO contract](task-todo-contract.md).
 
-A claim is independent of installation and host activation. Do not infer a valid lease from a running model or from an old checkpoint. [Runtime lifecycle](runtime-lifecycle.md) explains release, cleanup reservation and resume.
+## Calls that require extra care
 
-## Phases for explicit skill workflows
+| Situation | Call contract and next observation |
+| --- | --- |
+| Task revision conflict | Reread `task_list`, reconcile current work, and use the returned revisions for the next intended operation |
+| Missing native prompt or changed turn | Inspect current native state; use a real current or retained prompt source through a fresh invocation |
+| Worktree release | Pass the actual `expected_lease_epoch` and `fencing_token` from the owned claim; preserve tokens as private runtime data |
+| Explicit phase progress | Read `phase_current`, prepare evidence for the exact revision, then complete the matching phase |
+| Review outcome | Consume the authenticated outcome for the exact review/candidate before relying on it; publication has separate scope and current-head checks |
+| Independent provider run | Read actual models, create the revisioned plan, then run that plan and verify readiness; admission is not completion |
+| Memory adoption | Preview, read if needed, and adopt the returned immutable reference with a distinct key and actual receiver revision after source quiescence |
+| Delivery uncertainty | Inspect the participating message or owned run after the event/failure and follow its recovery route without changing its identity |
 
-Start with the actual skill contract and use its current IDs and labels. The common phase inputs are:
+`phase_start` requires `workflow_id`, `key`, `skill`, `run_id`, and `north_star`. `phase_complete` requires `workflow_id`, `expected_revision`, `key`, `phase_id`, `status`, and `summary`; valid statuses are `completed`, `skipped`, `failed`, and `blocked`. Optional evidence and terminal fields remain subject to the selected phase contract. An operational final phase can finalize atomically using its `terminal_state`; do not finalize it twice.
 
-| Tool | Required fields | Optional fields and bounds |
-| --- | --- | --- |
-| `phase_start` | `workflow_id`, `key`, `skill`, `run_id`, `north_star` | Nonempty workflow/run IDs ≤256 characters, skill ≤128, key ≤512, north star ≤16,000. |
-| `phase_current` | `workflow_id` | Returns current contract state and revision. |
-| `phase_evidence_prepare` | `workflow_id`, `expected_revision`, `key` | `labels=[]`: up to 32 nonempty strings ≤16,000; `notes=[]`: up to 128 objects containing `label` (1–128) and `text` (1–16,000). |
-| `phase_complete` | `workflow_id`, `expected_revision`, `key`, `phase_id`, `status`, `summary` | `phase_id`: 0–1000; status `completed`, `skipped`, `failed`, `blocked`; `reason=""`, `terminal_state=""`, `evidence_refs=[]`. |
-| `phase_finalize` | `workflow_id`, `expected_revision`, `key`, `terminal_state` | Terminal state is a nonempty string ≤128 characters. |
+## Recover at the failed boundary
 
-Phase revisions use the same 0–9,007,199,254,740,991 range. In `phase_complete`, summary is 1–16,000 characters, reason at most 16,000, terminal state at most 128, and evidence references are at most 32 nonempty strings of at most 16,000 characters. The workflow contract determines whether a status, skip reason or terminal state is valid beyond these schema checks.
+An `invalid-input` error calls for schema correction. `revision-conflict` calls for a fresh read and reconciliation. `task-contract-rejected` calls for inspecting the actual task definition, source, dependency, or outcome rule. A native binding, prompt, or ownership failure calls for restoring that native prerequisite, not altering task JSON to impersonate an admitted participant.
 
-Use `phase_evidence_prepare` results for `evidence_refs`; labels are checked against the current phase. An operational final phase can use `terminal_state` to finish atomically. A workflow that needs separate finalization still uses `phase_finalize`. Reading a skill or writing a sentence that says “passed” does not advance its state.
-
-`workflow_start`, `workflow_advance` and `workflow_finalize` remain dispatch-compatible for saved callers but are not publicly discovered. Current clients use the phase family.
-
-## Continue another provider's unfinished work
-
-`memory_pull` exposes `list`, `preview`, `read`, and `adopt`. The receiver lists sessions and previews an exact source before choosing adoption. Adoption uses the returned immutable `reference`, current receiver `expected_revision`, and a different stable key from preview. It can transfer unfinished tasks and their worktree lease only after source activity has settled. See [the full input and paging reference](provider-continuity.md).
-
-`task_list` also exposes `all_succeeded` and `unsuccessful_task_ids`; `all_terminal` alone does not establish goal achievement. Definitions require native prompt provenance, and newly encountered prompt sources require explicit selection. The [task contract](task-todo-contract.md) explains these outcome and intake rules.
-
-## Other domains and compatibility
-
-The [capability map](capability-map.md) lists every public tool family and implementation owner. [Agent reference](agents-reference.md), [model planning](model-planning-mcp.md), [collaboration](collaboration-contract.md), [memory](memory-reference.md), [installation](installation.md), [releases](releases-reference.md) and [reporting](reporting-reference.md) describe their domain contracts.
-
-Ordinary peer work uses `collaboration_assign`, `collaboration_accept` and `collaboration_report`. Message acknowledgement requires a full-body read and does not complete that assignment. Batch sends and batch acknowledgements use the advertised closed schemas; do not mix scalar send fields with the `messages` array. Actual child delegation and evaluation need verified native lineage in addition to a message.
-
-Material and registered-verification operations, and the generic `agent(argv)` gateway, are saved-call compatibility surfaces. They are absent from current public discovery. They are not mandatory wrappers around ordinary native editing or checking.
-
-`harness_bypass` is the exception to normal binding admission: `enabled=true` or `false` changes the current worktree switch; omission or `null` reads it. It requires neither a native binding nor a worker slot. It preserves history and host permissions. Other MCP operations require authentic binding and are unavailable during bypass.
-
-## Diagnose before changing the request
-
-| Failure | Meaning | Next action |
-| --- | --- | --- |
-| `revision-conflict` | The list or task revision changed. | Read the latest ledger and decide a new request with its actual revisions. |
-| `task-contract-rejected` | Invalid task input, unsettled dependencies, immutable terminal history or another domain condition. | Read the message and fix that condition; do not patch stored state. |
-| `native-turn-changed` | Transaction admission lost the native prompt or active connection. | Re-enter through the real current native turn, then inspect state. |
-| Key reused with different input | One idempotency identity was assigned to different requests. | Keep the original request's identity; use a new key for new input. |
-| Provider or delivery admission without completion | Work or transport is still outstanding. | Follow events, full-body readback and the relevant recovery contract. |
-
-A retryable error is permission to follow the operation's recovery contract, not to widen host rights. Preserve uncertain outcomes until the actual result or supported recovery resolves them.
-
-Schema and dispatch: [task schema](../../../src/neurath/runtime/task_schema.py), [task definitions](../../../src/neurath/runtime/task_ledger_tasks.py), [runtime dispatch](../../../src/neurath/runtime/tasks.py), [MCP server](../../../src/neurath/agents/mcp.py). Regression coverage: [communication MCP](../../../tests/test_communication_mcp.py), [task tools](../../../tests/test_task_tools.py), [MCP guidance](../../../tests/test_mcp_guidance.py).
+Normal Stop is the final domain check, not a shortcut around these errors. Every current normal Stop remains blocked until prerequisites settle; a status question or repeated attempt does not waive them. Use the [runtime lifecycle](runtime-lifecycle.md) to identify which work or receipt remains unresolved.

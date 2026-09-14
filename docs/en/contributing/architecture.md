@@ -1,69 +1,84 @@
-<!-- date: 2026-09-14; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
+<!-- last_updated: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
+# How Neurath keeps an agent's work connected
 
 [한국어](../../ko/contributing/architecture.md)
 
-# How Neurath connects a project to its agents
+Neurath is an installable harness for Claude Code and Codex. It adds project instructions, skills, host hooks, and named MCP tools around the coding agent. The host still runs the model and its native editing tools. Neurath records which request the work serves, who owns it, and what evidence supports the reported outcome.
 
-Neurath adds shared operating rules and durable coordination to an existing Git project. The target keeps its application, dependencies and build process. Claude Code and Codex provide the native sessions and tools; Neurath binds those sessions to project instructions, ownership and explicit work records.
+Consider a user request: “The saved filter disappears after refreshing the page. Fix it.” A useful result is a filter that survives save and reload. Reproducing the failure, changing persistence code, reviewing the API contract, and running a regression check are ways to reach that result. The architecture keeps these methods connected to the request even when several agents participate or the work continues in another session.
 
-The architecture has three boundaries: distribution into the project, admission of a native caller, and storage of the resulting domain state. Keeping those boundaries visible makes failures diagnosable: installed files can be correct while a host has not activated them, and an authenticated session can exist while another session owns the worktree.
+## The objects the system connects
 
-## Components and responsibilities
+A **goal** states the result the user needs. A **task** records a bounded part of that result with its instruction sources and **acceptance conditions**: observations that distinguish delivery from an unsuccessful attempt. In the example, “the chosen filter remains selected after saving and reloading” is an acceptance condition; “run a test” alone does not describe the requested behavior.
 
-| Responsibility | Implementation | Contract |
+A **session** is a host conversation recognized by Neurath. An **actor** is an agent participating in it. Its **root actor** has no parent and owns the session's task list; a subagent has a recorded parent and a delegated assignment. An independent provider session has its own root. None of these roles gives an agent authority to change the user's request.
+
+A **worktree** is the current Git checkout. A **claim** records the native actor that owns coordinated work there. Its lease epoch and fencing token distinguish the current ownership record from older records. A **receipt** is a durable record of a particular observed or reported event. Its meaning depends on its producer: a native tool receipt, an agent's task result, and a review outcome establish different facts.
+
+A **workflow** organizes a skill run. Its **phases** record progress through that procedure, such as investigation and review. A **review** is a scoped assessment of work by another participant, with a report that the owner consumes. Tasks describe required outcomes; phases and review organize how the owner obtains and assesses them.
+
+```mermaid
+flowchart TD
+    U[User request] --> P[Native prompt receipt]
+    P --> T[Task goal and acceptance]
+    S[Host session and root actor] --> T
+    S --> C[Current worktree claim]
+    T --> W[Implementation and API review]
+    C --> W
+    W --> E[Native observations and owner report]
+    E --> R[Task resolution]
+    T --> N[Host TODO projection]
+    T --> M[Memory handoff]
+    M --> T2[Receiving session continues required work]
+```
+
+The diagram describes relationships, not a promise that every request launches a reviewer or migrates sessions. The user request and applicable skill determine which work is necessary.
+
+## Four implementation layers
+
+| Layer | Responsibility | Source location |
 | --- | --- | --- |
-| Supply independent runtime assets | `src/neurath/_assets`, `resources.py`, `manifest.json` | The package owns every bundled asset; another repository is never a build input. |
-| Preserve a project's existing configuration | `install/projection.py`, `install/transaction.py` | Plan exact changes, recheck originals, journal replacements and retain restoration data. |
-| Establish who is actually calling | `hosts/identity.py`, `hosts/hooks.py` | Verify host session, active turn, native parentage and exact invocation; caller text cannot assert them. |
-| Expose bounded operations | `runtime/task_schema.py`, `runtime/*_tasks.py`, `agents/mcp.py` | Named tools have closed input schemas and structured outcomes. |
-| Maintain live execution state | `SessionKernel`, `StateHandle` | Keep session, actor, turn, workflow and delegation identities separate; reject stale access. |
-| Exclude stale writers | `WorktreeRegistry` | A current owner lease, generation and fencing token control mutation of a particular worktree. |
-| Preserve requested work | `TaskLedger`, `TaskService` | Append measurable tasks, record owner outcomes and atomically check the list at Stop. |
-| Run explicit skill contracts | `phase_runner.py`, `AdaptiveControlAuthority`, `EvaluationLoop` | Bind phase evidence and independent review to the exact candidate and revisions. |
-| Coordinate independent sessions | `agents/store.py`, delivery and provider modules | Keep assignment, execution, delivery, acknowledgement and result consumption distinguishable. |
-| Retain useful project context | project memory, enclave, learning modules | Recall bounded facts with provenance; remembered content does not replace current instructions. |
+| Installation and assets | Package independent runtime assets and project projections; preserve existing project configuration | `src/neurath/install/`, `src/neurath/_assets/` |
+| Host adapters | Validate native events, bind exact tool calls, observe tool results and evaluate normal Stop | `src/neurath/hosts/`, `src/neurath/agents/hooks.py` |
+| Task and service adapters | Validate named tool inputs and route them to a domain operation | `src/neurath/runtime/`, `src/neurath/agents/mcp.py` |
+| Durable domain state | Keep task, actor, workflow, ownership, artifact, and delivery records consistent | `src/neurath/_assets/scripts/agent_harness/`, `src/neurath/runtime/database.py` |
 
-Paths in the table are under `src/neurath/` unless they name a runtime class. Runtime classes live in the independently shipped `src/neurath/_assets/scripts/` tree.
+`src/neurath/_assets` is the package's own executable asset source. Installed `.agents/skills` and `.neurath/rules` are projections. An implementation change belongs in source, followed by the asset manifest and applicable validation; editing a projected skill alone does not update the package.
 
-## An ordinary request through the system
+The runtime activates bundled modules with an explicit target root. The target project supplies its profile and registered checks, while the bundle supplies the harness. Another repository is not a build input.
 
-1. The native host starts or resumes a session. Its hook adapter validates the actual session and establishes a current participant. A new user request supplies a prompt receipt.
-2. The agent inspects project bindings and ownership. The common control store identifies linked worktrees, while a claim applies to the worktree being changed.
-3. The agent uses `task_define` to register measurable work. The definition retains its prompt provenance, acceptance conditions and dependencies. A returned ID and revision identify the actual record.
-4. The agent edits and checks the project through ordinary native tools. It uses a phase workflow only when the requested skill or review contract requires one.
-5. The owner records each outcome through `task_resolve`, with concrete references and a summary. The result is an authenticated owner report with `assurance=agent-report`.
-6. At Stop, the latest task list is checked in the same SQLite transaction that closes the root turn. A concurrently appended task therefore remains visible to the completion decision.
+## How a request reaches durable state
 
-The native TODO panel displays this list. Updating that panel does not resolve a task. [Task and TODO behavior](task-todo-contract.md) defines the exact projection and recovery rules.
+At native prompt intake the host adapter establishes the foreground turn and its prompt receipt. Before a named MCP call, a host event binds the exact request to that actor, session, turn, worktree, and invocation. The MCP process does not acquire the caller's authority merely by starting. The dispatcher validates the closed input schema and the live binding before invoking the service.
 
-Task tracking also supplies the context for [periodic goal reminders](runtime-lifecycle.md). They help the root agent reconsider its approach using the original purpose and acceptance conditions, without creating another decision authority. When another provider must continue interrupted work, [receiver-initiated adoption](provider-continuity.md) uses the same shared database to transfer unfinished tasks and the worktree lease atomically, while fencing the migrated source.
+Canonical mutable runtime state is stored in `.neurath/local/runtime.sqlite3` under the Git-common-derived control root. Linked worktrees share that database; unrelated clones and computers do not automatically synchronize. Namespaces, codecs, revisions, and digests keep domain records distinct. Installation plans, restoration originals, and private process artifacts retain purpose-specific files.
 
-## Shared data without merged responsibilities
+The private database path rejects symlink components in its managed directory chain and symlink database or journal paths. It creates managed directories with owner-only `0700` permissions and database files with `0600` permissions. Imported legacy records retain the original content digest: a changed, replaced, or unavailable legacy source rejects access instead of silently accepting drift. These checks protect the state used for identity and revision decisions; they do not synchronize another checkout or grant execution authority.
 
-Mutable runtime state uses `.neurath/local/runtime.sqlite3` under the control root derived from Git's common directory. Linked worktrees in the same repository use that common store. Separate clones and separate computers do not share it automatically.
+Task admission and task writes share a SQLite transaction with the relevant session state checks. The transaction verifies that the native participant and current prompt still match. Revision comparisons prevent a write based on an older task list from silently replacing newer work. Content-addressed artifacts retain the result report associated with the task definition.
 
-SQLite transactions coordinate state changes that must agree, such as a task result and the session's completion check. Namespace keys, domain codecs, record revisions and digests keep tasks, sessions, messages, claims and memory semantically distinct. A shared database does not make a memory entry an execution receipt or make a peer message a user instruction.
+After the native tool completes, its host event closes the invocation capability. A later call needs its own binding. This is why copying an old `_neurath_binding` value into another invocation is invalid, and why a session identifier is a target identifier rather than proof of caller authority.
 
-Installation plans, transaction journals, original files for restoration and some private process artifacts retain their own file storage. Do not relocate all private files into the database merely because mutable domain state is canonical there. Old state paths are migration inputs; they are not the current storage layout.
+## Applying the architecture to the filter repair
 
-The database opens private files with restrictive modes and rejects symlink paths in its storage chain. Legacy import also binds the original content digest. If a legacy writer changes imported material, drift blocks reuse rather than silently selecting one competing version. [Runtime lifecycle](runtime-lifecycle.md) explains retirement and recovery.
+The root records the persisted-filter goal and reproduces save followed by reload. If independent API review is useful and authorized, it gives that participant a bounded question: whether the save/load contract preserves the selected filter. The implementer changes the relevant code. The review report, regression result, and observed save/reload behavior become evidence to assess against acceptance.
 
-## Distribution and activation
+During a long investigation, the goal reminder brings the recorded purpose back into context. It can prompt the agent to reconsider an unnecessary test-harness rewrite while retaining the unresolved filter behavior. The reminder cannot change a task, approve work, or decide success.
 
-The build includes standalone resources whose hashes are declared in the manifest. Installation produces the target's managed instructions, skill projections, hooks and launchers. Runtime code executes in a persistent environment selected by distribution content, separately from the development `.venv` and the target project's environment. Updating one target does not implicitly move every other target to its runtime.
+If another native session must continue, memory preview supplies context and adoption performs the explicit state transfer after its prerequisites hold. A saved lesson about the correct project test command can help the receiver choose the right check. Historical memory still needs comparison with the current checkout and current command configuration.
 
-Installation plans bind exact target paths, before and after bytes, permissions and links. Applying a plan locks and rechecks those inputs before journaled replacement. Conflicting user edits remain available for resolution. Restoration uses the recorded originals and retained runtime, not a reconstruction from today's defaults.
+## Which evidence answers which question
 
-There are three different observations: placement validates installed bytes and links; protocol checks exercise isolated hook subprocesses; native activation requires the real host to invoke the installed hooks and tools. See [host integration](hosts.md) and [validation](validation.md) for their evidence boundaries.
+| Question | Evidence to inspect |
+| --- | --- |
+| Does the package contain the expected source assets? | Manifest and source-integrity validation |
+| Can the built distribution execute? | Package execution results |
+| Did installation preserve and project the intended configuration? | Installation results and installed state |
+| Did this native host admit the request and observe the tool? | Host activation, prompt and invocation records |
+| Did the saved filter survive refresh? | Reproduction and regression evidence for that behavior |
+| Did the owner record that result? | Task result artifact and current ledger |
+| Was a review completed for the relevant change? | Scoped review report and consumption, including reviewed revision |
 
-## Context and collaboration boundaries
+These observations can be collected together, but one does not establish all the others. In particular, the task service labels result assurance `agent-report`; receipt integrity preserves provenance without independently proving the report's meaning.
 
-Project memory keeps cross-session history. The enclave holds bounded recent session facts. Graphify supplies relationships that the agent verifies against current source. Learned strategies and explicitly approved project rules have separate admission and promotion requirements. Session-start memory injection is capped at 3,000 bytes; explicit context retrieval defaults to 12,000 bytes, and learned guidance has its own limit of 12 rules and 6,000 bytes.
-
-A direct child can hold a delegated evaluation role only after its native lineage is verified. Another provider's peer session remains a peer even when it returns a useful review. Provider routes describe supported execution choices; execution and delivery must then be observed. Permission inheritance, model planning and delivery recovery are detailed in [model planning](model-planning-mcp.md) and [collaboration](collaboration-contract.md).
-
-## Where to make a change
-
-Change bundled behavior in `src/neurath/_assets`, not installed `.agents/skills` or `.neurath/rules`. Change admission and dispatch in their host or runtime modules, and keep the schema synchronized with the actual operation. A new installation behavior starts with a failing installer test. An asset change also needs manifest regeneration, required checks, a build and an observed self-install update; these are separate results.
-
-Use [design principles](design-principles.md) to assess a proposed boundary, [capability map](capability-map.md) to find the relevant skill and tool family, and [development](index.md) for the supported development sequence.
+Continue with [host integration](hosts.md), [runtime lifecycle](runtime-lifecycle.md), and the [task and TODO contract](task-todo-contract.md). The [capability map](capability-map.md) locates tools by the work they support.
