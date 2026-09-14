@@ -10,7 +10,7 @@ user-invocable: true
 
 # Implement UI
 
-중요 skill phase는 `uv run python -m scripts.skill_harness.phase_runner`로 initialize, evaluate,
+task 목록 없이 기존 phase workflow를 실행·복구할 때만 `uv run python -m scripts.skill_harness.phase_runner`로 initialize, evaluate,
 advance, finalize합니다.
 
 다음 세 값이 모두 필요합니다.

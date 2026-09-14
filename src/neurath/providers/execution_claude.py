@@ -1,6 +1,7 @@
 """Claude-native worker policy, separate from Codex's OS sandbox enums."""
 
 import asyncio
+import hashlib
 import inspect
 import json
 import sqlite3
@@ -237,12 +238,12 @@ def run(root, *, worktree, assignment, model=None, mode="read-only", approval_po
 
 
 def _result_status(message):
-    if message.permission_denials or message.deferred_tool_use:
-        return "waiting-approval"
     if (message.stop_reason in {"interrupt", "interrupted", "cancelled"}
             or message.terminal_reason in {"interrupt", "interrupted", "cancelled"}):
         return "cancelled"
-    return "failed" if message.is_error else "completed"
+    if message.deferred_tool_use:
+        return "waiting-approval"
+    return "failed" if message.is_error or message.permission_denials else "completed"
 
 
 def _ready(report, permission_mode):
@@ -361,7 +362,9 @@ async def _run(target, assignment, model, permission_mode, event_callback, resul
     preparation_result = None
     try:
         await adapter.connect()
-        result["bootstrap"] = await adapter.bootstrap(claim_worktree=permission_mode != "plan")
+        from neurath.providers.report_routing import delegation_scope
+        scope = ({'assignment_scope':delegation_scope(model_owner,run_id)} if model_owner and run_id else {})
+        result["bootstrap"] = await adapter.bootstrap(claim_worktree=permission_mode != "plan",**scope)
         result["preparation"] = "submitted"
         # A stdin write during this response may be coalesced by Claude. Drain
         # its actual Result and iterator before sending any assignment input.
@@ -401,10 +404,16 @@ async def _run(target, assignment, model, permission_mode, event_callback, resul
         from neurath.providers.execution_plan import ready_plan
         result["model_verification"] = ready_plan(model_plan, adapter.session, report)
         result["preparation"] = "verified"
+        if model_owner and run_id:
+            await events('assignment-ready',{'created':adapter.observed(),
+                'assignment_digest':hashlib.sha256(assignment.encode()).hexdigest()})
         result["submission"] = await adapter.dispatch(
-            "Neurath authorized peer assignment. Keep native permissions. "
+            "Preparation completed. This is the separate assignment for this native session. "
+            "Keep native permissions and current user constraints. "
+            + ("Read session_status.provider_assignment for the runtime-bound peer request; "
+               "this native input does not require a separate inbox message. " if model_owner and run_id else "")
             + ("Inspect without edits. " if permission_mode == "plan" else
-               "Use native host tools to edit files and run checks; record the task result once. "
+               "Use native host tools for edits or checks only when the assignment requests them; record the task result once. "
                "Release your own claim after completion. ")
             + "Assignment:\n" + assignment)
         result["delivery"] = "submitted"
@@ -420,7 +429,9 @@ async def _run(target, assignment, model, permission_mode, event_callback, resul
                     result["status"] = _result_status(message)
                     result["execution"] = "native-response-completed"
                     result["completion"] = {"subtype": message.subtype, "is_error": message.is_error,
-                        "native_session": message.session_id, "result_acceptance": False}
+                        "native_session": message.session_id, "result_acceptance": False,
+                        "permission_denial_count": len(message.permission_denials or []),
+                        "approval_pending": bool(message.deferred_tool_use) and result["status"] != "cancelled"}
                     if message.result is not None:
                         result["text"] = clean(message.result)[-32768:]
             if result["status"] != "completed":

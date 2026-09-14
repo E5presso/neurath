@@ -26,7 +26,7 @@ from neurath.agents.runner import child_environment
 from neurath.agents.store import MessageStore, bounded
 from neurath.memory.store import canonical, clean
 from neurath.providers.execution import run as execute_session
-from neurath.providers.report_routing import bind_executor, observe_created
+from neurath.providers.report_routing import RECOVERY_ASSIGNMENT, bind_executor, observe_created
 
 
 def _store(root):
@@ -278,10 +278,7 @@ def _worker(root, run_id, store, lease, *, recovery=False):
             fields["restored_session"] = Session(**prior["created"])
             fields["model"] = prior["created"]["actual_model"]
             fields["model_plan"] = prior.get("model_plan", fields.get("model_plan"))
-            fields["assignment"] = ("Restore your Neurath collaboration inbox in this existing session. "
-                "Read pending messages with collaboration_inbox and collaboration_message, acknowledge their bodies, "
-                "and act on authorized follow-ups. Use stable message IDs to recognize duplicates. "
-                "This recovery does not repeat the original assignment or undo a completed result.")
+            fields["assignment"] = RECOVERY_ASSIGNMENT
         db.execute("UPDATE provider_jobs SET status='starting',updated=? WHERE id=?", (time.time(), run_id))
     tasks = TaskLifecycle(store)
     task_key = "provider:" + run_id + (":recovery:" + str(lease.generation) if recovery else "")
@@ -314,6 +311,11 @@ def _worker(root, run_id, store, lease, *, recovery=False):
             current = db.execute("SELECT * FROM provider_jobs WHERE id=?", (run_id,)).fetchone()
             partial = json.loads(current["result"]) if current["result"] else {}
             reply_recipient = bind_executor(store, current, partial, lease, db)
+            if state == 'assignment-ready':
+                if (reply_recipient is None or detail.get('assignment_digest') !=
+                        hashlib.sha256(fields['assignment'].encode()).hexdigest()):
+                    raise ValueError('prepared assignment lacks its owned native recipient or exact request')
+                return  # A readback route, not another task, message or completion event.
             tasks.emit(owner, task_id, state, key=f"event:{sequence}",
                        detail=canonical(detail).encode()[:15000].decode("utf-8", errors="ignore"),
                        reply_recipient=reply_recipient, _db=db)

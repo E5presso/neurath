@@ -9,7 +9,7 @@ user-invocable: true
 
 # Triage Review Comments — PR 리뷰 코멘트 트리아지
 
-중요 skill phase는 `uv run python -m scripts.skill_harness.phase_runner`로 계약을 initialize, evaluate, advance, finalize합니다.
+task 목록 없이 기존 phase workflow를 실행·복구할 때만 `uv run python -m scripts.skill_harness.phase_runner`로 계약을 initialize, evaluate, advance, finalize합니다.
 
 PR에 달린 리뷰 코멘트를 하나씩 검토하여, 수용할지 반론할지 판단한다.
 맹목적 수용도, 맹목적 무시도 하지 않는다.

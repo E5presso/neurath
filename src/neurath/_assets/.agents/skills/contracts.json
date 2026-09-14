@@ -479,13 +479,10 @@
       ],
       "required_resource_fragments": {
         "references/convergence.md": [
-          "initial full pass 뒤 delta-only pass를 반복",
-          "마지막 delta pass의 신규 capability가 0",
-          "source inventory pass 횟수 상한은 두지 않습니다",
-          "90분 wall-clock budget",
-          "generation 수는 고정하지 않습니다",
-          "verified goal delta",
-          "authoritative resource delta",
+          "사용자의 요구를 담은 기존 태스크",
+          "현재 완료 조건과 관련된 범위만 한 번 조사",
+          "포화 탐색을 일반 수정의",
+          "새 내부 목표나 내부 실험의 blocker만으로",
           "zero-progress",
           "watchdog은 success, convergence, efficiency authority가 아닙니다"
         ]

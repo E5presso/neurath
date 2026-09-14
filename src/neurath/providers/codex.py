@@ -225,7 +225,7 @@ class CodexSessions:
                 raise SessionNotReady(report)
         return self._submit(session, message, thread, live)
 
-    def bootstrap(self, session):
+    def bootstrap(self, session, *, assignment_scope=""):
         """Submit only the fixed activation/claim request, without an assignment.
 
         Native hooks must register this independent root. Failure stays observable;
@@ -234,7 +234,7 @@ class CodexSessions:
         thread, live = self._state(session, preparation=True)
         if live is not None:
             raise ValueError("bootstrap requires an idle session")
-        prompt = (
+        prompt = assignment_scope + (
             "Prepare this Neurath session only. Read repository instructions. Use the named "
             "session_status and session_inspect MCP tools. "
             + ("Then obtain this worktree's normal claim with the named worktree_claim MCP tool. "
@@ -244,7 +244,7 @@ class CodexSessions:
             "Keep the worktree claim when preparation is complete. End this preparation turn "
             "normally and wait for a separate assignment turn; release the claim only after "
             "the later assigned work finishes. "
-            "Do not implement changes, edit source files, synthesize lifecycle state, override a "
+            "During this preparation turn, do not implement changes, edit source files, synthesize lifecycle state, override a "
             "conflicting claim or change permissions. Stop and report any failed prerequisite."
         )
         return self._submit(session, prompt, thread, live)

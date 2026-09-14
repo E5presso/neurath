@@ -25,8 +25,11 @@ def test_provider_run_never_uses_missing_caller_policy_as_permission(sessions, m
     monkeypatch.setitem(sys.modules, "neurath.providers.execution",
         SimpleNamespace(run=lambda *a, **k: pytest.fail("provider started without caller policy")))
     bound = bound_call(sessions, "provider_run", {"worktree": str(root), "assignment": "Read only"})
-    with pytest.raises(ValueError, match="execution policy"):
+    from neurath.runtime.task_schema import TaskError
+    with pytest.raises(TaskError, match="readiness") as caught:
         mcp.call_tool(root, bound, name="provider_run")
+    assert caught.value.details["code"] == "execution-readiness-required"
+    assert "policy" in caught.value.details["message"]
 
 
 @pytest.mark.parametrize("status", ["accepted", "failed"])

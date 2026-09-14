@@ -1,192 +1,73 @@
-# Developing Neurath
-<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
+<!-- date: 2026-09-14; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
 
-Harness deep dive: [system architecture](architecture.md) · [design principles and philosophy](design-principles.md) ·
-[runtime lifecycle and recovery](runtime-lifecycle.md) · [capabilities and source map](capability-map.md).
+# Develop and verify Neurath
 
-[Usage](../usage/index.md) · [Contributing](index.md)
+[한국어](../../ko/contributing/index.md)
 
+Neurath installs a shared harness into an existing Git project. Work on Neurath changes the installer, its independently packaged runtime, or the contracts that connect Claude Code and Codex to project work. Work on an application using Neurath belongs in that application's source and project bindings. For that workflow, begin with the [usage guide](../usage/index.md).
 
-[English](index.md) · [한국어](../../ko/contributing/index.md)
+This section provides execution references for agents developing and operating Neurath. It explains where to change behavior, which checks establish which results, and how an authorized installation reaches a target project.
 
-Neurath is a Python 3.14 package with an isolated host runtime and kit-owned execution assets.
-This guide is for changing Neurath itself: its documentation, installer, host adapters, skills,
-or execution rules. To use the harness in another project, start with the
-[usage guide](../usage/index.md). The agent runs the development commands below from the Neurath source checkout.
+## Find the change boundary
 
-## Agent execution reference
+| Intended change | Source to inspect | Reference |
+| --- | --- | --- |
+| Preserve or project project files differently | `src/neurath/install/` and installer tests | [Installation transaction design](installation-design.md) |
+| Change startup, setup options, or runtime selection | `setup`, `src/neurath/cli.py`, `src/neurath/install/setup.py` | [Bootstrap and setup](setup-reference.md) |
+| Change bundled rules, skills, or engine behavior | `src/neurath/_assets` and corresponding runtime tests | [Packaged assets](assets.md) |
+| Modify authenticated task operations | `src/neurath/runtime/task_schema.py`, domain task modules, `src/neurath/agents/mcp.py` | [Task tools](task-tools.md) |
+| Change host activation or caller identity | `src/neurath/hosts/identity.py`, `src/neurath/hosts/hooks.py` | [Validation](validation.md) |
+| Change official update preparation or recovery | `src/neurath/updates.py`, `src/neurath/release_install.py` | [Release updates](releases-reference.md) |
 
-Contribute by describing the desired change, constraints, and acceptance conditions to your
-coding agent. The agent performs the development commands and Neurath operations in this guide.
-Command blocks document reproducible execution for agents and reviewers; they are not manual
-setup requirements for users. Human host authentication and trust decisions remain with you.
+The package supports macOS and Linux with Python `>=3.14,<3.15`. POSIX process groups, `fcntl`, and Bash are part of its operating assumptions; Windows is outside the supported platform contract. The runtime declares `claude-agent-sdk>=0.2.152,<0.3`. Target projects may use another language and retain their own dependency environment. The package metadata is in [pyproject.toml](../../../pyproject.toml).
 
-[Setup](setup-reference.md) · [Collaboration](agents-reference.md) ·
-[Memory](memory-reference.md) · [Skill compatibility](skills-reference.md)
+For the strategy behind periodic goal context, read [design principles](design-principles.md) and [runtime delivery](runtime-lifecycle.md). [Provider continuity](provider-continuity.md) covers retaining target-native settings and adopting another provider's interrupted work; it separates context retrieval, task transfer, and source resumption fencing.
 
-[Shared task tools and CLI compatibility](task-tools.md)
+## Prepare a reproducible development environment
 
-Implementation contracts: [Provider collaboration](collaboration-contract.md) ·
-[Dynamic model planning and MCP operation](model-planning-mcp.md).
-These record the target behavior and acceptance scenarios; they do not claim the migration is complete.
-
-## Start with a bounded contribution
-
-Describe the problem and the observable result you want to change. A useful bug report includes
-reproduction steps, expected and actual behavior, the affected Neurath and host versions, and a
-minimal example with private information removed. For a feature or a broad behavior change,
-agree on scope and acceptance conditions before implementation. Documentation corrections should
-identify the reader's task and the source that supports the corrected explanation.
-
-Read `AGENTS.md` and the relevant source and tests. Keep unrelated cleanup out of the change.
-When working with multiple agents, establish ownership and use separate worktrees for edits.
-
-## Prepare the development environment
-
-Use the committed lockfile to reproduce the development environment.
+Run from the Neurath checkout:
 
 ```sh
 uv sync --locked
+```
+
+This creates or updates the development environment from the committed lockfile. It does not install the harness into a target project. For a new installation behavior, first add a test that fails for the intended before/after case. Start with the relevant test; once the implementation is stable, run the required check:
+
+```sh
 uv run --locked python tools/check.py
 ```
 
-`tools/check.py` checks distribution integrity, Python diagnostics, installation tests, and
-runtime contracts. Runtime tests use temporary Git repositories that are removed after execution.
-Use `tools/run_core_regressions.py --target /private/path/to/fixture` to retain a fixture for debugging.
+The check executes package integrity, Python diagnostics, package and installation tests, and runtime contracts in a disposable Git fixture. Its success applies to the source tested. [Validation](validation.md) describes distribution, bootstrap, and native-host checks that establish additional facts.
 
-## Use the harness here
+For a runtime or asset change, regenerate package integrity data before checking and building:
 
 ```sh
-./setup --self
-```
-
-This installs a built copy into a persistent environment for that distribution, then applies it to this
-repository. It does not run the harness from the development `.venv`. Review hooks in your host
-and start a new session after installation. Project bindings are in `.neurath/project.json`.
-Other installed projects retain their existing runtime. Previous environments remain available
-for restoration; rerunning the same source verifies and reuses its environment.
-
-The installed `.agents/skills/<name>`, `.neurath/rules`, and host hooks are generated files.
-Change their source under `src/neurath/_assets`, then refresh the installation.
-
-## Change, verify, refresh
-
-Edit the source that owns the behavior. The [architecture](architecture.md) maps responsibilities;
-[runtime assets](assets.md) explains the independent asset inventory. Generated files in an
-installed project are not the source for a contribution.
-
-```sh
-# After editing runtime code or assets:
 uv run --locked python tools/build_manifest.py
 uv run --locked python tools/check.py
-uv run --locked python -m build
+uv build
 ./setup --self
-Named MCP tool diagnostics_project (current input schema)
 ```
 
-Define new installation behavior with a failing test first. Keep existing instructions, hooks,
-permissions, dependencies, and edited bindings intact. Do not rewrite state JSON or forge host
-identity to make a runtime test pass.
+Self-installation updates the harness used by this checkout through the normal installer. Its persistent tool environment is separate from development `.venv`; record build output and installed runtime separately. A documentation-only change does not require self-installation solely to deliver new prose.
 
-## Choose verification for the change
+## Maintain the product contract
 
-Start with the check that can detect the problem, then run the repository's full check before
-delivery. State what each result proves; test counts alone do not establish host activation.
+Edit managed runtime sources under `src/neurath/_assets`. Installed `.agents/skills` and `.neurath/rules` are projections and will be checked against the installation record. Editing a projection directly creates an installation conflict rather than a reusable source change.
 
-| Change | Focused verification | Additional evidence |
-| --- | --- | --- |
-| Documentation, locale paths, or navigation | `uv run --locked pytest -q tests/test_publication.py` | Both language editions, source-backed commands, resolved links, and actual source-distribution contents when packaging changes |
-| Installer or setup behavior | A failing regression in the relevant `tests/test_*.py` before the fix | Existing-file preservation, conflict handling, and the affected update/recovery path in disposable targets |
-| Runtime code, rules, skills, or contracts | Relevant package tests and kit-owned regressions | Regenerate the manifest, run the full check, build, and refresh self-installation |
-| Host identity, hooks, or lifecycle | Relevant adapter and runtime regressions | Actual affected host flow, including trust and native identity, recorded separately from static/protocol checks |
+Public detailed documents use matching relative paths below `docs/en` and `docs/ko`. Each locale's `usage` explains natural-language requests and user-visible outcomes; `contributing` contains execution and configuration examples. Keep both locales equivalent in scope, supported behavior, errors, and limitations. Navigation stays in the reader's language except the reciprocal language link. Only root README and CONTRIBUTING entry points use `.md` / `.ko.md` pairs.
 
-The full repository check is:
+For a public documentation change, the focused convention check is:
 
 ```sh
-uv run --locked python tools/check.py
+uv run --locked pytest -q tests/test_publication.py
 ```
 
-To preserve a kit regression fixture for investigation, choose a private disposable path:
+Public packages and documentation must not contain private source originals, installation plans, diagnostic logs, receipts, credentials, personal paths, or provenance from other repositories. Store evidence in ignored private storage such as `.validation`. The [asset reference](assets.md) explains distribution ownership and inclusion.
 
-```sh
-uv run --locked python tools/run_core_regressions.py --target /private/path/to/fixture
-```
+## Describe the result for a reviewer
 
-Keep raw evidence under ignored local storage such as `.validation/`. For installer integration
-commands and exact-node verification bindings, see [installation development](installation.md).
-[Host integration](hosts.md) and [validation scope](validation.md) distinguish local checks from
-actual host evidence. Document any untested path instead of implying it passed.
+Explain the concrete trigger, changed behavior, compatibility or installation impact, and actual checks performed. Link relevant source and tests. State whether the evidence concerns source integrity, built-package execution, target placement, protocol simulation, or a real native session. An authenticated owner task result records the owner's outcome; explicit review workflows have their own independent reviewer contracts.
 
-## Prepare the change for review
+Use current operation results and revisions when working through named MCP tasks. Ordinary native edits and commands do not require a separate material batch or per-criterion acceptance document. The task ledger is completion authority when a session has a task list; visible TODO state is its display projection. See [task and TODO contracts](task-todo-contract.md).
 
-Before submitting a contribution, check that both the behavior and its documentation agree.
-Update English and Korean together, review the diff for unrelated files or local state, and
-confirm generated runtime assets match their manifest when they changed.
-
-Explain the following in the PR description:
-
-- The concrete problem and the resulting behavior, with a before/after example when useful.
-- The scope of the change and any compatibility or installation impact.
-- Commands actually run, their results, and what each check covered.
-- Remaining limitations or checks that could not be run.
-
-Keep the contribution focused and use a commit message that describes its purpose. Repository
-instructions determine any branch or issue conventions. Commit, push, PR creation, and package
-publication are distinct actions; perform only the delivery steps authorized for the task.
-Respond to review findings with source evidence and rerun checks affected by subsequent edits.
-
-## Package boundaries
-
-```text
-src/neurath/
-├── cli.py              # Public command line
-├── doctor.py           # Integrity, placement, protocol checks
-├── resources.py        # Immutable asset lookup
-├── install/            # Projection, transactions, setup
-├── hosts/              # Codex/Claude hooks, identity, lifecycle
-├── runtime/            # Named tasks, state, verification, models, maintenance
-├── providers/          # Model plans, policy inheritance, independent runs, recovery
-├── agents/             # Messages, delivery, task reports, Newsroom, MCP
-├── memory/             # Shared recall, reflection, observed recovery learning
-├── _assets/            # Runtime engine, skills, rules, contracts
-└── manifest.json       # Complete runtime integrity inventory
-
-tests/
-├── test_*.py           # Package, installation, adapter regressions
-└── runtime/            # State, ownership, evaluation, phase contracts
-
-tools/                  # Build and verification entry points
-docs/en/usage/          # Install, use, operate, and troubleshoot
-docs/en/contributing/   # Develop, verify, and review Neurath
-docs/ko/                # The same relative paths in Korean
-docs/assets/            # Shared images
-```
-
-## Verification evidence
-
-Keep native host streams, installation plans, installation records, execution results,
-verification records, review results, and debug fixtures in ignored local storage.
-Public documentation contains the tested behavior and scope, not machine paths or
-live identity tokens. Native activation requires the host's real trust and identity evidence;
-`doctor --protocol` does not prove it by itself.
-
-Publishing is a separate explicit step. Building a wheel or installing it locally does not
-publish to GitHub or a package registry.
-
-Generated skills, host settings, and the local launcher are ignored. Keep the project
-binding and the public instruction files; `./setup --self` recreates the installation in
-a fresh checkout. Installation preserves a byte-exact existing Neurath instruction block
-and rejects conflicting edits. Review the actual hooks in each host before the first run.
-
-## Maintain both documentation editions
-
-Keep detailed documentation under `docs/en/` and `docs/ko/` with matching relative paths and filenames.
-Use `usage/` for installation, everyday work, and operation; use `contributing/` for changing
-and verifying Neurath itself. Root README and CONTRIBUTING entry points retain `.md` and `.ko.md` pairs.
-Update both editions together, preserving the same behavior, commands, limits, and verification scope.
-Each edition links to its counterpart for language switching; other links stay in the selected language.
-Include both editions in source distributions. `tests/test_publication.py` checks these conventions.
-Runtime instructions such as `AGENTS.md` and installed skill assets follow their own contracts.
-
-[Architecture](architecture.md) · [Runtime assets](assets.md) · [Host integration](hosts.md) ·
-[Installation design](installation-design.md) · [Validation](validation.md) · [Usage](../usage/index.md)
+Building or checking does not authorize GitHub creation, push, or public release. Carry out those steps when the current user request authorizes them, and report the actual remote result separately from local work.

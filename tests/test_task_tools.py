@@ -84,6 +84,7 @@ def test_inventory_is_task_shaped_and_preserves_legacy():
         "maintenance_choice_read",
         "memory_checkpoint",
         "memory_recall",
+        "memory_pull",
         "monitor_ack",
         "monitor_cancel",
         "monitor_event",
@@ -144,9 +145,6 @@ def test_inventory_is_task_shaped_and_preserves_legacy():
         "task_start",
         "task_resolve",
         "turn_yield",
-        "workflow_advance",
-        "workflow_finalize",
-        "workflow_start",
         "worktree_claim",
         "worktree_cleanup",
         "worktree_inspect",
@@ -430,6 +428,16 @@ def test_mcp_common_instructions_are_advertised_once():
     assert "_neurath_binding" in reply["result"]["instructions"]
     assert all("Prefer this task tool over CLI argv" not in row["description"]
                for row in definitions())
+
+
+def test_catalog_keeps_one_phase_interface_and_compact_shared_guidance():
+    from neurath.runtime.task_schema import definitions
+    names = {row["name"] for row in definitions()}
+    assert {"phase_start", "phase_complete", "phase_finalize"} <= names
+    assert not {"workflow_start", "workflow_advance", "workflow_finalize"} & names
+    # Some native hosts prepend server instructions to every tool description.
+    reply = mcp.response(None, {"jsonrpc": "2.0", "id": 1, "method": "initialize"})
+    assert len(reply["result"]["instructions"].encode()) <= 160
 
 
 def test_ack_schema_accepts_one_or_many_but_not_ambiguous_batches():

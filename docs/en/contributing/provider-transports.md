@@ -1,155 +1,89 @@
-# Provider sessions and native transports
+<!-- date: 2026-09-14; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
 
-<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
+[한국어](../../ko/contributing/provider-transports.md)
 
-**English** · [한국어](../../ko/contributing/provider-transports.md)
+# Own the connection that runs independent work
 
-[Contributing](index.md) · [Agent collaboration](agents-reference.md) · [Task tools](task-tools.md)
+An independent provider run needs a durable execution identity and an owned native connection. The logical provider instance survives individual process generations; its recipient address is distinct from a PID, socket, or native session UUID. The issuer remains responsible for follow-up while work or unacknowledged obligations remain, including after the issuer's model turn ends.
 
-The [collaboration contract](collaboration-contract.md) defines provider-neutral permission
-inheritance, process lifetime and at-least-once delivery. [Model planning](model-planning-mcp.md)
-defines selection before new work. This reference describes the current source implementation;
-installed-host acceptance must be checked separately from source and schema tests.
+## Available execution foundations
 
-## Execution routes
-
-A provider selects the model service; a transport owns the connection used to create, message
-and stop native execution. Either Codex or Claude may be the initial root. Sessions and native
-subagents within one provider instance use its supported internal communication. Neurath owns
-messages between instances. App project membership, remote viewing and user presence are not
-execution prerequisites or completion criteria.
-
-| Route | Current implementation | Boundary |
+| Provider surface | Owned implementation | Boundary |
 | --- | --- | --- |
-| Codex app-server | Owned create/read/start/steer/interrupt and recorded-session restoration | Worker-owned JSON-RPC connection; no attachment to another live client |
-| Claude Agent SDK | Owned async client, streamed responses, serial queries, interrupt and recorded-session restoration | Requested options, native mode and actual readiness are separate observations |
-| Existing app/native peer tools | Discover and use the exact tool/recipient returned by the host | Optional routes; a route proposal is not delivery or permission inheritance |
-| Bounded CLI compatibility | Short read-only legacy execution and its own status/cancel/continuation | Not the ordinary session execution path or an agent-facing MCP replacement |
-| Claude Desktop/Cowork | No external lifecycle adapter | UI availability does not establish a callable native execution connection |
+| Codex | Official app-server worker with JSON-RPC create/read/start/steer/interrupt and recorded-session restoration | Does not attach to or resume another live client's session |
+| Claude Code | Official Claude Agent SDK asynchronous client, streamed responses, serial queries, interrupt, and recorded-session restoration | Query, response consumption, and interrupt stay on the same client |
+| Native/app peer tool | Discovered supported route | Must actually execute the returned route; discovery is not delivery |
+| Claude Desktop/Cowork | No external lifecycle adapter | Reading history does not establish an owned delivery bridge |
+| Saved bounded CLI runner | Legacy short read-only status/cancel/continuation compatibility | Not the normal independent-session transport or an MCP migration substitute |
 
-The Codex adapter validates a native project ID when explicitly supplied and checks it in the
-creation result. An omitted ID does not require a saved project. An optional app
-preparation route may use an app project ID, but its metadata cannot attest native policy or
-make app membership a prerequisite for ordinary provider work. Do not edit app databases,
-fabricate identity, or resume a live session from a competing connection.
+The collaboration contract covers Codex→Codex, Codex→Claude, Claude→Codex, and Claude→Claude. The same provider brand does not imply the same owned instance. Validate the actual adapter and native behavior for each direction; these contract requirements do not certify a fresh host merely because the source supports a route.
 
-## Model planning and inherited permissions
+A provider session does not require the user to watch it, remote visibility, or membership in a saved desktop project. The current schema accepts optional `project_id` for supported routes; this is not a claim that automatic app-project association is complete. Do not write the app database or fabricate membership. When a supported adapter receives an explicit project ID, compare the actual returned identity to that exact request.
 
-Use `provider_models`, `provider_plan` and `provider_plan_read` to inspect observations and retain
-the selection plan. `provider_run` consumes the plan ID/revision, assignment revision, exact
-model or planned inheritance, reasoning setting and stable execution key. The dispatcher
-compares the plan with the current assignment, policy and inventory before durable admission;
-it compares the actual model before substantive assignment. A changed model needs a new plan
-revision, not a hidden fallback. Requested, prepared, observed and accepted are distinct states.
+## Observe policy from the immediate creator
 
-Model inventory has provider-specific limits. Codex uses its native adapter; Claude uses a short
-official SDK metadata handshake with existing settings and without querying a model. The worker
-removes parent identity environment fields. A catalog response does not prove authentication,
-inference or a configured default. Native maintenance choices use the separate exact-question
-and user-response binding described in [Task tools](task-tools.md).
+The inherited source is the immediate creator's currently admitted native policy. A restricted intermediary cannot restore the broader root's rights. Observe approval behavior, tool restrictions, filesystem and network scope, and provider-specific fields separately, with their sources. Configuration files are candidates for settings; they do not prove effective loaded settings or in-memory overrides.
 
-`provider_run` defaults to `mode="inherit"`. With a worktree and assignment but no explicit
-requested policy, `provider_route` proposes that inheritance path. The current native policy of
-the immediate creator is the source, including when the root is Claude. An explicit mode or
-policy field is checked against inheritance; it does not silently widen permissions.
+Same-provider execution must preserve the observed relevant restrictions. Cross-provider execution needs a semantic mapping, not similar mode names. Map workspace-relative scope to the child's target and required shared state, without granting another owner's source tree. Known explicit denies and hooks remain relevant even under a broad permission mode.
 
-Codex approval policy, reviewer, collaboration mode and native sandbox fields remain separate.
-Same-provider requests retain the observed policy. The current cross-provider mapping supports
-broad unattended approval (`never` with `danger-full-access` and a non-Plan collaboration mode,
-or Claude `bypassPermissions`) when known restrictions can be preserved. Other cross-provider
-combinations return specific unsupported dimensions rather than guessed mode aliases.
+| Dimension | Codex | Claude Code |
+| --- | --- | --- |
+| Filesystem/execution request | `mode`: `read-only`, `workspace-write`, `danger-full-access`, or default `inherit` | Default `inherit`; explicit `native` requires `permission_mode` and observed provider policy |
+| Approval behavior | `approval_policy`: `never`, `on-request`, `untrusted` | `permission_mode`: `plan`, `dontAsk`, `default`, `acceptEdits`, `auto`, `bypassPermissions` |
+| Approval reviewer | `approvals_reviewer`: `user`, `auto_review` | Do not inject Codex-only fields |
+| Planning behavior | `collaboration_mode`: `default`, `plan` | Native `plan` semantics remain distinct from OS confinement |
 
-Claude accepts `plan`, `dontAsk`, `default`, `acceptEdits`, `auto` and `bypassPermissions`.
-`dontAsk` does not grant a previously disallowed tool. Broad approval does not remove explicit
-deny rules, hooks or worktree ownership. Do not mix Codex policy fields into a Claude request.
-Plan/read-only observations do not authorize implementation.
+The current broad cross-provider mapping candidate is Codex `danger-full-access` plus `approval_policy=never` outside Plan mode, or Claude `bypassPermissions`, only when known restrictions remain preserved. Other dimensions may be explicitly unsupported. `dontAsk` must not become `bypassPermissions`. A disabled SDK sandbox does not prove unrestricted ambient OS access; retain unknown OS conditions as unobserved.
 
-Native modes, configured settings candidates and verified loaded configuration are distinguished.
-Candidate files are not proof of in-memory overrides. Precise native observations take precedence
-when available; known rules, hook differences and configured restrictions remain visible.
-Ambient OS confinement is reported separately, including `unobserved`; disabled SDK sandboxing
-is not proof of unrestricted OS access. Mapping is preparation, not proof of target application.
-The MCP execution gate has a narrower supported scope described in [Task tools](task-tools.md).
+Unsupported or unverifiable dimensions block substantive assignment and identify the missing observation. Silently widening or narrowing a policy and calling it successful inheritance is incorrect. This is a bounded mapping contract, not complete copying of every native provider setting.
 
-## Readiness and process lifetime
+## Use the receiving provider's native settings
 
-Before assigning implementation, check installed distribution/placement, native activation,
-current policy and the active worktree claim separately. Preparation does not assume a new
-worktree contains ignored installation files. The issuer arranges installation and reads the
-preparation result. Readiness does not grant another actor a claim or evaluator authority.
+For explicitly authorized `target-native` execution, the plan uses `execution.mode="target-native"` and the run uses `mode="target-native"` with the same assignment and exact plan revision. The target's existing defaults, hooks, and tool rules are retained. Source settings and credentials are not copied, and this mode is not a fallback after failed inheritance.
 
-Claude preparation drains the native Result and response iterator before submitting the
-assignment as a separate query. Before that query, an owned SDK control request and native
-readback revalidate the same session, prompt generation, policy, installation and claim.
-A closed preparation turn is identified as an owned quiescent session; it is not relabelled active.
+Codex defaults are observed through native `config/read`, including supported workspace sandbox dimensions. Claude resolves its existing user, project, and local settings. Unsupported or unobserved defaults reject preparation. Conflicting explicit approval, reviewer, collaboration, or permission settings are rejected instead of overriding the target. After creation, actual model, policy, activation, and ownership still need observation. [Target-native tests](../../../tests/test_target_native_policy.py) cover the supported policy checks.
 
-Durable admission returns a run ID before model work finishes. The detached worker receives
-native events and emits creator-linked acceptance/start/wait/error/disconnect/cancel/completion
-reports. Native turn completion does not prove task effects. The issuer reads the report body
-and remains responsible for the next action.
+## Admission, preparation, and execution
 
-Ordinary provider work has no task-lifetime timeout. Individual connection/write/response
-operations can have deadlines. Event handling leaves message and cancellation paths usable.
-`provider_status` diagnoses a recorded event or failure; it is not a completion polling loop.
-`provider_cancel` requests cancellation and the resulting native report confirms the outcome.
+Use `provider_capabilities` with a provider name to inspect capabilities. `provider_route` takes `provider` and an operation (`create`, `discover`, `connect`, `status`, `message`, `resume`, `cancel`, or `peer`) to prepare a supported route. Its proposal alone proves neither execution nor ownership.
 
-An owned issuer connection stays available after a turn ends while issued work or
-unacknowledged messages remain. An idle Codex issuer receives a new turn on that connection;
-an active one receives steering using its actual turn ID. Claude uses the same SDK client,
-but retains notifications durably while a response is active and submits them after its Result
-and iterator finish. Mid-response input writes are not counted as separately acknowledged turns.
-No heartbeat, periodic completion scan or separate receiver LLM is created. A closing connection
-leaves late notifications recoverable; an input write already in progress finishes before close.
-Already authorized work in another instance is not cancelled solely because the issuer dies.
+For a new task that must belong to a Codex app project, inspect the existing app creation route with the project ID returned by `list_projects`. Follow the host tool's explicit new-task and model-selection conditions, and verify actual native settings after creation. An app project ID and a native app-server project ID are different identifiers; a successful native metadata update does not establish app membership. The new Codex session's `session_status.app_project` reads its local app affiliation record without changing it. `assigned` requires an existing local project; missing, inconsistent, or unsupported records remain `unobserved`. This diagnostic neither changes execution readiness nor proves that a remote UI is displaying the task.
 
-## Durable delivery and repair
+For authorized independent creation, prepare an observed model plan as described in [model planning](model-planning-mcp.md). `provider_run` requires `worktree` and `assignment` structurally; the execution contract also binds the exact prepared `plan_id`, `plan_revision`, assignment revision, effective policy, and stable key before durable admission. A returned run ID with `accepted` reports admission, not completed preparation or implementation.
 
-Messages commit before notification. The envelope preserves stable identity and immutable content;
-repeated delivery carries the same key. The receiver reads the full body with `collaboration_message`
-or another authenticated full-body lookup, then uses `collaboration_ack` or `collaboration_reply`.
-An ID-only notification cannot satisfy body receipt. ACK means receipt, not acceptance or completion
-of the assigned task. The LLM can recognize a repeated key; no exactly-once task-effect guarantee is made.
+Before sending substantive work, the owned connection checks installed distribution and placement, actual native activation, effective policy, actual model, and the target's own worktree claim. A new worktree does not automatically contain ignored installation files. Readiness is specific to the observed session and prompt generation; it does not confer independent reviewer authority.
 
-The owned delivery service retains unacknowledged `queued` and `submitted` messages. Failed,
-uncertain and interrupted attempts remain recoverable. Database-change/native-readiness events,
-registration and message-specific retry deadlines trigger delivery; retry backoff limits frequency,
-not message lifetime. Held approval/input attempts await a relevant readiness event;
-unavailable connections use per-message backoff. Endpoint generations and the owner lease
-fence stale attempt results.
+Claude consumes both the SDK Result and the response iterator before a separate assignment query. The same owned control path revalidates identity, prompt generation, policy, install, and claim. A prepared session with a closed turn is quiescent and owned; it must not be reported as actively executing an assignment.
 
-TTL and conversation budgets can restrict new messages, but do not discard accepted pending
-messages. `collaboration_close` reports pending messages instead of silently closing over them.
-Newsroom remains a separate transient active-peer feed.
+| Observation | What the issuer can conclude |
+| --- | --- |
+| Durable run acceptance | A recorded run exists and can be diagnosed by ID |
+| Native session created | A real provider identity exists; readiness can still fail |
+| Preparation complete | The observed conditions permit the bound assignment |
+| Waiting for approval/input | Work requires the corresponding authorized readiness event |
+| Native completion report | A turn produced a result; requested task effects still need inspection |
+| Cancel request accepted | Cancellation was requested; observe the resulting state before claiming exit |
 
-`delivery_status(message_id)` returns the message status, recent attempt history and repair hold
-for a participant. `delivery_redrive(message_id, expected_revision, repair_reference, key)` releases
-an existing repaired hold for another attempt. Holds currently classify `envelope-version` and
-`recipient-binding` problems. Redrive records the repair reference and preserves recipient, body
-and key; the owning transport still validates delivery. It neither grants new rights nor restarts
-task effects. A repair reference alone is not proof that the underlying defect is fixed.
+For a Claude result, an explicit interruption takes precedence and is classified as cancellation. Otherwise, deferred tool use indicates an approval wait, even when historical permission denials are present. Without a pending deferred tool, an error or historical permission denial is classified as failure. Completion metadata records `permission_denial_count` and `approval_pending`; these fields grant no permission and do not establish task success.
 
-## Provider process recovery
+## Keep long work responsive
 
-`provider_recover(run_id, key)` operates on recorded execution owned by the current issuer.
-Admission requires the prior worker generation, recorded native session and verified process/connection
-closure. An OS-held worker lease prevents competing recovery; an explicit cancellation is not revived.
-Recovery keys reuse the existing admission instead of creating another logical execution.
+The detached worker emits creator-linked lifecycle events and messages for start, waits, errors, disconnect, cancellation, and completion. Ordinary tasks have no lifetime timeout; individual connection, write, and response operations retain deadlines. While a native result is pending, the event loop must still handle messages and cancellation.
 
-The recovery worker restores the recorded native session on an owned connection, checks policy
-and normal readiness, and reconnects delivery. It does not rerun the original assignment merely
-because the receiver died. `recovery-accepted` is admission, not restored execution or receipt.
-Missing closure evidence or an unrestorable native session produces a specific blocker and retains
-recorded state. This does not promise automatic recovery from every abrupt crash or lost storage.
+The issuer-owned connection remains while issued work or unACKed obligations remain. An idle Codex session receives a new turn; an active Codex session receives a steer for the actual current turn. Claude queues durable notifications until the current Result and response iterator are consumed. Mid-stream input is not acknowledged as an independently completed turn.
 
-A Desktop-owned conversation still needs its own supported bridge for automatic wakeup. A detached
-worker cannot claim that connection by reading shared history. This optional transport limit does
-not reinstate an app/remote-observation gate for native collaboration.
+No receiver-only model session, heartbeat, or periodic completion scan is needed. Use `provider_status` after a relevant event or error for diagnosis, not as a completion-polling loop. Closing a connection preserves late notifications and permits an input write already started to finish. Full-body reading, ACK, and retry semantics remain those of [the delivery contract](collaboration-contract.md).
 
-## Verification scope
+## Restore a recorded execution
 
-Current source entry points include `runtime/provider_execution.py`, `runtime/provider_policy.py`,
-`providers/jobs.py`, `providers/job_recovery.py`, the Codex/Claude adapters, `agents/delivery.py` and
-`agents/delivery_recovery.py`. Tests of these components are not installed-host acceptance.
-Retain raw runs privately and distinguish schema/fixture checks, package installation, actual
-mode/readiness, body lookup/ACK, process recovery and the subsequent issuer response. The final
-installed Codex/Claude cross-provider and idle-issuer scenarios require their own native evidence.
+An issuer process ending does not cancel authorized work in another instance. Recovering messages is distinct from recovering an interrupted computation; a powered-off host or lost storage cannot promise continued execution.
+
+`provider_recover` takes `run_id` and `key` for the current issuer's recorded execution. Before restoring, it verifies the prior worker generation and native identity, and requires the previous process and connection to be closed. An OS worker lease rejects concurrent recovery and cancelled work. A `recovery-accepted` result is only admission.
+
+The recovered owned connection restores the same recorded native session, rechecks policy and readiness, and reconnects pending delivery. It does not repeat the original assignment. If prior closure cannot be established or the session cannot be restored, retain the blocker and diagnostic identity. Do not create a replacement session under the same identity or blindly rerun uncertain creation. For quota exhaustion that requires another provider to take over, use the separate [memory pull and adoption flow](provider-continuity.md). It imports available source context and unfinished tasks rather than restoring the same provider execution.
+
+## Evidence by layer
+
+[Provider jobs](../../../src/neurath/providers/jobs.py), [recovery](../../../src/neurath/providers/job_recovery.py), [supervision](../../../src/neurath/providers/supervision.py), [permission inheritance](../../../src/neurath/providers/permission_inheritance.py), and [runtime execution](../../../src/neurath/runtime/provider_execution.py) implement admission and owned execution. [Provider policy](../../../src/neurath/runtime/provider_policy.py) defines supported checks.
+
+[Provider-job tests](../../../tests/test_provider_jobs.py) and [inherited-mode tests](../../../tests/test_inherited_provider_modes.py) cover deterministic fixtures. Native acceptance additionally observes all four directions, restricted intermediaries, missing install/claim, effective model and policy, idle issuer delivery, death before and after ACK, stale generations, recovery, and long work accepting cancellation. Keep those native observations separate from source tests and installation checks in [validation](validation.md).

@@ -1,137 +1,117 @@
-# 기능·소스·검증 지도
+<!-- date: 2026-09-14; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
 
-<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
+[English](../../en/contributing/capability-map.md)
 
-[English](../../en/contributing/capability-map.md) · **한국어**
+# 스킬, 도구, 구현을 찾는 기능 지도
 
-[아키텍처](architecture.md) · [설계 철학](design-principles.md) · [실행 수명주기](runtime-lifecycle.md)
+요청한 동작을 어디에서 담당할지, 함께 바꿔야 할 소스와 회귀 계약이 무엇인지 이 지도에서 찾는다. 공개 스킬 이름은 에이전트가 수행할 일을 설명하고 내부 이름은 배포 원본의 위치를 가리킨다. 이름이 있는 도구는 지속 상태를 다룬다. 스킬 이름 자체가 도구 호출이나 워크플로 실행 근거가 되지는 않는다.
 
-이 지도는 패키지의 주요 기능 영역과 현재 공개 스킬 31개를 빠짐없이 찾아가기 위한 색인입니다. 각 행은 기능의 책임과 대표 구현·회귀 근거를 연결합니다. 대표 테스트 링크는 해당 영역을 탐색하는 출발점이며, 그 파일 하나가 행의 모든 동작이나 실제 호스트 작동을 검증했다는 뜻은 아닙니다.
+## 공개 스킬 목록
 
-## 기능별 책임과 근거
+공개 스킬은 31개이고 이 중 29개에 단계 계약이 있다. `explain-code`, `graphify`는 단계 계약이 없는 지원 스킬이다. 설치 접두사는 소스 신원을 유지하면서 표시 이름을 바꾼다. 예를 들어 `neurath-` 접두사를 쓰면 `debug`를 `neurath-debug`로 설치한다.
 
-| 기능 | 하는 일 | 구현·검증 출발점 |
-| --- | --- | --- |
-| 배포·독립 실행 | 자체 자산과 manifest로 하네스 코드를 고정하고 대상 프로젝트의 실행 환경과 분리합니다. | [resources.py](../../../src/neurath/resources.py) · [회귀](../../../tests/test_installer.py) |
-| 설치·제거·복구 | 계획·원문·저널을 통해 파일을 적용하고 충돌과 중단을 보존적으로 처리합니다. | [transaction.py](../../../src/neurath/install/transaction.py) · [회귀](../../../tests/test_installer.py) |
-| 프로필·연결·이름 | generic 프로필과 프로젝트 문서·검증 연결, 공개 스킬 별칭·접두어를 관리합니다. | [projection.py](../../../src/neurath/install/projection.py) · [회귀](../../../tests/test_publication.py) |
-| 호스트 신원·수명 | 실제 호스트의 시작·재개·도구·자식 관계를 현재 세션에 연결합니다. | [identity.py](../../../src/neurath/hosts/identity.py) · [회귀](../../../tests/test_host_lifecycle.py) |
-| 커널·상태 접근 | 세션·actor·턴·workflow·위임을 명시적으로 표현하고 전이를 검사합니다. | [session_kernel.py](../../../src/neurath/_assets/scripts/agent_harness/session_kernel.py) · [회귀](../../../tests/runtime/agent_harness/test_session_kernel.py) |
-| 작업 공간 소유권 | 실제 작업 공간과 소유 actor를 lease·fencing 정보로 대조합니다. | [worktree_registry.py](../../../src/neurath/_assets/scripts/agent_harness/worktree_registry.py) · [회귀](../../../tests/runtime/agent_harness/test_worktree_registry.py) |
-| 기존 변경 효과 기록 | 내부 호환 기록은 과거 대상과 관측을 보존하며, 일반 편집은 네이티브 도구를 사용합니다. | [material_action.py](../../../src/neurath/_assets/scripts/agent_harness/material_action.py) · [회귀](../../../tests/runtime/agent_harness/test_material_action.py) |
-| 단계 계약 | 필수 근거·현재 단계·종료 조건을 검사합니다. | [phase_runner.py](../../../src/neurath/_assets/scripts/skill_harness/phase_runner.py) · [회귀](../../../tests/runtime/skill_harness/test_phase_runner.py) |
-| 적응 제어·독립 평가 | 목표·모호성·근거·반증·정체를 현재 소스와 검토자에 결속합니다. | [adaptive_control_authority.py](../../../src/neurath/_assets/scripts/agent_harness/adaptive_control_authority.py) · [회귀](../../../tests/runtime/agent_harness/test_adaptive_control_authority.py) |
-| 명명된 작업·MCP | 구조화 입력을 도메인 서비스로 전달하고 네이티브 호출 결속을 확인합니다. | [tasks.py](../../../src/neurath/runtime/tasks.py) · [회귀](../../../tests/test_communication_mcp.py) |
-| 프로젝트 검증 | 연결된 argv·cwd·성공 조건·시간 제한과 전후 지문을 확인합니다. | [verification.py](../../../src/neurath/runtime/verification.py) · [회귀](../../../tests/test_learning.py) |
-| 모델 계획 | 실제 목록, 선택 근거·제약·대안과 계획 revision을 저장합니다. | [model_planning.py](../../../src/neurath/providers/model_planning.py) · [회귀](../../../tests/test_model_planning.py) |
-| 권한 승계·실행 | 직전 생성자의 실제 정책을 보존하며 영속 실행·취소·복구를 관리합니다. | [jobs.py](../../../src/neurath/providers/jobs.py) · [회귀](../../../tests/test_inherited_provider_modes.py) |
-| 메시지·배정·보고 | 동료 요청과 작업 수락·상태 보고를 저장하고 발행자에게 연결합니다. | [lifecycle.py](../../../src/neurath/agents/lifecycle.py) · [회귀](../../../tests/test_provider_jobs.py) |
-| 전달·복구 | commit 후 알림, 같은 메시지 재전달, ACK와 복구 보류를 관리합니다. | [delivery.py](../../../src/neurath/agents/delivery.py) · [회귀](../../../tests/test_delivery_recovery.py) |
-| Newsroom | active 참여자에게 제목을 알리고 본문·정정·댓글을 별도 조회합니다. | [newsroom.py](../../../src/neurath/agents/newsroom.py) · [회귀](../../../tests/test_newsroom_mcp.py) |
-| 프로젝트 기억 | 출처 있는 요청·인계·실행 이력을 저장하고 관련 맥락을 선택합니다. | [store.py](../../../src/neurath/memory/store.py) · [회귀](../../../tests/test_project_memory.py) |
-| Enclave | 세션 내부의 제한된 최신 사실을 스냅샷으로 유지합니다. | [enclave_store.py](../../../src/neurath/_assets/scripts/agent_harness/enclave_store.py) · [회귀](../../../tests/runtime/agent_harness/test_enclave_store.py) |
-| 실행 전략 학습 | 관측된 회복을 검증·시험·유지하고 회귀나 계약 변경 시 철회·무효화합니다. | [learning.py](../../../src/neurath/memory/learning.py) · [회귀](../../../tests/test_learning.py) |
-| 업데이트·선택 | 버전 안내·정확한 배포 준비·네이티브 사용자 선택·적용·복구를 연결합니다. | [release_install.py](../../../src/neurath/release_install.py) · [회귀](../../../tests/test_user_choices_mcp.py) |
-| 공통 보고·기여 | 개인정보 검토와 동의 범위에 맞는 초안·제출·대조를 관리합니다. | [reporting.py](../../../src/neurath/reporting.py) · [회귀](../../../tests/test_reporting.py) |
+| 수행할 일 | 공개 스킬 | 내부 소스 이름 | 계약 |
+| --- | --- | --- | --- |
+| 보안·라이선스·최신성·선언 불일치 조사 | `audit-deps` | [dependency-audit](../../../src/neurath/_assets/.agents/skills/dependency-audit/SKILL.md) | 단계 |
+| 명시적으로 요청한 여러 이슈의 수행 조정 | `autopilot` | [autopilot](../../../src/neurath/_assets/.agents/skills/autopilot/SKILL.md) | 단계 |
+| 되돌릴 수 있는 진행 중 상태 저장 | `checkpoint` | [checkpoint](../../../src/neurath/_assets/.agents/skills/checkpoint/SKILL.md) | 단계 |
+| 검증된 승인 변경 커밋 | `commit` | [commit](../../../src/neurath/_assets/.agents/skills/commit/SKILL.md) | 단계 |
+| 승인된 작업 항목 생성 | `create-issue` | [create-ticket](../../../src/neurath/_assets/.agents/skills/create-ticket/SKILL.md) | 단계 |
+| 승인된 push와 PR 생성 | `create-pr` | [create-pr](../../../src/neurath/_assets/.agents/skills/create-pr/SKILL.md) | 단계 |
+| 이슈별 격리 작업 공간 준비 | `create-worktree` | [create-worktree](../../../src/neurath/_assets/.agents/skills/create-worktree/SKILL.md) | 단계 |
+| 결함 재현과 원인 분리 | `debug` | [investigate](../../../src/neurath/_assets/.agents/skills/investigate/SKILL.md) | 단계 |
+| 설계 대안 탐색과 정확한 캔버스 선택 확보 | `design-ui` | [explore-ui](../../../src/neurath/_assets/.agents/skills/explore-ui/SKILL.md) | 단계 |
+| 개발자 문서 갱신 | `dev-docs` | [sync-dev-docs](../../../src/neurath/_assets/.agents/skills/sync-dev-docs/SKILL.md) | 단계 |
+| 현재 소스와 테스트에 근거한 동작 설명 | `explain-code` | [explain-code](../../../src/neurath/_assets/.agents/skills/explain-code/SKILL.md) | 지원 |
+| 승인된 커밋·push·그래프 갱신·소유권 해제 | `finish-session` | [finish-session](../../../src/neurath/_assets/.agents/skills/finish-session/SKILL.md) | 단계 |
+| 코드·문서 관계 그래프 탐색 | `graphify` | [graphify](../../../src/neurath/_assets/.agents/skills/graphify/SKILL.md) | 지원 |
+| 승인된 단일 이슈 구현 | `implement-issue` | [process-ticket](../../../src/neurath/_assets/.agents/skills/process-ticket/SKILL.md) | 단계 |
+| 승인된 정확한 디자인 노드 구현 | `implement-ui` | [implement-ui](../../../src/neurath/_assets/.agents/skills/implement-ui/SKILL.md) | 단계 |
+| 반복되는 비공개 지식을 검토해 승인된 프로젝트 규칙으로 반영 | `memory-to-rules` | [promote-memory](../../../src/neurath/_assets/.agents/skills/promote-memory/SKILL.md) | 단계 |
+| 기능을 보존하며 주입 프롬프트 줄이기 | `optimize-harness` | [optimize-harness](../../../src/neurath/_assets/.agents/skills/optimize-harness/SKILL.md) | 단계 |
+| 제품 결정 명확화와 문서·이슈 분해 | `plan` | [plan-issues](../../../src/neurath/_assets/.agents/skills/plan-issues/SKILL.md) | 단계 |
+| 검토 의견 평가와 대응 | `pr-feedback` | [triage-comments](../../../src/neurath/_assets/.agents/skills/triage-comments/SKILL.md) | 단계 |
+| 배포된 화면·API·저장 결과 확인 | `qa` | [automate-qa](../../../src/neurath/_assets/.agents/skills/automate-qa/SKILL.md) | 단계 |
+| 변경에서 근거 있는 결함 찾기 | `review-code` | [review-code](../../../src/neurath/_assets/.agents/skills/review-code/SKILL.md) | 단계 |
+| 정확한 PR head에서 확인한 검토 게시 | `review-pr` | [pr-review](../../../src/neurath/_assets/.agents/skills/pr-review/SKILL.md) | 단계 |
+| 구현 전 요구사항의 누락과 모순 검토 | `review-spec` | [audit-spec](../../../src/neurath/_assets/.agents/skills/audit-spec/SKILL.md) | 단계 |
+| 승인된 디자인과 실행 화면을 비교해 사용자 판단 지원 | `review-ui` | [review-ui](../../../src/neurath/_assets/.agents/skills/review-ui/SKILL.md) | 단계 |
+| 저장소 토큰과 컴포넌트 연결을 캔버스에 반영 | `sync-design` | [sync-design](../../../src/neurath/_assets/.agents/skills/sync-design/SKILL.md) | 단계 |
+| 문서 변경 범위 분류 | `sync-docs` | [sync-docs](../../../src/neurath/_assets/.agents/skills/sync-docs/SKILL.md) | 단계 |
+| 실패 시나리오로 하네스 통제 검증 | `test-harness` | [evaluate-harness](../../../src/neurath/_assets/.agents/skills/evaluate-harness/SKILL.md) | 단계 |
+| 범위를 통제한 의존성 업데이트와 검사 | `update-deps` | [update-dependencies](../../../src/neurath/_assets/.agents/skills/update-dependencies/SKILL.md) | 단계 |
+| 이슈·프로젝트 메타데이터 갱신 | `update-status` | [update-project-status](../../../src/neurath/_assets/.agents/skills/update-project-status/SKILL.md) | 단계 |
+| 승인되고 구현된 사용자 동작 문서화 | `user-docs` | [sync-user-docs](../../../src/neurath/_assets/.agents/skills/sync-user-docs/SKILL.md) | 단계 |
+| PR 변경 관찰 | `watch-pr` | [monitor-pr](../../../src/neurath/_assets/.agents/skills/monitor-pr/SKILL.md) | 단계 |
 
-## 기능들이 만나는 지점
+수정할 원본은 `src/neurath/_assets/.agents/skills` 아래에 있다. 설치된 `.agents/skills`와 `.neurath/rules`는 투영 결과다. 이름 연결은 [skill_names.py](../../../src/neurath/skill_names.py)에 있으며 공개 검사는 스킬 목록, 로케일 구성, 패키지 내용을 확인한다.
 
-```mermaid
-flowchart LR
-    S[스킬과 현재 사용자 의도] --> T[명명된 작업]
-    T --> W[상태·소유권·단계·평가]
-    T --> P[모델·provider 실행]
-    T --> M[기억·학습]
-    T --> C[메시지·Newsroom]
-    T --> U[업데이트·보고]
-    P --> C
-    W --> V[실제 실행과 검증 근거]
-    V --> M
-    G[Graphify 탐색] -. 현재 소스 확인 .-> S
-    E[Enclave 현재 사실] -. 세션 맥락 .-> S
-```
+`create-package`, `local-dev`, `onboard`, `refactor-code`, `impact-analysis`, `improve-coverage`, `property-test`는 공개 단독 스킬 목록에서 제외된 이름이다. 설치된 독립 기능으로 안내하지 않고 실제 요청을 현재 담당 스킬과 프로젝트 절차로 연결한다.
 
-공통점은 같은 도구 이름 체계를 쓰는 데 있습니다. 권한·저장소·완료 의미까지 하나로 합쳐진 것은 아닙니다. 예를 들어 모델 목록 관측은 저장을 수반하고, release notice는 안내 소비를 기록하며, maintenance 선택은 정확한 사용자 입력을 대조합니다. 조회처럼 보이는 작업도 실제 스키마와 부수 효과를 읽어야 합니다.
+## 공개 도구 계열
 
-## 명명된 작업 표면
+현재 공개 조회 스키마의 도구는 128개이며 아래 표에 각각 한 번씩 실었다. 내부 실행 연결표의 138개와는 범위가 다르다. 저장된 기존 호출의 호환성을 위해 남은 작업 일부는 공개 조회에 없다. 정확한 필드는 설치된 `tools/list` 스키마를 사용하고 공통 결과 형식과 기본 예제는 [작업 도구](task-tools.md)를 참고한다.
 
-현재 등록부는 공개 명명 작업 130개를 정의합니다. 정확한 전체 이름은 [작업 도구](task-tools.md), 스키마 원본은 [task_schema.py](../../../src/neurath/runtime/task_schema.py)에 있습니다. 다음은 역할별 탐색 경로입니다.
+| 목적 | 이름이 있는 도구 |
+| --- | --- |
+| 요청 작업과 현재 세션 | `harness_bypass`, `session_status`, `session_inspect`, `turn_inspect`, `turn_yield`, `task_define`, `task_list`, `task_start`, `task_resolve` |
+| 작업 공간 소유권 | `worktree_inspect`, `worktree_claim`, `worktree_release`, `worktree_isolation`, `worktree_cleanup` |
+| 제공자 선택과 실행 | `provider_run`, `provider_status`, `provider_cancel`, `provider_recover`, `provider_capabilities`, `provider_route`, `provider_models`, `provider_plan`, `provider_plan_read` |
+| 동료 메시지와 할당 | `collaboration_discover`, `collaboration_inbox`, `collaboration_send`, `collaboration_reply`, `collaboration_message`, `collaboration_ack`, `collaboration_forward`, `collaboration_submitted`, `collaboration_assign`, `collaboration_accept`, `collaboration_report`, `collaboration_task`, `collaboration_register`, `collaboration_conversation`, `collaboration_close`, `collaboration_subscribe`, `collaboration_unsubscribe`, `collaboration_publish` |
+| 전달 복구 | `delivery_status`, `delivery_redrive` |
+| 공통 소식 | `newsroom_headlines`, `newsroom_read`, `newsroom_publish`, `newsroom_revise`, `newsroom_comment`, `newsroom_peers`, `newsroom_seen` |
+| 메모리와 세션 사실 | `memory_recall`, `memory_checkpoint`, `memory_pull`, `artifact_put`, `artifact_read`, `enclave_read`, `enclave_set`, `enclave_delete` |
+| 학습 | `learning_status`, `learning_pending`, `learning_history`, `learning_defer` |
+| 계약이 있는 단계 | `phase_start`, `phase_current`, `phase_evidence_prepare`, `phase_complete`, `phase_finalize` |
+| 적응형 판단과 독립 평가 | `adaptive_read`, `adaptive_preflight`, `adaptive_replace`, `adaptive_override_goal`, `delegation_prepare`, `delegation_assign`, `evaluation_prepare`, `evaluation_read`, `evaluation_execute`, `evaluation_report`, `evaluation_consume`, `evaluation_loop_open`, `evaluation_loop_read`, `evaluation_loop_round`, `evaluation_loop_close` |
+| 고정 검토와 게시 | `review_begin`, `review_report`, `review_consume`, `review_abort`, `review_publish`, `review_comments` |
+| 진단과 하네스 문제 | `diagnostics_integrity`, `diagnostics_project`, `diagnostics_profile`, `diagnostics_continuation`, `incident_record`, `incident_validate`, `incident_resolve`, `incident_escalate`, `incident_refresh`, `incident_supersede`, `process_evidence_record` |
+| 설치와 업데이트 | `releases_status`, `releases_check`, `maintenance_choice_read`, `maintenance_choice_prepare`, `releases_notice`, `releases_recover`, `releases_prepare`, `releases_apply`, `releases_choose`, `installation_plan`, `installation_apply`, `installation_recover` |
+| 공개 보고 | `reporting_status`, `reporting_list`, `reporting_read`, `reporting_prepare`, `reporting_submit`, `reporting_reconcile`, `reporting_consent`, `reporting_approve` |
+| 백그라운드 관찰 | `monitor_start`, `monitor_status`, `monitor_cancel`, `monitor_recover`, `monitor_readback`, `monitor_event`, `monitor_ack`, `monitor_external_wait`, `monitor_handoff` |
 
-| 묶음 | 대표 작업 | 주의할 경계 |
-| --- | --- | --- |
-| 진단·경로 | session_status, provider_capabilities, provider_route | 진단과 경로는 실행·권한이 아님 |
-| 상태·소유권 | session_inspect, worktree_claim, harness_bypass | 실제 actor·소유권·revision 유지 |
-| 워크플로·평가 | phase_start, evaluation_prepare, evaluation_consume | 생성·보고·소비·종료는 별도 |
-| 모델·실행 | provider_models, provider_plan, provider_run | 목록·계획·실제 모델 확인 구분 |
-| 협업·보고 | collaboration_assign, collaboration_accept, collaboration_report | 동료 요청은 사용자 승인과 다름 |
-| 메시지 전달 | collaboration_message, collaboration_ack, delivery_redrive | 본문 조회·수신·효과 수락 구분 |
-| Newsroom | newsroom_headlines, newsroom_read, newsroom_publish | active 제목 알림과 본문 조회 분리 |
-| 기억·학습 | memory_recall, memory_checkpoint, learning_status | 참고 보고와 검증된 전략 구분 |
-| 검사 | 네이티브 호스트 명령 도구 | 현재 호스트 실행 정책에 따라 등록된 검사 실행 |
-| 유지보수 | releases_prepare, reporting_submit, maintenance_choice_prepare | 정확한 대상·동의·결과 대조 |
+공개 단계 진입점은 `phase_start`, `phase_complete`, `phase_finalize`다. 이전 워크플로 이름은 저장된 호출과 호환된다. material batch, 등록 검사 도구, `agent(argv)` 역시 호환 기능이며 일반 편집·검사의 공개 필수 절차가 아니다.
 
-등록 개수는 실행 준비도나 호스트별 통과 개수가 아닙니다. 실제 노출된 도구 스키마를 읽고 지원되는 경로를 선택합니다.
+## 상황에 맞는 판단 기준
 
-## 전체 공개 스킬
+| 상황 | 따라야 할 계약 |
+| --- | --- |
+| 측정 가능한 일반 작업 | 작업을 정의하고 네이티브 편집·검사를 수행한 뒤 소유자 결과를 한 번 기록한다. 작업 목록이 있으면 Stop의 기준이 된다. |
+| 명시적인 적응형 스킬 | 실제 독립 평가 권한을 확보하고 정확한 후보를 연결하며 인증된 결과를 소비한 뒤 계약 전이를 수행한다. |
+| 고정 코드·PR 검토 | 별도 검토 기준을 적용하고 게시는 현재 PR head에 묶는다. |
+| 동료 할당 | 실제 동료를 찾아 전체 할당을 전달하고 네이티브 수락과 보고를 받는다. 수신 확인은 전송 진행 상태다. |
+| 워크트리 변경·정리 | 현재 소유권과 반환된 fencing 세대를 사용하고 정리 전 실제 Git 참조를 확인한다. |
+| 설치·업데이트·보고 | 정확한 변경이나 초안을 준비하고 해당 사용자 선택을 유지하며 이름이 있는 도메인 작업으로 적용해 실제 결과를 확인한다. |
 
-스킬 원본 링크는 내부 디렉터리를 가리킵니다. 공개 이름과 내부 식별자는 [skill_names.py](../../../src/neurath/skill_names.py)가 연결합니다. `explain-code`와 `graphify`는 상태를 소유하는 단계 계약이 없는 보조 스킬이며, 나머지 29개는 실행 계약을 갖습니다. 아래 표는 기능 설명이며, 이 문서를 읽는 것만으로 외부 게시나 새로운 작업 실행이 승인되지는 않습니다.
+이 판단을 뒷받침하는 상태와 네이티브 근거는 [작업과 TODO 계약](task-todo-contract.md), [실행 수명주기](runtime-lifecycle.md), [호스트 통합](hosts.md)에 설명한다.
 
-| 공개 스킬 | 주된 역할 | 내부 식별자 |
-| --- | --- | --- |
-| [`plan`](../../../src/neurath/_assets/.agents/skills/plan-issues/SKILL.md) | 새 제품 의도·결정을 명확히 하고 문서·이슈로 분해 | `plan-issues` |
-| [`review-spec`](../../../src/neurath/_assets/.agents/skills/audit-spec/SKILL.md) | 구현 전 모호성·모순·정책 차이 검토 | `audit-spec` |
-| [`create-issue`](../../../src/neurath/_assets/.agents/skills/create-ticket/SKILL.md) | 승인된 계획·후속 작업을 이슈로 작성 | `create-ticket` |
-| [`update-status`](../../../src/neurath/_assets/.agents/skills/update-project-status/SKILL.md) | 이슈·프로젝트 상태 메타데이터 변경 | `update-project-status` |
-| [`create-worktree`](../../../src/neurath/_assets/.agents/skills/create-worktree/SKILL.md) | 이슈 작업을 위한 격리 작업 공간 준비 | `create-worktree` |
-| [`implement-issue`](../../../src/neurath/_assets/.agents/skills/process-ticket/SKILL.md) | 승인된 단일 작업의 분석·구현·검증·PR 진행 | `process-ticket` |
-| [`autopilot`](../../../src/neurath/_assets/.agents/skills/autopilot/SKILL.md) | 명시적으로 요청한 여러 작업의 구현·리뷰·병합 조정 | `autopilot` |
-| [`debug`](../../../src/neurath/_assets/.agents/skills/investigate/SKILL.md) | 결함·검사 실패를 재현하고 원인 격리 | `investigate` |
-| [`qa`](../../../src/neurath/_assets/.agents/skills/automate-qa/SKILL.md) | 실제 배포 표면·저장 결과를 기대 동작과 대조 | `automate-qa` |
-| [`review-code`](../../../src/neurath/_assets/.agents/skills/review-code/SKILL.md) | 구체적 결함 신호를 근거로 변경 검토 | `review-code` |
-| [`review-pr`](../../../src/neurath/_assets/.agents/skills/pr-review/SKILL.md) | 검증된 로컬 리뷰를 정확한 PR head의 신호로 게시 | `pr-review` |
-| [`pr-feedback`](../../../src/neurath/_assets/.agents/skills/triage-comments/SKILL.md) | 리뷰 의견의 수용·반론과 근거 정리 | `triage-comments` |
-| [`watch-pr`](../../../src/neurath/_assets/.agents/skills/monitor-pr/SKILL.md) | PR 상태 변화를 보존하고 담당 작업을 깨움 | `monitor-pr` |
-| [`commit`](../../../src/neurath/_assets/.agents/skills/commit/SKILL.md) | 승인되고 검증된 변경 커밋 | `commit` |
-| [`create-pr`](../../../src/neurath/_assets/.agents/skills/create-pr/SKILL.md) | 승인된 전달 범위에서 push·PR 생성 | `create-pr` |
-| [`checkpoint`](../../../src/neurath/_assets/.agents/skills/checkpoint/SKILL.md) | 되돌릴 수 있는 작업 중간 지점 보존 | `checkpoint` |
-| [`finish-session`](../../../src/neurath/_assets/.agents/skills/finish-session/SKILL.md) | 승인된 커밋·push·Graphify·소유권 해제 수순 | `finish-session` |
-| [`audit-deps`](../../../src/neurath/_assets/.agents/skills/dependency-audit/SKILL.md) | 의존성 보안·라이선스·최신성·환경 차이 점검 | `dependency-audit` |
-| [`update-deps`](../../../src/neurath/_assets/.agents/skills/update-dependencies/SKILL.md) | 의존성을 통제된 범위에서 갱신·검증 | `update-dependencies` |
-| [`sync-design`](../../../src/neurath/_assets/.agents/skills/sync-design/SKILL.md) | 저장소 토큰·컴포넌트 대응을 디자인으로 동기화 | `sync-design` |
-| [`design-ui`](../../../src/neurath/_assets/.agents/skills/explore-ui/SKILL.md) | 구현 전 캔버스에서 UI 방향 탐색·선택 | `explore-ui` |
-| [`implement-ui`](../../../src/neurath/_assets/.agents/skills/implement-ui/SKILL.md) | 승인한 정확한 디자인 노드를 구현 | `implement-ui` |
-| [`review-ui`](../../../src/neurath/_assets/.agents/skills/review-ui/SKILL.md) | 승인 디자인과 실제 화면을 비교해 사용자 판단 요청 | `review-ui` |
-| [`sync-docs`](../../../src/neurath/_assets/.agents/skills/sync-docs/SKILL.md) | 개발자·사용자 문서 범위를 판별하고 동기화 조정 | `sync-docs` |
-| [`dev-docs`](../../../src/neurath/_assets/.agents/skills/sync-dev-docs/SKILL.md) | 현재 코드와 동작에 맞게 개발자 문서 갱신 | `sync-dev-docs` |
-| [`user-docs`](../../../src/neurath/_assets/.agents/skills/sync-user-docs/SKILL.md) | 승인되고 구현된 동작을 사용자 안내에 반영 | `sync-user-docs` |
-| [`optimize-harness`](../../../src/neurath/_assets/.agents/skills/optimize-harness/SKILL.md) | 기능과 집행을 유지하며 주입 프롬프트 축소 | `optimize-harness` |
-| [`memory-to-rules`](../../../src/neurath/_assets/.agents/skills/promote-memory/SKILL.md) | 반복된 개인 기억을 검토해 승인된 프로젝트 규칙으로 승격 | `promote-memory` |
-| [`test-harness`](../../../src/neurath/_assets/.agents/skills/evaluate-harness/SKILL.md) | 실패 시나리오로 선언과 집행의 차이 평가 | `evaluate-harness` |
-| [`explain-code`](../../../src/neurath/_assets/.agents/skills/explain-code/SKILL.md) | 현재 소스·테스트로 코드 동작 설명 | `explain-code` |
-| [`graphify`](../../../src/neurath/_assets/.agents/skills/graphify/SKILL.md) | 코드·문서의 지식 그래프 생성·조회 | `graphify` |
+## 구현과 회귀 검사 담당
 
-## Graphify와 문서의 역할
+각 동작을 담당하는 소스와 테스트를 연결했다. 검증할 범위를 찾기 위한 목록이며 특정 설치에서 테스트나 실제 호스트 시나리오가 통과했다는 주장은 아니다.
 
-Graphify는 구조 탐색에 쓰는 보조 스킬입니다. 그래프의 노드·관계·출처 위치에서 관심 모듈을 찾은 뒤 현재 소스와 테스트를 읽습니다. 그래프 갱신은 문서 사실 검증이나 실제 호스트 검증과 다른 결과입니다. 특히 삭제된 파일의 노드나 오래된 정책 설명이 남을 수 있으므로 그래프 결과를 곧바로 현재 제품 설명으로 옮기지 않습니다.
+| 책임 | 구현과 회귀 계약 |
+| --- | --- |
+| 배포 자산 무결성 | [resources.py](../../../src/neurath/resources.py), [manifest.json](../../../src/neurath/manifest.json), [test_installer.py](../../../tests/test_installer.py) |
+| 설치 보존 | [projection.py](../../../src/neurath/install/projection.py), [transaction.py](../../../src/neurath/install/transaction.py), [test_installer.py](../../../tests/test_installer.py), [test_publication.py](../../../tests/test_publication.py) |
+| 실제 신원과 프롬프트 | [identity.py](../../../src/neurath/hosts/identity.py), [hooks.py](../../../src/neurath/hosts/hooks.py), [test_host_lifecycle.py](../../../tests/test_host_lifecycle.py), [test_prompt_delivery.py](../../../tests/test_prompt_delivery.py) |
+| 상태와 쓰기 소유권 | [session_kernel.py](../../../src/neurath/_assets/scripts/agent_harness/session_kernel.py), [state_handle.py](../../../src/neurath/_assets/scripts/agent_harness/state_handle.py), [worktree_registry.py](../../../src/neurath/_assets/scripts/agent_harness/worktree_registry.py), [runtime_database.py](../../../src/neurath/_assets/scripts/agent_harness/runtime_database.py), [test_session_kernel.py](../../../tests/runtime/agent_harness/test_session_kernel.py), [test_worktree_registry.py](../../../tests/runtime/agent_harness/test_worktree_registry.py) |
+| 요청 작업과 결과 | [task_ledger_tasks.py](../../../src/neurath/runtime/task_ledger_tasks.py), [task_ledger.py](../../../src/neurath/_assets/scripts/agent_harness/task_ledger.py), [task_service.py](../../../src/neurath/_assets/scripts/agent_harness/task_service.py), [test_task_acceptance_review.py](../../../tests/test_task_acceptance_review.py), [test_task_tools.py](../../../tests/test_task_tools.py), [test_task_todo.py](../../../tests/test_task_todo.py) |
+| 단계와 평가 권한 | [phase_runner.py](../../../src/neurath/_assets/scripts/skill_harness/phase_runner.py), [adaptive_control_authority.py](../../../src/neurath/_assets/scripts/agent_harness/adaptive_control_authority.py), [evaluation_loop.py](../../../src/neurath/_assets/scripts/agent_harness/evaluation_loop.py), [test_phase_runner.py](../../../tests/runtime/skill_harness/test_phase_runner.py), [test_adaptive_control_authority.py](../../../tests/runtime/agent_harness/test_adaptive_control_authority.py) |
+| 이름이 있는 API와 조회 | [task_schema.py](../../../src/neurath/runtime/task_schema.py), [tasks.py](../../../src/neurath/runtime/tasks.py), `src/neurath/runtime/*_tasks.py`, [mcp.py](../../../src/neurath/agents/mcp.py), [mcp_guidance.py](../../../src/neurath/install/mcp_guidance.py), [test_communication_mcp.py](../../../tests/test_communication_mcp.py), [test_mcp_guidance.py](../../../tests/test_mcp_guidance.py) |
+| 모델과 제공자 실행 | [model_planning.py](../../../src/neurath/providers/model_planning.py), [permission_inheritance.py](../../../src/neurath/providers/permission_inheritance.py), [jobs.py](../../../src/neurath/providers/jobs.py), [job_recovery.py](../../../src/neurath/providers/job_recovery.py), [supervision.py](../../../src/neurath/providers/supervision.py), [provider_execution.py](../../../src/neurath/runtime/provider_execution.py), [provider_policy.py](../../../src/neurath/runtime/provider_policy.py), [test_model_planning.py](../../../tests/test_model_planning.py), [test_inherited_provider_modes.py](../../../tests/test_inherited_provider_modes.py), [test_provider_jobs.py](../../../tests/test_provider_jobs.py) |
+| 지속 메시지와 전달 | [store.py](../../../src/neurath/agents/store.py), [lifecycle.py](../../../src/neurath/agents/lifecycle.py), [delivery.py](../../../src/neurath/agents/delivery.py), [delivery_recovery.py](../../../src/neurath/agents/delivery_recovery.py), [newsroom.py](../../../src/neurath/agents/newsroom.py), [test_delivery_recovery.py](../../../tests/test_delivery_recovery.py), [test_newsroom_mcp.py](../../../tests/test_newsroom_mcp.py) |
+| 메모리·enclave·학습 | [store.py](../../../src/neurath/memory/store.py), [hooks.py](../../../src/neurath/memory/hooks.py), [transcript.py](../../../src/neurath/memory/transcript.py), [learning.py](../../../src/neurath/memory/learning.py), [enclave_store.py](../../../src/neurath/_assets/scripts/agent_harness/enclave_store.py), [test_project_memory.py](../../../tests/test_project_memory.py), [test_learning.py](../../../tests/test_learning.py), [test_enclave_store.py](../../../tests/runtime/agent_harness/test_enclave_store.py) |
+| 업데이트와 보고 | [updates.py](../../../src/neurath/updates.py), [release_install.py](../../../src/neurath/release_install.py), [reporting.py](../../../src/neurath/reporting.py), [user_choices.py](../../../src/neurath/runtime/user_choices.py), [test_user_choices_mcp.py](../../../tests/test_user_choices_mcp.py), [test_reporting.py](../../../tests/test_reporting.py) |
 
-이 문서 묶음의 Mermaid와 SVG는 검토 가능한 설명용 구조도입니다. 전체 그래프의 자동 시각화와 달리 핵심 책임을 선별했으며, 데이터 흐름인지 권한 검사인지 각 그림의 설명을 함께 읽어야 합니다.
+저장된 호출이 material·등록 검사 경로를 사용한다면 남아 있는 호환 구현도 확인해야 한다. 관련 소스는 [material_action.py](../../../src/neurath/_assets/scripts/agent_harness/material_action.py), [verification.py](../../../src/neurath/runtime/verification.py), 검사는 [material 동작 회귀](../../../tests/runtime/agent_harness/test_material_action.py)다. 네이티브 검사 실행이 이 호환 경로의 근거를 자동으로 생성하지는 않는다.
 
-## 검증을 재현하는 에이전트 참조
+## 기능 지도 변경 검증
 
-문서 변경의 로케일·링크·배포 규칙은 다음 검사로 확인합니다.
+목록, 패키지, 링크 변경은 공개 회귀 검사부터 실행한다. 필요한 전체 검사는 최종 소스에서 수행한다.
 
 ```sh
 uv run --locked pytest -q tests/test_publication.py
-```
-
-전체 개발 검사는 다음 명령으로 수행합니다. 이 명령은 배포 무결성, Python 진단, 패키지·설치 테스트, 임시 저장소의 런타임 계약 회귀를 포함합니다.
-
-```sh
 uv run --locked python tools/check.py
 ```
 
-검사 성공 뒤에도 새 설치본의 실제 호스트 활성화·provider 모델 왕복·앱 동작은 별도 관측이 필요합니다. 문서만 바꿨다면 실행 자산을 변경했다고 보고하거나 그 이유만으로 자기 설치를 갱신하지 않습니다. 실행 자산을 바꾸는 개발 작업의 manifest·빌드·설치 수순은 [기여 안내](index.md)에 있습니다.
-
-## 설명을 더 확장할 때
-
-기능을 추가하면 이 지도, 관련 상세 참조, 두 로케일을 함께 확인합니다. 구현되지 않은 요구는 [협업 계약](collaboration-contract.md)처럼 요구 문서의 성격을 명시하고, 구현·테스트·실제 호스트 관측을 같은 상태로 합치지 않습니다. 각 문서의 date와 synced_from은 어떤 소스를 기준으로 설명했는지 나타내며 릴리스 인증을 의미하지 않습니다.
+실행 자산을 바꿨다면 [개발 안내](index.md)에 따라 manifest 갱신, 빌드, 자기 설치 업데이트도 수행한다. 문장만 바꾼 경우 그 이유만으로 설치할 필요는 없다. 결과를 설명할 때 원문 무결성, 패키지 동작, 설치 위치, 실제 활성화 관찰을 구분한다.

@@ -17,7 +17,7 @@ user-invocable: true
 요청은 도구나 phase를 시작하기 전에 직접 답합니다. 사용자가 이 skill 또는 skill 사용
 자체를 거부하면 keyword가 겹쳐도 초기화하지 않습니다.
 
-중요 skill phase는 `uv run python -m scripts.skill_harness.phase_runner`로 계약을 initialize, evaluate, advance, finalize합니다.
+task 목록 없이 기존 phase workflow를 실행·복구할 때만 `uv run python -m scripts.skill_harness.phase_runner`로 계약을 initialize, evaluate, advance, finalize합니다.
 
 1. 정확한 symptom과 source of truth를 포착합니다.
 2. 가장 작은 command 또는 runtime setup으로 재현합니다.

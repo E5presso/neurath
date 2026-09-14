@@ -1,91 +1,79 @@
-# Installation development and MCP integration
+<!-- date: 2026-09-13; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
 
-<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
+# Install and maintain a project integration
 
-**English** · [한국어](../../ko/contributing/installation.md)
+[한국어](../../ko/contributing/installation.md)
 
-[Contributing](index.md) · [Bootstrap reference](setup-reference.md) · [Task tools](task-tools.md)
+An installation connects project instructions, skills, hooks, and the named MCP server to an isolated Neurath runtime. The installer preserves project-owned configuration and records its own changes so updates, removal, and restoration can reason about exact prior state. The human-facing onboarding is in [installation usage](../usage/installation.md); the commands below are agent execution references.
 
-This reference is for contributors developing installation behavior or validating agent integration.
-Ordinary users request outcomes through the [installation guide](../usage/installation.md).
+## Choose the entry point
 
-## Bootstrap and installed administration
+A target without Neurath cannot use its MCP server to bootstrap itself. From an intact Neurath source checkout, an agent can run:
 
-Before first installation, the target has no Neurath MCP server. The source's
-`./setup /target/Git-root` prepares the independent tool environment and installer as bootstrap infrastructure.
-Use `./setup --self` for the Neurath development repository. Preserve project dependencies and development environments.
+```sh
+./setup /absolute/path/to/your-project
+```
 
-Once the server is installed and active, administer the harness through named MCP tools.
+The target must be a Git worktree root. If the requested target is a new directory, initialize its Git repository as part of the authorized setup. Git must already be available. The source launcher can obtain `uv`, provision Python 3.14, build Neurath's wheel, and install it into a persistent tool environment. See [setup options and effects](setup-reference.md).
 
-| Purpose | Tool | Observation |
-| --- | --- | --- |
-| Readiness | `session_status` | Installation, activation, actual mode and ownership separately |
-| Plan | `installation_plan` | action, optional hosts/profile/skill_prefix, stable key; summary and plan reference |
-| Apply | `installation_apply` | Returned plan_ref and key; actual application result |
-| Recover interruption | `installation_recover` | Existing journal versus current files |
-| Integrity and placement | `diagnostics_integrity`, `diagnostics_project` | Package contents versus installed locations |
-| Protocol | `diagnostics_project` with protocol=true | Simulated host event checks |
+The first installation defaults to the `generic` profile and both supported hosts. A later installation preserves the installed profile, hosts, skill prefix, and user-edited bindings unless explicitly changed. To install only one integration:
 
-Plan actions are install/update/uninstall/restore. Restore uses the installation_id of an existing application.
-Only registered immutable plans can be applied, and original file contents are not exposed in tool responses.
-Preserve conflicting files and inspect the cause. Do not ask again when existing user authorization already covers the action.
+```sh
+./setup /absolute/path/to/your-project --host codex
+```
+
+Use `--host claude-code` for Claude Code. A name prefix can avoid an existing project skill name:
+
+```sh
+./setup /absolute/path/to/your-project --skill-prefix neurath-
+```
+
+For example, the public `debug` skill becomes `neurath-debug`. Existing user skills keep their names. A prefix resolves directory names; overlapping hooks and state ownership with another harness still require checking which harness owns each responsibility. Changing an installed prefix requires uninstalling the existing integration first.
+
+## Plan and apply inside an active installation
+
+An authenticated agent with the required worktree ownership uses `installation_plan`, then passes its returned reference to `installation_apply`. Both use the same transaction engine as bootstrap. A plan is bound to this actor, worktree, distribution, and observed files. Preparation returns paths and actions without exposing original file content.
+
+Example input to `installation_plan`:
 
 ```json
-{"tool":"installation_plan","arguments":{"action":"update","key":"inspect-current-update"}}
+{"action":"update","key":"project-update-plan-1"}
 ```
 
-The native host may need to reload its catalog after installation. Source changes or successful installation
-do not establish that new tools are available in the current conversation. Verify actual trust, authentication and hook loading.
+Read `result.plan_ref`, `result.plan_id`, `result.action`, and `result.changes`. Apply the exact authorized plan using the returned reference:
 
-## Distribution development
-
-These commands develop and build Neurath itself; they are distinct from agent-facing harness operations.
-
-```sh
-uv sync --locked
-uv run --locked python tools/build_manifest.py
-uv run --locked python tools/check.py
-uv run --locked python -m build
+```json
+{"plan_ref":"<returned plan_ref>","key":"project-update-apply-1"}
 ```
 
-Execution asset sources live in `src/neurath/_assets`. `.agents/skills` and `.neurath/rules` are installed outputs.
-Perform manifest generation, package checks, building and self-installation separately. Launchers use isolated
-Python execution so target packages with matching names cannot shadow the bundled engine.
+The angle-bracket text is a substitution marker, not a valid invented reference. Host identity is supplied by the native integration; copying identity fields from another invocation does not authenticate this call. Preserve a stable key for the same request and use a new key when the intended operation changes.
 
-## Project bindings and checks
+The planning action can be `install`, `update`, `uninstall`, or `restore`. `profile` accepts `generic`; `hosts` accepts `codex` and `claude-code`; omitted options preserve installed selections. Restoration additionally needs the actual `installation_id` of the operation to reverse. Application returns an installation record ID and changed-path count. A repeated unchanged installation can return `changed: 0`.
 
-Only the `generic` profile is supplied. Bind documents and verification in `.neurath/project.json` to the actual
-target's instructions. Do not invent missing documents or select a check merely because a tool exists.
-To run exact pytest nodes, bind the project's test environment through verification.pytest.argv.
-This internal configuration stores an executable array; agents do not reconstruct harness CLI options on every call.
+The input objects are closed: undeclared fields are rejected. `key` is required and contains 1–512 characters. The apply reference contains 1–71 characters, `installation_id` is at most 64, and `skill_prefix` is at most 128 before its prefix syntax is validated. `hosts` has at most two entries. Tool envelopes contain `ok` and `operation`, plus a structured `result` or an `error` with `code`, `message`, `state`, `retryable`, and `next_action`. A plan lookup can report `plan-unavailable` for the wrong actor or target, `invalid-plan-reference` for unsafe stored paths, and `plan-changed` when private content differs. Read the reported recovery action before retrying.
 
-Run the registered command and working directory with the native host command tool. For a focused pytest check, use the project test environment and exact test node, for example:
+## Read the installation result correctly
 
-```sh
-uv run --locked pytest tests/test_example.py::test_example
-```
+Use `diagnostics_integrity` for the distribution and `diagnostics_project` with `{"protocol":true}` for project checks. These are distinct observations:
 
-Metadata language, title conventions and branch rules belong to the target project. Give `worktree_cleanup`
-actually verified `base_branch` and `remote_ref` values. Never edit generated state files or force ownership recovery.
+| Observation | What it establishes |
+| --- | --- |
+| Distribution integrity | Packaged files match the manifest |
+| Placement | Installed bytes and links match the installation record |
+| Protocol | Isolated subprocess fixtures accept startup input and reject malformed input |
+| Native activation | The actual host loaded and executed the integration in a real session |
+| Target check | The actual project's configured check ran with its observed outcome |
 
-Discover operation usage through the [named catalog and schemas](task-tools.md).
-Distribution integrity, installed placement, protocol fixtures, live activation and model execution are distinct evidence scopes.
+`placement: passed` and protocol success do not establish live activation. Setup can finish applying files and then report failed diagnostics; inspect the returned installation record and diagnostics rather than treating that as a wholly unapplied operation. A fresh host session or tool catalog reload may be needed. The agent handles project configuration and explains any required user trust or authentication action.
 
-## Shared legacy SQLite cutover
+## Preserve edits through maintenance
 
-An initial import is staging, not a completed installation transition. Linked Git worktrees share the canonical runtime database; dormant worktrees may retain old launchers. Installation now requires explicit retirement when legacy SQLite files remain. Ordinary runtime calls continue to reject changed legacy sources.
+Updates and uninstall preserve user instructions outside intact managed blocks. The same applies to shared hook and MCP configuration that can be safely separated from Neurath's entries. Changes inside a managed block or owned skill stop the operation with a conflict. The installer does not solve conflicts by overwriting the current contents.
 
-The agent uses the new distribution bootstrap environment for recovery, independently of normal guarded runtime initialization:
+Once the user edits `.neurath/project.json`, its bindings remain project-owned across update and uninstall. Removal may leave history or empty directories; it removes managed integration, rather than deleting arbitrary project state. Other projects continue using the runtime recorded by their installation when this project's runtime changes. Previous runtimes remain available for supported restoration.
 
-```text
-neurath --root TARGET cutover inspect
-neurath --root TARGET cutover prepare
-neurath --root TARGET cutover apply --expected-token TOKEN_FROM_INSPECTION
-neurath --root TARGET cutover recover
-```
+For an interrupted journal, call `installation_recover` with a stable key, then inspect project diagnostics before making a new plan. Recovery restores recorded before-state only while current paths match one of the journal's known states. An independently edited path produces a recovery conflict and is preserved. For a completed operation, prepare a `restore` plan using its installation ID; this reverses that recorded operation rather than selecting an arbitrary version.
 
-`inspect` reads the four declared sources, import guards and every linked worktree launcher. `prepare` explicitly stages an initial import only when no canonical database exists; it does not establish retirement or host activation. After stopping database writers, the agent applies the exact reviewed inspection token. Unknown launchers, open handles, journals, changed guards and unknown late rows block the transition. Diagnosis remains usable when normal runtime initialization rejects drift.
+Stale plans, modified owned files, unknown symlinks, and partial transactions each require diagnosis. The [transaction design](installation-design.md) gives exact failure and recovery boundaries. Official new-version offers have an additional exact-offer choice contract described in [release updates](releases-reference.md).
 
-Apply temporarily fences recognized generated launchers, retains originals in private local storage and replaces old SQLite paths with directory tombstones. A transaction preserves canonical application data, updates source guards and records original guards and comparisons in audit receipts. New messages or changed bodies and recipients are rejected. Only supported lifecycle differences against terminal canonical records are permitted. After permanent SQLite fencing, original launchers are restored and affected worktrees are listed for supported installation updates. Old runtimes cannot reopen tombstoned databases.
-
-An interrupted transition leaves a durable journal. `recover` restores pre-commit paths or finishes post-commit launcher restoration. Conflicting files and damaged backups are preserved and reported. Installation refuses to proceed while the journal remains. These Unix recovery operations require `lsof` and closed SQLite handles. The agent separately verifies installation placement, hook protocols and actual native activation after updating affected worktrees.
+Implementation: [transaction engine](../../../src/neurath/install/transaction.py), [MCP installation operations](../../../src/neurath/runtime/installation_tasks.py), [installer tests](../../../tests/test_installer.py).

@@ -1,105 +1,77 @@
-# 설치 실행 참조
+<!-- date: 2026-09-13; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
 
-**대상 독자: 코딩 에이전트와 기여자.** 아래 명령은 승인된 작업을 수행하는 에이전트의 실행 참조입니다. 사용자는 [사용 안내](../usage/index.md)에 따라 목표를 요청하며, 이 명령을 직접 실행할 필요가 없습니다.
-<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
+# 초기 설치와 설정 실행 참조
 
-[사용 안내](../usage/index.md) · [기여자 안내](index.md)
+[English](../../en/contributing/setup-reference.md)
 
+초기 설치는 Neurath 전용 실행 환경을 준비한 뒤 트랜잭션 설치기를 호출한다. 이미 활성화된 설치에서는 일반 관리 작업에 명명된 MCP 도구를 사용한다. 이 문서는 연동이 아직 없을 때의 소스 실행기·CLI, 설치 검증 환경, 명시적 진단·복구 경로를 설명한다.
 
-대상 프로젝트에 Neurath를 설치하고 관리하는 안내입니다. 첫 작업은 [사용 안내](../usage/index.md)에서 시작하세요. 패키지 빌드, 에이전트 통합 절차와 단계별 검증은 [설치 개발 참조](installation.md)에 정리했습니다.
+## 실행 환경과 준비 조건
 
-[English](../../en/contributing/setup-reference.md) · **한국어**
-
-이 문서는 설치를 수행하는 에이전트와 기여자를 위한 실행 참조입니다. 지원 실행환경은
-macOS/Linux, Git, Python `>=3.14,<3.15`입니다. 대상 프로젝트 언어는 제한하지 않습니다.
-빠른 설치는 필요한 Python을 자동으로 준비하므로 직접 설치할 필요가 없습니다.
-
-## 빠른 설치
-
-내려받은 Neurath 소스 폴더에서 **실제로 하네스를 사용할 프로젝트** 경로를 지정합니다.
+Neurath 체크아웃에서 대상을 명시하여 실행한다.
 
 ```sh
 ./setup /absolute/path/to/your-project
 ```
 
-소스 빌드와 wheel 경로 지정은 설치기가 처리합니다. uv가 없으면
-[공식 설치기](https://docs.astral.sh/uv/reference/installer/)로 준비하고,
-Python 3.14와 Neurath를 영구적인 사용자 도구 환경에 설치합니다.
-배포 내용마다 별도 환경을 만들고, 같은 내용을 다시 설치하면 기존 환경을 검증해 재사용합니다.
-프로젝트 설치가 성공한 뒤에만 전역 `neurath` 명령을 새 환경에 연결합니다.
-대상 프로젝트의 `.venv`, 의존성, 셸 설정 파일을 수정하지 않습니다.
-Git이 없는 경우에는 먼저 설치해야 합니다. 새 폴더는 `git init /path/to/project`로 준비하세요.
-Neurath 개발 저장소 자체에 설치할 때는 `./setup --self`를 사용합니다.
-이 경로도 개발 `.venv` 대신 독립 도구 환경에 설치합니다.
+macOS·Linux에서 Git이 필요하며 `uv`가 없으면 공식 설치기로 확보할 수 있다. Python 3.14를 준비하고 배포본을 빌드한 뒤 내용 기반으로 구분되는 영속 도구 환경에 설치한다. 전역 `neurath` 진입점은 대상 설치가 성공한 뒤에만 바뀐다. 같은 배포 내용을 다시 사용하면 기존 도구 환경을 검증하여 재사용한다.
 
-한 번 설치한 뒤에는 다른 프로젝트에서 다음 명령만 실행하면 됩니다.
+프로젝트 `.venv`, 의존성 선언, 잠금 파일, 셸 시작 파일을 보존한다. Neurath 개발 `.venv`, 설치된 도구 환경, 대상 애플리케이션 환경은 각각 분리된다. 한 프로젝트를 업데이트해도 다른 프로젝트의 설치 실행기가 모두 바뀌지 않는다. 기록된 이전 상태로 되돌릴 수 있도록 이전 도구 환경을 유지한다.
 
 ```sh
-neurath setup
-# 또는 어느 폴더에서든 대상 지정
-neurath setup /absolute/path/to/another-project
+NEURATH_NO_BOOTSTRAP=1 ./setup /absolute/path/to/your-project
 ```
 
-`neurath`가 PATH에 없다면 설치 출력의 실행 파일 전체 경로를 사용하세요.
-이미 설치된 프로젝트에서는 `installation_plan` → `installation_apply`도 사용할 수 있습니다.
+이 설정은 대체 `uv` 다운로드를 끈다. 누락된 준비 도구를 대신 제공하지 않는다. Git이 없거나 대상이 Git worktree 루트가 아니라면 해당 조건을 해결한 뒤 실행한다. 새로 요청된 대상은 설치의 일부로 `git init`을 수행할 수 있다.
 
-처음 설치할 때는 `generic` 프로필과 양쪽 호스트를 사용합니다.
-재실행하면 기존 호스트·프로필 선택과 사용자 문서·검증 바인딩을 유지합니다.
-선택을 변경할 때만 해당 옵션을 지정하세요.
+## 지원하는 설치 형태
 
-```sh
-./setup /path/to/project --host codex
-./setup /path/to/project --host claude-code
-neurath setup --dry-run
-neurath setup --json
-```
+| 실행 | 효과 |
+| --- | --- |
+| `./setup /absolute/path/to/your-project` | 도구 환경 준비와 대상 설치 |
+| `./setup --self` | 빌드된 도구 환경으로 현재 소스 체크아웃 설치 |
+| `neurath setup` | 사용 가능한 배포본으로 현재 프로젝트 설치·정합성 조정 |
+| `neurath setup /absolute/path/to/another-project` | 지정 대상 설치 |
+| `neurath setup --dry-run` | 대상 파일을 쓰지 않고 경로·작업 목록 반환 |
+| `neurath setup --json` | 구조화된 설치 결과 반환 |
+| `./setup /path/to/project --host codex` | Codex 연동 선택 |
+| `./setup /path/to/project --host claude-code` | Claude Code 연동 선택 |
+| `./setup /path/to/project --skill-prefix neurath-` | 공개 스킬 이름에 접두어 적용 |
 
-`--dry-run`은 대상 파일을 쓰거나 원문을 출력하지 않고 경로별 변경 목록만 보여줍니다.
-소스의 `./setup --dry-run` 경로는 도구 환경을 준비하므로, 도구 설치도 원하지 않으면
-이미 설치된 `neurath setup --dry-run`을 사용하세요.
-자동 uv 다운로드를 끄려면 `NEURATH_NO_BOOTSTRAP=1 ./setup /path/to/project`로 실행합니다.
+최초 기본값은 `generic`과 두 호스트다. `--host`는 반복할 수 있다. 재설치에서 생략한 프로필·호스트·접두어는 기존 값을 유지한다. 프로필은 `generic`만 지원한다. 접두어는 빈 값이거나 `[a-z][a-z0-9-]*-` 형식이어야 한다. `neurath-`라면 `debug`가 `neurath-debug`로 배치된다. setup, plan, install, update, wizard에서 접두어를 선택할 수 있다. 설치된 접두어를 바꾸려면 먼저 제거한다. 기본 이름과 접두어 이름 모두 기존 사용자 소유 스킬과 겹치면 충돌이다.
 
-설치 결과에는 배포본 무결성, 파일 배치, 훅 프로토콜 진단과 다음 단계가 표시됩니다.
-실제 호스트 활성화는 별도입니다. 대상 프로젝트의 새 에이전트 세션에서 훅을 확인하고,
-아래 문서·검증 바인딩을 연결하세요. 설치기는 프로젝트 trust와 훅 trust를 자동 승인하지 않습니다.
+소스 `./setup --dry-run`은 대상 미리보기를 계산하기 전에 별도 도구 환경을 준비할 수 있다. 설치된 `neurath setup --dry-run`은 대상 파일을 쓰지 않는다. 미리보기에는 경로와 작업이 나오며 기존 파일의 본문은 드러내지 않는다.
 
-## 스킬 이름 충돌
+`--auto-report yes|no`는 사용자가 명시한 보고 선택을 기록한다. 생략하면 기존 선택을 유지한다. 설치 요청만으로 보고 동의가 성립하지 않으며 적용 범위는 [보고 안내](../usage/reporting.md)에 설명되어 있다.
 
-기존 프로젝트에 같은 이름의 스킬이 있으면 새 설치에 접두어를 지정할 수 있습니다.
+## 구조화된 결과 해석
 
-```sh
-./setup /path/to/project --skill-prefix neurath-
-```
+미리보기에는 `status: planned`, `root`, `profile`, `hosts`, `skill_prefix`, 보고 상태, `path`·`action`을 담은 `changes`가 있다. 적용 후에는 설치 ID·변경 수를 담은 `receipt`, `doctor`, 다음 단계가 추가된다. 최종 `status`는 로컬 진단에 따라 `passed` 또는 `failed`다. 파일 적용 후 진단이 실패할 수 있으므로 조사할 때 설치 ID를 보존한다.
 
-이 경우 Neurath 스킬은 `/neurath-debug`, `/neurath-review-code`처럼 호출합니다.
-기존 프로젝트 스킬의 이름·내용·권한을 보존하며 내부 workflow 계약 식별자는 그대로입니다.
-접두어는 소문자로 시작하고 소문자·숫자·하이픈만 사용하며 하이픈으로 끝나야 합니다.
-`setup`, `plan`, `install`, `update`, `wizard`에서 지정할 수 있습니다.
-생략하면 기존 설치 기록을 유지하며, 다른 접두어로 바꾸려면 먼저 제거해야 합니다.
-접두어를 붙인 경로도 기존 파일과 충돌하면 덮어쓰지 않습니다.
+진단은 배포본, 배치, 프로토콜, 실제 활성화를 구분한다. 독립 훅 subprocess가 시작 JSON을 받고 잘못된 입력을 거부한 것은 프로토콜 호환성 확인이다. 실제 호스트 활성화는 호스트에서 관측하기 전까지 미확인이다. 사용자에게 프로젝트 신뢰, provider 인증, 세션 새로고침이 필요할 수 있다. 이는 특정 호스트 조작이며 프로젝트 설정 전체를 사용자에게 넘기는 단계가 아니다.
 
-접두어는 스킬 이름의 충돌만 해결합니다. 기존 하네스가 같은 호스트 이벤트로 자체 세션
-상태를 관리하거나 모든 스킬 디렉터리를 자체 계약과 대조한다면, 대상 프로젝트에서
-런타임 역할과 검사 대상을 먼저 정리해야 합니다. 설치기는 기존 훅을 자동 삭제하지 않습니다.
+## 적용하지 않고 계획 저장
 
-사용자의 요청 예시는 [설치 안내](../usage/installation.md)에 있습니다.
-
-## 위자드 인터페이스 참조
+대화형 wizard도 동일한 `make_plan`·`apply_plan` 엔진을 사용하며 계획만 저장할 수 있다.
 
 ```sh
 neurath --root /absolute/path/to/project wizard --output /private/path/neurath-plan.json
 ```
 
-프로필과 호스트를 고르고 같은 `make_plan`/`apply_plan` 엔진을 사용합니다.
-계획만 저장하고 종료할 수도 있습니다. `--output`을 생략하면 Git 관리 디렉터리의
-`neurath-plans`에 저장하므로 커밋 대상이 되지 않습니다. 계획에는 복구용 원본 설정이
-포함되며 파일 권한은 `0600`입니다. 직접 경로를 지정할 때도 비공개 위치의 새 파일을
-사용하세요. 기존 파일이나 심볼릭 링크는 덮어쓰지 않습니다.
+초기 설치 CLI에서 명시적 계획을 만들고 적용하는 형태도 지원한다.
 
-## 대상 저장소 바인딩
+```sh
+neurath --root /absolute/path/to/project plan --action update --output /private/path/neurath-plan.json
+neurath --root /absolute/path/to/project apply /private/path/neurath-plan.json
+```
 
-`.neurath/project.json`은 편집 후 사용자 소유 파일로 남습니다. 업데이트·제거가 이 파일의
-사용자 변경을 덮어쓰거나 삭제하지 않습니다.
+출력 경로는 새 파일이어야 하며 심볼릭 링크이면 안 된다. wizard의 기본 저장 위치는 Git 관리 영역 `neurath-plans`이며 파일 모드는 `0600`이다. 계획에는 이전 파일 정보가 있으므로 비공개로 보관한다. 적용 시 대상과 배포본을 다시 확인한다. 충돌을 피하려고 계획 본문을 수정하지 않는다.
+
+되돌리기 계획에는 `--action restore --installation-id INSTALLATION_ID`를 사용한다. `--receipt`는 동일한 ID를 받는 호환용 별칭이다. ID는 반전할 완료 작업을 가리킨다. 중단 작업 복구와의 차이는 [트랜잭션 설계](installation-design.md)를 참고한다.
+
+## 실제 프로젝트 절차 연결
+
+에이전트는 프로젝트의 실제 지침을 근거로 `.neurath/project.json`을 관리한다. 다음 예시는 문서 역할과 검사 명령을 연결하는 구조다. 확인한 경로와 명령으로만 대체한다.
 
 ```json
 {
@@ -124,31 +96,10 @@ neurath --root /absolute/path/to/project wizard --output /private/path/neurath-p
 }
 ```
 
-예제 명령은 프로젝트에 맞게 바꿉니다. `argv`는 shell 문자열이 아닙니다. 명령 실행은
-그 프로젝트에서 이미 승인한 검증 범위여야 합니다. `stdout_contains`로 추가 성공 조건을
-지정할 수 있으며, 종료 코드가 성공이어도 실행 중 저장소 파일이 바뀌면 receipt는 실패합니다.
+`argv`는 인자 배열이며 셸 문자열이 아니다. 출력 조건이 필요하면 `stdout_contains`를 추가할 수 있다. 정확한 pytest 선택을 실행할 때는 `verification.pytest.argv`에 `uv run --locked pytest`처럼 실제 환경을 연결하고, `tests/test_example.py::test_example` 같은 요청된 선택자를 유지한다. 없는 검사는 미확인으로 남긴다. 비어 있는 문서 역할에 무관한 파일을 채우지 않는다.
 
-```text
-네이티브 호스트 명령 도구: .neurath/project.json에 등록된 check의 argv와 cwd로 실행
-```
+내부 등록 검증 경로는 저장소의 실행 전후 지문을 비교하므로 종료 코드가 허용되어도 파일 변경이 있으면 거부한다. 일반 네이티브 명령 실행이 이 호환용 검증 기록을 자동으로 만드는 것은 아니다. `worktree_cleanup` 연결에는 독립적으로 확인한 `base_branch`와 `remote_ref`가 필요하며 이름 관례로 추정하면 안 된다.
 
-## 업데이트와 복구
+독립 배포 자산을 살펴보려면 `neurath corpus /path/to/new-directory`로 새 디렉터리에 복사한다. 다른 프로젝트 파일을 가져오지 않고 패키지에 포함된 자산을 읽는다.
 
-공개 릴리스는 `releases_prepare` → 정확한 사용자 선택 → `releases_apply`로 업데이트합니다.
-설치된 배포의 관리 파일은 `installation_plan`에서 update/uninstall/restore 계획을 준비하고,
-반환된 plan_ref로 `installation_apply`를 호출합니다. restore는 기존 installation_id를 사용하며,
-중단된 저널은 `installation_recover`로 복구합니다.
-개발 소스를 새 배포로 교체하는 부트스트랩은 소스의 `./setup /대상/Git-root`로 수행하고,
-설치 후 에이전트 운용에는 명명 MCP 도구를 사용합니다.
-
-`AGENTS.md`, 일반 파일 `CLAUDE.md`, `.gitignore`의 관리 블록 밖 사용자 편집은 내용과 위치를
-보존합니다. 관리 블록이나 파일이 수정됐으면 충돌을 보고하고 비공개 설치 기록으로 원문과 현재
-내용을 대조합니다. 강제 삭제나 덮어쓰기로 해결하지 않습니다. 이전 런타임은 복구를 위해 보존합니다.
-
-## 스킬 이름과 갱신
-
-스킬은 `/debug`, `/qa`, `/review-code`처럼 접두어 없이 호출합니다. [전체 스킬 목록](../usage/skills.md)에서
-이름과 용도를 확인할 수 있습니다. 기존 설치를 갱신하면
-Neurath가 관리하던 이전 경로는 새 경로로 옮기고 폐지된 스킬은 제거합니다. 같은 이름의
-사용자 스킬이나 직접 수정한 관리 파일이 있으면 설치를 중단하여 내용을 보존합니다.
-충돌한 사용자 스킬을 덮어쓰지 말고 이름이나 설치 대상을 먼저 정리한 뒤 다시 실행하세요.
+구현 근거: [초기 실행기](../../../setup), [CLI 구문](../../../src/neurath/cli.py), [설치 서비스](../../../src/neurath/install/setup.py), [트랜잭션 엔진](../../../src/neurath/install/transaction.py), [초기 설치 검증](../../../tools/validate_setup.py).

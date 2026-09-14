@@ -10,7 +10,7 @@ user-invocable: true
 
 # Promote Memory
 
-중요 skill phase는 `uv run python -m scripts.skill_harness.phase_runner`로 계약을 initialize, evaluate, advance, finalize합니다.
+task 목록 없이 기존 phase workflow를 실행·복구할 때만 `uv run python -m scripts.skill_harness.phase_runner`로 계약을 initialize, evaluate, advance, finalize합니다.
 
 `private/personal memory만 input authority`로 삼아 반복된 session lesson을 shared
 project behavior로 승격해야 할 때 사용합니다. 현재 repository 분석, prompt token

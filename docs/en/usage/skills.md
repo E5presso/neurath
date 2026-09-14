@@ -1,48 +1,76 @@
-# Skill catalog
-<!-- date: 2026-09-07; synced_from: source and documentation at e1487a1718056b37b999d1343a1007b7e25f5c8c; English and Korean editions updated together -->
+<!-- date: 2026-09-13; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
 
-[Usage](index.md) · [Contributing](../contributing/index.md)
+# Ask for work by its purpose
+
+[한국어](../../ko/usage/skills.md)
+
+Describe what you need in natural language. The agent selects the relevant skill and applies the project's instructions and checks. The public skill names below help identify a workflow; you do not need to memorize or invoke them as commands. An installation may add a prefix to avoid name collisions.
+
+## Understand the problem before changing it
+
+| Ask for | Skill | Result to inspect |
+| --- | --- | --- |
+| Explain how this part works using the current implementation and tests | `explain-code` | A source-backed explanation with relevant behavior and limits |
+| Reproduce this defect and isolate its cause | `debug` | A reproducible failure, evidence for the cause, and the scope of a fix |
+| Review these changes for defects | `review-code` | Evidenced findings tied to the inspected change |
+| Review the requirements before implementation | `review-spec` | Gaps or conflicts that need resolution before the requirements can guide work |
 
 
-**English** · [한국어](../../ko/usage/skills.md)
+## Plan and implement approved work
 
-The agent selects skills from your task's purpose, evidence, and authorization. Describe the
-outcome in ordinary language; you do not need to invoke a skill or memorize its name.
-For example, “Reproduce and fix this error” leads to debugging, and “Review this change”
-leads to code review. This catalog explains the procedures available to the agent.
+| Ask for | Skill | Result to inspect |
+| --- | --- | --- |
+| Turn this product goal into decisions and manageable work | `plan` | Product choices and a breakdown into documentation or issues |
+| Create the work item we have approved | `create-issue` | The authorized issue and its stated scope |
+| Implement this approved issue | `implement-issue` | The requested behavior and the checks performed for that issue |
+| Coordinate these explicitly requested issues | `autopilot` | Progress and remaining work across the requested set |
+| Prepare an isolated workspace for this issue | `create-worktree` | The worktree prepared for that issue and the relevant ownership status |
 
-| Skill | Purpose |
-| --- | --- |
-| `plan` | Turn product requirements into a plan and issue structure |
-| `review-spec` | Review specifications for gaps and contradictions before implementation |
-| `create-issue` | Create GitHub issues for approved work |
-| `implement-issue` | Implement and verify one approved issue |
-| `autopilot` | Coordinate autonomous execution across multiple issues |
-| `create-worktree` | Create an isolated working directory for issue work |
-| `debug` | Reproduce errors and investigate their causes |
-| `explain-code` | Explain code using the current source |
-| `review-code` | Review code changes |
-| `qa` | Verify behavior across actual clients, APIs, and persisted results |
-| `design-ui` | Explore UI direction and obtain design approval before implementation |
-| `sync-design` | Synchronize design tokens and component mappings |
-| `implement-ui` | Implement an approved UI design |
-| `review-ui` | Compare the approved design with the running interface |
-| `checkpoint` | Save a reversible intermediate work checkpoint |
-| `commit` | Commit verified changes |
-| `create-pr` | Push a branch and create or update a PR |
-| `review-pr` | Process review results for an exact PR version |
-| `pr-feedback` | Assess and respond to PR review comments, accepting or disputing them |
-| `watch-pr` | Observe changes in PR status |
-| `update-status` | Update issue and project status |
-| `finish-session` | Verify and close out a session |
-| `sync-docs` | Classify and route documentation updates |
-| `dev-docs` | Update developer documentation |
-| `user-docs` | Update user documentation |
-| `audit-deps` | Audit dependency security, licenses, and maintenance |
-| `update-deps` | Update and verify dependencies |
-| `test-harness` | Test actual harness enforcement with failure scenarios |
-| `optimize-harness` | Refine instructions and prompts while preserving behavior |
-| `memory-to-rules` | Turn repeatedly confirmed personal working knowledge into project rules |
-| `graphify` | Explore code and documentation relationships through a knowledge graph |
+An implementation request for one issue does not implicitly expand into a multi-issue run. For parallel work and provider selection, see [Agents and shared work](agents.md).
 
-Installation naming and compatibility details are in the [skill execution reference](../contributing/skills-reference.md).
+## Work from a design through a deployed result
+
+| Ask for | Skill | Result to inspect |
+| --- | --- | --- |
+| Explore interface designs and let me choose the exact canvas | `design-ui` | Design options and the specific canvas choice |
+| Bring repository design tokens and component mappings into the canvas | `sync-design` | Canvas information aligned with the repository's design definitions |
+| Implement this exact approved design node | `implement-ui` | The implementation corresponding to the selected node |
+| Compare the approved design with the running interface | `review-ui` | Differences and runtime evidence for your judgment |
+| Verify the deployed interface, API, and persisted result | `qa` | Observed behavior across the requested deployed flow |
+
+For example, ask the agent to verify that saving a change in the deployed interface produces the expected API result and persists after a reload. A screenshot alone does not establish that the data was saved. The exact approved canvas or node keeps design implementation tied to your choice.
+
+## Save, review, and deliver changes
+
+| Ask for | Skill | Result to inspect |
+| --- | --- | --- |
+| Save a reversible work-in-progress checkpoint | `checkpoint` | A recoverable WIP save and handoff status |
+| Commit the authorized and verified change | `commit` | A local commit covering the approved scope |
+| Push these changes and create a pull request | `create-pr` | The authorized remote update and PR |
+| Publish the verified local review of this PR | `review-pr` | A published review tied to the exact PR head inspected |
+| Assess and respond to these review comments | `pr-feedback` | The disposition of the comments and authorized responses |
+| Watch this pull request for changes | `watch-pr` | Observed PR changes relevant to the request |
+| Update the issue or project status | `update-status` | The requested metadata changes |
+| Finish this session with the specified delivery steps | `finish-session` | Authorized commit, push, graph update, and ownership release, as requested |
+
+A checkpoint gives you a reversible save and a place to resume. When work is ready to deliver, specify whether you want a local commit, a push, or a pull request so the result matches your intended destination.
+
+## Maintain documents, dependencies, and the harness
+
+| Ask for | Skill | Result to inspect |
+| --- | --- | --- |
+| Determine which documentation needs updating | `sync-docs` | Documentation work routed to the appropriate scope |
+| Update the developer documentation | `dev-docs` | Documentation of the developer-facing behavior and procedures |
+| Document the approved, implemented user behavior | `user-docs` | User guidance that matches the implemented feature |
+| Inspect dependency security, licenses, freshness, and drift | `audit-deps` | Findings covering the requested dependency risks |
+| Update dependencies with controlled changes and checks | `update-deps` | The selected updates and their verification results |
+| Check that the harness enforces its rules in failure scenarios | `test-harness` | The observed enforcement results and any gaps |
+| Reduce injected harness instructions while preserving capability | `optimize-harness` | Reduced prompt content and evidence for retained behavior |
+| Review recurring private knowledge for a project rule | `memory-to-rules` | A proposed rule reviewed for approved project use |
+| Explore relationships among code and documentation | `graphify` | A relationship graph or explanation grounded in project material |
+
+Use [project memory](memory.md) to recall the evidence behind a recurring lesson before proposing it as a project rule.
+
+There are 31 current public skills in this guide. `create-package`, `local-dev`, `onboard`, `refactor-code`, `impact-analysis`, `improve-coverage`, and `property-test` are retired standalone names. Describe the result you want so the agent can use the current workflow.
+
+Return to [Working with Neurath](index.md) for task tracking and completion evidence, or see [Project setup](profiles.md) to connect the documents and checks these skills use.

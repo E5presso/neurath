@@ -111,6 +111,19 @@ def journal(root, session):
         if data.get("session") != session:
             raise ValueError("host journal mutation changed session identity")
         with database.transaction() as tx:
+            old = _host_data(record, session)
+            changed_scopes = [value["foreground"] for group in ("intents", "spawns")
+                for key, value in data.get(group, {}).items()
+                if value != old.get(group, {}).get(key)
+                and value.get("foreground", {}).get("task_scope") is not None]
+            if changed_scopes:
+                from scripts.agent_harness.session_kernel import SessionStateStore, SessionId
+                from scripts.agent_harness.task_service import validate_scoped_foreground
+                locator = _locator(root)
+                state = SessionStateStore(locator.locate(SessionId(session)).process_state).read_transaction(
+                    tx, SessionId(session))
+                for foreground in changed_scopes:
+                    validate_scoped_foreground(tx, state, foreground)
             tx.put("host-journal", session,
                    json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(),
                    expected_revision=None if record is None else record.revision)
@@ -142,7 +155,7 @@ def _transcript(host, value, environment):
     return path
 
 
-def _foreground(state):
+def _foreground(state, root=None, *, task_scope=None):
     from scripts.agent_harness.session_kernel import ActorStatus, ForegroundTurnStatus
 
     actor = state.session.root_actor_id
@@ -151,19 +164,38 @@ def _foreground(state):
         state.actors[actor].status is not ActorStatus.ACTIVE
         or turn is None
         or turn.status is not ForegroundTurnStatus.ACTIVE
-        or turn.user_prompt_receipt is None
     ):
         raise ValueError("spawn requires current root foreground prompt")
-    return {
+    foreground = {
         "generation": turn.generation,
-        "prompt": turn.user_prompt_receipt.prompt_digest,
+        "prompt": None if turn.user_prompt_receipt is None else turn.user_prompt_receipt.prompt_digest,
         "turn": turn.vendor_turn_id,
     }
+    if turn.user_prompt_receipt is None:
+        if root is None or task_scope is None:
+            raise ValueError("spawn requires current root foreground prompt or explicit task scope")
+        from neurath.hosts.task_scope import validate_scope
+        foreground["task_scope"] = validate_scope(root, state, task_scope)
+    return foreground
+
+
+def _same_native_turn(foreground, state):
+    turn = state.foreground_turns.get(state.session.root_actor_id)
+    return (turn is not None and foreground.get("generation") == turn.generation
+            and foreground.get("turn") == turn.vendor_turn_id)
+
+
+def _valid_record_foreground(root, state, record):
+    try:
+        recorded = record["foreground"]
+        return recorded == _foreground(state, root, task_scope=recorded.get("task_scope"))
+    except (ValueError, KeyError, TypeError):
+        return False
 
 
 def _independent_root_source(meta):
-    """App forks are independent roots, never inherited parent authority."""
-    if meta.get("thread_source") in (None, "user"):
+    """App-created threads and forks are independent roots, not parent authority."""
+    if meta.get("thread_source") in (None, "user", "agent_created_thread"):
         return True
     return (meta.get("thread_source") == "agent_forked_thread"
             and isinstance(meta.get("forked_from_id"), str)
@@ -286,7 +318,16 @@ def spawn_hook(root, host, payload, environment):
     if payload.get("agent_id") is not None:
         raise ValueError("nested native spawning requires a separate parent contract")
     state = _state(root, session)
-    foreground = _foreground(state)
+    current = snapshot(root, session)
+    call = payload.get("tool_use_id")
+    scoped = current["spawns"].get(call) if isinstance(call, str) else None
+    if scoped is None and payload.get("hook_event_name") == "PreToolUse":
+        intents = [value for value in current.get("intents", {}).values()
+                   if value.get("call_id") is None and _same_native_turn(value["foreground"], state)]
+        if len(intents) == 1:
+            scoped = intents[0]
+    scope = None if scoped is None else scoped["foreground"].get("task_scope")
+    foreground = _foreground(state, root, task_scope=scope)
     if state.session.runtime.value != host or (
         host == "codex" and payload.get("turn_id") != foreground["turn"]
     ):
@@ -371,7 +412,6 @@ def attest_child(root, host, payload, environment):
         if "/" in child or "\\" in child or child in {".", ".."}:
             return None
         state = _state(root, session)
-        foreground = _foreground(state)
         current = snapshot(root, session)
         if current.get("host") != host:
             return None
@@ -413,7 +453,7 @@ def attest_child(root, host, payload, environment):
             matches = [
                 (call, rec)
                 for call, rec in data["spawns"].items()
-                if rec["foreground"] == foreground
+                if _valid_record_foreground(root, state, rec)
                 and rec["host"] == host
                 and rec["parent"] == str(state.session.root_actor_id)
                 and rec.get("child") in (None, child)
@@ -437,7 +477,7 @@ def attest_child(root, host, payload, environment):
                 "parent": witness["parent"],
                 "call_id": call,
                 "revision": state.revision,
-                "foreground": foreground,
+                "foreground": witness["foreground"],
             }
     except ValueError, OSError, KeyError, TypeError, AttributeError:
         return None
@@ -671,7 +711,8 @@ def prepare_delegation(root, delegation_id, assignment, environment=None):
     return prepare_bound_delegation(root, handle, delegation_id, assignment)
 
 
-def prepare_bound_delegation(root, handle, delegation_id, assignment):
+def prepare_bound_delegation(root, handle, delegation_id, assignment, *,
+                             task_id=None, expected_task_revision=None):
     """Native-bound core operation; no environment or caller identity input."""
     from scripts.agent_harness.session_kernel import DelegationId
     DelegationId(delegation_id)
@@ -680,7 +721,13 @@ def prepare_bound_delegation(root, handle, delegation_id, assignment):
     if handle.actor_id != handle.inspect().session.root_actor_id:
         raise ValueError("only the current root can prepare a direct-child delegation")
     state = handle.inspect()
-    foreground = _foreground(state)
+    if (task_id is None) != (expected_task_revision is None):
+        raise ValueError("task_id and expected_task_revision must be supplied together")
+    scope = None
+    if task_id is not None:
+        from neurath.hosts.task_scope import instruction_scope
+        scope = instruction_scope(root, state, task_id, expected_task_revision)
+    foreground = _foreground(state, root, task_scope=scope)
     with journal(root, str(handle.session_id)) as data:
         intents = data.setdefault("intents", {})
         candidate = {"assignment": assignment, "foreground": foreground, "call_id": None}
@@ -699,6 +746,29 @@ def prepare_bound_delegation(root, handle, delegation_id, assignment):
         "delegation_id": delegation_id,
         "session_id": str(handle.session_id),
     }
+
+
+def _task_result_reporting(root, state, record, payload):
+    """Returning an issued child's result is not a new execution grant."""
+    if payload.get("tool_name") not in {
+        "mcp__neurath_collaboration__artifact_put",
+        "mcp__neurath_collaboration__evaluation_report",
+    }:
+        return False
+    scope = record.get("foreground", {}).get("task_scope")
+    if scope is None:
+        return False
+    from scripts.agent_harness.task_service import read_ledger, validate_instruction_sources
+    with _database(root).transaction() as tx:
+        if tx.get("session-migration", str(state.session.id)) is not None:
+            return False
+        _, ledger = read_ledger(tx, state)
+        task = next((task for task in ledger.tasks if task.id == scope["task_id"]), None)
+        if (task is None or task.definition.digest != scope["definition_digest"]
+                or task.revision != scope["task_revision"] + int(task.status.terminal)):
+            return False
+        validate_instruction_sources(tx, state, task.definition.sources)
+    return True
 
 
 def attach_delegation(root, host, payload):
@@ -725,6 +795,11 @@ def attach_delegation(root, host, payload):
     call, record = records[0]
     intent = record["delegation"]
     existing = state.delegations.get(DelegationId(intent["id"]))
+    root_turn = state.foreground_turns.get(state.session.root_actor_id)
+    if (root_turn is not None and root_turn.user_prompt_receipt is None
+            and not _valid_record_foreground(root, state, record)
+            and not (existing is not None and _task_result_reporting(root, state, record, payload))):
+        raise ValueError("delegation belongs to an obsolete or finished task scope")
     if existing:
         if (
             existing.owner_actor_id != state.session.root_actor_id
@@ -733,7 +808,7 @@ def attach_delegation(root, host, payload):
         ):
             raise ValueError("native delegation conflicts with existing assignment")
         return intent["id"]
-    if record["foreground"] != _foreground(state) or record["parent"] != str(
+    if not _valid_record_foreground(root, state, record) or record["parent"] != str(
         state.session.root_actor_id
     ):
         raise ValueError("delegation belongs to an obsolete root foreground turn")
@@ -838,7 +913,6 @@ def resume_child(root, host, payload, environment):
 
     session, child = payload["session_id"], payload["agent_id"]
     state = _state(root, session)
-    _foreground(state)  # The attested parent must still be executing an active turn.
     actor_id = ActorId(f"{host}:{child}")
     actor = state.actors.get(actor_id)
     turn = state.foreground_turns.get(actor_id)
@@ -862,9 +936,19 @@ def resume_child(root, host, payload, environment):
                       or (meta.get("agent_path") and value.get("native_path") == meta["agent_path"]))]
     if len(witnesses) != 1:
         return False
+    # A real user turn may intentionally follow up an older child. A peer turn
+    # instead needs the original explicit task scope to remain valid.
+    scope = witnesses[0]["foreground"].get("task_scope")
+    _foreground(state, root, task_scope=scope)
+    if (state.foreground_turns[state.session.root_actor_id].user_prompt_receipt is None
+            and not _valid_record_foreground(root, state, witnesses[0])):
+        return False
 
     def already_resumed(current, generation=None):
-        _foreground(current)
+        _foreground(current, root, task_scope=scope)
+        if (current.foreground_turns[current.session.root_actor_id].user_prompt_receipt is None
+                and not _valid_record_foreground(root, current, witnesses[0])):
+            return False
         child_actor = current.actors.get(actor_id)
         child_turn = current.foreground_turns.get(actor_id)
         return (child_actor is not None and child_actor.status is ActorStatus.ACTIVE
@@ -985,24 +1069,24 @@ def _native_context_refresh(item, turn_id):
     kinds = metadata.get("content_item_kinds")
     return (isinstance(kinds, list) and bool(kinds)
             and all(isinstance(kind, str) and kind in {
-                "agents_md.instructions", "environments.environment_context",
+                "agents_md.instructions", "environments.environment_context", "plugins.recommendations",
             } for kind in kinds))
 
 
 def _native_peer_turn(root, path, session, turn_id):
-    """Require paired host delivery records; message text grants no authority."""
+    """Require paired peer or scheduled host delivery; text grants no authority."""
     if not native_root_turn(root, path, session, turn_id):
         return False
 
     def delivery(item):
         if (not isinstance(item, dict) or "call_id" in item
-                or item.get("name") != "send_message_to_thread"
+                or item.get("name") not in {"create_thread", "send_message_to_thread", "automation_update"}
                 or item.get("namespace") != "codex_app"
                 or not isinstance(item.get("id"), str)
                 or not item["id"].startswith("fco_")
                 or not isinstance(item.get("output"), str)):
             return None
-        return item["id"], hashlib.sha256(item["output"].encode()).hexdigest()
+        return item["name"], item["id"], hashlib.sha256(item["output"].encode()).hexdigest()
 
     completed, verified = None, False
     for record in _reverse_native_records(path, {

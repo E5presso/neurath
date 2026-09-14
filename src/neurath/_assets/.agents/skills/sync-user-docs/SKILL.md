@@ -10,7 +10,7 @@ user-invocable: false
 
 # Sync User Docs
 
-중요 skill phase는 `uv run python -m scripts.skill_harness.phase_runner`로 계약을 initialize, evaluate, advance, finalize합니다.
+task 목록 없이 기존 phase workflow를 실행·복구할 때만 `uv run python -m scripts.skill_harness.phase_runner`로 계약을 initialize, evaluate, advance, finalize합니다.
 
 user docs를 쓰기 전에 대상 프로젝트의 해당 동작이 승인되고 구현됐는지 확인합니다.
 

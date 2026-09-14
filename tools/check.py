@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 STEPS = (
     ('Distribution integrity', ['-m', 'neurath', 'integrity']),
     ('Python diagnostics', ['-m', 'ruff', 'check', 'src/neurath', '--select', 'E4,E7,E9,F']),
-    ('Package and installation tests', ['-m', 'pytest', '-q']),
+    ('Package and installation tests', ['-m', 'pytest', '-q', '-x']),
     ('Runtime contracts', ['tools/run_core_regressions.py']),
 )
 

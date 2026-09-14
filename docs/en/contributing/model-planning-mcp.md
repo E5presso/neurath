@@ -1,220 +1,124 @@
-# Dynamic model planning and MCP operation contract
+<!-- date: 2026-09-14; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
 
-<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
+[한국어](../../ko/contributing/model-planning-mcp.md)
 
-**English** · [한국어](../../ko/contributing/model-planning-mcp.md)
+# Bind an observed model choice to one assignment
 
-[Architecture](architecture.md) · [Task tools](task-tools.md) · [Provider transports](provider-transports.md) · [Collaboration contract](collaboration-contract.md)
+Model planning records why a particular observed model is sufficient for authorized independent work, then binds that choice to the actual provider execution. It preserves user constraints and prevents a changed assignment, stale policy, or different created model from silently reusing an old decision. It does not authorize creating a session.
 
-Status: accepted implementation specification. The user requested difficulty-aware model planning
-when starting a provider or session, and reliable migration of agent-operated harness commands to
-MCP. These are target requirements, not claims of implementation or native acceptance.
+## Decide whether a provider run is needed
 
-## Intent, decisions and vocabulary
+Use native leaf children for bounded work within the current task when their supported topology is enough. An independent lifetime, cross-provider work, or required isolation can justify an owned provider session. Record the reason before planning one. A peer message, a model recommendation, or an available catalog is not creation authority.
 
-For each authorized new provider/session, the agent plans model selection from the actual assignment,
-current availability and existing constraints. Users describe outcomes in natural language; the agent
-owns discovery, planning, execution and verification. Planning does not authorize additional sessions,
-switch the current model, expand permissions or override a user-specified model/provider.
+Assess the role using ambiguity, change breadth, reasoning depth, failure impact, required tools/modalities/context, and the strength of available verification. `difficulty` is `routine`, `standard`, or `complex`; `confidence` is `low`, `medium`, or `high`. These are reasoned judgments with evidence, not a rigid point score or token-count gate.
 
-- D1 (user): plan model selection dynamically according to task difficulty.
-- D2 (user): operate the harness through MCP and coordinate overlapping sessions.
-- D3 (derived): use current provider/host inventory, not a hard-coded commercial model ranking.
-- D4 (source): preserve requested/actual model checks, identity, ownership and execution policy.
-- D5 (derived): migrate generated instructions as well as tools; CLI guidance can undo MCP preference.
-- D6 (derived): preserve compatibility and explicitly track remaining exceptions; a generic argv gateway is insufficient.
-- Rejected: always cheapest/largest, silent provider substitution, blanket shell bans, or protocol tests as behavioral proof.
+| Example assignment | Assessment to record | Selection consequence |
+| --- | --- | --- |
+| Mechanically compare an explicit field list against tests | Narrow scope, little ambiguity, direct check | Smallest observed model meeting the constraints |
+| Resolve a lifecycle race across ownership and recovery | Multiple state transitions, uncertain effects, failure impact | A model supported by evidence of the required capabilities |
+| Use a specific provider/model requested by the user | Fixed constraint regardless of preferred ranking | Use that exact observed model or report why unavailable |
+| Stay below an explicit cost or latency limit | Requires observed values for the constrained dimension | Unknown values cannot establish compliance |
 
-A model inventory observation records provider/host, source, observation time, exact model IDs and
-known capabilities. Unknown access/capability/cost remains unknown. A selection plan is an
-agent-authored proposal tied to an assignment revision and inventory. Requested selection is what
-creation receives; observed selection comes from the actual provider session. MCP operations preserve current host policy. A mode that cannot be enforced is explicitly unsupported;
-it does not grant additional authority or a CLI bypass.
+There is no fixed model ranking or hardcoded price table. Unknown capability, cost, or latency remains unknown. Planning does not buy quota, silently substitute a provider, or authorize a new data destination.
 
-## Current implementation boundary
+## Observe inventory once, reuse it deliberately
 
-Use the [task catalog](task-tools.md) for current names and inputs. Model inventory/plans, state/ownership/phases/
-evaluation, learning/updates/reporting, context/installation/reviews/monitoring share the named MCP surface.
-`runtime/task_schema.py` owns the registry and `runtime/*_tasks.py` connects it to existing domain services.
-`install/mcp_guidance.py` checks actual operations in installed instructions. Internal CLI and host callbacks
-remain execution foundations, not a usage path requiring agent help exploration. Acceptance conditions below
-still require separate actual-host evidence; source implementation and registration alone do not establish a pass.
+`provider_models` requires `provider` (`codex` or `claude-code`); `worktree` is optional and `refresh` defaults to `false`.
 
-## Model selection requirements
+```json
+{"provider":"codex","worktree":"/absolute/path/to/authorized-worktree","refresh":false}
+```
 
-Native direct-child agents are the default for independent leaf work within a task. Use a provider
-run when a separate session lifecycle, another provider, or necessary isolation unavailable through
-native child tools is required. Record that reason. Ordinary messages use the existing conversation;
-multiple messages and recipients can use `collaboration_send.messages` in one call.
+The result records an inventory identity, models, source, and observation revision. Reuse the observation for the native issuer/provider session across turns and worktrees. A new assignment may need a new plan without needing another catalog query. Refresh only after an explicit user request or concrete evidence invalidating the observation.
 
-Choose the smallest observed model sufficient for the role, difficulty and user constraints. A plan's
-`selection.mode/model` selects the model; the top-level provider `mode=inherit` preserves execution
-permissions. They are separate decisions. Neither a side question nor a progress report completes
-the original work; canonical tasks remain in SQLite until evidence resolves them.
+Codex uses its native adapter. Claude uses a short official SDK metadata handshake without a model query, retaining applicable settings and removing the parent identity environment. Catalog availability does not itself prove authentication, successful inference, or the actual configured default.
 
-| ID | Contract |
+## Prepare the exact plan
+
+`provider_plan` requires provider, target worktree, assignment, inventory ID, execution object, selection, difficulty, confidence, rationale, and stable key. Provide nonempty `evidence` and `replan_triggers` as well: their default empty arrays do not satisfy the domain contract. Each list supports at most 32 items. The assignment is limited to 16,000 characters and revisions are positive integers.
+
+Example input below is structurally valid after replacing the three illustrative target/inventory/model values with actual authorized and observed values. `evidence` describes observations that must actually have been made.
+
+```json
+{
+  "provider":"codex",
+  "worktree":"/absolute/path/to/authorized-worktree",
+  "assignment":"Compare the documented response fields with the current API tests; report discrepancies without editing.",
+  "assignment_revision":1,
+  "inventory_id":"RETURNED_INVENTORY_ID",
+  "execution":{"mode":"inherit"},
+  "selection":{"model":"OBSERVED_MODEL_ID"},
+  "constraints":{"allowed_providers":["codex"]},
+  "difficulty":"routine",
+  "evidence":["The assignment names a bounded field comparison and direct test evidence."],
+  "confidence":"high",
+  "rationale":"The observed model supports the tools and context required for this bounded comparison.",
+  "rejected_alternatives":["A larger model has no evidenced benefit for this assignment."],
+  "replan_triggers":["The assignment expands to implementation or the observed model becomes unavailable."],
+  "key":"response-contract-plan-1"
+}
+```
+
+The execution object can carry `mode`, approval fields, collaboration mode, Claude permission mode, and optional project ID as supported by the actual route. The selection object accepts `model` and optional `reasoning`. Constraints may include `explicit_model`, `allowed_providers`, `required_capabilities`, `min_context_tokens`, `max_input_price_per_million`, and `max_latency_ms`. A reasoning setting must be supported by the observed model; omitted reasoning is not an instruction to invent one.
+
+The saved result binds the assignment digest and revision, issuer/provider, effective policy digest and mapping revision, inventory observation, choice, rationale, constraints, and rejected alternatives. It returns `plan_id`, `revision`, a selection status, and `resolved_model_id`; default provenance is retained when relevant. `provider_plan_read` reads a specific `plan_id` and `plan_revision`.
+
+To revise a plan, provide its `plan_id`, the actual latest `expected_revision`, and a new stable request key. The same key with changed input conflicts. Revisions remain attributable instead of mutating an earlier decision in place.
+
+## Keep model inheritance separate from permissions
+
+`execution.mode="inherit"` and `provider_run.mode="inherit"` concern execution policy. They do not select a model. Current model selection represents the inherited-model sentinel as `selection.model="inherit"`; there is no `selection.mode` field in the public schema.
+
+For model inheritance, the target provider's observed configured default is the subject. It is not the cross-provider parent's model or a catalog recommendation. A resolved default requires `default_source` and `default_observation_revision` alongside `resolved_model_id`. Without a resolved default, a plan can be `preparation-only` only when it has no hard model/capability/context/price/latency constraints or reasoning selection that require proof. Substantive validation requires a ready plan.
+
+Preparation may observe the default on the same already-authorized session and produce a new plan revision before the assignment. It must not create an extra discovery session. If the user constrains paid calls and the required observation cannot satisfy that constraint, retain the gap. Permission inheritance is separately bounded by [the transport policy contract](provider-transports.md); neither form of inheritance implies every provider-native setting has been copied.
+
+## Choose target-native execution explicitly
+
+When the user wants each provider to retain its own native settings, set `execution.mode="target-native"` in `provider_plan` and `mode="target-native"` in `provider_run`. The plan revision and assignment must match, just as in the inheritance example. Model selection remains separate: it can name an observed model or use `selection.model="inherit"` for the target's observed configured default.
+
+The target's effective defaults must be observed and supported. Do not add conflicting explicit approval, reviewer, collaboration, or permission settings, copy the source's configuration, or switch strategies merely because `inherit` failed. [Provider transports](provider-transports.md) describes this policy boundary; [continuity](provider-continuity.md) covers taking over existing work rather than creating an independent assignment.
+
+## Admit and verify the actual execution
+
+Call `provider_run` with the exact plan ID and returned revision, the unchanged assignment and assignment revision, and a stable key. For the plan above, the binding has this shape:
+
+```json
+{
+  "provider":"codex",
+  "worktree":"/absolute/path/to/authorized-worktree",
+  "assignment":"Compare the documented response fields with the current API tests; report discrepancies without editing.",
+  "assignment_revision":1,
+  "model":"OBSERVED_MODEL_ID",
+  "mode":"inherit",
+  "plan_id":"RETURNED_PLAN_ID",
+  "plan_revision":1,
+  "key":"response-contract-run-1"
+}
+```
+
+Use the actual returned revision rather than assuming `1` outside this new-plan example. Validation happens before durable admission. After native creation, the actual model is checked before substantive assignment; a missing model or mismatch blocks work while retaining diagnostic native identity. Alias equivalence requires an authoritative mapping rather than similarity of names.
+
+The shared tool result envelope contains `ok` and `operation`, plus `result` on success or an error containing `code`, `message`, `state`, `retryable`, and `next_action`. Read the structured outcome. A valid plan or accepted run does not prove the requested effects occurred.
+
+## Replan only for a material change
+
+| Condition | Required response |
 | --- | --- |
-| MP-01 | Before each authorized new provider/session, form a plan, including explicit inheritance of the host default. Do not create a session solely to discover models. |
-| MP-02 | Assess ambiguity, change breadth, reasoning depth, failure impact, tools/modalities, context demand and verification strength. Record concise evidence, difficulty (routine/standard/complex), and confidence. No token-count-only or fixed numeric score gate. |
-| MP-03 | Honor explicit model/provider, allowed providers, budget and latency constraints. Choose sufficient evidenced capability within those constraints; known cost/latency are secondary considerations. Unknown price is not zero. Planning does not authorize buying quota or a new data destination. |
-| MP-04 | Record assignment digest/revision, inventory observation, provider, exact model ID or explicit inherit, supported reasoning setting, rationale, rejected alternatives, constraints and replan triggers. Do not guess cross-provider reasoning-setting equivalence. |
-| MP-05 | If inventory is unavailable, expose that limitation. A verified compatible existing default may be inherited with uncertainty recorded. An unverifiable explicit choice or required capability returns a structured blocker before assignment; no invented model ID or silent substitution. |
-| MP-06 | Validate the plan/request binding before creation. An uncertain retry keeps identical run key, plan and request; reconcile the recorded outcome first. A changed model requires a new plan revision and a separately reconciled authorized attempt. |
-| MP-07 | Before substantive assignment, compare requested and provider-observed selection using existing adapter checks. Alias equivalence requires authoritative resolution. Missing/mismatched evidence blocks assignment and retains diagnostic session/run identity. |
-| MP-08 | Replan on changed assignment, invalidated availability or evidenced capability failure. Ordinary resume/message delivery preserves selection. Do not switch or restart a live session just because a turn ends. Changes beyond existing constraints require user input. |
+| Assignment, target, provider, constraints, or effective policy changed | New plan revision bound to the current context |
+| Policy mapping revision or observed default changed | Refresh the invalidated observation as needed, then replan |
+| Inventory has concrete invalidating evidence | Observe current catalog and revalidate selection |
+| Elapsed time or an ordinary message only | Retain the selection; time alone does not expire it |
+| Create response is uncertain | Reconcile the existing request/key/plan before another attempt |
+| A different model is now needed | New plan revision plus reconciliation of the already-authorized attempt |
+| Created model differs or is missing | Block substantive assignment and inspect retained native diagnostics |
 
-A bounded text edit with a direct diff check may be routine; a multi-module feature with established
-tests may be standard; an ambiguous permission-boundary change may be complex. Short work can be
-complex because of failure impact. The bands explain reasoning, not an objective model quality score.
+Resume and normal messages preserve the selection; ending a turn is not a reason to restart or switch models. An uncertain create must not become two independent sessions. `provider_status` is diagnostic after relevant events or errors, and recovery uses the recorded owned session as described in [provider transports](provider-transports.md).
 
-Registered source tools: provider_models observes available model metadata without
-creating a session; provider_plan validates and retains the agent-authored plan. The deterministic
-runtime validates structure, constraints and bindings, not subjective difficulty or model quality.
-provider_route consumes the plan reference and exact selection; provider_run persists that reference
-beside the durable run. Stale/altered plans fail before creation. Plan IDs never represent caller identity.
+## Verify planning and named-tool behavior
 
-### Inherited defaults and plan revalidation
+[Model planning](../../../src/neurath/providers/model_planning.py) implements typed observations, selection validation, immutable revisions, and staleness. [Task schemas](../../../src/neurath/runtime/task_schema.py), [provider execution](../../../src/neurath/runtime/provider_execution.py), and [the MCP server](../../../src/neurath/agents/mcp.py) carry the named interfaces. Deterministic checks validate structure, constraints, and bindings; they do not certify the subjective difficulty assessment or final task quality.
 
-inherit refers to the default the target provider/host will apply to this creation, not the
-model used by a parent on another provider. The plan retains resolved_model_id (possibly unknown),
-default_source and default_observation_revision. Resolve an exact ID before creation when possible.
-Otherwise only the preparation stage of the same authorized session may proceed: obtain native
-model metadata, check the original capability/cost/latency constraints, and bind a new plan revision
-before substantive assignment. Do not create a separate discovery session. If preparation would
-require a paid model call whose hard constraints cannot be established, return a blocker.
+[Model-planning tests](../../../tests/test_model_planning.py), [provider-job tests](../../../tests/test_provider_jobs.py), and [MCP guidance tests](../../../tests/test_mcp_guidance.py) cover the corresponding contracts. Acceptance includes fixed or unavailable models, unknown constrained properties, unsupported reasoning, changed plans, alias/mismatch checks, and uncertainty after admission. Installed policies, skills, notifications, and error `next_action` must lead callers through named tools. Recall, peer messages, newsroom, and status should use those named operations; normal editing and tests remain native host work.
 
-A plan becomes stale when its assignment, target provider/host, constraints, effective policy,
-policy mapping revision, observed target default, or a known invalidating inventory fact changes.
-Reuse a plan only while its assignment, target, policy and constraints still match. A new assignment
-or target may require a new plan, but the session catalog remains reusable across worktrees and turns.
-Refresh the catalog only on explicit request or concrete evidence that the observation is stale.
-Elapsed time alone does not cancel an existing task or its plan.
-Reading the recorded outcome under the same already accepted key is not a new creation. S2 covers
-target-default resolution and changes; S3 covers invalidated policy mappings and elapsed-time-only
-cases. The provider_plan selection and provider_run readback retain the three default fields above.
-
-## MCP operation requirements
-
-| ID | Contract |
-| --- | --- |
-| MC-01 | Map every agent-facing harness operation to a named MCP tool, including policy, skills, state, verification, notifications and errors. Unmapped routine operations fail migration. |
-| MC-02 | If an equivalent named tool is exposed and preserves policy, use it. Its active instructions, notifications, prompts and next_action must name the MCP action rather than direct executable CLI use. Keep developer compatibility references separate. Generic agent(argv) or an arbitrary engine/shell gateway does not satisfy migration. |
-| MC-03 | Add typed phase/state/evaluation and worktree actions over existing kernel APIs. Preserve native identity, exact-owner fencing, workflow revision, evaluator consumption and completion gates. No arbitrary module, Python expression, file write or caller-identity input. |
-| MC-04 | Add typed learning/update/reporting actions with existing preview/consent/recovery, privacy, exact contribution approval and uncertain-result handling. External submission is not implicitly approved by MCP. Where enforcement is incomplete, retain an explicit unsupported state. |
-| MC-05 | Pre-install bootstrap, server startup and host callbacks are infrastructure. Routine harness operations have no CLI exception. Report unexposed tools or unenforceable modes specifically, without bypass through another transport. |
-| MC-06 | Separate failure before acceptance from accepted/uncertain side effects. Recover from recorded outcome or relevant events; never repeat an uncertain mutation via CLI. Changing transport cannot bypass permission denial. |
-| MC-07 | Preserve saved CLI/legacy MCP compatibility while removing their precedence from active agent instructions. Update source assets, manifest and package/install tests, then coordinate self-install. Do not edit projected skills by hand. |
-| MC-08 | Fresh Codex and Claude natural-language scenarios must complete with zero unjustified CLI/legacy-argv calls for covered routine actions. Record inventories, actual calls, outcomes and exceptions privately. Unsupported cases remain explicit gaps. |
-
-A named tool that prepares a native action has not executed it. The host must execute under its
-policy and the operation must read back the result. A route still requiring the agent to assemble
-Neurath CLI commands remains an exception and migration work. Source editing/testing shell commands
-are repository development, outside the harness-operation metric.
-
-Message transport follows the collaboration contract: unacknowledged peer messages remain eligible
-for at-least-once redelivery with the same message ID and content. MC-06 prevents duplicate side-effect
-execution through a fallback tool; it does not permanently freeze uncertain message delivery. Do not
-add polling, heartbeat, a receiver-only model session, or a general task lifetime timeout.
-
-## Proposed named operation surface
-
-This section describes the target operation contract. The registered names in
-[Task tools](task-tools.md) and each installed host's current schema define callable inputs. These names and core inputs define the
-implementation boundary; the implementation must publish closed, versioned input/output schemas,
-not accept JSON strings that deserialize into arbitrary state or CLI argv.
-
-Every response uses the existing ok/operation/result or structured error envelope. Read operations
-have no mutation authority. Writes require the current native caller and existing ownership,
-revision and approval checks. A key identifies an identical request, never caller identity.
-Targets may identify resources; actor/session/turn authority is derived only from native evidence.
-
-| Proposed operation | Core structured input | Existing owner / effect and authority |
-| --- | --- | --- |
-| provider_models | provider; target worktree | Provider adapter; metadata observation and persistence, not a pure-read task. Records source, time, supported IDs and explicit unknowns without a model query. |
-| provider_plan | assignment revision/digest; inventory observation ID; difficulty/evidence/confidence; selection; constraints; rationale; key | New planning contract; validate and persist the proposal. Selection contains provider, model ID or inherit and supported reasoning setting. Caller-supplied descriptions cannot establish model availability. |
-| session_inspect, turn_inspect | none | StateHandle/state_cli; current caller only, read-only kernel and turn diagnostics. Keep session_status as installation/policy/ownership summary. |
-| session_recover | expected session revision | Current root; recover only from authoritative native new-turn evidence. No invented turn or foreign-session attachment. |
-| workflow_start | workflow_id; registered kind; goal; schema-validated initial state; key | Existing workflow service; normal owner and workflow-specific schema. |
-| workflow_advance, workflow_finalize | workflow_id; expected_revision; schema-validated transition; key; final status for finalize | Existing transition and terminal gates. No arbitrary payload patch or self-certified completion. |
-| phase_start | workflow_id; registered skill; run_id; north_star; key | PhaseRunner.initialize; native evaluator registration and all existing prerequisites. |
-| phase_current | workflow_id | PhaseRunner.current; read-only requirements and revision. |
-| phase_complete, phase_finalize | workflow_id; expected_revision; phase_id/status/summary/evidence refs for complete; terminal_state for finalize; key | PhaseRunner; consume authoritative evidence and enforce terminal checks. An evidence ref is resolved and authenticated, not trusted as a string. |
-| adaptive_read, adaptive_preflight | workflow_id (optional only for preflight) | Existing adaptive-control read/preflight; no state mutation. |
-| adaptive_replace, adaptive_override_goal | workflow_id; expected_revision; closed AdaptiveControlState; key | Existing adaptive service; validate every typed section and source/goal revision. Goal override additionally requires current user intent evidence. |
-| worktree_inspect, worktree_claim, worktree_release | inspect/claim: none; release: expected claim revision/token reference | WorktreeRegistry; native cwd and exact actor, first-writer-wins claim and CAS release. No force takeover, PID-based ownership or caller-supplied actor. |
-| delegation_prepare, delegation_assign | delegation_id; assignment; key; assign additionally discovered target reference and workflow_id | Existing delegation contract and state service. Preparation grants no direct-child lineage; assignment checks actual native lineage or the separate peer task contract. |
-| evaluation_prepare, evaluation_read, evaluation_execute | workflow_id; typed adaptive state or prepared assignment reference; execute additionally criterion_id, closed evidence kind, registered test reference | Existing adaptive evaluation APIs. Execute preserves native execution policy; no arbitrary shell or invented evaluation receipt. |
-| evaluation_report, evaluation_consume | delegation_id; key; report: verdict/summary/outcome reference/findings | Existing delegation report/consume. Only the genuine assigned evaluator can report; parent consumes authenticated independent evidence. |
-| learning_status, learning_history, learning_pending, learning_defer | none; history: strategy_id; defer: reason and key | memory/learning.py; current native binding is implicit. No tool to set candidate/trial/active/reverted manually: observe/verified hooks and validated execution evidence own promotion and rollback. |
-| releases_status, releases_check, releases_notice | none; check: force only with explicit refresh request | updates.py; check is a policy-controlled network/local-state operation and notice records consumption, neither is pure read. |
-| releases_prepare, releases_choose, releases_apply, releases_recover | offer_id except recover; choose: closed decision plus native user-choice reference; stable request key | updates.py; exact preview/consent/version/digest and recovery gates. Preparation is not installation; apply cannot manufacture consent. |
-| reporting_status, reporting_list, reporting_read | none; read: draft_id | reporting.py read methods; expose exact draft and status without publishing. |
-| reporting_prepare | the existing eight closed report fields; privacy review assertion; key | Reporting.prepare; manifest/common-scope and semantic privacy checks. Privacy assertion is not publication approval. |
-| reporting_consent, reporting_approve | decision; native user-choice reference; approve additionally exact draft_id | Existing consent/approve semantics; no approval inferred from historical memory or a model boolean. |
-| reporting_submit, reporting_reconcile | draft_id; reconcile additionally exact issue URL; key | Existing fixed-destination submit/readback/reconcile; enforce common-report consent or exact contribution approval, owner/network policy and uncertain-send handling. Return unsupported when the current mode cannot be enforced. |
-
-Backing APIs are in _assets/scripts/agent_harness/state_cli.py, worktree_registry.py, state_handle.py,
-_assets/scripts/skill_harness/phase_runner.py, memory/learning.py, updates.py and reporting.py.
-This table is the minimum new operation set, not a license to omit other agent-facing operations:
-C1 must map every remaining skill helper and generated instruction. Expose additional helpers only
-as bounded named domain operations; unsupported ones remain explicit migration gaps.
-
-Model plan/readback outputs retain plan_id/revision, assignment digest, inventory source/revision,
-requested selection, observed selection (or unknown), validation status and blocker/replan reason.
-The plan does not expire merely because an ordinary task runs for a long time; changed constraints,
-assignment or invalidated inventory trigger revalidation. Provider-specific inventory discovery must
-use a currently supported native adapter and may return unavailable; no fabricated universal API.
-
-## Scenarios, coverage and test-first validation
-
-| Scenario | Acceptance evidence | Requirements |
-| --- | --- | --- |
-| S1: routine and complex new assignments | Evidence-based difficulty and selection; model IDs differ only where justified | MP-01–04 |
-| S2: fixed/unavailable model, unknown inventory, unsupported reasoning | Fixed choice preserved or blocker; explicit permitted inheritance; no invented capability | MP-03–05 |
-| S3: stale plan, altered request, actual mismatch, alias | No substantive assignment without verified binding; authoritative alias resolution | MP-06–07 |
-| S4: quota failure/changed scope after uncertain create | Earlier outcome reconciled; no unexamined duplicate run | MP-06–08 |
-| S5: recall, discovery/send/read/reply, Newsroom, status | Named MCP calls including notification/error recovery | MC-01–02, MC-08 |
-| S6: phase transition, claim conflict, learning rollback, update/report preparation | Typed state and unchanged authority; actual named invocation or explicit unsupported state | MC-03–05 |
-| S7: unavailable MCP, restricted policy, interrupted accepted mutation | Evidenced exception; no privilege expansion or duplicate mutation | MC-05–06 |
-| S8: saved legacy call and fresh installed host | Backward compatibility, correct new tool selection, existing settings preserved | MC-07–08 |
-
-Start with failing plan/schema/binding tests, then adapter fixtures, instruction regressions and
-install fixtures. Run applicable S1–S8 on actual Codex and Claude hosts. Protocol behavior, installation,
-agent tool choice and model task quality are separate evidence. Planner rationale is not its own
-quality oracle. Existing suite success does not establish these new acceptance results.
-
-## Work items, ownership and continuation
-
-These are local implementation drafts; no GitHub objects are created. Each child targets one
-session and at most five primary files. Split any item exceeding 300 new or 200 changed code lines,
-or spanning independently deliverable kernel domains. Contract changes precede adapter changes.
-
-| Item | Scope / first failing test | Dependencies |
-| --- | --- | --- |
-| M1 | Inventory/selection contracts; invalid/stale plan rejection | none |
-| M2 | Codex inventory and requested/actual binding fixture | M1 |
-| M3 | Claude inventory and requested/actual binding fixture | M1; reuse M2 contract pattern |
-| M4 | Named model tools and route/run plan linkage; request/key mismatch tests | M2, M3; execution-owner integration |
-| C1 | Full operation/instruction inventory; notification MCP regression | none; notification-owner coordination |
-| C2 | Typed phase/ownership actions; identity/fencing/evaluator failures | C1; split per kernel domain if needed |
-| C3 | Typed learning actions; trial/promotion/rollback authority | C2 |
-| C4 | Typed update actions; exact consent and interrupted recovery | C1 |
-| C5 | Typed reporting actions; privacy, exact approval and uncertain submission | C1 |
-| C6 | Bundled instruction migration; obsolete CLI guidance failures | C2–C5, M4 |
-| V1 | Distribution/install checks and fresh-host S1–S8 | C6 |
-
-Each child has three acceptance obligations: implement its linked requirements, demonstrate its
-named failing/passing regression, and retain limitations. M1 covers MP-01–06; M2/M3 MP-05–07;
-M4 MP-06–08; C1 MC-01–02; C2 MC-03; C3–C5 MC-04–06; C6 MC-02/07; V1 MC-07–08 and S1–S8.
-
-M2/M3 can run independently after M1; C3/C4/C5 after their prerequisites. Shared runtime/task_schema.py,
-runtime/tasks.py, providers/operations.py, policy, manifest and self-install have a single integration
-writer. Delivery/ACK/retry, permission inheritance and process lifetime belong to concurrent delivery
-work; exchange exact contracts/patches before touching these files. Critical paths are
-M1 → M2/M3 → M4 → C6 → V1 and C1 → C2–C5 → C6 → V1; this is not an all-parallel plan.
-
-Resume from this file and its linked source/reference documents. Resolve provider-specific inventory
-adapters from current native capabilities; implement the named operation surface above over existing typed APIs. No fixed price
-table, commercial ranking, implementation completion or native acceptance is established here.
-
-Material and verification operations are retained only as internal compatibility interfaces and are absent from public MCP discovery. Ordinary edits and checks use native host tools; report the task outcome once with `task_resolve`.
+An unavailable MCP or unsupported mode is an explicit limitation, not permission to route routine work through an arbitrary CLI or `agent(argv)` gateway. Source tests, installed guidance, and real native model/tool-choice observations are separate evidence in [validation](validation.md).

@@ -39,7 +39,7 @@ def future_wheel(source, destination):
     return version, target, output
 
 
-DRIVER = '''import json, sys
+DRIVER = '''import json, sys, subprocess
 from pathlib import Path
 from neurath import updates, release_install
 from neurath.cli import main
@@ -55,6 +55,17 @@ def fetch(*unused):
     return json.loads(Path(remote).read_text())
 updates.fetch_release = fetch
 release_install.download_asset = lambda asset_id: Path(wheel).read_bytes()
+if mode == "crash-apply":
+    def crash_apply(root, directory, selected, operation):
+        python, plan_path = release_install.paths(directory, operation)
+        code = "import json,os,sys; from pathlib import Path; from neurath.install import transaction; original=transaction._write; " + \\
+            "transaction._write=lambda root,relative,value: (original(root,relative,value),os._exit(71)); " + \\
+            "transaction.apply_plan(Path(sys.argv[1]),json.loads(Path(sys.argv[2]).read_text()))"
+        result = subprocess.run([python, "-I", "-c", code, root, plan_path])
+        if result.returncode != 71:
+            raise RuntimeError("crash injection did not reach the first installer write")
+        raise RuntimeError("fixture installer process exited after its first write")
+    release_install.apply = crash_apply
 raise SystemExit(main(["--root", root, *args]))
 '''
 
@@ -102,8 +113,9 @@ def validate(wheel, output):
             proposal="Preserve user settings")))
         draft = cli("report", "prepare", str(proposal), "--privacy-reviewed")
         cli("report", "approve", draft["id"], "yes", "--user-confirmed")
-        reporting = root / ".git/neurath-reporting/state.json"
-        reporting_before = reporting.read_bytes()
+        # Observe the installed service, not a retired JSON storage projection.
+        reporting_before = cli("report", "read", draft["id"])
+        consent_before = cli("report", "status")
         checked = cli("releases", "check")
         offer = checked["offer"]["id"]
         assert checked["current"] == current and checked["offer"]["version"] == target
@@ -123,7 +135,8 @@ def validate(wheel, output):
         applied = cli("releases", "apply", offer)
         assert applied["operation"]["phase"] == "applied"
         assert cli("releases", "status")["current"] == target
-        assert reporting.read_bytes() == reporting_before
+        assert cli("report", "read", draft["id"]) == reporting_before
+        assert cli("report", "status") == consent_before
         assert cli("report", "read", draft["id"])["approved"] is True
         assert (root / "AGENTS.md").read_bytes().startswith(original)
         assert json.loads((root / ".claude/settings.json").read_text())["permissions"] == settings["permissions"]
@@ -133,8 +146,19 @@ def validate(wheel, output):
         recovered = cli("releases", "recover")
         assert recovered["operation"]["phase"] == "recovered"
         assert run([root / ".neurath/run", "--version"]).strip() == current
-        assert reporting.read_bytes() == reporting_before
+        assert cli("report", "read", draft["id"]) == reporting_before
+        assert cli("report", "status") == consent_before
         assert cli("releases", "notice") is None
+        cli("releases", "prepare", offer)
+        cli("releases", "choose", offer, "yes", "--user-confirmed")
+        cli("releases", "apply", offer, mode="crash-apply", expected=2)
+        assert cli("releases", "status")["operation"]["phase"] == "applying"
+        assert cli("releases", "recover")["operation"]["phase"] == "recovered"
+        assert run([root / ".neurath/run", "--version"]).strip() == current
+        assert cli("report", "read", draft["id"]) == reporting_before
+        assert cli("report", "status") == consent_before
+        assert (root / "AGENTS.md").read_bytes().startswith(original)
+        assert json.loads((root / ".claude/settings.json").read_text())["permissions"] == settings["permissions"]
         assert cli("releases", "check", "--force", mode="offline")["status"] == "unavailable"
         assert cli("releases", "check")["status"] == "unavailable"
         assert cli("releases", "notice") is None
@@ -146,7 +170,8 @@ def validate(wheel, output):
                     "one-time notice", "separate wheel runtime", "exact installed version",
                     "user settings and dependencies", "upstream reporting consent",
                     "per-draft contribution approval", "record restore", "launcher rollback",
-                    "offline nonblocking cache"],
+                    "offline nonblocking cache", "real installer process exit after first write",
+                    "journal recovery after process death"],
             host_activation="unverified; protocol simulation is not native host observation")
         output.write_text(json.dumps(report, indent=2) + "\n")
         print(json.dumps(dict(status="passed", checks=len(report["checks"]), report=str(output))))

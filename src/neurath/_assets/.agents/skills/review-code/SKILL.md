@@ -9,7 +9,7 @@ user-invocable: true
 
 # Review — 합리적 동료 의문점 생성기
 
-중요 skill phase는 `uv run python -m scripts.skill_harness.phase_runner`로 계약을 initialize, evaluate, advance, finalize합니다.
+task 목록 없이 기존 phase workflow를 실행·복구할 때만 `uv run python -m scripts.skill_harness.phase_runner`로 계약을 initialize, evaluate, advance, finalize합니다.
 
 리뷰 에이전트는 구현 에이전트를 합리적 동료로 보고, **구체적 탐지 시그널이 매치될 때만** "이 구간이 실제 문제를 일으키는가?"라는 의문을 생성한다. 스타일·취향 지적이 아니라 PR에서 더 물을 것이 남지 않게 만드는 결함 질문기다.
 

@@ -10,7 +10,7 @@ user-invocable: true
 
 # Sync Design
 
-중요 skill phase는 `uv run python -m scripts.skill_harness.phase_runner`로 initialize, evaluate,
+task 목록 없이 기존 phase workflow를 실행·복구할 때만 `uv run python -m scripts.skill_harness.phase_runner`로 initialize, evaluate,
 advance, finalize합니다.
 
 `.agents/design-collaboration-policy.json`을 먼저 읽고, `.agents/rules/tool-runtime-map.md`의

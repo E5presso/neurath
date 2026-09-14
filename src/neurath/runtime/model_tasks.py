@@ -37,10 +37,10 @@ def policy_settings(evidence):
     keys = ("approval_policy", "approvals_reviewer", "sandbox_policy", "sandbox_observation",
             "collaboration_mode", "permission_mode", "allowed_tools", "denied_tools",
             "permission_rules", "network_policy", "filesystem_policy",
-            "source_controls", "target_controls", "policy_mapping_revision")
+            "source_controls", "target_controls", "target_native_settings", "policy_mapping_revision")
     native = evidence.get("native_fields", evidence)
     result = {key: native[key] for key in keys if key in native}
-    for key in ("source_controls", "target_controls", "policy_mapping_revision"):
+    for key in ("source_controls", "target_controls", "target_native_settings", "policy_mapping_revision"):
         if key in evidence:
             result[key] = evidence[key]
     if "mapping_revision" in evidence:
@@ -75,7 +75,8 @@ def typed_inventory(observation):
 
 def decode_inventory(data):
     return Inventory(**{**data, "models": tuple(ModelInfo(**{
-        **m, "capabilities": tuple(m["capabilities"]), "reasoning": tuple(m["reasoning"])
+        **m, "capabilities": tuple(m["capabilities"]), "reasoning": tuple(m["reasoning"]),
+        "aliases": tuple(m.get("aliases", ()))
     }) for m in data["models"])})
 
 
@@ -231,7 +232,8 @@ def run(root, name, fields, *, identity, expected_turn=None, verified_policy_evi
     if name == "provider_models":
         if expected_turn is None:
             raise TaskError("native-execution-required", "inventory needs observed host policy")
-        _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence)
+        _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence,
+                              controlled_provider_operation=True)
         inventory = store.session_inventory(
             identity.address, fields["provider"],
             lambda: refresh_inventory(root, fields["provider"], target),
@@ -259,7 +261,7 @@ def definitions():
         return {"type":"object","additionalProperties":False,
                 "properties":properties,"required":list(required)}
     execution=obj({
-        "mode":choice("inherit","read-only","workspace-write","danger-full-access","native"),
+        "mode":choice("inherit","target-native","read-only","workspace-write","danger-full-access","native"),
         "approval_policy":choice("never","on-request","untrusted"),
         "approvals_reviewer":choice("user","auto_review"),
         "collaboration_mode":choice("default","plan"),
@@ -354,9 +356,9 @@ def decode_context(value):
     return PlanContext(**{**value,"constraints":Constraints(**constraints)})
 
 
-def resolve_created_plan(root, owner, plan, current_inventory, *, run_id):
+def resolve_created_plan(root, owner, plan, current_inventory, *, run_id, native_alias=False):
     """Internal accepted-worker transition, not a public native-identity input."""
-    if plan["proposal"]["selection"]["model"] != "inherit":
+    if plan["proposal"]["selection"]["model"] != "inherit" and not native_alias:
         return plan
     proposal = plan["proposal"]
     typed = PlanProposal(decode_context(proposal["context"]), Selection(**proposal["selection"]),

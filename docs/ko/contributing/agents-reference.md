@@ -1,91 +1,62 @@
-# 에이전트 협업 MCP 참조
+<!-- date: 2026-09-13; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
 
-<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
+[English](../../en/contributing/agents-reference.md)
 
-**한국어** · [English](../../en/contributing/agents-reference.md)
+# 참여자의 역할과 권한 확인
 
-[아키텍처](architecture.md) · [작업 도구 전체 목록](task-tools.md) · [사용 안내](../usage/agents.md)
+Neurath는 사용자의 현재 에이전트, 네이티브 직접 자식, 별도로 소유한 provider 세션을 구분합니다. 이 구분에 따라 worktree 편집, 할당 수락, 후보 평가, 중단 후 재개 권한이 달라집니다. 표시 이름이나 역할을 설명하는 메시지만으로 해당 권한을 얻을 수 없습니다.
 
-에이전트는 명명된 MCP 도구의 구조화 입력으로 협업합니다. CLI와 공통 도메인 서비스는 실행 기반이며,
-호출자가 명령 문법을 탐색하거나 argv를 조립할 필요가 없습니다. 도구 목록과 입력 스키마는 현재
-설치본에서 발견합니다. 아래 이름은 `neurath_collaboration` 서버의 도구명입니다.
+## 협업 형태 선택
 
-## 동료 발견과 대화
-
-| 목적 | 도구와 입력 | 확인할 결과 |
+| 필요한 일 | 참여자 | 권한과 수명 |
 | --- | --- | --- |
-| 동료 찾기 | `collaboration_discover`의 `query` | 실제 발견된 주소와 현재 참여 상태 |
-| 자기 역할 설명 | `collaboration_register`의 `name`, `summary` | 실제 호출자에 결속된 소개 |
-| 질문 보내기 | `collaboration_send`의 `to`, `message`, `key` | 영속 메시지 ID |
-| 수신 목록·본문 | `collaboration_inbox`, `collaboration_message` | 제한된 미리보기와 전체 본문 구분 |
-| 답변·수신 확인 | `collaboration_reply`, `collaboration_ack` | 본문을 읽은 실제 수신자의 처리 기록 |
-| 대화 조회·종료 | `collaboration_conversation`, `collaboration_close` | 남은 전달 의무와 종료 상태 |
-| 소식 구독·발행 | `collaboration_subscribe`, `collaboration_publish`, `collaboration_unsubscribe` | 실제 구독자에게 저장된 소식 |
+| 현재 작업에서 분리 가능한 제한된 일 | 네이티브 말단 자식 | 호스트가 확인한 직접 부모·자식 관계 |
+| 독립 수명, 다른 provider, 필요한 격리 | 소유한 provider 세션 | 별도 실행 기록과 해당 worktree의 준비 확인 |
+| 기존 협업자의 정보 | 발견한 동료 | 인증된 메시지 출처와 동료 자신의 사용자 지시 범위 |
+| 명시적 계약이 요구하는 독립 검토 | 연결된 검토자 | 정확한 후보·할당 권한과 소유자의 결과 소비 |
+
+현재 작업에서 이미 승인된 일을 나눌 때는 네이티브 말단 자식이 기본입니다. 독립 provider 실행에는 이유와 기존 승인이 필요합니다. 받은 동료 요청이 새 세션 생성이나 사용자 목표 확대를 허용하지는 않습니다. fork는 자체 시작 확인과 자체 worktree 소유권이 필요한 별도 루트입니다.
+
+## 상태 변경 전 호출자 확인
+
+네이티브 훅은 실제 호스트·세션·현재 턴·worktree·정확한 도구 입력을 연결합니다. 호출자가 입력한 ID만으로 권한이 생기지 않습니다. MCP 입력 스키마는 닫혀 있으며, 선택 필드 `_neurath_binding`은 호스트가 제공하는 인증 자료입니다. 예제에 임의로 채우거나 다른 호출자의 값을 복사하면 안 됩니다.
+
+`session_status`에 `{"detail":"full"}`을 전달하면 설치, 활성화, 정책, 세션, 소유권을 진단할 수 있습니다. `session_inspect`, `turn_inspect`, `worktree_inspect`는 해당 상태를 좁혀 읽습니다. 설치 파일 존재, 실제 호스트 활성화, 적용된 정책, 소유권 획득은 각각 확인해야 합니다. 실행 경로 제안만으로 준비가 완료되지 않습니다.
+
+직접 자식을 만들 때는 부모가 네이티브 spawn 직전에 `delegation_prepare`로 `delegation_id`, `assignment`, 안정적인 `key`를 기록합니다. 일회용 의도는 실제 호스트 근거와 일치해야 합니다. Codex는 실제 spawn 결과와 자식 대화 기록의 메타데이터를, Claude는 자식 대화 기록의 부모 Agent 호출 참조를 확인합니다. 오래되거나 재사용·복사한 참조로 관계를 만들 수 없습니다. 대화 기록 등록이 늦으면 첫 상태 작업에서 재확인할 수 있지만, 확인 전에는 자식의 셸·쓰기 동작이 `child-identity-unverified`로 차단됩니다.
+
+이 구조에서는 네이티브 직접 자식만 지원합니다. 중첩 spawn에 부모 식별자를 복사해도 유효해지지 않습니다. 관계 확인 후 `delegation_assign`에 `workflow_id`, `delegation_id`, `assignment`, `target`, `key`를 전달해 명시적 workflow에 연결합니다. 독립 평가에는 실제 평가 계약과 인증된 보고 소비도 필요합니다.
+
+## worktree별 쓰기 소유자 유지
+
+인증된 호출자는 `{}`로 `worktree_claim`을 호출하고 반환된 lease epoch와 fencing token을 보존합니다. lease는 현재 소유자를 식별하고 token은 소유권이 바뀐 뒤 이전 소유자가 쓰는 것을 막습니다. 다른 에이전트의 탐색 결과, 작업 수락, checkpoint, 루트 식별자는 소유권을 대신하지 않습니다.
+
+`worktree_release`에는 실제 소유권 기록의 `expected_lease_epoch`와 `fencing_token`이 필요합니다. 값이 오래되었다면 새 token을 추측하거나 강제로 인수하지 말고 현재 소유자를 확인합니다. 여러 에이전트가 같은 worktree를 읽을 수 있지만 쓰기는 한 명이 맡아야 합니다. 독립 provider가 편집하기 전에는 자기 대상의 설치·실제 활성화·적용 정책·선택 모델·소유권을 확인합니다.
+
+격리가 필요하면 [기능별 실행 경로](capability-map.md)의 worktree 준비·정리 절차를 사용합니다. 정리에는 독립적으로 확인한 기준 브랜치와 remote 참조가 필요하며 저장소 관례를 추측하거나 기존 소유자를 밀어내면 안 됩니다.
+
+## 기존 동료 찾기와 할당
+
+동료는 `collaboration_register`로 간결한 이름과 소개를 등록하며 실제 식별자는 런타임이 연결합니다. 전체 대화를 복사하지 않고 필요한 동료를 찾을 수 있습니다.
 
 ```json
-{"tool":"collaboration_discover","arguments":{"query":"API"}}
+{"tool":"collaboration_discover","arguments":{"query":"API","limit":10}}
 ```
 
-반환된 정확한 주소를 다음 호출의 `to`에 사용합니다. sender·actor·session을 입력으로 만들어 넣지
-않습니다. 같은 key와 내용의 재시도는 중복되지 않으며, 다른 내용에 같은 key를 쓰면 거부됩니다.
-메시지와 동료의 요청은 참고 입력입니다. 현재 사용자의 목표·승인·파일 소유권을 바꾸지 않습니다.
+반환된 정확한 주소를 사용합니다. 질문·제안은 `collaboration_send`, 일반 작업 할당은 `to`, `message`, `key`를 받는 `collaboration_assign`으로 보냅니다. 수신자는 반환된 작업 ID로 `collaboration_accept`를 호출하고, `collaboration_report`에서 `started`, `waiting`, `error`, `failed`, `cancelled`, `completed` 상태를 보고합니다. `collaboration_task`는 할당 기록을 읽습니다.
 
-```mermaid
-sequenceDiagram
-    participant A as 발신 에이전트
-    participant M as 명명 MCP와 메시지 저장소
-    participant H as 수신 호스트
-    participant B as 수신 에이전트
-    A->>M: collaboration_send
-    M-->>A: 저장된 메시지 ID
-    M->>H: 같은 ID의 전달 알림
-    H-->>B: 정상 이벤트에서 알림
-    B->>M: collaboration_message
-    M-->>B: 전체 본문
-    B->>M: collaboration_ack 또는 reply
-    Note over A,B: ACK는 수신 확인이며 작업 완료 수락과 별개
-```
+메시지 수신 확인과 작업 수락은 별개입니다. 연결이 끊긴 수신자는 새로 확인된 네이티브 턴에서 다시 수락해야 하며, 무관한 과거 턴으로 재개할 수 없습니다. 완료 보고를 받으면 발행자가 요청한 실제 효과를 확인해야 합니다. 본문 읽기·ACK·응답·복구는 [메시지 전달 계약](collaboration-contract.md)에 설명합니다.
 
-전달 상태의 queued·submitted·received·replied는 각각 저장·제출·수신 확인·답변을 뜻합니다.
-연결이 끊겨도 원문과 메시지 ID를 보존합니다. `delivery_status`는 이벤트 후 진단,
-`delivery_redrive`는 확인된 복구 후 재처리에 사용합니다. 완료를 주기적으로 폴링하지 않습니다.
-호스트가 반환한 즉시 전달 경로를 사용한 경우 실제 제출 성공 뒤 `collaboration_submitted`를 기록합니다.
+## 원래 작업 재개
 
-## 독립 작업과 네이티브 자식
+일반 호스트 `SessionEnd`는 재개 가능한 세션·작업·enclave·소유권을 보존합니다. 재개 근거가 확인된 `SessionStart`에서 네이티브 관계를 복원합니다. 커널의 명시적 `SessionEnded`는 영구 종료이며 시작 문자열로 되살릴 수 없습니다. 올바른 루트 요청이나 네이티브 재개는 이전에 중단된 현재 턴을 닫되 남은 작업과 위임은 보존합니다.
 
-독립 프로바이더 작업은 `provider_models`로 실제 목록을 확인하고 `provider_plan`으로 선택 근거를
-기록한 뒤, 정확한 계획 ID·revision과 key를 `provider_run`에 전달합니다. 요청한 모델, 설정된
-기본 모델, 생성 후 관측한 모델은 구분합니다. 기본 권한 모드는 바로 위 발행자의 실제 정책을 승계합니다.
+작업 목록이 있으면 Stop은 공통 데이터베이스에서 최신 목록 확인과 종료를 원자적으로 처리합니다. 일반 작업은 인증된 소유자가 직접 근거와 결과 요약으로 해결합니다. checkpoint·학습·TODO·독립 검토가 추가 완료 투표를 하지는 않습니다. 명시적 단계와 검토 workflow에는 해당 요구가 유지됩니다. [작업 도구](task-tools.md)와 [작업·TODO 계약](task-todo-contract.md)을 참고합니다.
 
-`provider_run`의 접수 결과는 즉시 반환되며 모델 실행 완료를 뜻하지 않습니다. 시작·오류·완료는
-소유 연결과 영속 보고로 돌아옵니다. 일반 작업의 전체 수명에는 고정 시간 제한이 없습니다.
-`provider_status`는 보고된 오류 후 진단, `provider_cancel`은 취소 요청,
-`provider_recover`는 실제 종료가 확인된 연결·실행의 복구에 사용합니다.
-후속 질문은 발견한 실제 동료와의 대화로 보냅니다. 과거 제한 실행기는 내부 호환용이며 새 작업 절차가 아닙니다.
+확인된 루트 턴에는 무한 반복을 막는 Stop 계속 실행 기회가 한 번 있습니다. 남은 작업은 미완료로 반환하며 이후 확인된 사용자 턴은 자체 기회를 갖습니다. 늦게 온 Stop이 더 최신 턴을 닫을 수 없습니다. 일치하는 턴이 없는 Stop은 상태 변경 없이 비차단 진단을 남깁니다. 지원되는 앱 동료 전달도 실제 대화 기록과 네이티브 턴 근거가 있을 때 기존 목표를 이어갈 수 있으며 사용자 승인을 생성하지는 않습니다.
 
-네이티브 직계 자식은 `delegation_prepare` 뒤 호스트의 실제 자식 생성 도구로 준비합니다.
-이 준비 자체가 자식을 생성하거나 독립 평가 권한을 주지는 않습니다. 실제 부모·자식 관계를
-호스트가 확인한 뒤 `delegation_assign`, `evaluation_report`, `evaluation_consume`으로 연결합니다.
-일반 동료 작업은 `collaboration_assign` → `collaboration_accept` → `collaboration_report`를 사용합니다.
-고정 리뷰 행렬은 `review_begin/report/consume/abort`의 별도 계약을 유지합니다.
+## 구현과 확인 대상
 
-## Newsroom
+[호스트 식별](../../../src/neurath/hosts/identity.py)과 [훅](../../../src/neurath/hosts/hooks.py)이 호출자를 확인합니다. [SessionKernel](../../../src/neurath/_assets/scripts/agent_harness/session_kernel.py), [StateHandle](../../../src/neurath/_assets/scripts/agent_harness/state_handle.py), [WorktreeRegistry](../../../src/neurath/_assets/scripts/agent_harness/worktree_registry.py)는 생명주기·접근·소유권을 담당합니다.
 
-`newsroom_publish`는 재사용할 발견의 제목·본문·key를 받습니다. `newsroom_headlines`로 제목을
-읽고 관련 있는 기사만 `newsroom_read`로 읽습니다. 정정은 `newsroom_revise`, 댓글은
-`newsroom_comment`, 참여자는 `newsroom_peers`, 알림 확인은 `newsroom_seen`입니다.
-정확한 revision과 안정된 ID를 사용하며, 명명 도구가 없는 것처럼 CLI로 되돌아가지 않습니다.
-
-활성 동료에게 제목과 조회 ID만 알리며 본문 전체를 자동으로 기억이나 상위 보고에 복제하지 않습니다.
-비활성 세션을 깨우거나 새 LLM 작업을 만들지 않습니다. 기사·댓글은 에이전트 보고이며 검증 통과나
-스펙 승인으로 승격되지 않습니다.
-
-## 실행과 증거의 경계
-
-현재 네이티브 호출, 실행 정책, 작업 공간 소유권을 각각 확인합니다. 명명 도구가 존재하더라도
-현재 호스트의 제한을 집행하지 못하면 미지원 사유를 반환합니다. 권한을 넓히거나 다른 전송으로
-같은 작업을 재실행하지 않습니다. [프로바이더 전송](provider-transports.md)에 실제 지원 범위를 설명합니다.
-
-메시지 저장소는 같은 로컬 Git 프로젝트와 연결된 worktree 범위입니다. 별도 clone·다른 컴퓨터·원격 UI의
-동기화는 별도 증거가 필요합니다. 패키지 테스트, 실제 모델 인증, 새 호스트의 훅 활성화,
-전달 본문 수신과 결과 소비는 각각 검증합니다.
+[호스트 생명주기 테스트](../../../tests/test_host_lifecycle.py), [프롬프트 전달 테스트](../../../tests/test_prompt_delivery.py), [worktree 테스트](../../../tests/runtime/agent_harness/test_worktree_registry.py)는 이 경계를 검사합니다. 실제 호스트 수락 검증에서는 새 시작, 실제 자식 관계, 중단·재개, 조기 완료 거절, 인증된 결과 소비, 소유권 해제를 추가로 관찰해야 합니다. 프로토콜 모의 검사나 소스 테스트의 통과는 각각 검사한 범위의 근거입니다.

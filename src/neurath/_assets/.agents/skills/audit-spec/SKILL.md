@@ -10,7 +10,7 @@ user-invocable: true
 
 # Audit Spec
 
-중요 skill phase는 `uv run python -m scripts.skill_harness.phase_runner`로 계약을 initialize, evaluate, advance, finalize합니다.
+task 목록 없이 기존 phase workflow를 실행·복구할 때만 `uv run python -m scripts.skill_harness.phase_runner`로 계약을 initialize, evaluate, advance, finalize합니다.
 
 plan, milestone, GitHub Issue set에 spec-only review가 필요할 때 사용합니다. 이
 skill에서는 production code를 편집하지 않습니다.

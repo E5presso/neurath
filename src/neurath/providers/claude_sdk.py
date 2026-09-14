@@ -35,7 +35,7 @@ BOOTSTRAP = (
     "that follows this response. Do not release it or finish the whole session here. "
     "Defer pending peer requests and task execution, including replies, until that assignment; "
     "a hook notification does not replace this preparation instruction. "
-    "Do not implement changes, edit source files, synthesize lifecycle state, override a "
+    "During this preparation turn, do not implement changes, edit source files, synthesize lifecycle state, override a "
     "conflicting claim or change permissions. Stop and report any failed prerequisite."
 )
 
@@ -135,13 +135,13 @@ class ClaudeSession:
         if not self._connected:
             raise ValueError("connection is not open")
 
-    async def bootstrap(self, *, claim_worktree=False):
+    async def bootstrap(self, *, claim_worktree=False, assignment_scope=""):
         self._require_connected()
         if self.session is not None or self._submitted:
             raise ValueError("bootstrap requires a fresh connection")
         if claim_worktree and self.permission_mode == "plan":
             raise ValueError("plan preparation cannot claim an implementation worktree")
-        prompt = BOOTSTRAP
+        prompt = assignment_scope + BOOTSTRAP
         if claim_worktree:
             prompt = prompt.replace("Call the Neurath session_status", "Obtain this worktree's normal claim with "
                 "the named worktree_claim MCP task tool. Call the Neurath session_status")
@@ -214,14 +214,23 @@ class ClaudeSession:
         effective = {"permission_mode": data.get("permissionMode"),
                      "model": data.get("model"), "worktree": data.get("cwd"),
                      "sandbox_observation": "unobserved"}
+        # Claude's documented aliases are resolved by the same owned native CLI.
+        # Require its advertised alias and init result, never a guessed model ID.
+        aliases={name+suffix for name in ('sonnet','opus','haiku','fable') for suffix in ('','[1m]')}
+        native_alias=(self.model in aliases and self.inventory is not None
+            and any(m['id']==self.model for m in self.inventory['models'])
+            and isinstance(effective['model'],str) and bool(effective['model']))
         matched = (effective["permission_mode"] == self.permission_mode
                    and effective["worktree"] == self.worktree
                    and isinstance(effective["model"], str) and bool(effective["model"])
-                   and (self.model is None or self.model == effective["model"]))
+                   and (self.model is None or self.model == effective["model"] or native_alias))
         session = Session("claude-code", "claude-agent-sdk", native, self.worktree,
             self.model, effective["model"], {
                 "requested": {"permission_mode": self.permission_mode},
-                "effective": effective, "verification": "verified" if matched else "mismatch"})
+                "effective": effective, "verification": "verified" if matched else "mismatch",
+                **({'native_model_resolution':{'requested':self.model,'actual':effective['model'],
+                    'source':'claude-agent-sdk:system/init','native_session':native}}
+                    if native_alias and self.model!=effective['model'] else {})})
         if not matched or self.session is not None and self.session != session:
             raise CreationRejected(session)
         self.session = session
@@ -268,16 +277,19 @@ class ClaudeSession:
                         raise RuntimeError("native Result has no reserved serial query")
                     self._pending -= 1
                     self._submitted = self._pending > 0
-                    if message.permission_denials or message.deferred_tool_use:
-                        state = "waiting"
-                    elif (message.stop_reason in {"interrupt", "interrupted", "cancelled"}
+                    if (message.stop_reason in {"interrupt", "interrupted", "cancelled"}
                           or message.terminal_reason in {"interrupt", "interrupted", "cancelled"}):
                         state = "cancelled"
+                    elif message.deferred_tool_use:
+                        state = "waiting"
                     else:
-                        state = "failed" if message.is_error else "completed"
+                        state = "failed" if message.is_error or message.permission_denials else "completed"
                     if self._phase == "preparation":
                         self._preparation_complete = state == "completed"
-                    await self._emit(state, reason=message.subtype,
+                    await self._emit(state, reason="permission-denied" if state == "failed" and message.permission_denials else message.subtype,
+                                     native_subtype=message.subtype,
+                                     permission_denial_count=len(message.permission_denials or []),
+                                     approval_pending=bool(message.deferred_tool_use) and state != "cancelled",
                                      cancellation_requested=self._cancel_requested,
                                      result_acceptance=False)
                     self._started = False

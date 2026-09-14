@@ -153,6 +153,7 @@ def test_native_write_requires_claim_and_implementation_readiness(tmp_path, prep
         text = prepared[0].assignments[0]
         assert "material" not in text
         assert "native host tools" in text and "task result once" in text
+        assert "only when the assignment requests" in text
         assert "Release your own claim" in text
     else:
         assert prepared[0].assignments == []
@@ -190,7 +191,7 @@ def test_inbox_cleanup_error_closes_sdk_and_cannot_report_success(tmp_path, prep
 
 @pytest.mark.parametrize("phase", [1, 2])
 @pytest.mark.parametrize("fields,status", [
-    ({"permission_denials": [{"tool_name": "Write"}]}, "waiting-approval"),
+    ({"permission_denials": [{"tool_name": "Write"}]}, "failed"),
     ({"is_error": True}, "failed"),
     ({"is_error": True, "stop_reason": "interrupted"}, "cancelled"),
 ])

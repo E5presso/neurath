@@ -13,7 +13,7 @@ user-invocable: true
 승인된 scenario가 존재한 뒤 end-to-end QA에 사용합니다. placeholder e2e generator가
 아닙니다.
 
-중요 skill phase는 `uv run python -m scripts.skill_harness.phase_runner`로
+task 목록 없이 기존 phase workflow를 실행·복구할 때만 `uv run python -m scripts.skill_harness.phase_runner`로
 계약을 initialize, evaluate, advance, finalize합니다.
 
 `.agents/rules/tool-runtime-map.md`를 사용합니다.

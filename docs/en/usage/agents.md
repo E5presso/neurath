@@ -1,96 +1,52 @@
-# Working with other agents
+<!-- date: 2026-09-14; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
 
-**English** · [한국어](../../ko/usage/agents.md)
+# Delegate independent work
 
-<!-- date: 2026-09-08; synced_from: current implementation and accepted collaboration contract; English and Korean editions updated together -->
+[한국어](../../ko/usage/agents.md)
 
-[Usage](index.md) · [Contributing](../contributing/index.md)
+Ask the agent to delegate when parts of a request can proceed independently. Give each part a clear outcome and keep any shared constraints in the request. The coordinating agent reads the returned work and follows through on your original goal.
 
-Tell your agent what collaboration would help the task. It finds peers, delegates bounded
-work, sends questions, and collects results within the scope you authorize.
-You do not need to operate a messaging console or manage agent addresses.
+> Have another agent investigate the failing case while you inspect the implementation. Compare the evidence before choosing a fix.
 
-For example: “Find the earlier decision, ask the relevant peer to confirm it, run the
-project's check, and leave a handoff with the actual result.” The agent prefers available
-structured task tools for history, collaboration and verification. When a tool cannot
-preserve the host's execution mode, the agent runs the registered check through the host.
-It reports installation, native activation, observed mode and ownership separately.
-A fork has its own identity and must establish its own worktree ownership before editing.
+Native child agents are the default for bounded work within the current task. You can name a desired provider or model; the agent checks what is available with your existing access and explains a limitation if the requested choice cannot be used.
 
-The agent keeps a visible TODO for the whole request, adds newly discovered work,
-and tells you when work remains unfinished. It keeps side questions from replacing the original
-request and leaves a normal stop pending until the outstanding work is settled. When you ask it to
-coordinate several peers, it can send one approved update to several exact recipients atomically;
-delivery still needs recipient confirmation.
+For an independent provider session, ask the agent to check support for the requested host and workflow before assigning the work. The [contributor documentation](../contributing/index.md) describes the required model, policy, activation, ownership, and recovery behavior.
 
-## Request a second opinion
+## Keep each provider's existing settings
 
-To request independent implementation, say: “Fix this issue in a separate session. Run the
-approved work without asking for manual command approval each time, keeping current global permissions.”
-The agent inherits the immediate creator's execution mode, checks its actual application in the new
-session, and then delivers the work. If that route cannot apply or verify them, it reports the
-blocker. It distinguishes preparation, waiting for approval or input, work delivery, and evidence
-of execution. A generic request to open a conversation keeps its normal approval behavior.
+> Ask Claude to review this change using its own existing settings. Keep the result tied to this assignment and tell me what it checked.
 
-> Ask another agent to review this design. Give it the relevant constraints and return its
-> findings before changing the code.
+By default, an independent session inherits the immediate creator's supported execution policy. When you explicitly choose the receiving provider's own settings, the agent uses that provider's existing defaults, hooks, and tool rules and checks them in the created session. An unavailable setting is reported rather than replaced with broader permissions.
 
-If you want a particular provider or model, name it in the request. The agent uses that
-provider's existing authentication and model access. If it is unavailable, the agent reports
-the limitation rather than silently substituting a model. The agent performs supported sign-in
-recovery and requests your intervention only for account information or authentication it cannot complete.
+If the current provider has stopped and the next one should take over its unfinished work, use [work adoption](memory.md). Creating a separate session is different from connecting it to a project in the Codex desktop app. Automatic desktop project association for CLI-created Codex sessions remains unresolved; the agent should distinguish actual execution from how the app groups that session.
 
-New provider work inherits the current permission mode. The agent plans the model from task
-difficulty, available models and your constraints, including explicit use of the native default.
-Ordinary work is assigned to native leaf agents when that is supported. The agent calibrates the
-model to the role and difficulty and uses the smallest capability that satisfies the request.
-Before authorized editing, the agent checks
-installation, actual host activation, effective execution mode, and ownership of a separate
-worktree of the same project. A created session alone is not ready to edit. If the chosen
-host cannot apply or report the requested mode, the agent reports that specific limitation.
-The agent prepares the relevant context; the entire parent
-conversation is not copied automatically. A provider report alone does not establish the
-independent review authority required by some workflows.
+## Keep the assignment and result clear
 
-## Coordinate ongoing work
+A useful delegated assignment states what to investigate or produce, the allowed scope, and the evidence to return. For example, one agent can reproduce a failure while another inspects the relevant implementation. The coordinator can then explain whether the two findings agree and what still needs checking.
 
-> Ask the agent working on export validation whether this change affects its assumptions.
-> Bring back its answer and keep the editing responsibilities separate.
+For separate editing work, ask for an isolated workspace. The agent checks that the destination is ready and that it owns the workspace before editing. A peer's suggestion does not expand the work you authorized.
 
-Agents in the same local project can exchange questions, answers, and updates across linked
-worktrees and supported hosts. Each retains its own goal and permissions. A peer's request
-does not become a new user instruction or grant ownership of files.
+The progress report should make the next step clear: preparation may be underway, a session may be waiting for input, or a result may be ready for the coordinator to read. Creating an agent does not by itself show that the assigned work has finished.
 
-Delivery states mean different things:
+## See whether a message reached its recipient
 
-| State | Meaning |
+| Reported state | What you can conclude |
 | --- | --- |
-| Queued | The message is stored for delivery |
-| Submitted | A host transport accepted the delivery request |
-| Received | The recipient acknowledged the message |
-| Replied | The recipient sent a response |
+| Queued | The message is saved for delivery |
+| Submitted | The delivery service accepted it |
+| Received | The recipient acknowledged reading it |
+| Replied | A response is available to read |
 
-A stored or submitted message is not proof that the other agent read it. An owned provider
-connection delivers reports even after the issuer's previous turn ends. Unacknowledged messages
-remain stored and are retried with the same identity; duplicates can be recognized by that key.
-Permission/input waits remain visible. If a provider process dies, messages remain available
-for supported recovery of its recorded execution. The issuer reads the body, acknowledges it,
-and remains responsible for the follow-up. No completion polling or receiver-only agent is needed.
-User presence and remote observation are outside the harness execution contract. This local
-message store does not connect separate clones or computers automatically.
+A received message can still contain work the recipient has not completed. Ask for the assignment's result when that is what you need to confirm.
 
-## Share useful discoveries
+Saved messages can remain available through supported recovery after a process interruption. Delivery and automatic wakeup depend on the host's supported connection; a queued message may wait until a session can resume. The coordinator remains responsible for reading reports and following up. If a delivery result is uncertain, it should explain that state instead of treating an attempted send as completed work.
 
-Newsroom shares discoveries with agents that are actively working. For example, an agent
-that finds a duplicate-write condition can publish the finding and reproduction evidence.
-Peers receive a headline, then retrieve the body only if it matters to their task.
+## Share findings without copying every conversation
 
-The agents handle publication, relevant reading, corrections, and comments during active work.
-You do not need to poll a feed. Idle, paused, and ended sessions receive no notifications and
-are not awakened; notifications missed while inactive are not replayed on return.
-An article remains an attributed report, not specification approval or proof of verification.
+Working agents can publish a finding with a concise title and reproduction evidence. Active peers receive the title and a lookup identifier, then open the relevant body when they need it. Corrections and comments retain their authorship and revision information.
 
-The [agent collaboration reference](../contributing/agents-reference.md) preserves execution
-commands, delivery limits, provider options, and host integration details for agents and contributors.
+These articles share useful observations; the original evidence still matters when deciding whether to act on them. Their complete bodies are not automatically copied into memory or sent upstream. Idle, paused, and ended peers are not woken, and notifications missed while inactive are not replayed.
 
-[Usage](index.md) · [Memory and learning](memory.md)
+Peer messages and [project memory](memory.md) are shared across linked worktrees of the same local Git project. Separate clones and computers do not synchronize automatically.
+
+See [Available skills](skills.md) for work you can delegate and [Reporting and contributions](reporting.md) for the separate choice to publish common harness findings externally.

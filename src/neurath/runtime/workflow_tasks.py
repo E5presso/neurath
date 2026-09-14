@@ -119,7 +119,10 @@ def definitions():
         "adaptive_preflight": ({"workflow_id": text_field(256, default="")}, True),
         "adaptive_replace": ({**workflow, **revision, **key, "state": adaptive}, False),
         "adaptive_override_goal": ({**workflow, **revision, **key, "state": adaptive}, False),
-        "delegation_prepare": ({"delegation_id": text_field(128), "assignment": text_field(8192), **key}, False),
+        "delegation_prepare": ({"delegation_id": text_field(128), "assignment": text_field(8192),
+            "task_id": {**_nullable(text_field(128)), "default": None},
+            "expected_task_revision": {**_nullable({"type": "integer", "minimum": 1,
+                "maximum": 2**53 - 1}), "default": None}, **key}, False),
         "delegation_assign": ({**workflow, "delegation_id": text_field(128), "assignment": text_field(8192), "target": text_field(512), **key}, False),
         "evaluation_prepare": ({**workflow, **key, "state": adaptive}, False),
         "evaluation_read": ({**workflow, "assignment": assignment}, True),
@@ -141,7 +144,7 @@ def definitions():
         "adaptive_preflight": "Inspect registered independent-evaluator admission without creating a workflow.",
         "adaptive_replace": "Validate a complete adaptive state and its external evidence against the exact workflow revision before replacement.",
         "adaptive_override_goal": "Apply a typed goal override only after validating current native user-intent authority; input text is not user approval.",
-        "delegation_prepare": "Bind an intent for the next native child spawn. Does not spawn or attest a child, grant authority or claim a worktree.",
+        "delegation_prepare": "Bind the next native child spawn. A peer-resumed turn without a current user prompt requires task_id and expected_task_revision for an in-progress task with retained user instructions. Does not grant new authority or claim a worktree.",
         "delegation_assign": "Assign an active owned workflow task to an already discovered host-attested direct child. Use collaboration_assign for independent peer sessions.",
         "evaluation_prepare": "Persist an immutable adaptive candidate and return its authenticated structured evaluator assignment.",
         "evaluation_read": "Read an immutable candidate as the actual assigned native evaluator; resolve its exact prepared assignment and digest.",
@@ -445,7 +448,8 @@ def _delegation(root, name, fields, handle):
     from neurath.runtime.task_schema import TaskError
     if name == "delegation_prepare":
         from neurath.hosts.identity import prepare_bound_delegation
-        return prepare_bound_delegation(root, handle, fields["delegation_id"], fields["assignment"])
+        return prepare_bound_delegation(root, handle, fields["delegation_id"], fields["assignment"],
+            task_id=fields.get("task_id"), expected_task_revision=fields.get("expected_task_revision"))
     state = handle.inspect()
     common = {"session_id": handle.session_id, "delegation_id": DelegationId(fields["delegation_id"]),
               "idempotency_key": "task:" + name + ":" + fields["key"]}

@@ -10,7 +10,7 @@ user-invocable: true
 
 # Dependency Audit
 
-중요 skill phase는 `uv run python -m scripts.skill_harness.phase_runner`로 계약을 initialize, evaluate, advance, finalize합니다.
+task 목록 없이 기존 phase workflow를 실행·복구할 때만 `uv run python -m scripts.skill_harness.phase_runner`로 계약을 initialize, evaluate, advance, finalize합니다.
 
 1. root `pyproject.toml`, package `pyproject.toml`, `uv.lock`을 검사합니다.
 2. `uv lock --check`를 실행합니다.

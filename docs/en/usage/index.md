@@ -1,98 +1,48 @@
-# Using Neurath in your project
+<!-- date: 2026-09-14; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
 
-**English** · [한국어](../../ko/usage/index.md)
+# Work on your project with Neurath
 
-<!-- date: 2026-09-07; synced_from: source and documentation at e1487a1718056b37b999d1343a1007b7e25f5c8c; English and Korean editions updated together -->
+[한국어](../../ko/usage/index.md)
 
-[Usage](index.md) · [Contributing](../contributing/index.md)
+Tell Claude Code or Codex what you want to accomplish in your Git project. Neurath supplies reusable ways to investigate, implement, review, and continue that work using the project's own documents and checks. It works across languages and frameworks in an existing project.
 
-**Tell your coding agent what you want to accomplish.** The agent selects the appropriate
-skills and handles Neurath installation, project configuration, checks, memory, and collaboration.
-You do not need to run Neurath commands, edit its configuration, or manage its internal workflow.
+## Start with a result you can recognize
 
-## 1. Ask the agent to set up the project
+> The saved filter disappears after a reload. Reproduce the problem, fix the cause, and check that the value survives a new session. Keep the current interface.
 
-Open your project in Codex or Claude Code and send:
+The agent investigates the current behavior, works through the requested change, and checks the result. A useful response tells you what changed, which checks ran, and whether anything remains unresolved. If you also want a commit, push, or pull request, include that delivery in the request.
 
-> Install Neurath from https://github.com/E5presso/neurath in this project. Read its installation
-> reference, preserve our existing instructions, hooks, permissions, skills, and dependencies,
-> and connect our existing documentation and checks. Ask only for information you cannot
-> establish from the project. Report installation diagnostics and any host trust steps I need to complete.
+You can ask a question or add a constraint while work is underway. The original request remains tracked until you finish it, cancel it, or replace it. The visible TODO list helps you follow what is done and what remains.
 
-The agent inspects the project, prepares the installation, connects its existing checks, and
-verifies what it can. If a conflicting file needs a decision, it explains the concrete conflict.
-You complete any host login or trust action that requires you, then start a fresh session when
-the agent explains that it is necessary. [Installation and maintenance](installation.md) describes
-the expected result and recovery options.
+## Keep the goal in view while changing the approach
 
-## 2. Describe the outcome and constraints
+Neurath periodically reminds the agent why the work began and what a satisfactory result requires. For the filter problem above, the goal is to preserve the saved value. Repeating a broad investigation or perfecting a test plan is useful only while it helps reach that result.
 
-> Retrying work log export creates duplicate rows. Reproduce the problem, fix it without
-> changing the export format, and verify it with this project's tests. Report the changed
-> behavior, checks run, and remaining uncertainty.
+This supports the agent's own judgment; it does not score goal achievement perfectly. The reminder needs no separate request or reflection report. Time and token limits help the agent avoid waste, but do not authorize it to lower your acceptance conditions or abandon the original task after one unsuccessful attempt.
 
-The agent chooses the procedure from the purpose of the request and the available evidence.
-You do not need to select a skill or know its invocation name.
+## Choose the next kind of work
 
-| Your goal | Example request |
+| Your situation | A request you can make |
 | --- | --- |
-| Plan a feature | “Turn these requirements into a plan and review it for gaps before implementation.” |
-| Fix a bug | “Reproduce this error, explain its cause, and verify the fix.” |
-| Implement agreed work | “Implement this approved issue and check its acceptance conditions.” |
-| Understand or review code | “Explain this module” or “Review these changes for defects.” |
-| Check the running product | “Verify this scenario in the application and confirm the saved result.” |
-| Deliver a change | “Finish the checks, commit the changes, and push them.” |
+| You need to understand unfamiliar code | Explain this flow using the current source and tests. |
+| The intended behavior is unclear | Review these requirements and identify the decisions needed before implementation. |
+| An issue is ready to build | Implement this approved issue and verify its acceptance conditions. |
+| A change is ready for inspection | Review this change for defects and show the supporting evidence. |
+| A feature is deployed | Check the interface, API response, and saved result through the complete flow. |
+| You are returning to unfinished work | Recall the last decision, inspect the current state, and continue the remaining work. |
 
-The [skill catalog](skills.md) explains the work the agent can perform. Installation itself
-does not authorize publishing changes or changing permissions; state those actions when needed.
+The agent selects the relevant [skill](skills.md); you do not need to memorize skill names. For several independent pieces of work, you can explicitly request [delegation](agents.md).
 
-## 3. Assess the result
+## Know what is ready
 
-The agent runs the project's configured checks and reports what they establish. If a check or
-a source document cannot be identified, it asks for that missing information and records the gap.
+Results describe the stage reached. “Tests passed; changes are still local” means the checks ran and delivery remains separate. “Installation files are ready; start a new host session” means the integration still needs to be checked in that session. An [in-progress save](skills.md) gives you a place to resume, while a completed task includes the requested result and its verification.
 
-At handoff, look for the changed behavior, checks actually run, review findings, and remaining
-limitations. Tests, independent review, installation diagnostics, host activation, and a pushed
-commit establish different facts. A passing test does not replace required independent review.
+When a needed check is unavailable, you should see that gap in the result. Neurath does not add an independent reviewer to every ordinary task; ask for a review when that is part of the work you want.
 
-## 4. Continue and collaborate
+## Set up and continue
 
-> Continue the work log export fix. Compare the saved decisions and remaining work with the
-> current code, then complete the pending verification.
+Start with [installation](installation.md), then [connect the project's documents and checks](profiles.md). [Project memory](memory.md) explains how recorded decisions and unfinished work carry into later sessions. [Reporting and contributions](reporting.md) lets you choose whether common harness problems may be reported to the Neurath project.
 
-The agent records handoffs and retrieves relevant memory automatically during active work.
-You can also ask “What did we decide last time?” or “Which recovery strategies have been verified?”
-Memory is shared within the same local Git repository and its linked worktrees; separate clones
-and computers do not share it automatically. See [memory and learning](memory.md).
+If you need to pause Neurath's hooks in one worktree, ask the agent to suspend them and later restore them. Host permissions, your instructions, and the task history remain in place. Installation and routine work do not grant permission to change permission policy or publish content.
 
-> Ask another agent to review this design and bring back its findings before changing the code.
-
-The agent handles peer discovery, delegation, messages, and any required separation of editing
-workspaces within the authorized task. [Agent collaboration](agents.md) explains what to expect.
-
-## When something does not work
-
-Describe the symptom to the agent; it performs the diagnostics.
-
-| Symptom | What to ask |
-| --- | --- |
-| Skills or hooks seem absent | “Check this project's Neurath installation and host activation. Explain any trust or session restart step I must complete.” |
-| Installation stopped on a conflict | “Show me what conflicts and how to preserve our existing content.” |
-| Verification could not run | “Find our actual check procedure, connect it, and report any missing prerequisite.” |
-| A peer has not replied | “Check whether the message is queued, submitted, acknowledged, or answered.” |
-| A new session lacks context | “Check the saved project records and explain what was retained.” |
-
-For an issue report, ask the agent to prepare a minimal reproduction, versions, expected and
-observed behavior, and relevant diagnostics with private content removed. Local installation
-plans and state can contain sensitive project material and should stay out of public reports.
-
-[Installation](installation.md) · [Project bindings](profiles.md) · [Skills](skills.md) ·
-[Terminology](../terminology.md) · [Contributing to Neurath](../contributing/index.md)
-
-## Temporarily pause Neurath
-
-> Temporarily turn off Neurath intervention in this worktree.
-
-The agent switches on bypass and reports the observed state. Neurath hooks pause while
-the host's permissions and your instructions remain in effect. Ask “Turn Neurath back on”
-to restore normal hooks. The switch stays available during bypass.
+See the [project overview](../../../README.md) for an introduction, [terminology](../terminology.md) for unfamiliar record names, and the [contributor documentation](../contributing/index.md) for execution and verification details.

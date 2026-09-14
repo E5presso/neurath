@@ -74,7 +74,15 @@ def record(tx, process, actor_id, host, payload, *, succeeded=None):
     expected = projection(ledger, host)
     request_digest = _digest(inputs)
     if succeeded is None:
-        if not ledger.tasks or inputs != expected["arguments"]:
+        # Codex may explain a plan update without changing its canonical rows.
+        # Keep the complete input digest for the paired host result below.
+        projected = ({key: value for key, value in inputs.items()
+                      if not (host == "codex" and key == "explanation")}
+                     if isinstance(inputs, dict) else None)
+        if (host == "codex" and isinstance(inputs, dict) and "explanation" in inputs
+                and not isinstance(inputs["explanation"], str)):
+            raise TaskLedgerError("native TODO explanation must be text")
+        if not ledger.tasks or projected != expected["arguments"]:
             raise TaskLedgerError("native TODO input differs from the full current task list")
         value = {"host": host, "tool": tool, "owner": ledger.owner,
                  "list_revision": ledger.revision, "projection_digest": expected["projection_digest"],

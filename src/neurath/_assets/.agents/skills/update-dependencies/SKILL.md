@@ -10,7 +10,7 @@ user-invocable: true
 
 # Update Dependencies
 
-중요 skill phase는 `uv run python -m scripts.skill_harness.phase_runner`로 계약을 initialize, evaluate, advance, finalize합니다.
+task 목록 없이 기존 phase workflow를 실행·복구할 때만 `uv run python -m scripts.skill_harness.phase_runner`로 계약을 initialize, evaluate, advance, finalize합니다.
 
 1. 사용자가 정확한 dependency를 지목하지 않았다면 먼저 `/dependency-audit`를
    실행합니다.

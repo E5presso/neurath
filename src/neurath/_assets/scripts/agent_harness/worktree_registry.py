@@ -625,6 +625,58 @@ class WorktreeRegistry:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
             return self._read_claim(claim_path, worktree_id)
 
+    def read_transaction(self, transaction, worktree_id):
+        """Read canonical SQLite state without acquiring a file lock inside a DB transaction.
+
+        Legacy files must already have been imported by the ordinary registry path.
+        This prevents DB→file / file→DB inversion in multi-domain transactions.
+        """
+        record = transaction.get("worktree", str(worktree_id))
+        if record is None:
+            if self._claim_path(worktree_id).exists():
+                raise WorktreeClaimInvalid("legacy claim requires normal registry read before atomic migration")
+            raise WorktreeNotClaimed("worktree has no current lease")
+        view = self._view(record, worktree_id)
+        if view["current"] is None:
+            raise WorktreeNotClaimed("worktree has no current lease")
+        return self._decode_claim(view["current"], worktree_id)
+
+    def replace_transaction(self, transaction, desired, *, expected=None):
+        """CAS one lease within an admitted migration's existing SQLite transaction.
+
+        The migration service owns source quiescence and current receiver admission.
+        This method owns exact resource/lease and active receiver validation. It never
+        acquires external file locks while the caller holds the shared DB writer.
+        """
+        from scripts.agent_harness.session_kernel import SessionStateStore
+        self._validate_claim_shape(desired)
+        try:
+            current = self.read_transaction(transaction, desired.worktree_id)
+        except WorktreeNotClaimed:
+            current = None
+        if expected is None:
+            if current is not None:
+                raise WorktreeAlreadyClaimed(current)
+        else:
+            if current is None:
+                raise WorktreeNotClaimed("worktree lease disappeared")
+            self._require_current_lease(current, expected)
+            self._require_active_claim(current)
+        state = SessionStateStore(self._locator.locate(desired.session_id).process_state).read_transaction(
+            transaction, desired.session_id)
+        actor = state.actors.get(desired.actor_id)
+        if (state.session.status.value != "active" or actor is None or actor.status is not ActorStatus.ACTIVE
+                or transaction.get("session-migration", str(desired.session_id)) is not None):
+            raise WorktreeClaimInvalid("migration receiver is not an active native actor")
+        record = transaction.get("worktree", str(desired.worktree_id))
+        epoch = 0 if record is None else self._view(record, desired.worktree_id)["epoch"]
+        activated = self._activate(desired, lease_epoch=epoch + 1)
+        payload = {"current": activated.to_payload(), "epoch": activated.lease_epoch,
+                   "last_release": None, "release_kind": None, "release_context": None}
+        transaction.put("worktree", str(desired.worktree_id), self._encode_record(payload),
+                        expected_revision=None if record is None else record.revision)
+        return activated
+
     def authorize(self, access: WorktreeAccess) -> WorktreeAccessDecision:
         """Read-only는 즉시 허용하고 mutation은 coherent owner authority를 판정합니다.
 
@@ -897,6 +949,9 @@ class WorktreeRegistry:
         Raises:
             WorktreeClaimInvalid: Session이 terminal이거나 actor가 active가 아니면 발생합니다.
         """
+        with self._database.transaction() as tx:
+            if tx.get("session-migration", str(claim.session_id)) is not None:
+                raise WorktreeClaimInvalid("session work was migrated; the previous session cannot reclaim it")
         try:
             state = self._kernel.inspect(claim.session_id)
         except SessionKernelError as error:

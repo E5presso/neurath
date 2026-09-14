@@ -94,6 +94,23 @@ def _host_hook(root, host, raw, environment=None, stop_guard=None):
         from neurath.hosts.identity import validate_tool_foreground
 
         validate_tool_foreground(root, host, payload, env)
+        # Fence a migrated source even when an older MCP server is still loaded.
+        # The installed native hook runs before issuing another tool capability.
+        from neurath.runtime.database import RuntimeDatabase
+        from neurath.memory.store import control_root
+        from neurath.runtime.task_schema import TASKS
+        migrated = None
+        if payload.get("session_id"):
+            with RuntimeDatabase(control_root(Path(root))).transaction() as tx:
+                migrated = tx.get("session-migration", payload["session_id"])
+        if migrated is not None:
+            name = payload.get("tool_name", "")
+            prefix = "mcp__neurath_collaboration__"
+            operation = name.removeprefix(prefix)
+            readonly = name.startswith(prefix) and operation in TASKS and TASKS[operation][4]
+            if not readonly and name not in {"Read", "Glob", "Grep"}:
+                target = json.loads(migrated.payload)["receiver_session"]
+                return 2, {}, f"Neurath source session was migrated to {target}; only history reads are allowed."
     if event in {"PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied"}:
         from scripts.agent_harness.task_todo import TOOL_NAMES as TODO_TOOL_NAMES
         if payload.get("tool_name") in TODO_TOOL_NAMES:
@@ -218,6 +235,7 @@ def _dispatch_event(root, host, raw, environment=None, stop_guard=None):
 
         for module, name, component in (
             ("neurath.memory.hooks", "project_event", "memory"),
+            ("neurath.runtime.goal_reminders", "goal_event", "goal reflection"),
             ("neurath.agents.hooks", "peer_event", "mailbox"),
             ("neurath.reporting", "reporting_event", "reporting"),
             ("neurath.updates", "update_event", "updates"),

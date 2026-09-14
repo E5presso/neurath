@@ -1,28 +1,33 @@
-# Project bindings
-<!-- date: 2026-09-07; synced_from: source and documentation at e1487a1718056b37b999d1343a1007b7e25f5c8c; English and Korean editions updated together -->
+<!-- date: 2026-09-13; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
 
-[Usage](index.md) · [Contributing](../contributing/index.md)
+# Use the project's existing documents and checks
 
+[한국어](../../ko/usage/profiles.md)
 
-**English** · [한국어](../../ko/usage/profiles.md)
+Neurath works best when the agent knows which documents explain your project and which checks establish that a change works. Ask it to inspect what is already there and connect the relevant material.
 
-`generic` is the only profile. The harness does not choose a language, framework, or monorepo
-layout. Existing project instructions and `.neurath/project.json` define documents, verification
-commands, optional protected resources, and metadata conventions. See the
-[installation guide](installation.md) for what to ask the agent to connect.
+> Use this project's existing architecture notes and verification routines. Keep our terminology and working conventions. Ask me about any decision you cannot establish from the repository.
 
-The 31 skills operate according to the target repository and current user request. The agent chooses a skill
-that matches both the task and the evidence or authorization available for it. For example,
-an approved issue is the starting point for implementation, while a reproducible symptom is the
-starting point for debugging. See the [usage guide](index.md) and [skill catalog](skills.md).
+The agent maintains the project bindings for you. The current profile is generic; the project's instructions supply its language, framework, tools, and conventions.
 
-Missing document bindings are not filled with another project's documents. Verification tools
-are not installed arbitrarily, and unconfigured checks are not reported as passing. No particular
-connector is protected by default. Protection covers kit state, rules, runtime assets, and the
-paths and connectors the user explicitly specifies.
+## Connect a document to the work it explains
 
-Changes to your project's code use your project's verification bindings. The checks used to
-develop Neurath itself are described in [contributing](../contributing/index.md). There are no
-product-specific profiles, and state from another product is not reused.
+Suppose architecture decisions and contributor guidance already exist. Ask the agent to use them for implementation and review. It identifies the documents that serve those purposes and shows you any missing role. If there is no suitable document, the gap remains visible so you can decide what information is needed.
 
-The agent inspects existing project conventions and maintains these bindings. You supply missing decisions or constraints; you do not need to edit configuration files.
+This also preserves the project's glossary and writing language. The agent follows the existing branch, commit, and issue conventions rather than asking you to define them again during installation.
+
+## Establish a meaningful check
+
+> Find the check used for this part of the project and connect it. Tell me what it covers and whether you were able to run it.
+
+The agent identifies the actual check, where it runs, and how the project recognizes success. The result tells you what was checked and whether it passed. When a check is missing, unavailable, or restricted, you see that limitation and its effect on the requested work.
+
+You supply only the missing decision—for example, which of two existing project checks should govern this work. You do not need to edit Neurath's configuration yourself.
+
+## Keep the connection current
+
+When documents move or the project's check changes, ask the agent to update the connection. Your edited bindings remain yours across updates and removal. Existing instructions, permissions, dependencies, and the project environment are preserved during installation.
+
+For a project that uses external services or needs protected paths, describe the intended resources and access boundaries. The agent checks the actual setup; installing Neurath does not automatically protect every external service. The [contributor documentation](../contributing/index.md) details document roles, verification settings, connector bindings, metadata conventions, and the default protection of harness resources.
+
+Continue with [task requests](index.md), or use [Installation and maintenance](installation.md) when a setup change requires recovery or restoration. [Terminology](../terminology.md) explains Neurath's record names without replacing your project's domain vocabulary.

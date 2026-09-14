@@ -1,100 +1,78 @@
-# Codex와 Claude Code
-<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
+<!-- date: 2026-09-14; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
 
-[사용 안내](../usage/index.md) · [기여자 안내](index.md)
+[English](../../en/contributing/hosts.md)
 
+# 실제 호스트와의 연결
 
-[English](../../en/contributing/hosts.md) · **한국어**
+프로젝트 작업을 실행하는 주체는 Claude Code와 Codex다. Neurath는 지침, 스킬, 이벤트 어댑터를 설치해 각 호스트의 실제 세션을 공통 런타임에 연결한다. 어댑터가 보존해야 할 핵심 근거는 누가 호출했는지, 어느 턴이 활성 상태였는지, 주장한 부모가 실제로 자식을 만들었는지다.
 
-공식 문서를 2026-09-06에 읽고 schema를 확인했습니다. Context7의 Claude Code 및
-ChatGPT Learn 문서도 함께 대조했습니다.
+## 설치되는 연결 지점
 
-| 대상 | 설치 위치 |
+| 위치 | 설치 동작 |
 | --- | --- |
-| 공통 지침 | 기존 `AGENTS.md`에 표시된 관리 블록 추가 |
-| Codex 스킬 | `.agents/skills/<name>` |
-| Codex 훅 | `.codex/hooks.json`에 command hook group 병합 |
-| Claude 지침 | 새 파일은 `CLAUDE.md → AGENTS.md`; 기존 파일은 import 블록 추가 |
-| Claude 스킬 | `.claude/skills/<name> → ../../.agents/skills/<name>` |
-| Claude 훅 | `.claude/settings.json`의 hooks에 group 병합 |
+| `AGENTS.md` | 사용자 본문을 보존하면서 구분된 관리 블록을 추가한다. |
+| `.agents/skills/<name>` | Codex가 사용하는 공통 스킬을 설치한다. |
+| `.codex/hooks.json` | 기존 훅에 명령 훅 그룹을 병합한다. |
+| `CLAUDE.md` | 새 파일이면 `AGENTS.md` 심볼릭 링크를 만들고, 기존 일반 파일이면 가져오기 블록을 추가한다. |
+| `.claude/skills/<name>` | `../../.agents/skills/<name>`로 연결한다. |
+| `.claude/settings.json` | Claude Code 훅 설정을 병합한다. |
 
-공통 이벤트는 SessionStart, SessionEnd, SubagentStart, UserPromptSubmit, PreToolUse,
-PostToolUse, PreCompact, Stop, SubagentStop입니다. Claude에는 PostToolUseFailure와
-PermissionDenied를 추가합니다. SessionEnd의 Codex timeout은 공식 상한인 3초입니다.
-한 이벤트의 Neurath 처리는 하나의 command 안에서 순서대로 실행하여 자체 gate끼리 경합하지 않습니다.
-기존 다른 hook group은 그대로 남고, 호스트가 지정한 병렬 실행 의미를 따릅니다.
+설치기는 사용자의 모델, 샌드박스, 승인 설정을 정하지 않는다. `.codex/config.toml`의 기존 인라인 훅도 보존한다. 호스트가 두 형식을 모두 읽으면 경고할 수 있으며 진단에 이 조건을 표시한다. 사용자가 수정한 관리 내용은 덮어쓰지 않고 충돌로 처리한다.
 
-Codex의 `.codex/config.toml` inline hooks가 이미 있다면 파일을 보존합니다.
-Codex는 같은 layer의 hooks.json과 inline 선언을 함께 로드하며 경고할 수 있으므로 doctor에서
-이 상태를 표시합니다. `.codex/config.toml`에 개인 모델이나 권한을 추가하지 않습니다.
+Neurath 자체 이벤트 처리기는 하나의 이벤트 명령 안에서 순서대로 실행된다. 기존의 다른 훅 그룹은 호스트의 실행 방식을 유지한다. 설치된 Codex `SessionEnd` 명령의 제한 시간은 3초다.
 
-doctor의 `placement=passed`는 배치된 bytes/link가 설치 기록과 같다는 뜻입니다.
-`protocol=passed`는 격리 Git 저장소의 subprocess에서 두 호스트의 startup JSON과 malformed
-input 거부를 검증했다는 뜻입니다. 실제 호스트가 hook을 신뢰하고 호출했다는 증명이 아닙니다.
-`host_activation=unverified`는 별도의 실제 호스트 실행 근거가 필요하다는 뜻입니다.
-doctor는 외부 호스트 실행 기록을 읽지 않으며, 설치가 trust를 대신하지 않습니다.
-2026-09-06의 Codex·Claude Code 기본 흐름과 보호 파일 삭제 차단 검증 결과는
-[검증 범위](validation.md)를 참고하세요.
-세션·턴·자식 에이전트의 출처를 확인할 수 없으면 미확인 상태(`UNATTESTED`)로 두고
-실행 상태를 변경할 권한을 부여하지 않습니다.
-원시 parent id 또는 agent id로 독립 검토자 완료 권한을 만들지 않습니다.
+## 이벤트별 역할
 
-실제 자식 등록은 호스트의 생성 호출과 호스트 transcript를 대조해 수행합니다.
-Codex는 생성 호출의 반환 경로와 자식 transcript의 부모·세션 metadata를 함께 검증합니다.
-Claude는 부모의 실제 Agent 호출에 일회성 참조를 추가하고 자식 transcript에서 확인합니다.
-원문 prompt만 복사하거나 다른 턴의 참조를 재사용해도 직계 자식 권한은 얻지 못합니다.
-자식 transcript가 늦게 생성되면 첫 상태 도구 실행 전에 등록을 다시 시도합니다.
-검증이 끝나지 않은 자식의 shell/write는 `child-identity-unverified`로 차단합니다.
+| 네이티브 이벤트 | 런타임에서의 역할 |
+| --- | --- |
+| `SessionStart` | 세션 시작 또는 복구를 검증하고 제한된 프로젝트 맥락을 불러온다. |
+| `UserPromptSubmit` | 새 사용자 요청과 해당 요청의 실제 수신 근거를 보존한다. |
+| `SubagentStart` | 자식 후보를 관찰하고 실제 부모 관계를 확인한 뒤 권한을 부여한다. |
+| `PreToolUse` | 상태나 프로젝트 변경 전에 호출자, 현재 턴, 정확한 도구 입력을 확인한다. |
+| `PostToolUse` | 준비된 호출과 실제 결과를 연결하며 TODO 제출 결과 등의 관찰을 기록한다. |
+| `PreCompact` | 압축 전에 지원되는 범위의 맥락을 보존한다. |
+| `Stop`, `SubagentStop` | 해당 턴 또는 자식의 종료 계약을 확인한다. |
+| `SessionEnd` | 호스트 연결을 닫되 프로세스 종료를 도메인 세션의 영구 종료로 처리하지 않는다. |
 
-Claude shell에는 해당 도구 호출에만 유효한 신원 참조를 전달합니다. Codex는 기본
-`CODEX_THREAD_ID`와 등록된 실제 자식 기록을 대조합니다. 부모 신원으로 대체하지 않으며
-호스트의 permissionDecision을 allow로 변경하지 않습니다. 직계 자식만 지원하며 중첩 생성은
-명시적으로 거부합니다. 독립 평가 보고와 부모의 보고 소비는 별도의 typed 상태 전이입니다.
+Claude Code에는 `PostToolUseFailure`, `PermissionDenied` 이벤트도 있다. 실패와 권한 거절을 보존하며 실패 응답 형태를 성공한 도구 결과로 해석하지 않는다.
 
-부모에서 `명명 MCP 도구 delegation_prepare (현재 입력 스키마 사용)`를 실행하고
-바로 다음 기본 자식 생성 도구를 호출하면, 확인된 실제 자식에게 그 위임을 연결합니다.
-위임 의도는 현재 foreground에 결속되며 오래된 의도나 중복 자식에 재사용되지 않습니다.
+루트 `UserPromptSubmit`의 내부 기록이나 상태 조정이 실패해도 사용자 입력은 전달하고 `prompt bookkeeping deferred` 진단을 남긴다. 이 진단으로 실행 권한이나 소유권이 새로 생기지는 않으며, 기존 도구·소유권 검사는 계속 적용된다. [호스트 훅](../../../src/neurath/hosts/hooks.py)과 [입력 전달 테스트](../../../tests/test_prompt_delivery.py)에서 이 동작을 확인할 수 있다.
 
-가변 상태와 작업 공간 소유권은 공통 control root의 `.neurath/local/runs`와
-`.neurath/local/resources`에 저장합니다. Codex workspace-write가 보호하는 `.agents`에는
-스킬과 지침을 배치하며, 설치기가 샌드박스·모델·승인 설정을 바꾸지 않습니다.
+### 루트 이벤트의 목표 환기
 
-호스트의 `SessionEnd`는 재개 가능한 대화의 프로그램 종료로 처리합니다. 저장된 세션,
-세션 작업 상태, 소유권, 진행 중 작업을 보존하고 다음 `SessionStart(source=resume)`에서 원래
-typed 복구 절차를 실행합니다. 명시적 kernel `SessionEnded`는 여전히 영구 종료이며 자동으로
-되살리지 않습니다. 이전 후보 패키지에서 이미 영구 종료된 테스트 세션도 자동 복구하지 않습니다.
-중단된 foreground를 재개한 경우에는 호스트의 resume와 다음 root prompt를 확인하고
-이전 턴만 닫습니다. 미완료 workflow·delegation·소유권은 그대로 보존하여 typed 복구를
-이어갑니다. 영구 종료된 session은 새 SessionStart로 되살리지 않습니다.
-최신 실제 실행 결과는 [검증 기록](validation.md)에 있습니다.
+루트의 프롬프트와 도구 완료 훅은 작업 목적과 완료 조건을 주기적으로 환기할 수 있다. 대상 이벤트, 주기, 크기는 [런타임 환기 계약](runtime-lifecycle.md)에 정의한다. 이 훅은 참고 맥락을 추가하며 태스크 상태나 권한은 바꾸지 않는다. 사용자나 에이전트에게 별도 성찰 워크플로를 시작하도록 요구하지 않는다.
 
-Codex 앱에서 다른 작업의 메시지가 새 턴으로 들어오고 UserPromptSubmit이 생략되는 경우,
-등록된 루트 transcript의 실제 메시지 전달·완료 기록과 현재 native 턴을 함께 확인합니다.
-이때 기존 사용자 목표를 이어갈 foreground만 열고 사용자 승인 기록은 만들지 않습니다.
-메시지 본문, 일반 도구 출력 또는 오래된 전달 기록만으로는 이 경로를 사용할 수 없습니다.
-이전 턴의 Stop이 늦게 도착해도 현재 턴의 출처가 확인되면 상태를 보존한 채 처리합니다.
-출처를 확인할 수 없는 불일치 Stop은 상태를 보존하고 재실행을 요청하지 않는 오류로 보고합니다.
-명시적으로 영구 종료된 루트의 반복 Stop은 무변경 처리하며 실행 권한을 되살리지 않습니다.
+## 호출자와 직접 자식 확인
 
-호스트가 멈추는 것과 작업이 완료되는 것은 별개입니다. 출처가 확인된 루트 Stop은 완료 조건을
-충족하기 위한 후속 실행을 한 번 요청할 수 있습니다. 조건이 여전히 충족되지 않으면 미완료
-안내와 함께 제어를 반환합니다. 호스트의 `stop_hook_active`와 턴별 후속 실행 기록을 함께 확인하여
-반복 Stop이 재실행을 무한히 유발하지 않게 합니다. 상태 누락이나 내부 오류로 재시도 권한을
-만들거나 작업을 완료하거나 소유권을 이전하지 않습니다. 이후 확인된 새 사용자 턴은 남은 작업을
-재개하고 자체 후속 실행 기회를 가집니다. 정상 완료에는 기존 작업·증거 검사를 그대로 적용합니다.
+부모 관계가 `unattested`인 세션이나 참여자는 실행 상태를 변경할 수 없다. MCP 바인딩은 실제 연결을 네이티브 세션 및 도구 호출에 묶는다. 예제나 복구 명령에서 `_neurath_binding`, 네이티브 세션 ID, 참여자 ID를 만들어 넣지 않는다.
 
-Codex 앱에서 포크한 대화는 독립 루트로 시작합니다. 실제 호스트의 포크 정보와 SessionStart로
-신원을 확인하며, 복사된 대화 내용으로 신원이나 작업 공간 소유권을 얻지 않습니다. 수정에 앞서
-포크 자신이 해당 워크트리의 소유권을 획득해야 합니다. 호스트 실행 모드·승인은 이 소유권과
-별도로 확인합니다. 세션 생성 성공만으로 배정된 작업을 실행할 수 있다고 판단하지 않습니다.
+Codex에서는 실제 생성 결과의 경로를 자식 대화 기록의 부모·세션 메타데이터와 대조한다. `CODEX_THREAD_ID`도 실제 자식 기록과 확인한다. Claude Code에서는 부모의 `Agent` 호출을 가리키는 일회용 참조가 자식 대화 기록에서 확인되어야 한다. 셸 신원 참조는 그 셸 호출에만 유효하다. 복사하거나 오래되었거나 재사용한 참조로는 부모 관계를 입증할 수 없다.
 
-관련 공식 문서:
+실제 자식을 만들기 직전에 현재 부모 턴에서 `delegation_prepare`를 호출한다. 직접 자식이 생성되면 `delegation_assign`으로 할당을 연결한다. 대화 기록 등록이 늦으면 자식의 첫 상태 도구 호출에서 다시 확인할 수 있다. 확인 전 셸·쓰기 시도에는 `child-identity-unverified`가 반환된다.
 
-- [Codex hooks와 trust](https://learn.chatgpt.com/docs/hooks)
-- [Codex skill discovery와 symlink](https://learn.chatgpt.com/docs/build-skills)
-- [AGENTS.md](https://developers.openai.com/codex/guides/agents-md)
-- [Claude Code hooks](https://code.claude.com/docs/en/hooks)
-- [Claude Code 지침 import](https://code.claude.com/docs/en/memory)
-- [Claude Code skills](https://code.claude.com/docs/en/skills)
+지원하는 위임 관계는 실제 호스트의 직접 자식이다. 중첩 생성은 거부한다. 다른 제공자의 세션이나 분기 세션은 비슷한 할당을 받았다는 이유로 직접 자식이 되지 않는다. 실제 분기 근거가 확인된 세션은 독립 루트가 되며 자기 워크트리 소유권을 따로 얻어야 한다.
 
-macOS/Linux의 POSIX process group, fcntl, Bash를 사용합니다. Windows 지원은 제공하지 않습니다.
+## 중단, 재개, 늦게 도착한 이벤트
+
+호스트 프로세스가 끝나도 재개 가능한 세션 작업, 작업 이력, enclave 사실, 현재 소유권은 남는다. 이후 `source=resume`인 `SessionStart`는 실제 재개 근거를 검증한다. 커널의 명시적인 `SessionEnded` 이벤트는 도메인 세션의 영구 종료이므로 자동으로 되살릴 수 없다.
+
+사용자가 요청을 중단하면 검증된 네이티브 재개나 루트 프롬프트가 이전 전면 턴을 닫을 수 있다. 이때 미완료 작업과 소유권은 보존한다. 이전 턴의 Stop이 늦게 와도 새로 확인된 턴을 건드리지 않는다. 대응되는 턴이 없는 Stop은 진행을 막지 않는 진단만 남기고 무관한 상태를 변경하지 않는다.
+
+앱의 일부 동료 메시지는 `UserPromptSubmit` 없이 도착한다. 기존 목표를 계속하려면 실제 대화 기록의 전달·완료 내용과 네이티브 턴 근거가 필요하다. 동료 메시지가 새 사용자 승인을 만들지는 않는다. 이 계약은 어댑터가 관찰할 수 있는 근거에 관한 것으로, 임의의 앱 프로젝트 연결이나 제공자 크레딧 상속을 보장하지 않는다.
+
+## 실패한 계층을 찾아 진단한다
+
+설치된 프로젝트에서 `diagnostics_project`와 `session_status`로 상태를 확인한다. `session_status`는 `detail=summary`와 `detail=full`을 받는다. 기본 요약으로 시작하고 신원, 턴, 소유권을 자세히 진단할 때 전체 상태를 요청한다.
+
+| 보고 항목 | 의미 | 다음 확인 |
+| --- | --- | --- |
+| `placement=passed` | 파일과 링크가 설치 이력에 일치한다. | 의도한 호스트가 이 설치를 불러왔는지 확인한다. |
+| `protocol=passed` | 격리된 훅 프로세스가 시작 JSON을 처리하고 잘못된 입력을 거부했다. | 실제 호스트 세션에서 실행한다. |
+| `host_activation=unverified` | 충분한 실제 호스트 관찰이 없다. | 대상 호스트를 시작하거나 다시 로드하고 실제 이벤트를 확인한다. |
+| 자식 신원 거부 | 필요한 부모·자식 근거가 없거나 서로 맞지 않는다. | 실제 생성 결과와 대화 기록을 확인하며 식별자 필드를 주입하지 않는다. |
+| 현재 턴 변경 | 호출이 허용받았던 전면 요청에 더 이상 속하지 않는다. | 검증된 현재 네이티브 턴에서 상태를 다시 읽는다. |
+| 소유권 충돌 | 다른 현재 소유권이 워크트리를 통제한다. | 읽기 전용으로 확인하고 적절히 소유한 워크트리나 지원되는 인계를 사용한다. |
+
+실제 호스트 검증에는 새 세션 시작, 실제 명령과 상태 도구, 중단과 재개, 정확한 자료에 대한 직접 자식 평가, 이른 완료의 거부, 인증된 결과의 소비가 포함된다. 관찰 원문은 비공개 근거로 보관한다. 격리된 테스트 성공만으로 현재 호스트 활성화를 인증하지 않는다.
+
+상태 전이는 [실행 수명주기](runtime-lifecycle.md), 공개 입력은 [작업 도구](task-tools.md), 재현 가능한 검증 항목은 [검증](validation.md)을 참고한다.

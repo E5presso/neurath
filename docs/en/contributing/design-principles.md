@@ -1,135 +1,94 @@
-# Design principles and harness philosophy
+<!-- date: 2026-09-14; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
 
-<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
+[한국어](../../ko/contributing/design-principles.md)
 
-**English** · [한국어](../../ko/contributing/design-principles.md)
+# Decisions that keep the harness understandable
 
-[Architecture](architecture.md) · [Runtime lifecycle](runtime-lifecycle.md) · [Capability map](capability-map.md)
+A harness should make the user's requested outcome easier to reach and easier to verify. Every new state record, required transition or injected instruction should have one identifiable responsibility. A design that records the same completion decision several times needs a simpler authority model before it needs more automation.
 
-Neurath can be understood as a design for **keeping agents productive without losing the grounds for their decisions and actions**. This is a synthesis of the implementation, not a claim about the name's origin or an author's personal philosophy. The sections below connect explicit policy, enforced conditions, and interpretations derived from them.
+## Begin with the user's outcome
 
-## Principles and costs
+Define work in terms of an observable result, its source and acceptance conditions. A repository fact, a current user decision and a reversible assumption are different inputs. The goal and gap models retain those differences so that the agent can continue independent work without converting an assumption into permission.
 
-| Principle | Mechanism | Benefit | Cost or limit |
-| --- | --- | --- | --- |
-| Preserve current intent | Goals, non-goals, constraints, criteria, input provenance | Prevent historical work or peer requests from silently changing the goal | Ambiguous user-owned decisions may need clarification |
-| Preserve authority origins | Native identity, invocation binding, policy inheritance | Reject self-asserted authority | Missing host observations can block execution |
-| Observe effects | Baselines, tool receipts, post-action comparison | Distinguish claimed completion from effects | Interrupted outcomes require reconciliation |
-| Seek independent counterevidence | Separate evaluator, evidence consumption, finding reconciliation | Avoid reliance on author confidence | Evaluation costs time and resources |
-| Maintain context | Shared memory, Enclave, Graphify | Reduce repeated discovery | Stale information requires current-source checks |
-| Make learning reversible | candidate, trial, active, reverted, stale | Stop reusing regressed strategies | One success does not immediately generalize |
-| Keep delivering messages | Durable storage, stable IDs, retries, ACK | Resist loss during transient failure | Duplicates are possible; exactly-once effects are separate |
-| Coexist with the project | Independent bundle, conservative merges, journal, recovery | Preserve instructions and development environment | Conflicting managed files cannot be overwritten arbitrarily |
-| Keep operation with the agent | Natural-language requests, named tasks, agent execution | Users focus on goals and decisions | Actual authentication and trust can require host interaction |
+Current user instructions and current source take precedence over memory, peer suggestions and generated plans. A side question can refine an active task without cancelling it. A cancelled or superseded task is recorded explicitly with its reason; deleting it from a display loses the requested-work history.
 
-## 1. Intent comes from current input; facts have owners
+## Support reflection without becoming the judge
 
-Procedures are selected by primary intent and input authority rather than keywords. Explaining code differs from modifying it; implementing an approved issue differs from designing a new product. `GoalContract` and `GapInventory` represent goals, acceptance criteria, and unresolved questions, distinguishing user decisions, repository facts, and local reversible assumptions.
+Neurath's central strategy is to return the original task purpose and acceptance conditions to the agent's attention during work. The agent can then ask whether the next step advances an unmet user requirement or only improves its chosen method. A method may be replaced or dropped while the original task remains in force.
 
-The design implication is that neither asking the user about every unknown nor filling every gap autonomously is appropriate. Investigate repository facts, continue within existing authorization, and return user-owned decisions through the appropriate input boundary.
+The reminder is context for metacognition, not a quantitative measure of semantic goal convergence. It creates no separate reflection report, task, evaluation loop, or completion gate. Time and token limits constrain waste; they do not authorize weaker acceptance or turn one failed attempt into task cancellation. A status question likewise does not authorize new scope.
 
-Evidence: [adaptive model](../../../src/neurath/_assets/scripts/agent_harness/adaptive_control.py), [policy source](../../../src/neurath/install/projection.py), [project bindings](../usage/profiles.md).
+Keep investigations proportional to the relevant acceptance conditions. The harness evaluation skill does not require unlimited inventory or generation merely to satisfy its own process. Other skills retain their applicable iteration contracts. Checks use the existing project runner. See [runtime reminders](runtime-lifecycle.md) for the delivery contract.
 
-## 2. Authority comes from actual execution relationships
+## Give each decision one owner
 
-Tool output saying “I am a child,” “I used this mode,” or “the user approved” does not establish those facts. Native session, process, turn, invocation, and policy evidence must be checked. `StateHandle` and worktree ownership are checked separately from memory and peer registration.
-
-MCP is the agent's harness control surface. It now covers state, verification, providers, models, and maintenance as well as communication. It does not expose a generic shell or arbitrary file-editing API; execution tasks retain policy and ownership checks. A schema accepting a mode does not establish that MCP can enforce that mode's restrictions.
-
-Evidence: [host identity](../../../src/neurath/hosts/identity.py), [MCP call binding](../../../src/neurath/agents/mcp.py), [task dispatch](../../../src/neurath/runtime/tasks.py), [policy inheritance](../../../src/neurath/providers/permission_inheritance.py).
-
-## 3. Separate plans, execution, observation, and acceptance
-
-```mermaid
-flowchart LR
-    P[Plan and authorization scope] --> B[Target baseline]
-    B --> X[Actual tool execution]
-    X --> O[Outcome and post-action observations]
-    O --> E[Independent review against goal]
-    E --> C[Owner consumes evidence]
-    C --> F[Contract finalization]
-    X --> U[Unknown outcome]
-    U --> R[Inspect and reconcile]
-    R --> O
-```
-
-This is an evidence responsibility flow, not a requirement to create workflows for every simple read. In stateful work, preparation does not replace execution, a zero exit code does not replace goal attainment, and a review report does not accept itself.
-
-Agents run the configured argv and cwd through native host tools and preserve the observed result and source basis. The internal compatibility verification runner additionally compares repository fingerprints; that older runner is not a public MCP requirement. Independent evaluation binds the goal, source revision, candidate artifact, and evidence origins. Unrelated passing tests cannot substitute for the requested behavior.
-
-Evidence: [material actions](../../../src/neurath/_assets/scripts/agent_harness/material_action.py), [registered verification](../../../src/neurath/runtime/verification.py), [evaluation authority](../../../src/neurath/_assets/scripts/agent_harness/adaptive_control_authority.py).
-
-## 4. Constructive skepticism produces falsifiable concerns
-
-The source's `Constructive Skeptic` policy emphasizes useful disagreement and evidence-backed concerns. Review is not a way to turn vague distrust or stylistic preference into defects. Findings should connect reproducible problems, affected behavior, and evidence, while reconciling duplicate root causes.
-
-`EvaluationLoop` manages findings and rounds; adaptive control represents goal attainment, ambiguity, stagnation, and recovery. Resource observations are connected to outcome changes. A reasonable design interpretation is that resolved uncertainty or defects matter more than the number of checks performed.
-
-Evidence: [review posture](../../../src/neurath/_assets/scripts/harness_persona_policy.py), [evaluation loop](../../../src/neurath/_assets/scripts/agent_harness/evaluation_loop.py), [efficiency observations](../../../src/neurath/_assets/scripts/agent_harness/efficiency_assessment.py).
-
-## 5. Memory supplies continuity; current state supplies authority
-
-| Mechanism | Question answered | Scope and authority |
+| Decision | Authority | Useful supporting information |
 | --- | --- | --- |
-| ProjectMemory | What were previous goals, decisions, and next steps? | Shared project reference history |
-| EnclaveStore | What current facts must this session carry forward? | Bounded latest-fact snapshot within a session |
-| Graphify | How are code, documents, and concepts connected? | Exploration graph, checked against current sources |
-| Command recovery learning | Which observed execution strategy recovered a failure? | Scoped strategy with validation and rollback |
-| memory-to-rules | Should recurring personal preferences become project rules? | Separate reviewed and approved document change |
+| Is registered work settled at Stop? | Latest canonical task list, checked atomically with root-turn closure | Native TODO display, owner result references |
+| May this participant change this worktree? | Verified caller plus current owner lease and fencing token | Session diagnostics and worktree identity |
+| May a contracted workflow advance? | Its current phase contract and applicable evaluation authority | Evidence artifacts, findings and reports |
+| Has a delegated result been accepted? | Authenticated report and the required owner's consumption | Transport status and peer discussion |
+| Was an installation applied? | Transaction outcome and installed content verification | Plan preview and retained restoration material |
+| May content be published externally? | Applicable user authorization and exact publication contract | Prepared draft and local validation |
 
-Remembering a worktree does not grant ownership. A checkpoint marked complete does not satisfy workflow finalization. Old graph paths and edges are discovery clues that require current file inspection. This separation supports continuity while limiting inherited instructions and entrenched assumptions.
+For ordinary tasks, the owner records a terminal result once. A separate workflow, material batch, per-criterion acceptance report or independent task reviewer is not required. Explicit evaluation and review workflows continue to enforce their own contracts when invoked. Their evidence should not become an additional generic Stop vote for a session that has a task list.
 
-Evidence: [shared memory](../../../src/neurath/memory/store.py), [Enclave](../../../src/neurath/_assets/scripts/agent_harness/enclave_store.py), [Graphify skill](../../../src/neurath/_assets/.agents/skills/graphify/SKILL.md), [rule promotion skill](../../../src/neurath/_assets/.agents/skills/promote-memory/SKILL.md).
+## Use native authority at the boundary
 
-## 6. Successful learning includes rollback
+The host supplies session identity, current turn and child lineage. Neurath validates those facts before it accepts a mutation. Neither a payload field, a copied environment value, an arbitrary process identifier nor a peer's claim can create this authority.
 
-Command learning starts with an observed failure and successful alternative in the same command family. Families retain selectors, so an unrelated passing test is not recovery evidence. The source session's project check admits a trial; actual exposure, exact strategy use, and a matching check in another session support active promotion.
+Keep admission tied to the exact operation and input. An approval for a concrete action cannot be expanded to another action by changing arguments after review. A native tool's completed test result also remains a completed observation when the user later asks a question; later turn state must not rewrite what the test actually did.
 
-Later failure can produce reverted status; a changed verification contract can produce stale status. Deferring an unavailable check does not turn it into success. This is narrower than general autonomous rewriting of harness code or policy. See [runtime lifecycle](runtime-lifecycle.md) for transitions.
+Failure should identify which boundary is unavailable: caller identity, active turn, worktree ownership, provider mode or external delivery. A rejected mode is a supported-limit result. Do not introduce a less constrained shell path to make the same request appear successful.
 
-Evidence: [learning](../../../src/neurath/memory/learning.py), [learning regressions](../../../tests/test_learning.py).
+## Make concurrency and retries part of the contract
 
-## 7. Redeliver messages; reconcile uncertain mutations
+State changes use returned identifiers and expected revisions. A list revision protects a collection; a task revision protects a particular task. A fencing token protects the current generation of worktree ownership. These values cannot be inferred from a title, a previous session or a neighboring worktree.
 
-Peer messages are persisted before notification and may be retried with the same ID, key, and body until ACK. `at-least-once` permits duplicate receipt. ACK means the body was received, not that the requested effect occurred exactly once or its result was accepted.
+An idempotency key names one exact request. Retry the same uncertain request with the same key. If the intended input changes, obtain current state and use a new key. Reusing a key with different input is a conflict, not an update mechanism.
 
-Installation, update, and reporting actions have separate request records and reconciliation rules. An uncertain outcome does not authorize immediately repeating the mutation through another tool. Do not generalize the message delivery contract into a retry policy for every action.
+Put read-and-decide operations that must agree in one transaction. The task Stop check and turn closure are the representative case: a concurrent append must either be visible to that closure or occur after it under valid admission. Checking an old snapshot and then closing separately permits lost work.
 
-Evidence: [message store](../../../src/neurath/agents/store.py), [delivery service](../../../src/neurath/agents/delivery.py), [maintenance tasks](../../../src/neurath/runtime/maintenance_tasks.py).
+## Keep reporting proportional to assurance
 
-## 8. Preserve human steering without concealing failures
+| Observation | What it establishes |
+| --- | --- |
+| `accepted` or queued operation | Admission of a request |
+| Native process start | An execution began |
+| Check output and exit status | The observed check result within that execution's scope |
+| Owner task result | The owner's authenticated account of the outcome |
+| Independent evaluation consumed | The required evaluator assessed the exact candidate and the owner consumed that result |
+| Remote readback | The external system contains the observed publication or update |
 
-The root user-input boundary prevents internal bookkeeping failures from suppressing new instructions. It reports `bookkeeping deferred` without claiming successful state updates or tool authority. Execution still requires authentic identity and current ownership. Ordinary edits do not require a separate material record.
+A message acknowledgement does not consume an assignment result. A checkpoint preserves context and progress. Neither is a worktree ownership transfer. Keep these distinctions in result objects and in user-facing reports without repeating every boundary in every paragraph.
 
-This separates human intervention from execution authorization; it does not permit every error. Similarly, the provider contract separates unbounded ordinary task lifetime from bounded checks, connections, and individual requests.
+## Preserve the host and the project
 
-Evidence: [host events](../../../src/neurath/hosts/hooks.py), [input delivery regressions](../../../tests/test_prompt_delivery.py), [owned connections](../../../src/neurath/providers/supervision.py).
+The generic profile binds to real project documents and checks. It does not prescribe an application framework or replace existing dependencies. Installation preserves user instructions, hooks, host permissions and edited project settings. Immutable plans allow conflicts to be reviewed before applying exact replacements.
 
-## 9. Installation and improvement must remain recoverable
+Host adapters should translate native events into the common model while retaining host-specific evidence. Codex and Claude Code need different child verification procedures; forcing identical payload shapes would conceal that difference. Runtime execution environments remain separate from the target application environment.
 
-Installation plans bind targets, distribution content, and before/after bytes, modes, and links. Apply rechecks the current state and uses locking, journals, and atomic replacement. Recovery uses retained records while preserving concurrently edited user files. Independent bundles and environments implement the product boundary of a stack-independent harness.
+## Bound retained context
 
-Common harness reporting is separate from project-specific contribution. Consent to common reporting does not authorize disclosure of project code. Exact update preparation and installation consent are also distinct. Public docs exclude personal paths, session records, and installation originals.
+Memory should retain decisions and facts needed for future work, with provenance and size limits. It should not collect hidden reasoning or make every remembered preference an active rule. Keep recent-session facts, project history, learned strategies and approved repository rules distinct. Recheck mutable repository and runtime facts before relying on them.
 
-Evidence: [installation transaction](../../../src/neurath/install/transaction.py), [release apply](../../../src/neurath/release_install.py), [reporting](../../../src/neurath/reporting.py), [native user choices](../../../src/neurath/runtime/user_choices.py).
+Publish reusable behavior and source references. Keep installation originals, native transcripts, host identifiers, private paths and detailed validation receipts in private storage. Public documentation explains how to reproduce a verification dimension without presenting an old run as current acceptance.
 
-## Applying these principles
+## Review a proposed change
 
-These questions help read or change a feature; they do not introduce additional execution gates.
+Ask whether it has a clear user-visible outcome, one completion authority, exact source and identity binding, bounded failure recovery and a relevant regression test. Remove duplicate help probes and redundant bookkeeping where the named schema already supplies the information. Claims of speed or token savings need measurements; schema simplicity alone establishes a design intention.
 
-1. Who owns the goal and acceptance criteria, and which current evidence establishes them?
-2. Where does guidance end and enforced behavior begin?
-3. Does the report mean accepted for execution, started, observed, accepted as a result, or finalized?
-4. What survives failure, interruption, duplication, or a stale revision?
-5. Which property does the test establish, and what still needs observation on the actual host?
+Use [architecture](architecture.md) for module boundaries, [task tools](task-tools.md) for operation contracts and [validation](validation.md) for the observations needed to substantiate a change.
 
-## Reduce discovery cost with explicit tool contracts
+## Sources for design review
 
-Use the current server's tool names and input schemas as the invocation contract instead of injecting long
-CLI manuals for an agent to remember. Names expose intent; enums, required fields, arrays and revisions make
-constraints visible before invocation. Raw state patches and arbitrary command strings are not substitutes
-for shared domain APIs.
+Use these implementation references to test whether a change preserves the responsibilities described above. Compatibility code is relevant only when reviewing a retained saved-call path.
 
-This is a design rationale about cost and accuracy. Without measurements, do not claim a token reduction
-percentage. More meaningful than tool count is whether an agent selects the correct operation without help
-exploration, understands its actual result or recovery conditions, and completes the workflow through named calls.
+| Responsibility | Source and regression reference |
+| --- | --- |
+| Goals, phases and evaluation | [adaptive_control.py](../../../src/neurath/_assets/scripts/agent_harness/adaptive_control.py), [adaptive_control_authority.py](../../../src/neurath/_assets/scripts/agent_harness/adaptive_control_authority.py), [efficiency_assessment.py](../../../src/neurath/_assets/scripts/agent_harness/efficiency_assessment.py), [evaluation_loop.py](../../../src/neurath/_assets/scripts/agent_harness/evaluation_loop.py) |
+| Host and exact-call admission | [harness_persona_policy.py](../../../src/neurath/_assets/scripts/harness_persona_policy.py), [mcp.py](../../../src/neurath/agents/mcp.py), [hooks.py](../../../src/neurath/hosts/hooks.py), [identity.py](../../../src/neurath/hosts/identity.py), [tasks.py](../../../src/neurath/runtime/tasks.py), [test_prompt_delivery.py](../../../tests/test_prompt_delivery.py) |
+| Messages and provider lifetime | [delivery.py](../../../src/neurath/agents/delivery.py), [store.py](../../../src/neurath/agents/store.py), [permission_inheritance.py](../../../src/neurath/providers/permission_inheritance.py), [supervision.py](../../../src/neurath/providers/supervision.py) |
+| Bounded retained context | [graphify](../../../src/neurath/_assets/.agents/skills/graphify/SKILL.md), [promote-memory](../../../src/neurath/_assets/.agents/skills/promote-memory/SKILL.md), [enclave_store.py](../../../src/neurath/_assets/scripts/agent_harness/enclave_store.py), [learning.py](../../../src/neurath/memory/learning.py), [store.py](../../../src/neurath/memory/store.py), [test_learning.py](../../../tests/test_learning.py) |
+| Preserving installation and user choices | [projection.py](../../../src/neurath/install/projection.py), [transaction.py](../../../src/neurath/install/transaction.py), [release_install.py](../../../src/neurath/release_install.py), [reporting.py](../../../src/neurath/reporting.py), [maintenance_tasks.py](../../../src/neurath/runtime/maintenance_tasks.py), [user_choices.py](../../../src/neurath/runtime/user_choices.py) |
+| Saved-call compatibility | [material_action.py](../../../src/neurath/_assets/scripts/agent_harness/material_action.py), [verification.py](../../../src/neurath/runtime/verification.py) |

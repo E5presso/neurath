@@ -12,18 +12,62 @@ user-invocable: true
 
 harness가 주장하는 behavior를 실제로 막는지 test할 때 사용합니다.
 
+## 목표와 수단의 우선순위
+
+사용자가 요청한 결과와 기존 태스크의 완료 조건을 기준으로 유지합니다. 에이전트가 선택한
+검증 시나리오·복구 방식·최적화 실험은 교체 가능한 수단이며 독립적인 완료 의무가 아닙니다.
+수단을 성공시키기 위해 사용자 요구에 없던 완료 조건을 원래 태스크에 추가하지 않습니다.
+반복을 연장하기 전에는 내부 실험의 진전이 아니라 원래 태스크의 어느 미달 조건이 줄었는지
+확인합니다. 내부 실험에서 새 결함을 찾았다는 사실만으로 연장을 정당화하지 않습니다.
+같은 수단이 진전을 만들지 못하면 그 수단을 중단하거나 교체하고 원래 태스크를 유지합니다.
+검증기를 고치기 위한 변경도 원래 결과를 확인하는 데 필수인지 먼저 판단합니다. 그렇지 않으면
+그 실험 변경을 철회하거나 별도로 기록하고 원래 작업으로 돌아갑니다.
+사용자 목표를 실패 처리하는 판단과 에이전트가 만든 수단을 폐기하는 판단을 혼동하지 않습니다.
+
+## 작업 목록이 있는 기본 경로
+
+현재 사용자의 완료 조건에 필요한 실패 사례와 관련 파일만 조사합니다. 전수 비교를 명시적으로
+요청하지 않았다면 전체 capability inventory, 포화 탐색, 별도 phase·평가 loop를 만들지 않습니다.
+현재 요구 → 직접 실패 사례 → 관련 수정 → 종료 조건을 먼저 연결합니다. 상태 질문과 재촉은
+목표 취소가 아닙니다. 새 조사를 시작할 근거로 최신 메시지를 자동 사용하지 않습니다.
+소스 결함, 검증기 입력 오류, 실행 환경 문제, 외부 제약을 먼저 구분합니다. 테스트를 통과시키기
+위해 테스트에 없는 제품 요구사항을 추가하거나 정상 권한 거부를 우회하도록 바꾸지 않습니다.
+
+수정 중에는 해당 실패를 판별하는 최소 검사를 사용하고, 최종 변경을 한 번 독립 검토합니다.
+후속 검토는 바뀐 부분만 다룹니다. 필요한 변경이 끝나기 전에 전체 검사를 시작하지 않으며,
+전체 검사 중에는 소스를 수정하지 않습니다. 동일 기준의 완료 결과는 재사용하고 새 실행으로
+표시하지 않습니다. 사용자 질문, 모델 변경, 새 key 또는 문구 변경만으로 검증을 다시 열지 않습니다.
+
+같은 사례가 같은 제약으로 두 번 실패하면 그 세션의 재요청·복구를 중단합니다. 현재 완료 조건에
+필요한 경우에만 최소 재현 또는 깨끗한 기존 격리 환경에서 한 번 확인하고, 남은 외부 제약은
+미지원·미검증으로 기록합니다. 성공을 만들려고 조건·권한·작업 수를 늘리지 않습니다.
+사용자가 요구하지 않은 일괄 no-retry, 추가 task 생성, 완료 전 무조건 claim 유지 조건을
+검증기에 덧붙이지 않습니다. 입력 오류는 스키마대로 고치고 불확실한 효과와 권한 거부는 보존합니다.
+완료한 변경과 근거를 task_resolve에 한 번 기록하며, 해결 불가능한 경로는 실패·제약으로
+명시합니다. 그 경로 때문에 관련 없는 완료 작업까지 계속 열어 두지 않습니다.
+failed·invalidated는 실패 이력이며 원래 목표의 취소가 아닙니다. Stop 거부를 없애려고 결과를
+만들지 않습니다. 수행 가능한 나머지 원래 요구는 계속 처리하며, 막힌 조건·관측 근거·다음 행동을
+구분합니다. 범위를 줄이는 결정과 사용자의 목표를 포기하는 결정을 혼동하지 않습니다.
+개별 시도의 실패와 태스크의 실패를 구분합니다. 동일 세션 재시도 중단은 그 태스크의 포기가
+아닙니다. 원래 완료 조건에 필요한 다른 접근과 남은 독립 작업을 계속 처리합니다.
+
+아래 정식 평가 절차와 구조화 근거는 기존 phase workflow 복구 또는 명시적인 전수 비교에만
+적용합니다. 위 기본 경로에 중복 완료 조건으로 덧붙이지 않습니다.
+
+## 정식 평가 또는 기존 workflow 복구
+
 정식 run을 열기 전에 `python3 -m scripts.agent_harness.state_cli adaptive preflight`로
 현재 직접 자식 evaluator를 확인합니다. 미확보 상태의 init은 `EVALUATOR_UNAVAILABLE`을
 반환하며 workflow를 만들지 않습니다. 이때는 state-free 검토를 보존하고 host 등록 뒤 재시도합니다.
 
-중요 skill phase는 `uv run python -m scripts.skill_harness.phase_runner`로
+task 목록 없이 기존 phase workflow를 실행·복구할 때만 `uv run python -m scripts.skill_harness.phase_runner`로
 계약을 initialize, evaluate, advance, finalize합니다.
 
 1. failure scenario를 정의합니다. 사용자가 "recent session"이라고 하면 current
    diff와 conversation context에서 도출합니다.
 2. `AGENTS.md`, `.agents/rules/charter.md`, 직접 관련 rule 또는 skill file을
    읽습니다.
-3. 원본 harness 또는 비교 대상이 있으면 source skill/rule/script를 전수 inventory한 뒤
+3. 명시적으로 승인된 전수 비교에서 원본 harness 또는 비교 대상의 source skill/rule/script를 inventory한 뒤
    initial full pass 뒤 delta-only pass를 반복해 `source_capability_inventory`를 만듭니다.
    마지막 delta pass의 신규 capability가 0일 때만 다음 단계로 갑니다.
    유사 문구가 있다는 이유로 covered 처리하지 않습니다.
@@ -72,10 +116,10 @@ basis와 사용할 수 있는 항목이 정확히 같은 표시값(`exact availa
 자원 효율 검사표는 실행 기록의 형식과 버전 연속성을 검사합니다.
 그 검사만으로 실행 기록이 실제 호스트에서 나왔다는 사실을 증명하지는 않습니다.
 
-Harness mutation 자체도 current actor-turn material action입니다. Read-only 탐색은 비간섭으로
-두고, edit 전 intent/target/expected observable을 prepare한 뒤 해당 도구 호출의 실행 결과와
-derived delta를 확인해 resolution합니다. Raw command/output/chain-of-thought를 evidence로
-저장하지 않고 typed authority 없는 external mutation은 시도하지 않습니다.
+하네스 파일은 현재 소유권과 사용자 승인 범위에서 네이티브 도구로 편집하고 검사한다.
+파일 편집에 material 배치를 만들지 않는다. 검사 결과와 변경 차이를 확인한 뒤
+task_resolve에 결과와 근거를 한 번 기록한다. 기존 phase workflow를 복구할 때만
+아래 구조화 근거 형식을 사용하며, task 목록에 별도 phase 완료를 덧붙이지 않는다.
 
 - `accept`: stable `rule_id` 하나에 결속한 executable gate와 regression node로 승격합니다.
 - `reject` 또는 `defer`: 현재 검사표를 바꾸지 않는 근거를 남깁니다.

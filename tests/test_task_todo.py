@@ -19,6 +19,22 @@ def payload(result):
             "tool_use_id": "todo-one"}
 
 
+def test_native_todo_accepts_explanation_but_fences_the_complete_request(service):
+    from tests.test_task_ledger_service import item
+    from scripts.agent_harness.task_ledger import TaskLedgerError
+    store, kernel, sk = service
+    defined = store.define([item()], expected_revision=0, key="define")
+    request = payload(defined)
+    request["tool_input"]["explanation"] = "Show current progress"
+    assert event(store, kernel, sk, request)
+    changed = copy.deepcopy(request)
+    changed["tool_input"]["explanation"] = "Substituted explanation"
+    with pytest.raises(TaskLedgerError, match="substituted"):
+        event(store, kernel, sk, changed, True)
+    assert event(store, kernel, sk, request, True)
+    assert store.list()["tasks"] == defined["tasks"]
+
+
 def test_native_todo_exact_pair_preserves_task_truth_and_rejects_substitution(service):
     from tests.test_task_ledger_service import item
     from scripts.agent_harness.task_ledger import TaskLedgerError

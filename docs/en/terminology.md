@@ -1,45 +1,69 @@
-# Harness terminology
-<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
+<!-- date: 2026-09-14; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree source -->
 
-[Usage](usage/index.md) · [Contributing](contributing/index.md)
+# Reading Neurath's records and tools
 
+[한국어](../ko/terminology.md)
 
-**English** · [한국어](../ko/terminology.md)
+Neurath records what agents requested, what tools executed, and what later checks found. This guide explains the terms used for those records and connects them to exact identifiers you may see in a tool result or the source. A record can describe success, failure, or an outcome that has not been verified.
 
-Neurath documentation uses terms that explain what an operation does. English and Korean
-express the same concepts; a single legacy name is not applied indiscriminately to different roles.
+## Records you may encounter
 
-| Meaning | English term | Korean term | Names in existing code |
-| --- | --- | --- | --- |
-| Files changed by installation and previous content needed for recovery | installation record | 설치 이력 | install receipt, `neurath-receipts` |
-| A tool's result status, output fingerprint, and observed changes | execution result | 실행 결과 | tool receipt, `ToolReceipt` |
-| A record of the verification target, conditions, and actual outcome | verification record | 검증 기록 | verification receipt |
-| A reviewer's judgment and findings | review result | 검토 결과 | review receipt |
-| A record identifying an input or event that was processed | processing record | 처리 기록 | source receipt, prompt receipt |
-| Where information or a request came from | source information | 출처 정보 | provenance |
-| Facts confirmed against actual host records | host verification | 호스트 확인 | attestation, `HOST_ATTESTED` |
-| The agent performing an evaluation | reviewer | 검토자 | evaluator |
-| A request to execute a tool once | tool call | 도구 호출 | invocation |
-| Results, decisions, and remaining work needed by the next task | handoff note | 인계 기록 | checkpoint |
-| Who may modify a workspace | workspace ownership | 작업 공간 소유권 | worktree claim |
-| A key that prevents a previous owner from making changes | ownership key | 소유권 확인 키 | fencing token |
-| The user request currently being processed | current turn | 현재 턴 | foreground turn |
-| The execution, reviewer, user, or official source that determines the final outcome | decision authority | 판정 주체 | `oracle_owner`, `OracleOwner` |
-| Working state required to recover a session | session working state | 세션 작업 상태 | enclave |
+| Term in the guides | Identifier or source term | What it describes |
+| --- | --- | --- |
+| Installation record | `install receipt`, `neurath-receipts` | The installed files and the previous bytes, modes, or links needed for restoration. |
+| Execution result | `tool receipt`, `ToolReceipt` | A tool invocation's status, output fingerprint, and observed changes. |
+| Verification record | `verification receipt` | The checked target, conditions, and observed outcome. |
+| Review result | `review receipt` | Findings and the judgment made during a review. |
+| Processing record | `source receipt`, `prompt receipt` | An input or event that has been processed. |
+| Source information | `provenance` | Where a fact, result, or artifact came from. |
+| Host verification | `attestation`, `HOST_ATTESTED` | Evidence from the actual host that establishes the session, actor, or event. |
+| Handoff note | `checkpoint` | An agent's account of progress, decisions, evidence, and remaining work. |
 
-A record alone does not establish success or approval. Failed and unverified outcomes are recorded
-too. Execution results describe what a tool did; verification records describe the conditions used
-to check that outcome. A review result does not automatically grant ownership or publishing authority.
+The word `receipt` is a technical name for a retained record. In this documentation it does not refer to payment. The interpretation depends on the record's subject: a successful installation record concerns placement, while a live host observation establishes activation. A handoff note tells the next agent what the reporting agent observed; it is not an independent review of that account.
 
-`receipt` does not describe a financial transaction here, so it is not translated as “영수증”.
-The old `invoice export` was an example task, not a harness concept. Documentation examples use
-**work log export / 작업 기록 내보내기** consistently. Terms such as invoices or shipping documents
-in real business domains retain the meanings defined by the target project.
+Exact tool arguments remain unchanged even when the guides use a clearer reader-facing term. For example, `--installation-id` identifies an installation record; the legacy `--receipt` alias refers to the same installation operation.
 
-Keep the exact spelling of commands, JSON fields, schemas, classes, and storage paths. Existing
-`receipt` fields and the `neurath-receipts` directory remain compatible with stored installation
-and session records and tools. Installation plans use `--installation-id`; the existing `--receipt`
-option remains an equivalent alias. In explanations, use descriptive terms such as “installation
-record ID” or “tool execution result”.
+## Work, ownership, and review
 
-This guide applies to the harness itself. It does not replace the target project's domain glossary.
+| Term | Identifier or source term | Meaning |
+| --- | --- | --- |
+| Task | Task ledger entry | A measurable piece of requested work with sources, acceptance conditions, dependencies, and an outcome. |
+| TODO | Native plan or TODO projection | A display of the task list for the host UI. The ledger retains the authoritative state. |
+| Workspace ownership | `worktree claim` | The current session's right to write in a worktree. |
+| Ownership key | `fencing token` | A key used with the claim epoch to reject operations from a stale owner. |
+| Current turn | `foreground turn` | The host-verified active unit of interaction in a session. |
+| Session working state | `enclave` | Bounded, current facts retained for that session's work. |
+| Tool call | `invocation` | One call with its exact input and execution context. |
+| Reviewer | `evaluator` | The actor that evaluates the assigned candidate and evidence in a review workflow. |
+| Decision authority | `oracle_owner`, `OracleOwner` | The user, reviewer, execution result, or official source designated to determine a particular outcome. |
+
+A task outcome is recorded by its authenticated owner. A workflow that explicitly requires independent review has an additional review contract; it does not change every ordinary task into such a workflow. An agent message can provide useful information or request work, but it does not transfer the user's approval, a worktree claim, or reviewer authority.
+
+Project memory stores history that later sessions may retrieve. Session working state keeps the current session's bounded facts. A relationship graph helps explore connections in source and documents. These serve different purposes, so a remembered or graph-derived claim should be checked against the current request and source when it affects a decision.
+
+## Goal reflection and work adoption
+
+Three additional terms describe how work stays connected to its purpose and can move between providers:
+
+| Term | Identifier | Meaning |
+| --- | --- | --- |
+| Goal reflection | `goal_reminders` | Periodic context that helps the root agent reconsider its method against the original task. It does not score semantic success or change task state. |
+| Target-native execution | `target-native` | Explicitly chosen execution using the receiving provider's existing native defaults, hooks, and tool rules. |
+| Work adoption | `memory_pull` with `adopt` | Transfer of unfinished tasks and the worktree lease to a verified receiver after the source has settled; ordinary preview and recall do not transfer ownership. |
+
+The [continuity reference](contributing/provider-continuity.md) explains adoption and source resumption fencing; [runtime lifecycle](contributing/runtime-lifecycle.md) explains bounded goal reminders.
+
+## Reading delivery status
+
+Messages pass through several observable stages. The status tells you how far delivery has progressed, not whether the requested work is complete.
+
+| Status | Observed event |
+| --- | --- |
+| `queued` | The message is durably stored for delivery. |
+| `submitted` | The transport accepted the message. |
+| `received` | The recipient acknowledged reading the full body. |
+| `replied` | The recipient returned a response. |
+
+A response may report completion, a finding, or a request for input. The assigning agent reads it and follows up on the task. See [agent collaboration](usage/agents.md) for everyday use and [the delivery contract](contributing/collaboration-contract.md) for protocol details.
+
+For installation terminology in context, use [installation](usage/installation.md). For exact task fields and transitions, use [the task and TODO contract](contributing/task-todo-contract.md). Installed projects continue to use their own domain glossary; examples such as exporting a work log describe tasks an agent might perform in a target project, not additional Neurath product features.

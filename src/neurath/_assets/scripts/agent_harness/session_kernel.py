@@ -5916,6 +5916,11 @@ class SessionStateStore:
                         )
                     next_revision = 0 if latest_revision is None else latest_revision + 1
                     committed = candidate.with_revision(next_revision)
+                    from scripts.agent_harness.task_service import validate_native_task_grants
+                    try:
+                        validate_native_task_grants(tx, latest, committed)
+                    except ValueError as error:
+                        raise TransitionRejected(f"native task scope: {error}") from error
                     root_turn = committed.foreground_turns.get(committed.session.root_actor_id)
                     old_turn = (None if latest is None else
                                 latest.foreground_turns.get(latest.session.root_actor_id))

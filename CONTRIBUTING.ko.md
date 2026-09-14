@@ -1,9 +1,39 @@
-# Neurath에 기여하기
+<!-- date: 2026-09-13; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
 
-[English](CONTRIBUTING.md) · **한국어**
+# Neurath 개발에 참여하기
 
-<!-- date: 2026-09-07; synced_from: source and documentation at 2456ae73ffaf818c04ea4419574218df36852805; English and Korean editions updated together -->
+[English](CONTRIBUTING.md)
 
-Neurath 자체를 수정하려면 [기여자 안내](docs/ko/contributing/index.md)를 읽으세요. 개발 환경 준비, 수정할 원본 위치, 검증과 리뷰 준비를 설명합니다.
+Neurath 개발은 설치기, 호스트 연동, 작업 런타임, 에이전트 협업과 이를 설명하는 문서를 다룹니다. [개발 가이드](docs/ko/contributing/index.md)에서 수정할 구성 요소와 해당 동작을 확인하는 검사를 찾아보세요.
 
-자신의 프로젝트에 설치하고 스킬을 사용하려면 [사용 안내](docs/ko/usage/index.md)를 읽으세요.
+다른 프로젝트에서 Neurath를 사용하려면 [사용 가이드](docs/ko/usage/index.md)부터 읽으세요. 사용 가이드는 에이전트에 요청하는 방법을 설명하고, 개발 참조 문서는 에이전트가 사용하는 명령과 계약을 설명합니다.
+
+## 변경 준비
+
+저장소 지침은 [AGENTS.md](AGENTS.md)에 있습니다. 바꾸려는 동작을 구체적으로 정의하고 해당 소스와 테스트를 확인하세요. 새로운 설치 동작은 먼저 실패하는 테스트를 작성한 뒤 구현합니다. 대상 프로젝트의 지침, 훅, 권한, 의존성을 보존해야 합니다.
+
+이 저장소에서 개발 환경을 준비합니다.
+
+```sh
+uv sync --locked
+```
+
+구성 요소에 맞는 검사를 실행하고, 최종 변경에 대해 저장소 검사를 수행합니다.
+
+```sh
+uv run --locked python tools/check.py
+```
+
+[검증 가이드](docs/ko/contributing/validation.md)에서 각 검사의 범위와 배포본·실제 호스트를 확인하는 방법을 설명합니다. 소스 테스트, 설치 검사, 실제 호스트 관찰은 서로 다른 질문에 답합니다. 변경에 필요한 결과를 구분해 남기세요.
+
+## 원본 수정과 문서 관리
+
+Neurath가 관리하는 독립 실행 자산의 원본은 [src/neurath/_assets](src/neurath/_assets)에 있습니다. 설치된 스킬과 규칙 파일은 원본에서 생성한 결과입니다. 원본을 수정하고, 자산이 바뀌면 매니페스트를 갱신한 뒤 [자산 가이드](docs/ko/contributing/assets.md)의 빌드·자기 설치 순서를 따르세요.
+
+공개 문서는 영어판과 한국어판을 함께 유지합니다. `docs/en`과 `docs/ko`에 같은 상대 경로를 사용하고, 동작이 바뀌면 양쪽을 갱신합니다. 루트 진입 문서만 `.md`와 `.ko.md` 쌍으로 둡니다. 사용 문서는 자연어 요청과 확인할 결과를 설명하고 실행 예제는 개발 참조에 둡니다. 비공개 설치 계획, 로그, 원래 설정 내용, 검증 산출물은 공개 문서와 배포본에 포함하지 않습니다.
+
+## 검토에 필요한 설명
+
+어떤 문제를 해결했으며 이제 어떻게 동작하는지 설명하세요. 호환성이나 설치에 영향이 있다면 함께 적고, 실제 실행한 검사와 남은 확인 사항을 제시합니다. 관련 소스와 테스트를 연결하면 검토자가 작업 대화를 다시 읽지 않고도 변경을 판단할 수 있습니다.
+
+커밋, push, PR 생성, 릴리스 게시는 해당 작업에 대한 사용자 승인을 따릅니다. 공통 Neurath 결함을 보고하거나 프로젝트에서 얻은 아이디어를 제안하려면 [보고 선택](docs/ko/usage/reporting.md)과 [보고 계약](docs/ko/contributing/reporting-reference.md)을 확인하세요.

@@ -69,11 +69,18 @@ class ModelInfo:
     context_tokens: int | None = None
     input_price_per_million: float | None = None
     latency_ms: float | None = None
+    aliases: tuple[str, ...] = ()
+    alias_source: str | None = None
+    alias_revision: str | None = None
 
     def __post_init__(self):
         _text(self.model_id)
         _texts(self.capabilities)
         _texts(self.reasoning)
+        _texts(self.aliases)
+        if self.aliases:
+            _text(self.alias_source)
+            _text(self.alias_revision)
         for value in (self.context_tokens, self.input_price_per_million, self.latency_ms):
             _number(value)
 
@@ -98,6 +105,9 @@ class Inventory:
             raise ValueError('expected typed model observations')
         if len({m.model_id for m in self.models}) != len(self.models):
             raise ValueError('duplicate model observations')
+        aliases=[alias for model in self.models for alias in model.aliases]
+        if len(set(aliases))!=len(aliases):
+            raise ValueError('ambiguous native model alias observations')
         for value in (self.default_model, self.default_source, self.default_revision):
             if value is not None:
                 _text(value)
@@ -172,13 +182,17 @@ def _selection(context, selection, inventory):
     resolved = inventory.default_model if inherited else selection.model
     if inherited and resolved and not (inventory.default_source and inventory.default_revision):
         raise ValueError('inherited default lacks observation provenance')
-    if constraints.explicit_model and constraints.explicit_model != resolved:
-        raise ValueError('explicit model constraint mismatch')
     if not resolved:
         if constraints != Constraints(allowed_providers=constraints.allowed_providers) or selection.reasoning is not None:
             raise ValueError('unresolved default cannot establish hard constraints')
         return {'status': 'preparation-only', 'resolved_model_id': None}
-    info = next((m for m in inventory.models if m.model_id == resolved), None)
+    alias = next((m for m in inventory.models if resolved in m.aliases), None)
+    info = alias or next((m for m in inventory.models if m.model_id == resolved), None)
+    if alias:
+        resolved=alias.model_id
+    if (constraints.explicit_model and constraints.explicit_model != resolved
+            and not (alias and constraints.explicit_model==selection.model)):
+        raise ValueError('explicit model constraint mismatch')
     if info is None or (not inventory.available and not inherited):
         raise ValueError('model unavailable or unverified')
     if selection.reasoning is not None and selection.reasoning not in info.reasoning:

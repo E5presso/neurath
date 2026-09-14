@@ -22,7 +22,8 @@ def run(root, inputs, *, identity=None, expected_turn=None, verified_policy_evid
     if previous is not None and not previous["reconciliation_required"]:
         return previous
     if expected_turn is not None:
-        _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence)
+        _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence,
+                              **({"controlled_provider_operation": True} if fields.get("mode") == "target-native" else {}))
     if previous is not None:
         if _verification_owner(root, identity) != before:
             raise TaskError("native-prompt-changed", "caller changed before initial reconciliation")
@@ -41,7 +42,8 @@ def run(root, inputs, *, identity=None, expected_turn=None, verified_policy_evid
         if identity is not None and _verification_owner(root, identity) != before:
             raise TaskError("native-prompt-changed", "caller turn, prompt or worktree claim changed")
         if expected_turn is not None:
-            _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence)
+            _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence,
+                                  **({"controlled_provider_operation": True} if inputs.get("mode") == "target-native" else {}))
     except (OSError, ValueError, RuntimeError) as error:
         # Preserve any created native ID and partial outcome for reconciliation.
         return {**result, "provider_status": result.get("status"),

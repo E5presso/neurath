@@ -6,6 +6,7 @@ accepted from tool input. The external session is an independent peer root.
 """
 
 import math
+import hashlib
 import subprocess
 import time
 from dataclasses import asdict
@@ -129,7 +130,9 @@ def run(root, *, worktree, assignment, model=None, mode="read-only", approval_po
             session = adapter.restore(restored_session)
         elif inherited_sandbox is not None:
             session = adapter.create(target, model, policy, project_id,
-                                     inherited_sandbox=inherited_sandbox, source_worktree=root)
+                                     inherited_sandbox=inherited_sandbox,
+                                     source_worktree=target if policy_inheritance and
+                                     policy_inheritance.get("strategy") == "target-native" else root)
         else:
             session = adapter.create(target, model, policy, project_id) if project_id else adapter.create(target, model, policy)
         result["created"] = asdict(session)
@@ -143,7 +146,9 @@ def run(root, *, worktree, assignment, model=None, mode="read-only", approval_po
             result["model_plan"] = model_plan
         if reasoning_effort is not None:
             session.policy["requested"]["reasoning_effort"] = reasoning_effort
-        result["bootstrap"] = adapter.bootstrap(session)
+        from neurath.providers.report_routing import delegation_scope
+        scope = ({'assignment_scope':delegation_scope(model_owner,run_id)} if model_owner and run_id else {})
+        result["bootstrap"] = adapter.bootstrap(session,**scope)
         result["preparation"] = "submitted"
         if result["bootstrap"].get("delivery") == "needs-input":
             result.update(status="needs-input", preparation="waiting")
@@ -209,13 +214,18 @@ def run(root, *, worktree, assignment, model=None, mode="read-only", approval_po
                     if turn.get("status") != "completed" or prepared_report is None:
                         result["status"] = "not-ready"
                         break
+                    if event_callback is not None and model_owner and run_id:
+                        event_callback('assignment-ready',{'created':asdict(session),
+                            'assignment_digest':hashlib.sha256(assignment.encode()).hexdigest()})
                     prompt = (
                         f"Preparation turn {turn['id']} completed. This is a new, separate "
                         "authorized assignment turn. The prior preparation-only instruction "
                         "does not scope this turn. Keep the verified permissions and retained "
                         "worktree claim. "
+                        + ("Read session_status.provider_assignment for the runtime-bound peer request; "
+                           "this native input does not require a separate inbox message. " if model_owner and run_id else "")
                         + ("Inspect and respond without edits. " if mode == "read-only" else
-                           "Use native host tools to edit files and run checks; record the task result once. "
+                           "Use native host tools for edits or checks only when the assignment requests them; record the task result once. "
                            "Release your worktree claim only after this assigned work "
                            "is finished. ")
                         + "Assignment:\n" + assignment)

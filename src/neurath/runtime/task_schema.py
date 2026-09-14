@@ -79,11 +79,11 @@ TASKS = {
     "harness_bypass": ("harness", "bypass", "Read or switch off Neurath hook constraints for this worktree. Set enabled=true to bypass, false to restore, or omit to read. Host permissions remain unchanged. This switch remains callable while hooks are bypassed.",
         {"enabled": {"anyOf": [{"type": "boolean"}, {"type": "null"}], "default": None}}, False),
     "session_status": ("session", "status", "Inspect installation, native activation, effective mode and worktree ownership. Default summary omits the capability catalog; detail=full includes it. Diagnostics grant no authority; never fabricate identity, change mode or claim ownership from this report.", {"detail": {**choice("summary", "full"), "default": "summary"}}, True),
-    "provider_run": ("provider-execution", "run", "Accept an authorized independent session using its validated model plan and inherit the immediate creator's observed native permission mode. Explicit settings assert equality with inheritance. Return durable run_id immediately; no task lifetime deadline or completion wait. Verify actual model, policy, activation and ownership before assignment. States return to the same issuer through durable messages. Reuse key and request on uncertain retry. Acceptance is not execution or result acceptance. Never resumes a foreign live session. App observation is outside admission.",
+    "provider_run": ("provider-execution", "run", "Accept an authorized independent session using its exact model plan. mode=inherit preserves creator policy; explicitly approved target-native keeps target defaults, hooks and tool rules. Conflicting settings are rejected. Return durable run_id immediately; no task lifetime deadline. Verify actual model, policy, activation and ownership before assignment. States return through durable messages. Reuse key and identical request on uncertain retry. Acceptance is not completion. Never resumes a foreign live session. App observation is separate.",
         {"worktree": text_field(4096), "assignment": text_field(), "model": text_field(256, default=""),
          "project_id": text_field(256, default=""),
          "provider": {**choice("codex", "claude-code"), "default": "codex"},
-         "mode": {**choice("inherit", "read-only", "workspace-write", "danger-full-access", "native"), "default": "inherit"},
+         "mode": {**choice("inherit", "target-native", "read-only", "workspace-write", "danger-full-access", "native"), "default": "inherit"},
          "permission_mode": {**choice("", "plan", "dontAsk", "default", "acceptEdits", "bypassPermissions", "auto"), "default": ""},
          "approval_policy": {**choice("", "never", "on-request", "untrusted"), "default": ""},
          "approvals_reviewer": {**choice("", "user", "auto_review"), "default": ""},
@@ -116,6 +116,15 @@ TASKS = {
              "collaboration_mode": choice("default", "plan")}}}, True),
     "memory_recall": ("memory", "recall", "Find relevant project history. Reference only; never current authority.",
         {"query": text_field(default=""), "limit": count(12)}, True),
+    "memory_pull": ("memory-migration", "pull", "Pull another native session's SQLite work context, optionally recovering its registered transcript. List candidates, preview an exact source, then adopt an immutable preview only after the source is quiescent. Keeps target native settings and source completion history; never impersonates the source or asks it to push. Use distinct keys for preview and adoption.",
+        {"action": {**choice("list", "preview", "read", "adopt"), "default": "list"},
+         "source_host": {**choice("codex", "claude-code"), "default": "codex"},
+         "source_session": text_field(256, default=""), "reference": text_field(71, default=""),
+         "key": text_field(512, default=""), "expected_revision": count(0, maximum=2**53-1, minimum=0),
+         "scan_transcript": {"type": "boolean", "default": True}, "limit": count(20, maximum=50),
+         "before_offset": count(0,maximum=2**53-1,minimum=0),
+         "offset": count(0,maximum=2**53-1,minimum=0),
+         "memory_before": count(0,maximum=2**53-1,minimum=0)}, False),
     "memory_checkpoint": ("memory", "checkpoint", "Save the current root's handoff. Completed is an agent report, not workflow completion. Retry with the same key and content.",
         {"summary": text_field(), "key": text_field(512), "decisions": strings(),
          "next_steps": strings(), "lessons": strings(),
@@ -154,7 +163,7 @@ TASKS = {
         {"to": text_field(512), "message": text_field(), "key": text_field(512)}, False),
     "collaboration_accept": ("lifecycle", "accept", "Accept an assigned task in this actual native turn. Emits started to its issuer. Successful native Stop and failure hooks then report that bound turn; unrelated turns cannot finish it.",
         {"task_id": text_field(128)}, False),
-    "collaboration_report": ("lifecycle", "report", "Report a major task state to its issuer using a durable event and message. Only the bound executor may report. Execute the returned native notification route when supported; queued is not received or accepted.",
+    "collaboration_report": ("lifecycle", "report", "Report a major task state only as its natively bound executor. Independent provider sessions have their lifecycle and final response forwarded by the supervisor; use collaboration_send/reply only for explicitly requested peer messages. Execute the returned native notification route when supported; queued is not received or accepted.",
         {"task_id": text_field(128), "state": choice("started", "waiting", "error", "failed", "cancelled", "completed"),
          "key": text_field(512), "detail": text_field(16000, default="")}, False),
     "collaboration_task": ("lifecycle", "read", "Read a participating task and its message delivery acknowledgements after an event. This is diagnostic recovery, not periodic monitoring or acceptance of work.",
@@ -202,13 +211,13 @@ OUTPUT_SCHEMA = {
 
 
 SERVER_INSTRUCTIONS = (
-    "Use task tools to record work and native host tools to edit files and run checks. "
-    "The native host supplies identity and _neurath_binding; never invent them. "
-    "Use session_status for readiness; request detail=full only for capability diagnostics. "
-    "Reuse successful mutation results instead of immediately reading the same state again. "
-    "After a failed check, inspect its diagnostic and fix the cause before a new check. "
-    "Wait for native events for delegated work; do not poll status for completion."
+    "Follow .neurath/policy.md. Native hooks supply _neurath_binding; never invent it. "
+    "Record work with task tools; edit and check with native tools."
 )
+
+# Saved calls retain their schemas and dispatch. New calls use phase_* instead
+# of a second interface to the same PhaseRunner operations.
+COMPATIBILITY_TASKS = frozenset({"workflow_start", "workflow_advance", "workflow_finalize"})
 
 
 def definitions():
@@ -220,7 +229,7 @@ def definitions():
                              "properties": {**deepcopy(fields), "_neurath_binding": text_field(64)}},
              "outputSchema": deepcopy(OUTPUT_SCHEMA)}
             for name, (_, _, description, fields, readonly) in TASKS.items()
-            if not name.startswith(("material_", "verification_"))]
+            if name not in COMPATIBILITY_TASKS and not name.startswith(("material_", "verification_"))]
 
 
 def _validate(value, rule, path):
@@ -303,7 +312,7 @@ def arguments(name, inputs):
     if name == "provider_run":
         if result["provider"] != "codex" and result["project_id"]:
             raise TaskError("invalid-input", "project_id is only supported for Codex")
-        if result["mode"] == "inherit":
+        if result["mode"] in {"inherit", "target-native"}:
             return result
         if result["provider"] == "claude-code":
             if result["mode"] != "native" or not result["permission_mode"] or any(

@@ -59,6 +59,37 @@ def test_installed_policy_uses_one_task_completion_and_reversible_bypass():
     assert "종료 훅은 인계가 이미 있어도" not in policy
 
 
+def test_installed_skills_do_not_reintroduce_retired_edit_and_phase_gates():
+    from neurath.install.projection import asset_files
+
+    files = asset_files("generic", ["codex"])
+    for path, (data, _) in files.items():
+        if path.endswith("/SKILL.md"):
+            text = data.decode()
+            assert "중요 skill phase는" not in text, path
+    text = files[".agents/skills/test-harness/SKILL.md"][0].decode()
+    assert "Harness mutation 자체도 current actor-turn material action" not in text
+    assert "파일 편집에 material 배치를 만들지 않는다" in text
+
+
+def test_projected_incident_review_does_not_require_exhaustive_work_or_allow_abandonment():
+    from neurath.install.projection import asset_files
+
+    files = asset_files("generic", ["codex", "claude-code"])
+    skill = files[".agents/skills/test-harness/SKILL.md"][0].decode()
+    basic, formal = skill.split("## 정식 평가 또는 기존 workflow 복구", 1)
+    assert "전수 비교를 명시적으로" in basic
+    assert "상태 질문과 재촉은" in basic
+    assert "Stop 거부를 없애려고" in basic
+    assert "독립적인 완료 의무가 아닙니다" in basic
+    assert "원래 태스크를 유지합니다" in basic
+    assert "명시적으로 승인된 전수 비교" in formal
+    policy = files[".neurath/policy.md"][0].decode()
+    assert "all_terminal은 실행 기록의 종결이며 목표 달성이 아니다" in policy
+    assert "prompt receipt는 출처의 존재만 증명" in policy
+    assert "수단의 성공을 새 완료 조건으로 추가하지 않는다" in policy
+
+
 def test_installed_operation_map_exposes_every_detected_compatibility_gap():
     import json
     from neurath.install.projection import asset_files

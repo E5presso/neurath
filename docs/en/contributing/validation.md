@@ -1,139 +1,132 @@
-# Validation
-<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
+<!-- date: 2026-09-14; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
 
-[Usage](../usage/index.md) · [Contributing](index.md)
+# Establish evidence for each runtime boundary
 
+[한국어](../../ko/contributing/validation.md)
 
-[English](validation.md) · [한국어](../../ko/contributing/validation.md)
+Neurath validation answers several different questions: whether source assets are intact, whether a built distribution works independently, whether installation preserves a target, and whether an actual host enforces the intended runtime contracts. Choose evidence for the boundary changed. A past pass count or a wheel checked in another session does not establish the state of today's checkout.
 
-Neurath checks four different boundaries: distribution integrity, installation behavior,
-runtime contracts, and events emitted by real Codex and Claude Code hosts. A successful
-`doctor` result covers local placement and protocol checks; it does not grant host trust.
+## Run the source checks
 
-## Latest checks — 2026-09-07
-
-| Boundary | Result |
-| --- | --- |
-| Package and installer tests | 408 passed on macOS and Linux |
-| Runtime contracts | 1,038 tests passed on each platform; Linux also reported 544 subtests |
-| Runtime manifest | 243 files; source, wheel, and self-installed copy agree |
-| External wheel | Empty, Python, and JavaScript repositories passed |
-| Quick installer | Real uv/Python bootstrap, three repository types, and a fresh self-hosting checkout passed |
-| Immutable runtime updates | Real uv bootstrap preserved another project's files and interpreter after successful, conflicting, and dry-run updates; warm-cache rebuilding, exact restoration, and no-op reuse passed |
-| Shared instruction edits | Update and removal preserved user edits outside intact Neurath blocks; modified managed blocks remained conflicts |
-| Native Codex and Claude Code | Fresh sessions on the tested wheel passed activation, command execution, canonical state read-back, and checkpoints |
-| Codex steering and resume | Native commands and turn records verified mid-turn steering, interruption, and a fresh-process resume |
-| Independent evaluator lifecycle | Both hosts rejected premature completion, consumed the actual child's evaluation for the exact candidate, completed the workflow, and released ownership |
-| Cross-host collaboration | Both directions passed request, reply, acknowledgment, conversation closure, and newsroom article read-back |
-| Learning lifecycle | Codex recovery reached trial guidance; a fresh Claude session reused and activated it; a later native failure automatically withdrew it |
-| Protected-action denial | Claude rejected the protected capability action; Codex failed closed when its outer tool envelope omitted execution-directory metadata |
-| Publication contents | Wheel and source archive checks passed for private-file exclusion, independent imports, and package metadata |
-| Repeat self-installation | No changes; project bindings preserved |
-
-The self-installation checks use the packaged tool environment, separate from the development
-`.venv`. Linux checks run from the built source distribution in a disposable container.
-Native checks use disposable projects with explicit project trust. Their results do not
-grant trust to another installation. Codex's conservative rejection above proves the
-missing-directory boundary; it is not evidence of a precise protected-glob match in that
-outer tool envelope. Direct capability regression tests cover directory and shell-prefix
-normalization separately.
-
-The full native lifecycle, messaging, and learning matrix above used wheel SHA-256
-`e4347d3d836313b7d61edce04a847f8731f5c7c52c0b436269542580a3e43609`.
-An intermediate wheel,
-`a6aea761286a3806b9ebc02beae54366a21e24696b7fd8dae14bf85acc7043f0`,
-corrected the review instruction for retaining native tool-result evidence and its generated
-audit and manifest metadata; its executable modules matched the full native matrix wheel.
-The review-history correction wheel is
-`1c24238e2271f8d4fb04b8ee8471467aac86525684748e79b3fd17b261b26552`.
-It additionally fixes review-history handling: a full review does not parse unused prior
-reports, inherited review evidence excludes unrelated generic assignments, and conflicting
-reviews of the same commit require a new full review regardless of record order.
-The focused review suite passed 19 tests and 5 subtests, including rejection of malformed
-relevant evidence and acceptance of equivalent prior passing reviews. The updated full
-macOS and Linux suites, external package checks, real uv installation, self-installation,
-and fresh activation on both hosts cover this wheel. The earlier full native lifecycle,
-messaging, and learning results remain tied to their original wheel above.
-The final publication wheel is
-`aa91a4ae93759e5380ca866a8b5fb57821a8f70839e1b9877674f6612a194b8f`.
-It only supplements the comment-triage instructions and generated audit and manifest: the existing
-third channel collects review bodies, replies belong in the general PR discussion, and
-acknowledgments use a distinct agent marker while the handled marker belongs only on the
-final response. Local API fixtures verified collection, acknowledgment exclusion without
-closing the original item, and final handled-marker filtering. Its executable modules are unchanged from the
-review-history correction wheel; the earlier native lifecycle claims keep their original
-artifact scope. Duplicate wording was removed to preserve the existing entry-size limit;
-the prompt-loading suite passed without changing its limit or tests.
-Linux ran from the built source archive with Python 3.14. The development selector accepts
-the 3.14 series so it also works with uv installations whose interpreter catalog predates
-a particular patch release.
-
-## Memory and learning regression boundaries
-
-Tests cover shared worktree storage, concurrent writes, repository isolation, conflicting records for the same source event, bounded recall, credential redaction, and exclusion of private reasoning. Learning
-tests reject unrelated passing tests, unknown results, incomplete check results, same-session
-promotion, and unexposed successes. Autonomous-validation tests cover an already saved checkpoint,
-failed-check retry suppression, scoped deferral, renewed recovery evidence, and unbound verifiers. They also cover changed verification contracts, failure
-after trial use, repeated transcript synchronization, and exposure limited to delivered rules.
-
-Native tests use actual process/tool-result metadata. The suite includes JSON stdout that
-pretends to be a process exit result and Claude's different failure envelope. A normal checkpoint
-Stop request is accepted by the native validator only when the same session actually saves
-a checkpoint and a subsequent Stop succeeds. Arbitrary admission failures remain failures.
-
-Cross-host recall was checked against visible assistant answers, excluding tool output and
-thinking blocks. The interruption test confirmed that the source session had no checkpoint.
-The command-learning test checked the persistent transition history, not just a model's
-claim that it learned. The supported learning scope is described in [Memory and learning](../usage/memory.md).
-
-## Reproduce the package checks
+From the Neurath source checkout:
 
 ```sh
 uv sync --locked
 uv run --locked python tools/check.py
+```
+
+[The check runner](../../../tools/check.py) stops at the first failed stage and returns its exit status. In order it runs:
+
+1. Distribution integrity through `python -m neurath integrity`.
+2. Python diagnostics using Ruff rules `E4,E7,E9,F` on `src/neurath`.
+3. Package and installation tests through `python -m pytest -q`.
+4. Standalone runtime contracts through `tools/run_core_regressions.py`.
+
+It prints `NEURATH_CHECK_OK` only after all stages succeed. An output string copied from another run is not evidence of the current process result. Start new behavior with an appropriate failing test, use focused checks while fixing it, then run the required complete check on the final source. Rerun a failure after a relevant change or new evidence, rather than repeatedly issuing the same command against unchanged state.
+
+For public documentation conventions:
+
+```sh
+uv run --locked pytest -q tests/test_publication.py
+```
+
+For a runtime or packaged-asset change, update integrity data before the complete check:
+
+```sh
+uv run --locked python tools/build_manifest.py
+uv run --locked python tools/check.py
 uv build
+```
+
+## Isolate runtime tests from the development checkout
+
+The runtime runner copies the Neurath-owned corpus and runtime tests into a fresh Git fixture, supplies fixture bindings and hooks, imports the bundled engines, and runs pytest there. It does not use another project as its source corpus. Its default temporary fixture is removed afterward. For investigation, retain a new disposable target:
+
+```sh
+uv run --locked python tools/run_core_regressions.py --target /private/path/to/fixture
+```
+
+The target must not already exist because the runner copies a new tree. Optional trailing test selectors scope the fixture's pytest invocation. Failure diagnostics are retained privately under `.neurath/local/verification`; they are not publication material. See [the runner](../../../tools/run_core_regressions.py).
+
+## Test a built package outside its source
+
+Build first, then validate the actual wheel selected for delivery:
+
+```sh
+uv build
+mkdir -p .validation
 uv run --locked python tools/validate_distribution.py dist/neurath-0.1.0-py3-none-any.whl --output .validation/wheel.json
+```
+
+The filename shown follows current package version `0.1.0`; use the actual resulting wheel when the version changes. [Distribution validation](../../../tools/validate_distribution.py) creates an external Python 3.14 environment, installs the wheel, and exercises empty, Python, and JavaScript repositories. It covers installation, unchanged reinstall, host selection update, local diagnostics, and uninstall while preserving project instructions, permissions, and target environment boundaries. Paths include spaces and quotes. A guarded import phase denies access to the source checkout while importing bundled modules. The report records the wheel hash, import observations, per-repository results, and an explicitly unverified native activation status.
+
+A package's `.whl` creation alone does not exercise those contracts. Source-distribution tests separately verify that both document locales are included and private artifacts are excluded. [Publication tests](../../../tests/test_publication.py) also check same-language links, locale path parity, metadata, and independent imports.
+
+## Exercise real bootstrap without using the developer environment
+
+```sh
 uv run --locked python tools/validate_setup.py --output .validation/setup.json
 ```
 
-The check command validates the complete runtime manifest, Python diagnostics, package
-and installer tests, and the isolated runtime contract suite. The wheel check installs into
-empty, Python, and JavaScript repositories using an external environment. It checks
-installation, repeat installation, local protocols, execution, preservation, and removal.
+[Setup validation](../../../tools/validate_setup.py) copies the source into an isolated temporary location and uses a minimal system PATH and separate `uv`, Python, tool, and executable directories. Git and curl must be available on that minimal PATH. It performs the official `uv` download and Python provisioning, then tests empty, Python, and JavaScript targets with spaces, quotes, and Korean characters in paths.
 
-## Self-hosted development
+The fixture checks preserved permissions, hook groups, model preferences, instructions, dependency manifests, edited project bindings, no target `.venv` or lockfile creation, unchanged reinstall, and uninstall restoration. It moves the install source away before invoking the installed launcher. A fresh checkout also self-installs twice to check preserved public instructions and zero-change reuse. This is a networked bootstrap test; failure should retain its actual prerequisite or network diagnostic.
 
-```sh
-./setup --self
-Named MCP tool diagnostics_project (current input schema)
-Native host command tool: run the check argv and cwd registered in .neurath/project.json
-```
+Installer regressions additionally exercise content-addressed runtime reuse, immutable runtime updates, warm-cache builds, dry-run boundaries, stale/tampered plans, wrong target, path escape, conflicting owned files, changes around intact managed blocks, modified-block rejection, exact mode/link restoration, transactional rollback, and recovery after a real process kill. See [installer tests](../../../tests/test_installer.py) and the setup tests in `tests`.
 
-The development repository binds `check` to the same complete check command in
-`.neurath/project.json`. The installed harness uses a separate persistent tool environment;
-the development environment remains reproducible from `uv.lock`.
+## Verify the actual host lifecycle
 
-Public instructions and project bindings belong in Git. Generated skills, host settings,
-absolute interpreter launchers, installation records, execution results, verification records,
-review results, raw host logs, and runtime state do not. A fresh
-checkout reconstructs those files with `./setup --self`. Existing exact Neurath instruction
-blocks are preserved without duplication; edited or unknown blocks remain conflicts.
+Placement diagnostics compare bytes and links to the installation record. Protocol checks use isolated subprocess fixtures for valid startup JSON and malformed input. To establish native activation, observe an actual Claude Code or Codex session loading the installed integration and invoking authenticated state operations. Keep raw transcripts, fingerprints, and observation artifacts private, and associate them with the exact runtime and host tested.
 
-## Historical memory and host evidence
+The host scenario set must distinguish:
 
-Earlier live Codex and Claude Code runs exercised file writes,
-interruption, resume, compaction, a separate evaluator, completion, ownership release, and
-protected-action denial. Those checks passed on the independently packaged runtime.
-Fresh Claude sessions also recovered Codex decisions after normal completion and after an
-interrupted turn without a checkpoint. Ordinary task prompts exercised automatic checkpoint
-requests and command recovery, trial guidance, cross-session activation, and withdrawal after
-a native command failure. These are historical checks unless explicitly listed in the latest
-results above; they do not imply that every previous scenario was rerun for every artifact.
+| Scenario | Observation needed |
+| --- | --- |
+| Fresh start | Actual host event, command execution, caller-bound state, and runtime identity |
+| Steering and interruption | Only the previous verified turn closes; newer user intent and pending work survive |
+| Resume | Native recovery evidence rebinds the resumable session; a permanently ended kernel session does not revive |
+| Direct child | Actual spawn/transcript lineage; premature completion rejected when required review remains |
+| Independent evaluator | Exact candidate read, authenticated report, and parent consumption of that report |
+| Ownership | Current lease/fencing token enforced, stale writer rejected, authorized release observed |
+| Stop | Task-list check and closure occur atomically; a concurrent append cannot disappear |
 
-For a changed distribution, rerun the applicable suite and record its package fingerprint.
-Host activation requires fresh host events and canonical state read-back from that exact
-installation. Trust is scoped to a project and its actual hooks; fixture trust does not
-activate a different checkout. A stopped or completed subprocess alone is insufficient.
+`UNATTESTED` session, turn, or child identifiers cannot mutate execution state. A copied reference cannot supply native lineage. Codex checks the actual direct-child result path and transcript metadata; Claude binds a one-time parent Agent call reference observed in the child transcript. Late registration can retry at the first state operation, but unverified child shell/write remains blocked with `child-identity-unverified`. Nested spawning is outside the supported direct-child contract.
 
-Detailed evidence remains in ignored local validation storage. Publication artifacts omit
-private paths, session identifiers, process records, original-file backups, and old archives.
+A host process ending preserves resumable work, claim, and session state. A fork is a new root with its own claim. App peer delivery without a user-prompt hook must rely on actual delivery/completion and native turn evidence and cannot create new user approval. A late Stop cannot close a newer verified turn; unmatched Stop produces a nonblocking diagnostic without mutation. Root continuation is bounded per verified user turn, so unresolved work cannot create an unlimited Stop loop.
+
+## Retain meaningful edge-case coverage
+
+| Domain | Cases that distinguish correct behavior |
+| --- | --- |
+| Provider execution | Both provider directions; immediate-creator policy inheritance; actual model readback; readiness and ownership before edits; long operation still accepts messages/cancel |
+| Message delivery | Full-body read, ACK, reply, closure; issuer/receiver death before and after transport; lost ACK/response; stale attempts; pending retained after TTL/close; supported repair redrives original identity |
+| Memory | Linked-worktree concurrency and isolation, conflicting source replay, bounded context, credential redaction, excluded private reasoning, decisions recalled without a checkpoint |
+| Learning | Same-operation failure/recovery selectors; native process outcome; matching project check; different exposed session before promotion; unexposed, same-session, forged stdout, unknown or incomplete evidence rejected |
+| Learning recovery | Deferral and retry suppression; new evidence; changed verification contracts; exposure limits; failed recovery or check withdraws guidance |
+| Protected actions | Exact path/glob behavior distinct from conservative rejection when a directory is missing |
+| PR review | Unused old reports ignored in full review; unrelated assignments excluded from inheritance; conflicting same-commit judgments require a new full review; malformed relevant evidence rejected; equivalent earlier pass can be accepted |
+| Comment handling | Review bodies gathered separately, replies in PR discussion, distinct ACK and final handled markers; ACK does not close the original item |
+
+Learning checks must distinguish native process metadata from printed output and cover Claude failure envelopes. A checkpoint-based Stop observation only applies when the same session accepted that checkpoint and subsequently completed a successful Stop. It cannot be generalized from an unrelated checkpoint or session.
+
+The [host tests](../../../tests/test_host_lifecycle.py), [delivery recovery tests](../../../tests/test_delivery_recovery.py), [learning tests](../../../tests/test_learning.py), and [project memory tests](../../../tests/test_project_memory.py) provide source-backed regression anchors. Actual native artifacts retain their individual observation scope; passing a simulated regression does not imply every provider or desktop bridge was exercised.
+
+## Check reflection and provider continuity
+
+For goal reminders, test eligible root events, changed prompt sources, 12 distinct completion IDs, the next eligible event after five minutes, duplicate callbacks, the UTF-8 bound, and preservation of task and permission state. Observe delivery on each real host separately. These checks establish delivery behavior, not perfect semantic judgment or convergence.
+
+For `target-native`, observe the target's existing settings and the created session's applied model and policy. For `memory_pull`, cover preview/read paging, an unsettled source, changed snapshot basis, imported dependency mappings, atomic claim transfer, duplicate writes, and source resumption after adoption and after receiver release. Saved transcript content remains reference data, and unpersisted provider content is outside guaranteed recovery. Relevant fixtures are [reminders](../../../tests/test_goal_reminders.py), [target policy](../../../tests/test_target_native_policy.py), [adoption](../../../tests/test_memory_pull.py), [MCP inputs](../../../tests/test_memory_pull_mcp.py), and [transcript recovery](../../../tests/test_migration_transcript.py).
+
+Retain the build identity and direction with each private native result. A successful check on one candidate does not turn another candidate's delegation, pull, goal-reminder, or source-resumption-fencing evidence into a new execution. Distribution tests, external installation, self-installation, and actual host execution each keep their own scope. Native project metadata updates do not prove Codex app membership. For app-associated task requests, use the app creation route and observe app-owned affiliation separately, including the verified root's `session_status.app_project` record where available. This record is not remote UI or permission evidence. Reconnect an older MCP process when checking newly installed tools.
+
+## Report exactly what the evidence supports
+
+Describe the changed behavior, commands actually executed, observed outcomes, artifact identity, and material gaps. Source checking, wheel building, self-installation, target checks, independent review, native activation, and publication are separate results. Run `./setup --self` after executable asset development when updating this checkout's harness is in scope; then verify the installed result and real host as needed. Documentation edits alone do not establish or require runtime activation.
+
+## Check the complete named-operation route
+
+Provider acceptance covers all four Codex/Claude creator/receiver combinations and an intervening creator with more restrictive policy. Claude bypass mode must still preserve explicit denies and hooks; unsupported confinement must block. Missing installation, activation, claim, or tools prevents assignment. An idle issuer must receive the full body, ACK, and respond through the same owned connection. A receiver killed before send is recovered with the original key; death after send but before ACK permits duplicate replay without changing identity. Lost transport or ACK responses remain recoverable. A stale-generation attempt cannot undo a newer owner or ACK. TTL, budget, or closure must retain unacknowledged messages unless explicitly cancelled. Dead-letter repair redrives the same ID; arbitrary recipient rebinding and revival after cancellation are rejected. Failed body lookup cannot be acknowledged, while an already-read duplicate can be acknowledged again.
+
+Model acceptance compares justified routine and complex selections, fixed or unavailable models, unknown inventory, unsupported reasoning, stale plans, model mismatches, and alias binding. Quota or scope changes after uncertain admission require reconciliation. Verify named routes for recall, peer messages, newsroom, status, phase operations, ownership, learning rollback, updates, and reporting. Unavailable MCP, restricted execution, or uncertain accepted mutation remains an explicit gap; it must not trigger an alternate invocation that evades those constraints.
+
+Acceptance includes installed policy, skills, notifications, and error `next_action` guidance, rather than only the registry. Start with failing schema/plan/binding tests, adapter and installed-instruction fixtures, and installation fixtures, then exercise actual Codex and Claude policy/start/idle/death/long-operation/model/tool-choice scenarios. Saved legacy calls and fresh installed named calls must coexist. These are required scenarios, not a blanket assertion of completed native acceptance. Use normal named routes and owned connections, without fabricated identity or direct private-worker shortcuts. Native source editing and testing remain ordinary host-tool operations.

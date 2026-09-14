@@ -1,7 +1,7 @@
 """Immutable measurable tasks; runtime adapters admit sources and resolve evidence.
 
-No MCP input can supply a derived outcome. Resolution uses an internal resolver
-bound to canonical evidence in the caller's SQLite transaction.
+The runtime stores owner-reported outcomes with canonical identity and provenance.
+Receipt integrity does not independently verify the meaning of an owner report.
 """
 from __future__ import annotations
 
@@ -304,6 +304,9 @@ class TaskLedger:
             raise TaskLedgerError("resolver did not return owned canonical evidence")
         if set(proof.references) != set(references):
             raise TaskLedgerError("resolver substituted evidence references")
+        if proof.status is TaskStatus.SUCCEEDED and any(not item.status.terminal
+                for item in self.tasks if item.id in task.definition.dependencies):
+            raise TaskLedgerError("task dependencies are unsettled")
         changed = replace(task, status=proof.status, evidence=proof, revision=task.revision + 1)
         return self._changed((changed if item.id == identity else item for item in self.tasks), key, digest)
 

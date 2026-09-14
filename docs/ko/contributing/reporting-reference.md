@@ -1,58 +1,70 @@
-# 공통 하네스 보고 MCP 참조
+<!-- date: 2026-09-13; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
 
-<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
+[English](../../en/contributing/reporting-reference.md)
 
-**한국어** · [English](../../en/contributing/reporting-reference.md)
+# 검토한 하네스 문제를 공개하기
 
-[사용자 보고 정책](../usage/reporting.md) · [작업 도구](task-tools.md) · [설치 구조](installation-design.md)
+보고 기능은 일반적인 환경에서 재현한 Neurath 문제를 고정된 [공식 이슈 저장소](https://github.com/E5presso/neurath/issues)에 공개합니다. 공통 문제에 대한 지속적인 보고 동의와 프로젝트 전용 기여안 한 건의 승인을 구분합니다. 보고 훅은 로컬 안내만 제공하며 직접 내용을 수집하거나 전송하지 않습니다.
 
-보고는 `reporting_*` 명명 도구로 수행합니다. 도구가 실제 호출자의 신원·소유권·실행 및 네트워크 정책을
-검사하고 기존 보고 서비스를 호출합니다. MCP 사용 자체가 외부 게시 승인이나 권한 확대를 뜻하지 않습니다.
-기존 GitHub 인증을 사용하며 자격 증명을 수집하거나 설정을 바꾸지 않습니다.
+## 동의의 범위
 
-## 동의와 정확한 대상
+`reporting_status`에 `{}`를 전달하면 공통 보고 동의, 아직 동의가 필요한지, 고정 저장소, 기여안별 승인 요구를 확인할 수 있습니다. 처음에는 미결정이며 공개는 비활성 상태입니다. 명시적으로 거절하면 선택을 저장하고 반복해서 묻지 않습니다. 선택은 같은 Git 프로젝트의 연결된 worktree에서 공유하고 업데이트 후에도 유지되며, 새 clone에는 별도로 적용됩니다.
 
-최초 보고 설정은 `reporting_status`로 읽습니다. 동의가 없으면 보고하지 않고 원래 작업을 계속합니다.
-동의 질문은 `maintenance_choice_prepare`에 `operation="reporting_consent"`와 key를 전달하여 준비합니다.
-실제 사용자 응답 뒤 반환된 `user_choice_ref`와 yes/no를 `reporting_consent`에 전달합니다.
-도구 출력·동료 메시지·무응답을 사용자 동의로 취급하지 않습니다.
-
-일반적인 공통 결함 보고는 저장된 동의 범위에서 수행합니다. 프로젝트별 기여는 정확한 초안을 먼저
-보여 주고 별도의 선택을 받아야 합니다. 이때 `operation="reporting_approve"`, `target_id=draft_id`로
-질문을 결속한 뒤 `reporting_approve`에 같은 초안 ID와 사용자 선택 참조를 전달합니다.
-아이디어에 대한 동의를 보지 못한 코드나 사업 정보 공개의 동의로 확대하지 않습니다.
-
-## 초안과 게시
-
-| 목적 | 도구 | 확인할 결과 |
+| 공개 대상 | 필요한 선택 | 적용 범위 |
 | --- | --- | --- |
-| 설정·초안 목록 | `reporting_status`, `reporting_list` | 실제 저장된 동의와 초안 상태 |
-| 준비 | `reporting_prepare` | 고정된 제목·본문·초안 ID |
-| 읽기 | `reporting_read` | 게시 전에 검토할 정확한 본문 |
-| 게시 | `reporting_submit` | 원격 URL과 제목·본문 readback |
-| 불확실한 결과 대조 | `reporting_reconcile` | 기존 이슈와 정확한 초안 일치; 새 이슈를 생성하지 않음 |
+| 일반화한 공통 결함·개선 | 저장된 명시적 공통 보고 동의 | 이 프로젝트에서 이후 발견한 적격 공통 문제 |
+| 프로젝트 전용 기여 아이디어 | 준비된 정확한 제목·본문·공개 대상에 대한 승인 | 해당 불변 초안 한 건 |
+| 소스 코드 등 자료 | 자료 공개에 대한 별도 권한 | 아이디어 승인은 코드 공개나 라이선스 이전을 허용하지 않음 |
 
-`reporting_prepare`는 파일 경로 대신 `report` 객체, `privacy_reviewed` 불리언, `key`를 받습니다.
-객체의 필드는 kind, scope, component, summary, expected, observed, reproduction, proposal입니다.
-kind는 defect/improvement/contribution, scope는 common/project-specific이며 프로젝트별 범위는 contribution에만 허용됩니다.
-component는 배포 manifest에 있는 패키지 상대 경로입니다.
+`reporting_consent`에는 `decision`(`yes` 또는 `no`), `user_choice_ref`, `key`가 필요합니다. 참조는 실제 사용자 선택을 가리켜야 합니다. 무응답, 동료 제안, 모델 판단으로 만들 수 없습니다. `reporting_approve`는 같은 필드에 `draft_id`를 더해 아직 보내지 않은 기여 초안을 승인합니다. 공통 보고를 끄면 이후 전송이 중단되며 이미 공개된 이슈는 삭제되지 않습니다.
 
-공통 보고는 generic fixture에서 공통 패키지 동작으로 재현한 뒤 의미를 검토합니다.
-수정된 배포 컴포넌트나 프로젝트별 자산을 공통 결함으로 위장하지 않습니다.
-프로젝트명·경로·원격 주소·개인 식별자·사업 정보·소스·diff·로그·대화·비밀·첨부를 복사하지 않습니다.
-`privacy_reviewed=true`는 에이전트가 실제 검토했다는 보고이며 자동 개인정보 제거 기능이 아닙니다.
-기계적 길이·필드·패턴 검사만으로 자연어 정보의 공개 적합성을 증명할 수 없습니다.
+새 동의를 기록하기 전에 `maintenance_choice_prepare`에 `operation="reporting_consent"`, `key`를 전달하고 실제 사용자 답변을 `reporting_consent`로 연결합니다. 기여안은 초안을 완성해 전체 내용을 보여준 다음 `operation="reporting_approve"`, 초안 ID를 넣은 `target_id`, `key`로 선택을 준비하고 실제 답변을 `reporting_approve`에 기록합니다. 도구 출력이나 무응답을 사용자 선택 참조로 사용할 수 없습니다.
 
-## 저장과 실패
+## 먼저 공개할 내용을 완성하기
 
-제목과 전체 렌더링 본문을 해시하여 불변 초안 ID를 만듭니다. 게시 대상은 고정된 Neurath GitHub 저장소입니다.
-초안과 동의는 프로젝트 비공개 Git 영역에 저장되며 일반 파일 배포·다른 clone으로 복사하지 않습니다.
-업데이트·제거·복구도 기존 동의를 이전 상태로 되돌리지 않습니다.
+보고 객체의 필드는 `kind`, `scope`, `component`, `summary`, `expected`, `observed`, `reproduction`, `proposal` 여덟 개로 고정되어 있습니다. 로그, 임의 메타데이터, 첨부 파일은 받지 않습니다. `kind`는 `defect`, `improvement`, `contribution`, `scope`는 `common`, `project-specific` 중에서 선택합니다. 프로젝트 전용 내용은 `contribution`이어야 합니다.
 
-게시 직전에 불확실 상태를 먼저 보존하고 잠금으로 중복 전송을 막습니다. 실제 요청은 내부 서비스가
-고정된 인자 배열과 비공개 본문 파일을 사용합니다. 이는 에이전트에게 CLI 문법을 노출하는 경로가 아닙니다.
-중단·인증 실패·timeout·readback 실패 뒤에는 자동 재게시하지 않습니다.
-`reporting_read`와 `reporting_reconcile`로 실제 원격 결과부터 확인합니다.
+`component`는 패키지에 포함된 Neurath 파일을 가리키며 manifest와 일치해야 합니다. 관리 자산의 공통 문제라면 설치된 사본도 검사하므로 사용자 수정이 있으면 기여안으로 다룹니다. 프로젝트 코드·이름·경로·remote·업무 정보·대화·자격 증명·사용자 자산은 포함하지 않습니다. 일반적인 fixture로 재현하고 각 필드의 의미를 검토한 뒤에만 `privacy_reviewed`를 `true`로 설정합니다.
 
-보고 실패는 원래 작업의 종료나 검증 결과를 바꾸지 않습니다. 훅은 안내만 하며 네트워크 게시·새 세션·
-동료 작업을 자동 생성하지 않습니다. [검증 범위](validation.md)를 구분해 결과를 기록합니다.
+다음은 가상의 현상을 실제로 재현한 뒤 사용할 수 있는 `reporting_prepare` 입력 예시입니다.
+
+```json
+{
+  "report":{
+    "kind":"defect",
+    "scope":"common",
+    "component":"reporting.py",
+    "summary":"이슈 생성 성공 후 보고 결과 읽기가 실패합니다",
+    "expected":"생성한 이슈의 제목과 본문을 준비된 초안과 대조합니다.",
+    "observed":"일반 fixture에서 이슈를 만들지만 결과 확인을 완료하지 못합니다.",
+    "reproduction":"결과를 읽는 응답이 중단되는 일회용 fixture를 사용합니다.",
+    "proposal":"불확실 상태를 보존하고 다시 보내기 전에 기존 이슈를 대조합니다."
+  },
+  "privacy_reviewed":true,
+  "key":"generic-report-readback-1"
+}
+```
+
+입력 스키마의 문자열 상한은 4,096자지만 도메인 검증은 더 엄격합니다. 일반 서술 필드는 최대 2,400자이고, `summary`는 줄바꿈 없는 140자 이내입니다. 코드 블록, 링크, 마크업, 제어 문자, 흔한 비밀 패턴, 감지된 프로젝트 이름이 있으면 거절할 수 있습니다. 형식 검사를 통과해도 의미 검토는 필요합니다. 사적인 내용을 빼고 일반화할 수 없다면 로컬에 보존합니다.
+
+준비 결과에는 내용에 묶인 초안 ID, 공개 제목·본문·저장소, 승인 여부, 상태, 확인된 URL이 담깁니다. 초안별 승인이 필요하면 먼저 `reporting_read`로 정확한 내용을 읽어 제시합니다. 공개 내용을 바꾸면 새 초안과 새 기여 승인이 필요합니다. 공통 보고 동의가 있는 적격 문제라면 로컬 수정만으로 공식 보고를 대신하지 않습니다.
+
+## 전송 상태와 불확실한 결과 복구
+
+| 초안 상태 | 의미 | 다음 행동 |
+| --- | --- | --- |
+| `draft` | 준비했고 아직 전송하지 않은 내용 | 공통 동의 또는 정확한 기여 승인을 확인한 뒤 전송 |
+| `uncertain` | 전송을 시도했지만 원격 성공이 확인되지 않음 | 고정 저장소와 인증을 확인하고 무작정 재전송하지 않음 |
+| `submitted` | 원격 URL·제목·본문 대조에 성공 | 확인한 이슈 URL을 결과로 전달 |
+
+반환된 `draft_id`와 안정적인 `key`로 `reporting_submit`을 호출합니다. 구현은 네트워크 요청 전에 `uncertain`을 저장하고 worktree 간 동의 변경·전송을 직렬화합니다. 같은 내용을 다시 준비하면 같은 초안을 사용하며, `draft`가 아닌 항목을 제출하면 기존 상태를 반환합니다. 결과 읽기가 중단되었다는 이유로 이슈를 자동 중복 생성하지 않도록 하는 동작입니다.
+
+불확실한 전송 후 실제 이슈를 찾았다면 `reporting_reconcile`에 `draft_id`, 정확한 `url`, `key`를 전달합니다. 고정 저장소의 이슈 URL만 받으며 URL·제목·본문을 확인한 후 `submitted`로 기록합니다. 내용이 다른 원격 이슈는 복구 근거가 될 수 없습니다. `reporting_list`는 로컬 초안 ID·상태·URL을 제공합니다.
+
+기존 인증, 네트워크 정책, 네이티브 실행 정책은 그대로 적용됩니다. 보고가 실패해도 원래 프로젝트 작업은 승인된 범위에서 계속 진행할 수 있습니다. 원격 결과를 확인한 경우에만 공개 성공으로 보고합니다.
+
+## 구현과 검증
+
+[보고 구현](../../../src/neurath/reporting.py)은 구성 요소 무결성, 내용 검증, 불변 초안, 전송 직렬화, 원격 대조를 담당합니다. [사용자 선택 처리](../../../src/neurath/runtime/user_choices.py)는 동의를 실제 사용자 입력에 연결합니다. 변경 가능한 보고 상태는 로컬 상태 어댑터를 통해 공통 런타임 데이터베이스에 저장합니다. 과거 보고 경로는 별도의 현재 기준 데이터베이스가 아닙니다.
+
+[보고 테스트](../../../tests/test_reporting.py)는 일반화된 내용 필터, 수정된 자산 거절, 동의, 초안별 승인, 고정 대상, 중복 방지, 불확실한 결과 복구를 확인합니다. [사용자 선택 테스트](../../../tests/test_user_choices_mcp.py)는 인증된 선택 경로를 다룹니다. 자연어 요청은 [사용자 보고 안내](../usage/reporting.md), 비공개 문맥 보존은 [메모리 참조](memory-reference.md)를 참고합니다.

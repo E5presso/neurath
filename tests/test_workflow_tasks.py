@@ -26,7 +26,7 @@ def define_task(sessions):
 def test_named_workflow_inventory_is_closed():
     from neurath.runtime.task_schema import definitions
     tools = {row["name"]: row for row in definitions()}
-    required = {"workflow_start", "workflow_advance", "workflow_finalize", "phase_start",
+    required = {"phase_start",
         "phase_current", "phase_complete", "phase_finalize", "adaptive_read", "adaptive_preflight",
         "adaptive_replace", "adaptive_override_goal", "delegation_prepare", "delegation_assign",
         "evaluation_prepare", "evaluation_read", "evaluation_execute", "evaluation_report", "evaluation_consume"}

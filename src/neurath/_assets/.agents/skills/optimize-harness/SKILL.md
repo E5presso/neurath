@@ -14,7 +14,7 @@ Repository prompt surface의 token을 줄이는 것이 주요 의도고, 현재 
 enforcement를 동일하게 보존해야 할 때만 사용합니다. Correctness repair나
 일반 harness behavior 변경에는 사용하지 않습니다.
 
-중요 skill phase는 `uv run python -m scripts.skill_harness.phase_runner`로
+task 목록 없이 기존 phase workflow를 실행·복구할 때만 `uv run python -m scripts.skill_harness.phase_runner`로
 계약을 initialize, evaluate, advance, finalize합니다.
 
 1. `AGENTS.md`, `.agents/rules`, `.agents/skills`의 실제 주입 prompt surface와

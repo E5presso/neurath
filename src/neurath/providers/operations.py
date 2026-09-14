@@ -162,7 +162,8 @@ def route(provider, operation, *, native_session=None, model=None, project_id=No
                     "bootstrap only; activation and claim do not transfer from parent",
                     "an app worktree does not copy ignored harness installation files; arrange installation before implementation"],
                 "after_creation": "Wait for a real threadId; a clientThreadId is pending setup. "
-                    "Read list_threads and require the exact saved projectId and host before assignment. "
+                    "Observe app-owned project membership through host tools or the new session's "
+                    "session_status.app_project diagnostic; require the exact saved app projectId and creation host. "
                     "A cwd or pin is not project affiliation. "
                     "The new native session must complete session_status before implementation. "
                     "Compare every requested setting with current native evidence; missing or mismatched settings block handoff. "

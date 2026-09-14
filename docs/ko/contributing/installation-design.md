@@ -1,31 +1,85 @@
-# 설치 진입점 개선
-<!-- date: 2026-09-09; synced_from: baseline f69cb6402683bb2e0bfe56ed04c63f808b263f06 plus current working-tree stdio MCP changes; scope: source, not live-host certification -->
+<!-- date: 2026-09-13; synced_from: 655c8768709e59b5e5012bab0adc4d888e3e7fa5 + current working-tree facts -->
 
-[사용 안내](../usage/index.md) · [기여자 안내](index.md)
+# 파일 소유권과 설치 트랜잭션 설계
 
+[English](../../en/contributing/installation-design.md)
 
-[English](../../en/contributing/installation-design.md) · **한국어**
+설치기는 애플리케이션의 소유권을 침범하지 않으면서 하네스를 배치해야 한다. 이를 위해 관리 경로마다 관측한 이전 상태와 제안한 이후 상태를 기록하고, 알려진 작업을 되돌리는 데 필요한 정보를 비공개로 보존한다. 파일 배치, 정식 설치 상태, 실제 호스트 활성화는 서로 다른 책임이다.
 
-2026-09-06에 확인한 공개 설치 안내를 참고해 사용자 흐름을 단순화했다.
-참고 저장소의 설치 스크립트나 지침을 복사하지 않고 Neurath의 기존 설치 엔진을 사용한다.
+## 호스트별 배치와 보존
 
-| 참고 | 확인한 설치 흐름 | Neurath에 반영한 점 |
+| 대상 | Neurath가 관리하는 내용 | 기존 내용 처리 |
 | --- | --- | --- |
-| [Q00/ouroboros](https://github.com/Q00/ouroboros#quick-start) | 단일 설치 스크립트, 도구 준비, 에이전트 초기 설정으로 연결 | 도구 환경 준비부터 대상 설치·진단까지 한 진입점으로 연결 |
-| [garrytan/gstack](https://github.com/garrytan/gstack#install--30-seconds) | 에이전트에 붙여 넣는 설치 요청, 소스의 `setup`, 호스트 선택 | 복사 가능한 설치 요청, `./setup TARGET`, 명시적 호스트 선택 |
-| [mattpocock/skills](https://github.com/mattpocock/skills#installation-30-second-setup) | 플러그인 또는 skills 설치 후 프로젝트 초기 설정 | 설치와 프로젝트별 문서·검증 바인딩을 구분하고 다음 단계 안내 |
+| `AGENTS.md` | 표시된 지침 블록 | 주변 바이트와 블록 위치 보존 |
+| `.agents/skills/<name>` | 공통·Codex 스킬 배치 | 사용자 소유 이름 충돌 거부 |
+| `.codex/hooks.json` | 명령 훅 그룹 | 다른 그룹 보존 |
+| `.codex/config.toml` | Neurath MCP 설정 | 사용자 설정과 인라인 훅 보존 |
+| `CLAUDE.md` | 새 파일이면 `AGENTS.md` 링크, 일반 파일이면 import 블록 | 기존 본문 보존, 충돌하는 링크 거부 |
+| `.claude/skills/<name>` | `../../.agents/skills/<name>` 링크 | 기존 사용자 링크·이름 확인 |
+| `.claude/settings.json` | Claude 훅 그룹 | 권한, 모델 선택, 다른 그룹 보존 |
+| `.mcp.json` | Claude MCP 서버 항목 | 다른 서버 보존, 예약 이름 충돌 거부 |
 
-Neurath는 스킬 파일뿐 아니라 영구 Python 런타임, 훅, 트랜잭션 기록이 필요하다.
-따라서 스킬 복사만으로 설치 완료라고 표시하지 않는다. 런처는 설치된 Python 경로를
-사용하므로 임시 캐시의 `uvx` 대신 [uv tool install](https://docs.astral.sh/uv/concepts/tools/)로
-영구 환경을 만든다. [uv 공식 설치기 옵션](https://docs.astral.sh/uv/reference/installer/)으로
-uv 준비 시 셸 설정 수정을 끈다. Python 3.14는 uv가 준비한다.
+`generic` 프로필은 공통 규칙과 프로젝트 연결용 빈 항목을 제공한다. 대상 프레임워크, 테스트 실행기, 모델, sandbox, 승인 설정을 선택하지 않는다. 설치기는 자신의 항목을 병합하고, 관리 부분을 안전하게 분리할 수 없는 설정은 거부한다. Codex의 기존 인라인 훅과 `.codex/hooks.json`이 함께 남아 있으면 호스트가 둘 다 로드하여 경고할 수 있으며 진단에서 이 상태를 알린다.
 
-공개 저장소에서 받은 소스를 기준으로 설치 경로를 안내한다.
-소스를 받은 사용자는 `./setup /target`, 도구 설치 후에는 `neurath setup`을 사용한다.
-`setup`은 무결성 확인 → 기존 계획 생성 → 기존 적용 → 로컬 진단 순서로 실행한다.
-설치 승인 요청을 반복하지 않으며 host trust는 호스트에서 사용자가 검토한다.
+`AGENTS.md`, 일반 `CLAUDE.md`, `.gitignore`의 관리 블록 주변은 수정할 수 있다. 관리 블록 자체, 소유 경계가 불분명해진 구분자, 소유 설정의 수정은 충돌로 처리한다. 사용자가 수정한 프로젝트 연결 설정은 이후 업데이트·제거 처리에 앞서 설치기 소유권에서 제외한다.
 
-기존 `install`, `plan`, `apply`, `wizard`는 유지한다. 기본 프로필은 generic이며,
-기존 설치를 다시 설정할 때 호스트·프로필·사용자가 편집한 바인딩을 보존한다.
-미리보기는 대상에 파일을 쓰지 않고 원문 없는 경로 목록만 출력한다.
+공통 훅 이벤트는 `SessionStart`, `SessionEnd`, `SubagentStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PreCompact`, `Stop`, `SubagentStop`이다. Claude에는 `PostToolUseFailure`, `PermissionDenied`가 추가된다. Codex `SessionEnd` 명령 제한 시간은 3초다. Neurath는 하나의 훅 명령 안에서 자체 처리기를 순서대로 호출한다. 기존 외부 훅 그룹에는 호스트의 동시 실행 규칙이 유지된다. 설치가 모델·sandbox·승인 선택을 새로 넣지는 않는다.
+
+## 쓰기 전에 계획 확정
+
+[트랜잭션 엔진](../../../src/neurath/install/transaction.py)은 스키마 버전, 정규화한 대상 루트, 배포본 식별자, 작업 종류, 프로필, 호스트, 접두어, 전후 설치 상태, 확인한 경로, 순서가 있는 변경 목록을 계획에 담는다. 각 변경에는 전후 파일 바이트·모드 또는 링크 대상이 있다. 상위 경로도 관측하므로 계획 이후 생긴 심볼릭 링크가 검토된 쓰기를 다른 위치로 돌릴 수 없다.
+
+계획 ID는 정규화한 계획 내용의 해시다. 원시 계획에는 인증 정보나 기존 프로젝트 설정이 들어갈 수 있으므로 비공개로 보관한다. [계획 저장기](../../../src/neurath/install/plan.py)는 보통 Git 관리 영역의 `neurath-plans` 아래에 모드 `0600`으로 새 파일을 만든다. 기존 출력 파일을 덮어쓰거나 심볼릭 링크에 쓰지 않는다. MCP 계층은 네이티브 호출자와 대상에 결속된 불투명한 세션 자산 참조, 경로·작업 요약만 반환한다. 다른 호출자나 worktree의 계획은 사용할 수 없다.
+
+## 잠금·재확인·복구 기록
+
+적용은 설치 잠금을 얻고 미완료 저널을 확인하는 것으로 시작한다. 관측한 모든 경로를 비교한 뒤 현재 배포본으로 계획을 다시 계산하여 정확히 같은지 확인한다. 대상 상태, 계획 내용, 배포본이 달라졌다면 적용 전에 중단한다. 변경 목록이 비어 있으면 계획 ID와 변경 수 0을 반환한다.
+
+변경이 있으면 영속 저널을 시작하고, 각 경로를 쓰기 직전에 다시 확인하며 원자적 경로 교체를 수행한다. 도중에 오류가 발생하면 알려진 이후 상태와 일치하는 적용 부분을 역순으로 되돌린다. 동시에 수정된 내용은 보존한다. 되돌리기 충돌이 있으면 저널을 유지하여 지원 복구가 다시 판단할 수 있게 한다. 성공 시 설치 상태와 이력을 확정하고 제거 가능한 빈 스킬 디렉터리를 정리한다.
+
+정식 설치 상태와 이력은 [InstallStateStore](../../../src/neurath/install/state_store.py)를 통해 공통 런타임 데이터베이스에 저장한다. 대상의 상태 파일은 이 상태와 대조하는 표시 파일이다. 비공개 계획 파일과 복구 원본은 각 기능의 별도 자산으로 남는다. 표시 파일과 정식 상태가 다르면 오류이며 둘 중 하나를 임의의 기준으로 삼지 않는다.
+
+## 관측한 상태에 맞는 복구
+
+| 조건 | 결과와 다음 행동 |
+| --- | --- |
+| 계획 이후 확인 경로나 상위 경로가 변경됨 | `stale plan`; 변경을 보존하고 의도를 정리한 뒤 다시 계획 |
+| 계획의 대상·배포본·본문 불일치 | 적용 거부; 올바른 대상과 런타임에서 새 계획 확보 |
+| 관리 블록·스킬·서버 항목·링크 수정 | 소유권 충돌; 해당 경로를 확인한 뒤 조정 방법 결정 |
+| 중단된 설치 저널 존재 | MCP의 `installation-recovery-required`; `installation_recover`, 진단, 재계획 순서 |
+| 복구 대상이 기록된 전후 어느 쪽과도 다름 | 복구 충돌; 해당 파일과 저널을 보존하여 조정 |
+| 되돌릴 ID가 없거나 손상·다른 대상에 속함 | 되돌리기 거부; 실제 설치 이력 확인 |
+| 완료 작업 이후 상태가 다시 바뀜 | `restore conflict`; 나중 변경을 덮어쓰지 않음 |
+
+`restore`는 완료된 설치 작업을 그 이력으로 반전한다. `recover`는 중단된 작업을 알려진 이전 상태로 되돌린다. 저장소 전체를 초기화하는 기능이 아니다. 설치 이력은 파일 모드와 링크를 포함한 정확한 원본을 비공개로 보존한다. 기록된 이전 런타임이 필요할 수 있으므로 도구 환경을 별도로 삭제하면 지원되는 되돌리기가 불가능해질 수 있다.
+
+## 기존 공유 데이터베이스 쓰기 경로 폐쇄
+
+변경 가능한 런타임 상태의 정식 저장소는 Git 공통 경로에서 구한 제어 루트 아래 `.neurath/local/runtime.sqlite3`다. 연결된 worktree는 이를 공유한다. 별도 clone과 다른 컴퓨터는 자동으로 공유하지 않는다. 공통 저장소 안에서도 도메인 namespace와 codec이 작업·소유권·메시지·기억·설치의 의미를 구분한다.
+
+기존 데이터베이스를 가져오는 것은 데이터 준비다. 옛 위치에 쓸 수 있는 프로세스의 종료를 뜻하지 않는다. 당장 사용하지 않는 연결 체크아웃도 나중에 예전 쓰기 프로세스를 실행할 수 있다. 따라서 [전환 서비스](../../../src/neurath/install/cutover.py)는 네 개의 선언된 SQLite 원본, 가져오기 상태를 지키는 기록, 모든 연결 worktree의 실행기를 확인한 뒤 기존 경로를 폐쇄한다.
+
+일반 런타임 초기화와 독립된 초기 진단 경로는 다음과 같다.
+
+```sh
+neurath --root /absolute/path/to/project cutover inspect
+neurath --root /absolute/path/to/project cutover prepare
+```
+
+`inspect`는 상태, 차단 원인, 원본, 실행기, 해시, 관측 상태의 token을 반환한다. `prepare`는 정식 데이터베이스가 없을 때만 가져오며, 이미 있으면 진단한다. 준비·적용 전에 관련 데이터베이스 쓰기 프로세스를 중지한다. 열린 SQLite 핸들, 미완료 저널, 알 수 없거나 수정된 실행기, 달라진 가져오기 기록, 지원되지 않는 뒤늦은 행은 전환을 막는다. 핸들 확인에는 Unix `lsof`가 필요하다.
+
+실행 가능한 진단을 검토하고 쓰기 프로세스를 중지한 뒤 반환된 정확한 token을 사용한다.
+
+```sh
+neurath --root /absolute/path/to/project cutover apply --expected-token TOKEN_FROM_INSPECTION
+```
+
+알려진 생성 실행기를 잠시 차단하고 비공개 원본을 저장한 뒤, 기존 SQLite 파일 위치를 디렉터리 tombstone으로 바꾼다. 정식 애플리케이션 데이터를 보존하면서 가져오기 기록과 감사 상태를 트랜잭션으로 갱신한다. 새 메시지, 달라진 본문·수신자, 지원되지 않는 변경은 거부한다. 정식 저장소에서 이미 종료된 메시지의 지원되는 수명주기 차이만 조정할 수 있다. 영구 tombstone은 옛 런타임이 기존 데이터베이스 파일을 다시 여는 것을 막는다. 이후 실행기를 복원하고 지원 업데이트가 필요한 worktree를 표시한다.
+
+중단되었다면 다음 경로를 사용한다.
+
+```sh
+neurath --root /absolute/path/to/project cutover recover
+```
+
+영속 저널을 기준으로 커밋 전 경로를 복구하거나 커밋 후 실행기 복원을 끝낸다. 충돌 파일과 손상된 백업은 보존하고 보고한다. 전환 저널이 남아 있는 동안 설치는 차단된다. 영향받는 worktree를 업데이트한 뒤 배치, 프로토콜, 실제 호스트 활성화를 각각 확인한다. 저장소 전환 자체는 호스트 활성화의 근거가 아니다.

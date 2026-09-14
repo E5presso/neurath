@@ -16,6 +16,26 @@ from neurath.runtime.task_schema import TASKS, TaskError, arguments
 def execute(root, name, inputs, *, identity, expected_turn=None, verified_policy_evidence=None):
     fields = arguments(name, inputs)
     domain, action = TASKS[name][:2]
+    if domain == "memory-migration":
+        from neurath.memory.migration import PullMigration
+        from neurath.runtime.task_ledger_tasks import service_for
+        migration = PullMigration(service_for(root, identity=identity, expected_turn=expected_turn,
+                                  verified_policy_evidence=verified_policy_evidence))
+        operation = fields["action"]
+        if operation == "list":
+            return migration.candidates(fields["limit"])
+        if operation == "read":
+            return migration.read(fields["reference"], fields["offset"])
+        if not fields["key"]:
+            raise TaskError("invalid-input", "pull preview and adoption require a stable key")
+        if operation == "preview":
+            if not fields["source_session"]:
+                raise TaskError("invalid-input", "pull preview requires an exact source session")
+            return migration.response_view(migration.preview(fields["source_host"], fields["source_session"],
+                                     key=fields["key"], scan_transcript=fields["scan_transcript"],
+                                     before_offset=fields["before_offset"] or None,
+                                     memory_before=fields["memory_before"] or None))
+        return migration.adopt(fields["reference"], expected_revision=fields["expected_revision"], key=fields["key"])
     if domain == "task-ledger":
         from neurath.runtime.task_ledger_tasks import execute as task_execute
         return task_execute(root, action, fields, identity=identity, expected_turn=expected_turn,
@@ -136,6 +156,17 @@ def provider_task(name, inputs):
     return planned_route(result, planning)
 
 
+def _installation_recovery(report):
+    installation = report.get("stages", {}).get("installation", {}).get("evidence", {})
+    placement = installation.get("placement", {})
+    errors = placement.get("errors", []) if isinstance(placement, dict) else []
+    if any("running package differs from recorded distribution" in str(error)
+           for error in errors):
+        return ("Reconnect the MCP host to load the installed distribution; do not repeatedly reinstall "
+                "or change permissions to repair a stale connection.")
+    return "Run the approved installation/update workflow and inspect its result."
+
+
 def session_status(root, *, identity=None, expected_turn=None, verified_policy_evidence=None,
                    detail="full"):
     from neurath.providers.readiness import inspect_bound_readiness, inspect_readiness
@@ -147,6 +178,14 @@ def session_status(root, *, identity=None, expected_turn=None, verified_policy_e
                       "effective": evidence, "status": report["stages"]["policy"]["status"]}
     native_active = report["stages"]["activation"]["status"] == "verified"
     root_actor = identity.is_root if identity is not None else report.get("is_root", False)
+    if native_active and root_actor and report.get("provider") == "codex" and isinstance(report.get("native_session"), str):
+        from neurath.hosts.app_projects import observe_app_project
+        report["app_project"] = observe_app_project(report["native_session"])
+    if native_active and identity is not None and root_actor:
+        from neurath.providers.report_routing import assignment_for
+        assignment = assignment_for(root, identity)
+        if assignment is not None:
+            report['provider_assignment'] = assignment
     if detail == "full":
         report["capabilities"] = [{"transport": "task-mcp", "authority": "diagnostic",
         "operations": {name: {"implemented": True,
@@ -158,7 +197,7 @@ def session_status(root, *, identity=None, expected_turn=None, verified_policy_e
             report["capabilities"].append(provider_task("provider_capabilities", {"provider": report["provider"]}))
     actions = []
     for stage, instruction in (
-        ("installation", "Run the approved installation/update workflow and inspect its result."),
+        ("installation", _installation_recovery(report)),
         ("activation", "Use the host's supported new-session or resume operation, then inspect native activation in that session."),
         ("policy", "Inspect the actual native mode and approvals. A missing observation is not permission to change them."),
         ("ownership", "Resolve the current worktree claim through the native state/worktree workflow before implementation."),
@@ -289,7 +328,7 @@ def _direct_mcp_execution(report, ownership_required=True, placement_required=Tr
             and evidence.get("approvals_reviewer") in (None, "user"))
 
 
-def _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence=None, *, ownership_required=True, placement_required=True, require_current_prompt=True):
+def _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence=None, *, ownership_required=True, placement_required=True, require_current_prompt=True, controlled_provider_operation=False):
     try:
         from neurath.providers.readiness import inspect_bound_readiness
     except ImportError as error:
@@ -311,7 +350,25 @@ def _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidenc
                   and confinement["filesystem"] in {"unrestricted", "unobserved"}
                   and confinement["network"] in {"unrestricted", "unobserved"}
                   and not confinement["tool_denylist"])
+        if controlled_provider_operation:
+            # Only fixed model observation or exact-plan target-native delegation
+            # uses this path. Neither executes arbitrary project commands under
+            # MCP or translates away the caller's native rules.
+            direct = (evidence.get("permission_mode") in {
+                "default", "dontAsk", "acceptEdits", "auto", "bypassPermissions"}
+                and confinement["filesystem"] in {"unrestricted", "unobserved"}
+                and confinement["network"] in {"unrestricted", "unobserved"})
     if not direct:
+        required = ("activation", "policy", *(("ownership",) if ownership_required else ()),
+                    *(("installation",) if placement_required else ()))
+        failed = [name for name in required
+                  if report.get("stages", {}).get(name, {}).get("status") in {"failed", "unverified", "unobserved"}]
+        if failed:
+            action = (_installation_recovery(report) if "installation" in failed else
+                      "Inspect session_status and recover the failed readiness stages through their supported "
+                      "native workflows. Preserve permissions and ownership; do not replay through another transport.")
+            raise TaskError("execution-readiness-required",
+                            "MCP execution readiness failed: " + ", ".join(failed), next_action=action)
         raise TaskError("native-execution-required", "MCP cannot enforce the caller's observed execution policy",
                         next_action="Inspect session_status for the observed policy and report this operation as unsupported in that mode. Preserve permissions and the worktree claim; do not change settings or replay through another transport.")
     return report

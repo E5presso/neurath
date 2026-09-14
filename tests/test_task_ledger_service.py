@@ -71,6 +71,26 @@ def test_task_service_dynamic_append_preserves_running_task(service):
     assert not expanded["all_terminal"]
 
 
+def test_new_prompt_cannot_implicitly_authorize_scope_expansion(service):
+    from scripts.agent_harness.task_ledger import TaskLedgerError
+    store, kernel, sk = service
+    original = store.define([item()], expected_revision=0, key="original")
+    source = original["tasks"][0]["definition"]["sources"][0]
+    kernel.apply(sk.ForegroundTurnPrompted(session_id=sk.SessionId("one"),
+        actor_id=sk.ActorId("owner"), vendor_turn_id="turn",
+        prompt_digest="b" * 64, idempotency_key="status-question"))
+    with pytest.raises(TaskLedgerError, match="explicit prompt source"):
+        store.define([item("self-invented-audit")], expected_revision=1, key="implicit")
+    assert store.list()["revision"] == 1
+    continuation = item("original-requirement")
+    continuation["sources"] = [source]
+    result = store.define([continuation], expected_revision=1, key="explicit-original")
+    assert result["tasks"][1]["definition"]["sources"] == [source]
+    new_request = item("explicit-new-request")
+    new_request["sources"] = [result["current_prompt_source"]]
+    assert store.define([new_request], expected_revision=2, key="explicit-new")["revision"] == 3
+
+
 def test_task_mcp_surface_has_no_caller_identity_or_verified_outcome():
     from neurath.runtime.task_schema import TASKS, TaskError, arguments
     for name in ("task_define", "task_list", "task_start", "task_resolve"):

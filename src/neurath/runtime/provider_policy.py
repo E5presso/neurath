@@ -144,8 +144,11 @@ def planning_policy(root, identity, fields, evidence):
     target_controls = controls(fields["worktree"], fields["provider"], target_evidence, scope="target")
     native = {k: v for k, v in evidence.items() if k not in METADATA | {
         "configuration_observation", "target_configuration_observation", "model", "reasoning_effort", "host_confinement"}}
+    own_settings = (target_native_settings(fields["worktree"], fields["provider"])
+                    if fields.get("execution", fields).get("mode") == "target-native" else None)
     return {**native, "native_fields": native, "source_controls": source_controls,
             "target_controls": target_controls, "mapping_revision": MAPPING_REVISION,
+            **({"target_native_settings": own_settings} if own_settings is not None else {}),
             "source_observation": source_observation["source"],
             "source_observation_status": source_observation["status"],
             "host_confinement": evidence.get("host_confinement", {"status": "unobserved", "scope": "ambient-os"}),
@@ -155,6 +158,8 @@ def planning_policy(root, identity, fields, evidence):
 
 def resolve_policy(root, identity, fields, evidence):
     provider = fields["provider"]
+    if fields.get("mode") == "target-native":
+        return _target_native(root, identity, fields, evidence)
     observed = planning_policy(root, identity, fields, evidence)
     snapshot = snapshot_from_evidence(identity.host, observed["native_fields"], source="current-native-readiness",
                                       controls=observed["source_controls"], controls_source=observed["source_observation"])
@@ -186,6 +191,71 @@ def resolve_policy(root, identity, fields, evidence):
                                     "host_confinement": observed["host_confinement"],
                                     "target_observation": observed["target_observation"],
                                     "target_observation_status": observed["target_observation_status"]}
+    return result
+
+
+def target_native_settings(root, provider):
+    """Read the target's existing defaults without editing its configuration."""
+    root = Path(root).resolve()
+    if provider == "codex":
+        from neurath.providers.stdio import CodexStdio
+        host = CodexStdio(root, experimental=True)
+        try:
+            config = host.request("config/read", {"cwd": str(root), "includeLayers": False})["config"]
+        finally:
+            host.close()
+        mode, approval = config.get("sandbox_mode"), config.get("approval_policy")
+        if mode not in {"read-only", "workspace-write", "danger-full-access"} or approval not in {"never", "on-request", "untrusted"}:
+            raise ValueError("target-native Codex defaults are unsupported or unobserved")
+        sandbox = {"type": mode}
+        if mode == "workspace-write":
+            from neurath.providers.codex_sandbox import FIELDS
+            configured = config.get("sandbox_workspace_write") or {}
+            if not isinstance(configured, dict) or set(configured) - set(FIELDS):
+                raise ValueError("target-native workspace sandbox dimensions are unsupported")
+            sandbox.update(configured)
+        return {"sandbox_policy": sandbox, "approval_policy": approval,
+                "approvals_reviewer": config.get("approvals_reviewer"), "collaboration_mode": "default"}
+    if provider != "claude-code":
+        raise ValueError("target-native provider is unsupported")
+    user = Path(os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude"))
+    mode = None
+    for path in (user / "settings.json", root / ".claude/settings.json", root / ".claude/settings.local.json"):
+        if not path.exists():
+            continue
+        if path.is_symlink() or path.stat().st_size > 1048576:
+            raise ValueError("target-native settings file is unsupported")
+        permissions = json.loads(path.read_text()).get("permissions", {})
+        if "defaultMode" in permissions:
+            mode = permissions["defaultMode"]
+    if mode not in {"default", "dontAsk", "plan", "acceptEdits", "bypassPermissions", "auto"}:
+        raise ValueError("target-native Claude defaultMode is unobserved or unsupported")
+    return {"permission_mode": mode}
+
+
+def _target_native(root, identity, fields, evidence):
+    # This is an explicit strategy, never a fallback after failed inheritance.
+    # The native adapter still loads user/project/local rules and verifies actual
+    # mode and readiness before dispatch. Source credentials/settings are not copied.
+    provider, target = fields["provider"], fields["worktree"]
+    settings = target_native_settings(target, provider)
+    for name in ("approval_policy", "approvals_reviewer", "collaboration_mode", "permission_mode"):
+        if fields.get(name) and fields[name] != settings.get(name):
+            raise ValueError("target-native setting differs: " + name)
+    target_controls = controls(target, provider, settings, scope="target")
+    result = {**fields, "approval_policy": None, "approvals_reviewer": None,
+              "collaboration_mode": None, "permission_mode": None}
+    if provider == "codex":
+        result.update(mode=settings["sandbox_policy"]["type"],
+            approval_policy=settings["approval_policy"], approvals_reviewer=settings.get("approvals_reviewer"),
+            collaboration_mode=settings["collaboration_mode"], inherited_sandbox=settings["sandbox_policy"])
+    else:
+        result.update(mode="native", permission_mode=settings["permission_mode"])
+    result["policy_inheritance"] = {"strategy": "target-native", "source_provider": identity.host,
+        "target_provider": provider, "mapping_revision": MAPPING_REVISION,
+        "settings": settings, "controls": target_controls,
+        "source_observation": "current-native-caller", "target_observation": "target-native-defaults",
+        "target_observation_status": "prepared", "application_verified": False}
     return result
 
 
