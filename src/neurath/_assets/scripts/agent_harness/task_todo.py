@@ -5,6 +5,12 @@ from .task_ledger import TaskLedgerError, _digest, _json
 
 TOOLS = {"codex": "update_plan", "claude-code": "TodoWrite"}
 TOOL_NAMES = frozenset({"update_plan", "functions.update_plan", "TodoWrite"})
+DISPLAY_INSTRUCTION = (
+    "If this projection changed, display it now: call native_todo.tool with the exact "
+    "native_todo.arguments when that tool is available. If it is not exposed, "
+    "report the missing native capability and retain the display requirement. "
+    "Do not substitute an inline checklist or claim native publication."
+)
 
 
 def projection(ledger, host):
@@ -30,7 +36,8 @@ def projection(ledger, host):
                                "status": row["native"]} for row in rows]}
     return {"tool": tool, "arguments": arguments, "list_revision": ledger.revision,
             "projection_digest": _digest([ledger.session, ledger.owner, ledger.revision, rows]),
-            "task_ids": [row["id"] for row in rows]}
+            "task_ids": [row["id"] for row in rows],
+            "display_instruction": DISPLAY_INSTRUCTION}
 
 
 def instruction(tx, process, ledger):

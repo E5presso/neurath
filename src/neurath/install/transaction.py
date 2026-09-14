@@ -1,6 +1,7 @@
 """Transactional, conservative repository installation with exact byte restoration."""
 
 import base64
+import copy
 import fcntl
 import hashlib
 import json
@@ -12,7 +13,10 @@ import tomllib
 from pathlib import Path, PurePosixPath
 
 from neurath import __version__
-from neurath.install.projection import HOSTS, PROFILES, asset_files, host_hooks, skills
+from neurath.install.projection import (
+    AGENT_TOOL_GUIDANCE, CODEX_TODO_DEFAULT, HOSTS, PROFILES, asset_files,
+    host_hooks, native_todo_defaults, skills,
+)
 from neurath.install.state_store import InstallStateStore, projection
 from neurath.resources import distribution_id
 from neurath.skill_names import public_name, validate_skill_prefix
@@ -226,6 +230,24 @@ def _rebase_codex_config(record, current):
     try:
         installed = tomllib.loads(bytes_of(record["installed"]).decode())
         live = bytes_of(current).decode()
+        native_block = re.search(
+            r"(?m)^# neurath:native-todo\r?\n\[tools\.update_plan\]\r?\n"
+            r"enabled\s*=\s*true\r?\n# /neurath:native-todo\r?\n", live)
+        if (CODEX_TODO_DEFAULT.encode() in bytes_of(record["installed"])
+                and CODEX_TODO_DEFAULT.encode() not in bytes_of(record["original"])
+                and native_block is not None):
+            before = tomllib.loads(live)
+            stripped = live[:native_block.start()] + live[native_block.end():]
+            after = tomllib.loads(stripped)
+            expected = copy.deepcopy(before)
+            if expected.get("tools", {}).get("update_plan") != {"enabled": True}:
+                raise ValueError("cannot isolate native TODO default")
+            del expected["tools"]["update_plan"]
+            if expected["tools"] == {} and "tools" not in after:
+                expected.pop("tools")
+            if after != expected:
+                raise ValueError("native TODO block overlaps user values")
+            live = stripped
         parsed = tomllib.loads(live)
         expected_server = installed["mcp_servers"]["neurath_collaboration"]
         if parsed["mcp_servers"]["neurath_collaboration"] != expected_server:
@@ -431,6 +453,8 @@ def make_plan(root, *, action="install", profile=None, hosts=None, receipt=None,
         if skill_prefix:
             block = block.replace("Use the skills", f"Use the `{skill_prefix}` skills")
             legacy_blocks.append(old_block.replace("Use the skills", f"Use the `{skill_prefix}` skills"))
+        legacy_blocks.append(block)
+        block = block.replace("<!-- /neurath:managed -->", AGENT_TOOL_GUIDANCE + "<!-- /neurath:managed -->")
         managed_text("AGENTS.md", block, legacy=tuple(legacy_blocks))
         if "claude-code" in hosts:
             claude = original("CLAUDE.md")
@@ -476,6 +500,14 @@ def make_plan(root, *, action="install", profile=None, hosts=None, receipt=None,
                 config = json.loads(bytes_of(old)) if old else {}
                 if not isinstance(config, dict):
                     raise TypeError("settings must be an object")
+                if host == "claude-code":
+                    defaults = native_todo_defaults(host)
+                    if defaults:
+                        env = config.setdefault("env", {})
+                        if not isinstance(env, dict):
+                            raise TypeError("settings env must be an object")
+                        for key, value in defaults.items():
+                            env.setdefault(key, value)
                 hooks = config.setdefault("hooks", {})
                 if not isinstance(hooks, dict):
                     raise TypeError("hooks must be an object")
@@ -511,6 +543,8 @@ def make_plan(root, *, action="install", profile=None, hosts=None, receipt=None,
                 config = tomllib.loads(content)
                 if "neurath_collaboration" in config.get("mcp_servers", {}):
                     raise ValueError("reserved server name already configured")
+                if "update_plan" not in config.get("tools", {}) and native_todo_defaults("codex"):
+                    content += CODEX_TODO_DEFAULT
                 addition = ("\n[mcp_servers.neurath_collaboration]\ncommand = "
                             + json.dumps(server["command"], ensure_ascii=False) + "\nargs = "
                             + json.dumps(server["args"], ensure_ascii=False)

@@ -121,9 +121,10 @@ def test_modified_managed_file_blocks_update_and_uninstall(repo):
             make_plan(repo, action=action)
 
 
-def test_codex_update_preserves_settings_added_after_install_and_uninstall(repo):
+def test_codex_update_preserves_settings_added_after_install_and_uninstall(repo, monkeypatch):
     import tomllib
 
+    monkeypatch.setenv("CODEX_HOME", str(repo / "absent-user-config"))
     apply_plan(repo, make_plan(repo))
     path = repo / ".codex/config.toml"
     managed = path.read_text().replace(" = ", "=")
@@ -134,6 +135,7 @@ def test_codex_update_preserves_settings_added_after_install_and_uninstall(repo)
     apply_plan(repo, make_plan(repo, action="update"))
     current = tomllib.loads(path.read_text())
     current["mcp_servers"].pop("neurath_collaboration")
+    assert current.pop("tools") == {"update_plan": {"enabled": True}}
     assert current == expected
     assert "# Keep my model settings" in path.read_text()
     apply_plan(repo, make_plan(repo, action="uninstall"))
@@ -302,6 +304,97 @@ def test_fresh_clone_rejects_edited_managed_instructions(repo):
     with pytest.raises(InstallError, match="unowned managed block conflict"):
         make_plan(repo)
     assert (repo / "AGENTS.md").read_text() == content
+
+
+@pytest.mark.parametrize("prefix", ["", "neurath-"])
+def test_agents_guidance_routes_work_and_preserves_other_integrations(repo, prefix):
+    original = "# Project instructions\nKeep these rules.\n<!-- context7 -->\nUse Context7 for library docs.\n<!-- context7 -->\n"
+    (repo / "AGENTS.md").write_text(original)
+    apply_plan(repo, make_plan(repo, skill_prefix=prefix))
+    content = (repo / "AGENTS.md").read_text()
+    assert content.startswith(original)
+    for tool in ("session_status", "task_define", "task_start", "task_resolve",
+                 "memory_recall", "memory_checkpoint", "memory_pull",
+                 "collaboration_discover", "collaboration_inbox", "collaboration_reply",
+                 "newsroom_headlines", "newsroom_read", "newsroom_publish",
+                 "provider_models", "provider_plan", "provider_run", "learning_pending"):
+        assert f"`{tool}`" in content
+    assert content.count("<!-- neurath:managed -->") == 1
+    assert len(content[len(original):].encode()) < 4500
+    assert make_plan(repo)["changes"] == []
+    apply_plan(repo, make_plan(repo, action="uninstall"))
+    assert (repo / "AGENTS.md").read_text() == original
+
+
+@pytest.mark.parametrize("prefix", ["", "neurath-"])
+def test_published_minimal_agents_block_upgrades_without_private_receipt(repo, prefix):
+    skills = f"the `{prefix}` skills" if prefix else "the skills"
+    previous = (
+        "\n<!-- neurath:managed -->\n## Neurath\n\n"
+        "Read `.neurath/policy.md` and `.neurath/project.json` for the generic profile.\n"
+        f"Use {skills} in `.agents/skills`; use the named MCP task tools. "
+        "Consult `.neurath/policy.md` for explicit native execution exceptions.\n"
+        "<!-- /neurath:managed -->\n"
+    )
+    original = "# Project rules\n" + previous + "\n## User additions\nKeep these too.\n"
+    (repo / "AGENTS.md").write_text(original)
+    apply_plan(repo, make_plan(repo, skill_prefix=prefix))
+    content = (repo / "AGENTS.md").read_text()
+    assert content.startswith("# Project rules\n")
+    assert content.endswith("\n## User additions\nKeep these too.\n")
+    assert "`newsroom_publish`" in content
+    assert "`memory_pull`" in content
+    assert content.count("<!-- neurath:managed -->") == 1
+    assert not make_plan(repo)["changes"]
+
+
+def test_install_enables_native_todo_tools_and_uninstall_restores_config(repo, monkeypatch, tmp_path):
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex-home"))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude-home"))
+    monkeypatch.delenv("CLAUDE_CODE_ENABLE_TODO_TOOLS", raising=False)
+    monkeypatch.delenv("CLAUDE_CODE_ENABLE_TASKS", raising=False)
+    original = '# Keep this comment\nmodel = "chosen-model"\n'
+    (repo / ".codex").mkdir()
+    (repo / ".codex/config.toml").write_text(original)
+    apply_plan(repo, make_plan(repo))
+    import tomllib
+    codex = tomllib.loads((repo / ".codex/config.toml").read_text())
+    claude = json.loads((repo / ".claude/settings.json").read_text())
+    assert codex["tools"]["update_plan"]["enabled"] is True
+    assert codex["model"] == "chosen-model"
+    assert claude["env"]["CLAUDE_CODE_ENABLE_TODO_TOOLS"] == "1"
+    assert claude["env"]["CLAUDE_CODE_ENABLE_TASKS"] == "0"
+    assert not make_plan(repo)["changes"]
+    apply_plan(repo, make_plan(repo, action="uninstall"))
+    assert (repo / ".codex/config.toml").read_text() == original
+
+
+@pytest.mark.parametrize("scope", ["project", "global"])
+def test_native_todo_defaults_preserve_explicit_user_choices(repo, monkeypatch, tmp_path, scope):
+    codex_home, claude_home = tmp_path / "codex-home", tmp_path / "claude-home"
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
+    monkeypatch.delenv("CLAUDE_CODE_ENABLE_TODO_TOOLS", raising=False)
+    monkeypatch.delenv("CLAUDE_CODE_ENABLE_TASKS", raising=False)
+    codex_path = (repo / ".codex" if scope == "project" else codex_home) / "config.toml"
+    claude_path = (repo / ".claude" if scope == "project" else claude_home) / "settings.json"
+    codex_path.parent.mkdir(parents=True)
+    claude_path.parent.mkdir(parents=True)
+    codex_path.write_text('[tools.update_plan]\nenabled = false\n')
+    claude_path.write_text(json.dumps({"env": {"CLAUDE_CODE_ENABLE_TASKS": "1",
+                                               "CLAUDE_CODE_ENABLE_TODO_TOOLS": "0"}}))
+    apply_plan(repo, make_plan(repo))
+    import tomllib
+    local_codex = tomllib.loads((repo / ".codex/config.toml").read_text())
+    local_claude = json.loads((repo / ".claude/settings.json").read_text())
+    if scope == "project":
+        assert local_codex["tools"]["update_plan"]["enabled"] is False
+        assert local_claude["env"]["CLAUDE_CODE_ENABLE_TASKS"] == "1"
+        assert local_claude["env"]["CLAUDE_CODE_ENABLE_TODO_TOOLS"] == "0"
+    else:
+        assert "update_plan" not in local_codex.get("tools", {})
+        assert not local_claude.get("env")
+        assert tomllib.loads(codex_path.read_text())["tools"]["update_plan"]["enabled"] is False
 
 
 @pytest.mark.parametrize("option", ["--installation-id", "--receipt"])

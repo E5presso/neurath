@@ -24,6 +24,12 @@ Codex uses `.codex/hooks.json` and `.codex/config.toml`; Claude uses `.claude/se
 
 Hooks cover session start/end, subagent start/stop, user prompt submission, pre/post tool use, compaction, and Stop. Claude also receives tool-failure and permission-denial events. Installed command timeouts are 30 seconds except Codex SessionEnd, which uses 3 seconds; Neurath handlers within one command execute sequentially. Hook registration is installation evidence. An actual host event is needed to establish activation.
 
+## Keep tool-use triggers in the host's starting instructions
+
+The `<!-- neurath:managed -->` block in `AGENTS.md` contains the short, always-loaded entry guidance. It connects concrete situations to named MCP tools: new requirements to task definition, overlapping work or blockers to messaging, reusable discoveries to the newsroom, interrupted work to memory pull, and observed failures to recovery learning and authorized harness improvement. Task changes also trigger visible TODO publication. Detailed contracts remain in the policy and tool schemas.
+
+The installer updates this one block and preserves surrounding project instructions and other integrations such as Context7. An exact known older block can be upgraded even when a clone has no private installation receipt. Edited or ambiguous blocks remain conflicts. This is guidance for choosing useful actions, not permission to run every tool, poll repeatedly, or bypass a rejected prerequisite. A host must load the updated instructions; installation does not retroactively change an already captured prompt.
+
 ## Review a change before it becomes a transaction
 
 A plan records the resolved worktree root, distribution identity, selected profile/hosts/prefix, observed paths, and before/after file contents, modes, or links. Its identifier is a digest of the plan. A **receipt** is the retained record of that installation operation; its ID supports later restore.

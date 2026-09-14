@@ -311,6 +311,10 @@ def response(root, request):
             summary = f"{name}: {'failed' if failed else 'ok'}"
             if failed:
                 summary += ". " + value.get("error", {}).get("message", "Inspect the result.")
+            elif name in {"task_define", "task_start", "task_resolve", "task_list"}:
+                todo = value["result"].get("native_todo", {})
+                if todo.get("task_ids"):
+                    summary += "\n" + todo.get("display_instruction", "")
             result = {"content": [{"type": "text", "text": summary}],
                       "structuredContent": value, "isError": failed}
         except Exception as error:

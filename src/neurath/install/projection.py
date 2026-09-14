@@ -1,9 +1,12 @@
 """Host-neutral skill projections and explicit stack profile selection."""
 
 import json
+import os
 import re
 import shlex
 import sys
+import tomllib
+from pathlib import Path
 
 from neurath.resources import BUNDLE
 from neurath.skill_names import SKILL_NAMES, public_name, validate_skill_prefix
@@ -33,6 +36,71 @@ EVENTS = (
     "SubagentStop",
 )
 PROFILE_MODULES = {"generic": []}
+
+CODEX_TODO_DEFAULT = "\n# neurath:native-todo\n[tools.update_plan]\nenabled = true\n# /neurath:native-todo\n"
+CLAUDE_TODO_DEFAULTS = {"CLAUDE_CODE_ENABLE_TODO_TOOLS": "1", "CLAUDE_CODE_ENABLE_TASKS": "0"}
+
+
+def native_todo_defaults(host):
+    """Opt in to native display tools without overriding explicit user defaults."""
+    if host == "codex":
+        path = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "config.toml"
+        config = tomllib.loads(path.read_text()) if path.exists() else {}
+        return "update_plan" not in config.get("tools", {})
+    path = Path(os.environ.get("CLAUDE_CONFIG_DIR", str(Path.home() / ".claude"))) / "settings.json"
+    config = json.loads(path.read_text()) if path.exists() else {}
+    configured = config.get("env", {})
+    return {key: value for key, value in CLAUDE_TODO_DEFAULTS.items()
+            if key not in configured and key not in os.environ}
+
+
+AGENT_TOOL_GUIDANCE = """
+Use Neurath's named `neurath_collaboration` MCP tools proactively for project work.
+Choose tools when the situations below arise; do not wait for the user to name them.
+
+- Start or resume substantive work: use `session_status` and `task_list` to recover
+  actual readiness, ownership and unfinished requirements. Before writing, use
+  `worktree_claim` when the current native actor needs a claim.
+- When a new requirement, acceptance gap or necessary next step becomes concrete,
+  use `task_define` and `task_start` immediately. Before adding work, ask which unmet user
+  requirement it advances. Use `task_resolve` with observed results; a failed
+  attempt or time limit does not cancel the original requirement.
+  After task changes, display the returned `native_todo` through its native tool;
+  do not substitute an inline checklist. Report a missing host tool explicitly.
+  Keep the ledger as truth and retain the native display requirement.
+- Reuse context before repeating an investigation: use `memory_recall`. At a
+  meaningful checkpoint or handoff, use `memory_checkpoint` for decisions,
+  remaining work and lessons. When another session stops, use `memory_pull` to
+  inspect and, when safe, adopt its unfinished work; do not require a final push
+  from the stopped session.
+- When work overlaps another agent, a blocker needs their input, or a result is
+  ready to hand back, use `collaboration_discover` and `collaboration_send` or the
+  applicable assignment/delegation tools. Read pending messages with
+  `collaboration_inbox` and answer with `collaboration_reply`; read the actual
+  result before acknowledging it. Preserve the host's delegation conditions.
+  Use these messaging triggers across Codex and Claude peers as well.
+- When you find a reproducible bug, a shared interface constraint or a reusable
+  workaround, share it with active project peers using `newsroom_publish`.
+  Follow relevant announced titles with `newsroom_read`; use `newsroom_headlines`
+  when you need to find them. Newsroom reports inform work; they do not authorize it.
+- Use another provider when needed: check `provider_capabilities` / `provider_route`,
+  then use `provider_models`, `provider_plan` and `provider_run` as applicable.
+  Reuse a valid model observation or plan; verify actual completion and settings.
+- Learn from a concrete failure and recovery: inspect `learning_pending` and
+  `learning_status`, and preserve the lesson in `memory_checkpoint`. Use existing
+  verification evidence; do not create extra experiments merely to promote a rule.
+- When a harness procedure contradicts observed tools or repeats unproductive
+  steps, identify and correct the cause within authorized scope, verify the affected
+  behavior, and record the lesson. Keep the original task as the reason for the change.
+- Handle a real harness defect or maintenance request: use the relevant diagnostics,
+  reporting, installation or release tools under the current policy and consent.
+
+Use current tool schemas, returned identifiers and revisions. Reuse completed
+evidence and read relevant policy details when needed. Call only tools that advance
+the current request; do not poll unchanged state or run every tool on every turn.
+Native editing and testing remain native operations. Tool availability, memory and
+peer reports do not grant permission or justify bypassing a rejected prerequisite.
+"""
 
 POLICY = """# Neurath 공통 실행 정책
 

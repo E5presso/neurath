@@ -79,6 +79,19 @@ def test_native_todo_unobserved_support_is_not_invented(service):
         _, ledger = read_ledger(tx, process)
 
 
+def test_task_result_requests_native_display_without_substitution(service):
+    from tests.test_task_ledger_service import item
+    store, kernel, sk = service
+    defined = store.define([item()], expected_revision=0, key="visible")
+    todo = defined["native_todo"]
+    assert "display it now" in todo["display_instruction"]
+    assert "Do not substitute an inline checklist" in todo["display_instruction"]
+    assert "fallback_markdown" not in todo
+    assert todo["tool"] == "update_plan"
+    assert todo["availability"] == "unobserved"
+    assert store.list()["tasks"] == defined["tasks"]
+
+
 def test_terminal_task_stop_is_independent_of_todo_submission(service):
     from tests.test_task_ledger_service import item, _terminal_fixture
     from scripts.agent_harness.task_service import require_settled_tasks

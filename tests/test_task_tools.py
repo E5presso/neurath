@@ -18,6 +18,21 @@ def bound_call(sessions, name, inputs, invocation="task-1", host="codex", sessio
     return output["hookSpecificOutput"]["updatedInput"]
 
 
+def test_task_mcp_response_prompts_visible_projection(sessions):
+    from tests.test_task_ledger_service import item
+    root, _ = sessions
+    args = bound_call(sessions, "task_define", {
+        "tasks": [item()], "expected_revision": 0, "key": "visible-mcp",
+    })
+    response = mcp.response(root, {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {"name": "task_define", "arguments": args}})["result"]
+    assert not response["isError"]
+    assert "display it now" in response["content"][0]["text"]
+    todo = response["structuredContent"]["result"]["native_todo"]
+    assert todo["tool"] == "update_plan"
+    assert "fallback_markdown" not in todo
+
+
 def test_inventory_is_task_shaped_and_preserves_legacy():
     result = mcp.response(None, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
     tools = {tool["name"]: tool for tool in result["result"]["tools"]}

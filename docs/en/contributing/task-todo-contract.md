@@ -70,9 +70,13 @@ A later successful follow-up does not erase an earlier failure. Explain how late
 
 `task_list` and task mutations return `todo_projection` and `native_todo`. The latter supplies the host tool and exact arguments: `update_plan` for Codex, `TodoWrite` for Claude Code. Use that returned projection, including all current rows.
 
+Codex 0.152.0 made `update_plan` opt-in. Installation adds `tools.update_plan.enabled = true` when neither the project nor the user's configuration already selects a value. Claude Code's current default is the Task tool family, and some versions also require explicit opt-in for task tools on newer models. Neurath uses the officially supported whole-list `TodoWrite` display for its existing task ledger: when unset, installation supplies `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` and `CLAUDE_CODE_ENABLE_TASKS=0` in project settings. Explicit project, user and environment choices are preserved. If they select another task interface or disable the tools, do not claim that `TodoWrite` is available. Reload the host after changing tool exposure and verify a real native invocation.
+
 Both hosts have fewer visual states than the ledger. The projection maps every terminal task to native `completed`, and includes the real outcome in text. Only the first running task uses the native `in_progress` state; other running tasks remain identifiable through their text. Every row includes the task identifier and list revision.
 
 Consequently, a native completed checkbox may represent `Failed` or `Invalidated`. Read the label or ledger outcome before describing success.
+
+Returning the projection does not display it by itself. The MCP text response and `native_todo.display_instruction` ask the agent to publish a changed projection immediately through the named native tool with its exact arguments. If that tool is absent from the current tool catalog, report the missing native capability and retain the display requirement. An inline checklist, file panel, or synthetic event is not the native TODO display and must not be substituted or recorded as a successful submission. Do not repeat an unchanged display or create a second task ledger.
 
 ## Observe submission without treating it as completion authority
 
