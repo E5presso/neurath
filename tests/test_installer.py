@@ -63,12 +63,19 @@ def test_stale_plan_refused_without_partial_mutation(repo):
     assert not (repo / ".codex/hooks.json").exists()
 
 
-def test_monitor_runtime_is_ignored_without_changing_user_ignore(repo):
+@pytest.mark.parametrize("runtime_path", [
+    ".monitor-pr/monitor-state.json",
+    ".agents/worktrees/feature/example/file.py",
+    ".agents/resources/worktrees/example.json.lock",
+    ".agents/resources/worktrees/example.admission.lock",
+    ".neurath/local/resources/worktrees/example.json.lock",
+])
+def test_runtime_is_ignored_without_changing_user_ignore(repo, runtime_path):
     original = "# user ignores\nmy-cache/\n"
     (repo / ".gitignore").write_text(original)
     apply_plan(repo, make_plan(repo))
     assert (repo / ".gitignore").read_text().startswith(original)
-    probe = subprocess.run(["git", "check-ignore", "--no-index", ".monitor-pr/monitor-state.json"],
+    probe = subprocess.run(["git", "check-ignore", "--no-index", runtime_path],
                            cwd=repo, capture_output=True, text=True)
     assert probe.returncode == 0
 

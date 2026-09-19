@@ -1,4 +1,4 @@
-<!-- last_updated: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
+<!-- last_updated: 2026-09-19; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
 
 <p align="center">
   <img src="docs/assets/neurath.png" width="720" alt="항해를 계속하며 고쳐 나가는 노이라트의 배">
@@ -9,6 +9,14 @@
 <p align="center">Claude Code와 Codex를 위한 하네스.<br>함께 기억하고, 서로 검토하며, 원래의 목표로 돌아옵니다.</p>
 <p align="center"><a href="README.md">English</a> · <strong>한국어</strong></p>
 <p align="center"><a href="docs/ko/usage/start-here.md">시작하기</a> · <a href="docs/ko/usage/index.md">사용 안내</a> · <a href="docs/ko/contributing/index.md">개발 참여</a></p>
+
+### 내 프로젝트에 설치하기
+
+macOS 또는 Linux에서 프로젝트 폴더를 Codex나 Claude Code로 열고, 아래 요청문을 그대로 보내세요.
+
+> https://github.com/E5presso/neurath 의 설치 문서를 읽고, 현재 프로젝트에 Codex와 Claude Code용 Neurath를 설치해 주세요. 아직 Git 저장소가 아니면 먼저 초기화해 주세요. 기존 지침·훅·권한·개발 환경은 보존하고, 프로젝트의 문서와 검사 명령을 연결해 주세요. 설치 후 새 세션에서 훅과 MCP 도구가 실제로 활성화되는지 확인하고, 제가 직접 해야 하는 신뢰 승인이 있으면 안내해 주세요.
+
+하나만 사용한다면 “Codex와 Claude Code용”을 “Codex용” 또는 “Claude Code용”으로 바꾸면 됩니다. 설치 과정과 활성화 확인은 [설치 안내](docs/ko/usage/installation.md)를 참고하세요.
 
 ### 기억하고, 돌아보고, 이어갑니다.
 

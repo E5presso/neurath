@@ -1,10 +1,12 @@
-<!-- updated: 2026-09-14 | synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
+<!-- updated: 2026-09-19 | synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
 
 # Prepare the agent before the investigation
 
 Before asking an agent to fix a disappearing saved filter in your web application, make sure Neurath is connected to the repository where that work will happen. Neurath adds working instructions, reusable procedures, and event handling to Claude Code or Codex. The application that runs the agent is called its **host**.
 
-> Install Neurath in this repository for Codex and Claude Code. Preserve the existing instructions, hooks, permissions, and development environment. Connect the project's existing checks, then tell me which parts are installed and which are active in the hosts.
+Open your project folder in Codex or Claude Code and send the request below.
+
+> Read the installation documentation at https://github.com/E5presso/neurath and install Neurath in the current project for Codex and Claude Code. If this is not yet a Git repository, initialize it first. Preserve existing instructions, hooks, permissions, and the development environment, and connect the project's documentation and test commands. After installation, verify that hooks and MCP tools are active in a new session, and tell me about any trust approvals I need to complete myself.
 
 You can name just one host. The agent checks that the target is a Git repository on a supported macOS or Linux system and prepares Neurath's separate runtime, which currently requires Python 3.14. Your application's language and dependencies do not need to match it. Host sign-in and project trust still belong to the host; installation does not supply credentials or approve trust on your behalf.
 

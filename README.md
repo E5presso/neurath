@@ -1,4 +1,4 @@
-<!-- last_updated: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
+<!-- last_updated: 2026-09-19; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
 
 <p align="center">
   <img src="docs/assets/neurath.png" width="720" alt="Neurath's boat, repaired while still at sea">
@@ -9,6 +9,14 @@
 <p align="center">A harness for Claude Code and Codex.<br>Shared memory, thoughtful collaboration, and a clear path back to your goal.</p>
 <p align="center"><strong>English</strong> · <a href="README.ko.md">한국어</a></p>
 <p align="center"><a href="docs/en/usage/start-here.md">Get started</a> · <a href="docs/en/usage/index.md">Usage guide</a> · <a href="docs/en/contributing/index.md">Contributing</a></p>
+
+### Install in your project
+
+On macOS or Linux, open your project folder in Codex or Claude Code and send this request:
+
+> Read the installation documentation at https://github.com/E5presso/neurath and install Neurath in the current project for Codex and Claude Code. If this is not yet a Git repository, initialize it first. Preserve existing instructions, hooks, permissions, and the development environment, and connect the project's documentation and test commands. After installation, verify that hooks and MCP tools are active in a new session, and tell me about any trust approvals I need to complete myself.
+
+If you use only one host, replace “for Codex and Claude Code” with “for Codex” or “for Claude Code.” See the [installation guide](docs/en/usage/installation.md) for the installation process and activation checks.
 
 ### Remember. Reconsider. Continue.
 
