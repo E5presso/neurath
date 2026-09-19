@@ -10,12 +10,19 @@ from neurath.hosts.hooks import hook
 from neurath.install.transaction import apply_plan, make_plan
 
 
-@pytest.fixture
-def sessions(tmp_path, monkeypatch):
+def _sessions(tmp_path, monkeypatch, *, installed):
     from neurath.hosts import identity
 
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
-    apply_plan(tmp_path, make_plan(tmp_path))
+    if installed:
+        apply_plan(tmp_path, make_plan(tmp_path))
+    else:
+        local = tmp_path / ".neurath"
+        local.mkdir()
+        (local / "run").write_text("#!/bin/sh\nexit 97\n")
+        (local / "project.json").write_text(
+            '{"schema":1,"documents":{},"verification":{}}\n'
+        )
     storage = tmp_path / "host-storage"
     storage.mkdir()
     monkeypatch.setattr(identity, "host_storage", lambda host, env: storage)
@@ -45,6 +52,16 @@ def sessions(tmp_path, monkeypatch):
             == 0
         )
     return tmp_path, invoke
+
+
+@pytest.fixture
+def sessions(tmp_path, monkeypatch):
+    return _sessions(tmp_path, monkeypatch, installed=False)
+
+
+@pytest.fixture
+def installed_sessions(tmp_path, monkeypatch):
+    return _sessions(tmp_path, monkeypatch, installed=True)
 
 
 def test_message_enters_recipient_hook_without_becoming_user_authority(sessions):

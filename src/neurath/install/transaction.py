@@ -105,6 +105,137 @@ def bytes_of(value):
     return base64.b64decode(value["data"], validate=True)
 
 
+def _checkout_bootstrap(root, path, value):
+    """Recognize only the exact, Git-tracked source checkout host registration."""
+    if path not in {".codex/hooks.json", ".claude/settings.json",
+                    ".codex/config.toml", ".mcp.json"}:
+        return False
+    if value is None or value.get("kind") != "file":
+        return False
+    tracked = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "--error-unmatch", "--",
+         "tools/checkout_host", path],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+    )
+    if tracked.returncode:
+        return False
+    try:
+        raw = bytes_of(value).decode()
+        return _matches_checkout_bootstrap(root, path, raw)
+    except (UnicodeDecodeError, ValueError, TypeError, AttributeError):
+        return False
+
+
+def _matches_checkout_bootstrap(root, path, raw):
+    from neurath.runtime.task_schema import TASKS
+    launcher = 'exec "$(git rev-parse --show-toplevel)/tools/checkout_host" mcp'
+    server = {"command": "sh", "args": ["-c", launcher]}
+    if path == ".codex/config.toml":
+        parsed = tomllib.loads(raw)
+        return (raw.startswith("# neurath:checkout-bootstrap\n")
+                and parsed.get("mcp_servers", {}).get("neurath_collaboration") == {
+                    **server, "tool_timeout_sec": 3660, "startup_timeout_sec": 600,
+                    "enabled_tools": [*TASKS, "agent"],
+                    "tools": {name: {"approval_mode": "approve"} for name in (*TASKS, "agent")}})
+    if path == ".mcp.json":
+        parsed = json.loads(raw)
+        if not isinstance(parsed, dict):
+            return False
+        return (parsed.get("_neurath_checkout_bootstrap") is True
+                and parsed.get("mcpServers", {}).get("neurath_collaboration") == server)
+    host = "codex" if path == ".codex/hooks.json" else "claude-code"
+    events = list(host_hooks(root, host))
+    command = ('hook_root="$(git rev-parse --show-toplevel)"; '
+               '"$hook_root/tools/checkout_host" hook --host ' + host)
+    expected = {
+        event: [{"hooks": [{"type": "command", "command": command,
+                            "timeout": (600 if event in {"SessionStart", "UserPromptSubmit", "PreToolUse"} else
+                                        3 if event == "SessionEnd" and host == "codex" else 30)}]}]
+        for event in events
+    }
+    parsed = json.loads(raw)
+    if not isinstance(parsed, dict):
+        return False
+    if parsed.get("_neurath_checkout_bootstrap") is not True:
+        return False
+    hooks = parsed.get("hooks", {})
+    return all(isinstance(hooks.get(event), list)
+               and hooks[event].count(groups[0]) == 1
+               for event, groups in expected.items())
+
+
+def _portable_hook_group(host, event):
+    command = ('hook_root="$(git rev-parse --show-toplevel)"; '
+               '"$hook_root/tools/checkout_host" hook --host ' + host)
+    return {"hooks": [{"type": "command", "command": command,
+                       "timeout": (600 if event in {"SessionStart", "UserPromptSubmit", "PreToolUse"} else
+                                   3 if event == "SessionEnd" and host == "codex" else 30)}]}
+
+
+def _user_host_config(root, path, value, *, portable, original=None):
+    """Remove only a verified Neurath entry before comparing user settings."""
+    if path == ".codex/config.toml":
+        config = tomllib.loads(bytes_of(value).decode())
+        del config["mcp_servers"]["neurath_collaboration"]
+        if not config["mcp_servers"]:
+            del config["mcp_servers"]
+        if not portable and original is not None:
+            previous = tomllib.loads(bytes_of(original).decode()) if original else {}
+            tools = config.get("tools", {})
+            if ("update_plan" not in previous.get("tools", {})
+                    and tools.get("update_plan") == {"enabled": True}):
+                del tools["update_plan"]
+                if not tools:
+                    del config["tools"]
+        return config
+    config = json.loads(bytes_of(value))
+    config.pop("_neurath_checkout_bootstrap", None)
+    if path == ".mcp.json":
+        del config["mcpServers"]["neurath_collaboration"]
+        if not config["mcpServers"]:
+            del config["mcpServers"]
+        return config
+    host = "codex" if path == ".codex/hooks.json" else "claude-code"
+    for event, generated in host_hooks(root, host).items():
+        group = _portable_hook_group(host, event) if portable else generated[0]
+        groups = config["hooks"][event]
+        groups.remove(group)
+        if not groups:
+            del config["hooks"][event]
+    if not config["hooks"]:
+        del config["hooks"]
+    if host == "claude-code" and not portable:
+        previous = json.loads(bytes_of(original)) if original else {}
+        defaults = {"CLAUDE_CODE_ENABLE_TODO_TOOLS": "1", "CLAUDE_CODE_ENABLE_TASKS": "0"}
+        env = config.get("env", {})
+        for key, expected in defaults.items():
+            if key not in previous.get("env", {}) and env.get(key) == expected:
+                del env[key]
+        if not env and "env" in config:
+            del config["env"]
+    return config
+
+
+def _preserves_user_config(previous, current):
+    if isinstance(previous, dict) and isinstance(current, dict):
+        return all(key in current and _preserves_user_config(value, current[key])
+                   for key, value in previous.items())
+    return previous == current
+
+
+def _migrate_checkout_bootstrap(root, path, record, current):
+    """Adopt tracked portable registration only when existing user values survive."""
+    try:
+        old_user = _user_host_config(root, path, record["installed"], portable=False,
+                                     original=record["original"])
+        new_user = _user_host_config(root, path, current, portable=True)
+        if not _preserves_user_config(old_user, new_user):
+            raise ValueError("user configuration changed during portable migration")
+    except (ValueError, KeyError, TypeError, AttributeError) as error:
+        raise InstallError(f"modified managed file conflict: {path}") from error
+    return {"original": current, "installed": current}
+
+
 def read_state(root):
     value = snapshot(Path(root), STATE)
     try:
@@ -382,7 +513,12 @@ def make_plan(root, *, action="install", profile=None, hosts=None, receipt=None,
     if project_binding in owned and observe(project_binding) != owned[project_binding]["installed"]:
         del owned[project_binding]
     for path, record in owned.items():
-        owned[path] = rebase_shared(path, record, observe(path))
+        current = observe(path)
+        if (_checkout_bootstrap(root, path, current)
+                and record["installed"] != current):
+            owned[path] = _migrate_checkout_bootstrap(root, path, record, current)
+        else:
+            owned[path] = rebase_shared(path, record, current)
     if action == "restore":
         for item in saved["changes"]:
             observed = observe(item["path"])
@@ -496,6 +632,9 @@ def make_plan(root, *, action="install", profile=None, hosts=None, receipt=None,
         for host in hosts:
             path = ".codex/hooks.json" if host == "codex" else ".claude/settings.json"
             old = original(path)
+            if _checkout_bootstrap(root, path, old):
+                desired[path] = old
+                continue
             try:
                 config = json.loads(bytes_of(old)) if old else {}
                 if not isinstance(config, dict):
@@ -538,39 +677,45 @@ def make_plan(root, *, action="install", profile=None, hosts=None, receipt=None,
         if "codex" in hosts:
             path = ".codex/config.toml"
             old = original(path)
-            content = bytes_of(old).decode()
-            try:
-                config = tomllib.loads(content)
-                if "neurath_collaboration" in config.get("mcp_servers", {}):
-                    raise ValueError("reserved server name already configured")
-                if "update_plan" not in config.get("tools", {}) and native_todo_defaults("codex"):
-                    content += CODEX_TODO_DEFAULT
-                addition = ("\n[mcp_servers.neurath_collaboration]\ncommand = "
-                            + json.dumps(server["command"], ensure_ascii=False) + "\nargs = "
-                            + json.dumps(server["args"], ensure_ascii=False)
-                            # The verifier allows up to 3600s, plus response/readback time.
-                            + "\ntool_timeout_sec = 3660"
-                            + "\nenabled_tools = " + json.dumps([*TASKS, "agent"]) + "\n"
-                            + "".join(f"[mcp_servers.neurath_collaboration.tools.{name}]\napproval_mode = \"approve\"\n"
-                                      for name in (*TASKS, "agent")))
-                tomllib.loads(content + addition)
-            except (ValueError, TypeError) as error:
-                raise InstallError(f"MCP settings conflict: {path}") from error
-            desired[path] = file_value((content + addition).encode(), old["mode"] if old else 0o644)
+            if _checkout_bootstrap(root, path, old):
+                desired[path] = old
+            else:
+                content = bytes_of(old).decode()
+                try:
+                    config = tomllib.loads(content)
+                    if "neurath_collaboration" in config.get("mcp_servers", {}):
+                        raise ValueError("reserved server name already configured")
+                    if "update_plan" not in config.get("tools", {}) and native_todo_defaults("codex"):
+                        content += CODEX_TODO_DEFAULT
+                    addition = ("\n[mcp_servers.neurath_collaboration]\ncommand = "
+                                + json.dumps(server["command"], ensure_ascii=False) + "\nargs = "
+                                + json.dumps(server["args"], ensure_ascii=False)
+                                # The verifier allows up to 3600s, plus response/readback time.
+                                + "\ntool_timeout_sec = 3660"
+                                + "\nenabled_tools = " + json.dumps([*TASKS, "agent"]) + "\n"
+                                + "".join(f"[mcp_servers.neurath_collaboration.tools.{name}]\napproval_mode = \"approve\"\n"
+                                          for name in (*TASKS, "agent")))
+                    tomllib.loads(content + addition)
+                except (ValueError, TypeError) as error:
+                    raise InstallError(f"MCP settings conflict: {path}") from error
+                desired[path] = file_value((content + addition).encode(), old["mode"] if old else 0o644)
         if "claude-code" in hosts:
             path = ".mcp.json"
             old = original(path)
-            try:
-                config = json.loads(bytes_of(old)) if old else {}
-                if not isinstance(config, dict) or not isinstance(config.setdefault("mcpServers", {}), dict):
-                    raise ValueError("MCP settings must be objects")
-                if "neurath_collaboration" in config["mcpServers"]:
-                    raise ValueError("reserved server name already configured")
-                config["mcpServers"]["neurath_collaboration"] = server
-            except (ValueError, TypeError) as error:
-                raise InstallError(f"MCP settings conflict: {path}") from error
-            desired[path] = file_value((json.dumps(config, indent=2, ensure_ascii=False) + "\n").encode(),
-                                       old["mode"] if old else 0o644)
+            if _checkout_bootstrap(root, path, old):
+                desired[path] = old
+            else:
+                try:
+                    config = json.loads(bytes_of(old)) if old else {}
+                    if not isinstance(config, dict) or not isinstance(config.setdefault("mcpServers", {}), dict):
+                        raise ValueError("MCP settings must be objects")
+                    if "neurath_collaboration" in config["mcpServers"]:
+                        raise ValueError("reserved server name already configured")
+                    config["mcpServers"]["neurath_collaboration"] = server
+                except (ValueError, TypeError) as error:
+                    raise InstallError(f"MCP settings conflict: {path}") from error
+                desired[path] = file_value((json.dumps(config, indent=2, ensure_ascii=False) + "\n").encode(),
+                                           old["mode"] if old else 0o644)
         managed_text(
             ".gitignore",
             f"\n{MARKER}\n.agents/runs/\n.agents/worktrees/\n.agents/resources/worktrees/\n.monitor-pr/\n.neurath/local/\n.neurath/install.json\n.neurath/*plan*.json\n<!-- /neurath:managed -->\n".replace(

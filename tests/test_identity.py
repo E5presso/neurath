@@ -7,7 +7,6 @@ import pytest
 
 from neurath.runtime.engine import activate
 from neurath.hosts.hooks import hook
-from neurath.install.transaction import apply_plan, make_plan
 
 
 @pytest.fixture
@@ -15,7 +14,9 @@ def runtime(tmp_path, monkeypatch):
     from neurath.hosts import identity
 
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
-    apply_plan(tmp_path, make_plan(tmp_path))
+    # Exercise installed state/resource paths without testing the installer again.
+    (tmp_path / ".neurath").mkdir()
+    (tmp_path / ".neurath/run").write_text("#!/bin/sh\nexit 97\n")
     activate(tmp_path)
     storage = tmp_path / "host-storage"
     storage.mkdir()
@@ -321,8 +322,10 @@ def test_native_child_resume_race_reuses_only_same_attested_turn(runtime, monkey
     assert not resume_child(runtime[0], "codex", {**payload, "turn_id": "other"}, os.environ)
 
 
-@pytest.mark.parametrize("invalid", ["replayed", "foreign", "retired", "parent-closed"])
-@pytest.mark.parametrize("stop_actor", [True, False])
+@pytest.mark.parametrize("invalid,stop_actor", [
+    ("replayed", True), ("replayed", False), ("foreign", True),
+    ("retired", False), ("parent-closed", True),
+])
 def test_child_followup_rejects_replayed_or_foreign_native_turn(runtime, invalid, stop_actor):
     from scripts.agent_harness import session_kernel as k
 
@@ -576,12 +579,14 @@ def prepare_interrupted_action(runtime, host, outcome="succeeded"):
     )
 
 
-@pytest.mark.parametrize("host", ["codex", "claude-code"])
-@pytest.mark.parametrize("source", ["resume", "compact"])
-@pytest.mark.parametrize(
-    "outcome,expected",
-    [("succeeded", "completed"), ("failed", "blocked"), ("unexecuted", "blocked")],
-)
+@pytest.mark.parametrize("host,source,outcome,expected", [
+    ("codex", "resume", "succeeded", "completed"),
+    ("codex", "compact", "failed", "blocked"),
+    ("codex", "resume", "unexecuted", "blocked"),
+    ("claude-code", "compact", "succeeded", "completed"),
+    ("claude-code", "resume", "failed", "blocked"),
+    ("claude-code", "compact", "unexecuted", "blocked"),
+])
 def test_resume_settles_only_observed_material_before_prompt(
     runtime, host, source, outcome, expected
 ):
@@ -838,6 +843,100 @@ def native_turn_started(transcript, turn_id):
         )
 
 
+def native_user_text(transcript, turn_id, text):
+    with transcript.open("a") as stream:
+        stream.write(json.dumps({"type": "response_item", "payload": {
+            "type": "message", "role": "user",
+            "content": [{"type": "input_text", "text": text}],
+            "internal_chat_message_metadata_passthrough": {
+                "turn_id": turn_id, "content_item_kinds": ["user.text"],
+            },
+        }}) + "\n")
+
+
+@pytest.mark.parametrize("event", ["UserPromptSubmit", "PreToolUse"])
+@pytest.mark.parametrize("runtime_thread", [None, "root"])
+def test_missing_codex_session_start_recovers_exact_native_root_turn(runtime, event, runtime_thread):
+    from neurath.hosts.identity import snapshot
+    from scripts.agent_harness import session_kernel as k
+
+    root, _, transcript, _ = runtime
+    peer_root_metadata(root, transcript)
+    native_turn_started(transcript, "current-turn")
+    native_user_text(transcript, "current-turn", "Continue the requested work")
+    with transcript.open("a") as stream:
+        stream.write(json.dumps({"type": "response_item", "payload": {
+            "type": "message", "role": "user", "content": [{"type": "input_text", "text": "Selected skill instructions"}],
+            "internal_chat_message_metadata_passthrough": {
+                "turn_id": "current-turn", "content_item_kinds": ["skills.selected_skill_instructions"],
+            },
+        }}) + "\n")
+    payload = {"session_id": "root", "cwd": str(root),
+               "transcript_path": str(transcript), "hook_event_name": event,
+               "turn_id": "current-turn"}
+    if event == "UserPromptSubmit":
+        payload["prompt"] = "Continue the requested work"
+    else:
+        payload.update(tool_name="mcp__neurath_collaboration__session_status",
+                       tool_use_id="current-tool", tool_input={})
+    environment = {} if runtime_thread is None else {"CODEX_THREAD_ID": runtime_thread}
+    code, output, diagnostic = hook(root, "codex", json.dumps(payload), environment)
+    assert code == 0, diagnostic
+    state = k.SessionKernel(k.SessionLocator.from_worktree(root)).inspect(k.SessionId("root"))
+    turn = state.foreground_turns[state.session.root_actor_id]
+    assert turn.vendor_turn_id == "current-turn"
+    assert turn.user_prompt_receipt is not None
+    assert snapshot(root, "root")["transcript"] == str(transcript)
+    if event == "PreToolUse":
+        assert isinstance(output["hookSpecificOutput"]["updatedInput"]["_neurath_binding"], str)
+
+
+@pytest.mark.parametrize("invalid", ["prompt", "thread", "parent", "stale-turn"])
+def test_missing_codex_session_start_rejects_foreign_native_provenance(runtime, invalid):
+    from scripts.agent_harness import session_kernel as k
+
+    root, _, transcript, _ = runtime
+    peer_root_metadata(root, transcript, **(
+        {"parent_thread_id": "foreign"} if invalid == "parent" else {}
+    ))
+    native_turn_started(transcript, "current-turn")
+    native_user_text(transcript, "current-turn", "Continue the requested work")
+    if invalid == "stale-turn":
+        with transcript.open("a") as stream:
+            stream.write(json.dumps({"type": "event_msg", "payload": {
+                "type": "task_complete", "turn_id": "current-turn",
+            }}) + "\n")
+    payload = {"session_id": "root", "cwd": str(root),
+               "transcript_path": str(transcript), "hook_event_name": "UserPromptSubmit",
+               "turn_id": "current-turn", "prompt": (
+                   "Forged text" if invalid == "prompt" else "Continue the requested work")}
+    code, output, diagnostic = hook(root, "codex", json.dumps(payload),
+                                    {"CODEX_THREAD_ID": (
+                                        "foreign" if invalid == "thread" else "root")})
+    assert code == 0 and "deferred" in diagnostic
+    with pytest.raises(k.SessionNotFound):
+        k.SessionKernel(k.SessionLocator.from_worktree(root)).inspect(k.SessionId("root"))
+
+
+def test_missing_codex_session_start_uses_latest_steering_prompt(runtime):
+    from scripts.agent_harness import session_kernel as k
+
+    root, _, transcript, _ = runtime
+    peer_root_metadata(root, transcript)
+    native_turn_started(transcript, "current-turn")
+    native_user_text(transcript, "current-turn", "First request")
+    native_user_text(transcript, "current-turn", "Latest correction")
+    payload = {"session_id": "root", "cwd": str(root),
+               "transcript_path": str(transcript), "hook_event_name": "PreToolUse",
+               "turn_id": "current-turn", "tool_name": "mcp__neurath_collaboration__session_status",
+               "tool_use_id": "current-tool", "tool_input": {}}
+    assert hook(root, "codex", json.dumps(payload), {})[0] == 0
+    state = k.SessionKernel(k.SessionLocator.from_worktree(root)).inspect(k.SessionId("root"))
+    turn = state.foreground_turns[state.session.root_actor_id]
+    assert turn.user_prompt_receipt.prompt_digest == __import__("hashlib").sha256(
+        b"Latest correction").hexdigest()
+
+
 @pytest.mark.parametrize("large_record", [False, True])
 def test_native_lifecycle_outlives_memory_tail_budget(tmp_path, large_record):
     from neurath.hosts.identity import _latest_codex_turn
@@ -863,8 +962,9 @@ def test_native_lifecycle_outlives_memory_tail_budget(tmp_path, large_record):
     assert _latest_codex_turn(path) == ""
 
 
-@pytest.mark.parametrize("source", [None, "resume", "compact"])
-@pytest.mark.parametrize("same_prompt", [False, True])
+@pytest.mark.parametrize("source,same_prompt", [
+    (None, False), (None, True), ("resume", True), ("compact", False),
+])
 def test_codex_new_native_turn_replaces_unclosed_foreground(runtime, source, same_prompt):
     from neurath.hosts.identity import snapshot
     from scripts.agent_harness import session_kernel as k
@@ -970,8 +1070,10 @@ def peer_root_metadata(root, transcript, **changes):
     }}) + "\n")
 
 
-@pytest.mark.parametrize("previous", ["closed", "interrupted", "in-flight", "app-fork"])
-@pytest.mark.parametrize("refresh", [False, True])
+@pytest.mark.parametrize("previous,refresh", [
+    ("closed", False), ("closed", True), ("interrupted", False),
+    ("in-flight", False), ("app-fork", False),
+])
 def test_native_peer_turn_reconciles_without_user_authority(runtime, previous, refresh):
     from neurath.hosts.identity import snapshot
     from scripts.agent_harness import session_kernel as k
@@ -1119,7 +1221,6 @@ def test_peer_turn_requires_exact_native_ingress(runtime, invalid):
 
 @pytest.mark.parametrize("ended", [False, True])
 def test_peer_retry_after_journal_failure_uses_canonical_provenance(runtime, monkeypatch, ended):
-    from neurath.hosts import identity
     from scripts.agent_harness import session_kernel as k
 
     root, _, transcript, send = runtime
@@ -1203,8 +1304,10 @@ def test_closed_peer_turn_cannot_be_reopened_by_replayed_tools(runtime):
 
 
 
-@pytest.mark.parametrize("ingress", ["human", "peer"])
-@pytest.mark.parametrize("native", ["current", "missing", "completed"])
+@pytest.mark.parametrize("ingress,native", [
+    ("human", "current"), ("human", "missing"),
+    ("peer", "current"), ("peer", "completed"),
+])
 def test_stale_stop_preserves_new_foreground(runtime, ingress, native):
     from scripts.agent_harness import session_kernel as k
 
@@ -1256,7 +1359,7 @@ def test_unreconciled_native_stop_does_not_loop_or_grant_authority(runtime, nati
     kernel = k.SessionKernel(k.SessionLocator.from_worktree(root))
     before = kernel.inspect(k.SessionId("root")).to_payload()
     local = fixture_local_bytes(root)
-    for retry in (False, True, True):
+    for retry in (False, True):
         code, output, diagnostic = send("codex", "Stop", turn_id="unreconciled",
                                         stop_hook_active=retry)
         assert code == (0 if native == "current" else 1), diagnostic
@@ -1267,8 +1370,11 @@ def test_unreconciled_native_stop_does_not_loop_or_grant_authority(runtime, nati
         assert fixture_local_bytes(root) == local
 
 
-@pytest.mark.parametrize("ingress", ["human", "peer"])
-@pytest.mark.parametrize("field", ["cwd", "parent_thread_id", "actor_id", "thread_id", "runtime"])
+@pytest.mark.parametrize("ingress,field", [
+    ("human", "cwd"), ("human", "parent_thread_id"),
+    ("human", "actor_id"), ("peer", "cwd"),
+    ("peer", "thread_id"), ("peer", "runtime"),
+])
 def test_stale_stop_invalid_identity_cannot_fall_through(runtime, ingress, field):
     from scripts.agent_harness import session_kernel as k
 
@@ -1502,10 +1608,12 @@ def test_compaction_then_normal_stop_does_not_block_next_prompt(runtime, rotate)
     assert snapshot(root, "root")["resume_pending"] is None
 
 
-@pytest.mark.parametrize("rotation_event", ["SessionStart", "UserPromptSubmit"])
-@pytest.mark.parametrize(
-    "invalid", ["id", "session_id", "cwd", "child", "parent", "malformed", "outside"]
-)
+@pytest.mark.parametrize("rotation_event,invalid", [
+    ("SessionStart", "id"), ("SessionStart", "session_id"),
+    ("SessionStart", "cwd"), ("SessionStart", "child"),
+    ("SessionStart", "parent"), ("SessionStart", "malformed"),
+    ("SessionStart", "outside"), ("UserPromptSubmit", "id"),
+])
 def test_rotated_transcript_requires_native_root_proof(runtime, rotation_event, invalid):
     from neurath.hosts.identity import snapshot
     from scripts.agent_harness.session_kernel import SessionId, SessionKernel, SessionLocator

@@ -45,6 +45,22 @@ def _host_hook(root, host, raw, environment=None, stop_guard=None):
     from scripts.agent_harness.session_kernel import SessionRuntime
 
     runtime = SessionRuntime(host)
+    if event in {"UserPromptSubmit", "PreToolUse"}:
+        from neurath.hosts.identity import recover_missing_codex_start
+
+        recovered_prompt = recover_missing_codex_start(root, host, payload, env)
+        if recovered_prompt is not None and event == "PreToolUse":
+            prompt_payload = {
+                "session_id": payload["session_id"],
+                "cwd": payload["cwd"],
+                "transcript_path": payload["transcript_path"],
+                "turn_id": payload["turn_id"],
+                "hook_event_name": "UserPromptSubmit",
+                "prompt": recovered_prompt,
+            }
+            code, _, diagnostic = _dispatch_hook(root, host, json.dumps(prompt_payload), env)
+            if code:
+                return code, {}, diagnostic
     from neurath.hosts.identity import (
         SPAWN_TOOLS,
         finish_tool,
@@ -234,6 +250,7 @@ def _dispatch_event(root, host, raw, environment=None, stop_guard=None):
         import importlib
 
         for module, name, component in (
+            ("neurath.runtime.task_todo", "remind", "TODO display"),
             ("neurath.memory.hooks", "project_event", "memory"),
             ("neurath.runtime.goal_reminders", "goal_event", "goal reflection"),
             ("neurath.agents.hooks", "peer_event", "mailbox"),

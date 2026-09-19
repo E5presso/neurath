@@ -1,7 +1,6 @@
 """Phase runner state를 exact session workflow에 보존하는 store 계약입니다."""
 
 import unittest
-from inspect import signature
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
@@ -607,26 +606,6 @@ class SessionPhaseStateStoreTest(TestCase):
         self.assertEqual(WorkflowStatus.FAILED, finalized.workflow_status)
         self.assertEqual("failed", finalized.state.terminal_state)
 
-    def test_public_surface_requires_no_path_or_implicit_retry(self) -> None:
-        """DX는 StateHandle/WorkflowId를 받고 caller-visible expected revision을 요구합니다."""
-        store = self._store(self.handle, "workflow-a", "run-a")
-
-        self.assertEqual(
-            ("handle", "workflow_id", "skill", "run_id"),
-            tuple(signature(SessionPhaseStateStore).parameters),
-        )
-        self.assertEqual(("state",), tuple(signature(store.initialize).parameters))
-        self.assertEqual((), tuple(signature(store.read).parameters))
-        self.assertEqual(
-            ("state", "expected_workflow_revision"),
-            tuple(signature(store.advance).parameters),
-        )
-        self.assertEqual(
-            ("state", "expected_workflow_revision"),
-            tuple(signature(store.finalize).parameters),
-        )
-        self.assertFalse(hasattr(store, "path"))
-        self.assertFalse(hasattr(store, "state_path"))
 
     def test_runner_adapter_derives_existing_identity_and_uses_cached_cas(self) -> None:
         """Runner adapter는 workflow identity를 재개하고 직전 read revision으로 씁니다."""

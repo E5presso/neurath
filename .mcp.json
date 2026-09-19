@@ -1,0 +1,9 @@
+{
+  "_neurath_checkout_bootstrap": true,
+  "mcpServers": {
+    "neurath_collaboration": {
+      "command": "sh",
+      "args": ["-c", "exec \"$(git rev-parse --show-toplevel)/tools/checkout_host\" mcp"]
+    }
+  }
+}

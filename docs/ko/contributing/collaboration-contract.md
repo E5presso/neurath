@@ -34,6 +34,8 @@
 | 진행 상태·결과 보고 | 실행자 또는 provider 감독자가 특정 결과를 보고했습니다. |
 | 원래 작업 해결 | 소유자가 원래 작업과 근거에 따라 결과를 기록했습니다. |
 
+동료 검색·메시지 전송·`delivery_status` 결과에는 `delivery`와 `delivery_note`가 포함됩니다. `push`는 등록된 알림 연결이 있다는 뜻이며 수신 완료를 증명하지 않습니다. `pull-only`는 사용할 연결이 없어 수신자의 다음 네이티브 턴을 기다린다는 뜻입니다. 소켓이 없거나 유효하지 않아도 `pull-only`로 표시합니다. 앱 연결이 제공되는 경우에는 호스트가 소유한 전달 경로를 별도로 사용할 수 있습니다.
+
 `collaboration_inbox`로 대기 메시지를 찾고 `collaboration_message(message_id)`로 전체 본문을 읽습니다. 알림 미리보기만으로 ACK할 수 없습니다. `collaboration_ack`는 하나의 `message_id` 또는 최대 100개의 `message_ids`를 받으며 모든 메시지가 해당 수신자에게 속하고 전체 읽기 근거를 갖춰야 합니다. 하나라도 잘못되면 일괄 처리가 모두 거부됩니다. 이미 읽은 중복 메시지를 다시 확인하는 것은 가능합니다.
 
 `collaboration_reply(message_id, message, key)`는 답장과 ACK를 원자적으로 처리합니다. `collaboration_forward`는 네이티브 알림 경로만 준비합니다. 반환된 도구를 소유 호스트에서 실행하고, 그 도구가 제출 성공을 확인한 뒤에만 `collaboration_submitted`를 호출합니다. 발신자의 제출 보고와 수신자의 ACK는 여전히 구분됩니다.

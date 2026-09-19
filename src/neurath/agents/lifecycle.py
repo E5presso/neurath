@@ -109,7 +109,10 @@ class TaskLifecycle:
             if old:
                 if old["request"] != request:
                     raise ValueError("event key changed state or detail")
-                return {"id": event_id, "message": self.store._public(self.store._message(db, old["message"]))}
+                from neurath.agents.delivery import delivery_mode
+                message = self.store._public(self.store._message(db, old["message"]))
+                return {"id": event_id, "message": {
+                    **message, **delivery_mode(db, message["recipient"])}}
             if task["state"] in TERMINAL:
                 raise ValueError("task is terminal; late events cannot revive it")
             body = ("Neurath task lifecycle report (not result acceptance). " + canonical({

@@ -79,7 +79,8 @@ def run_fixture(target, selected_tests):
     env["PYTHONPATH"] = str(target.resolve())
     print(f"Independent runtime fixture: {target}", flush=True)
     result = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", *selected_tests], cwd=target, env=env,
+        [sys.executable, "-m", "pytest", "-q", "-n", str(min(8, os.cpu_count() or 1)), "--dist", "load",
+         *selected_tests], cwd=target, env=env,
         capture_output=True, text=True, check=False,
     )
     sys.stdout.write(result.stdout)

@@ -23,8 +23,7 @@ def test_codex_mcp_timeout_exceeds_supported_verifier_deadline(repo):
     assert 'tool_timeout_sec' not in json.loads((repo / '.mcp.json').read_text())['mcpServers']['neurath_collaboration']
 
 
-@pytest.mark.parametrize("project", ["empty", "python", "javascript"])
-def test_both_hosts_preserve_user_files_and_reinstall_is_noop(repo, project):
+def test_both_hosts_preserve_user_files_and_reinstall_is_noop(repo):
     original = "# My own rules\nDo useful work.\n"
     (repo / "AGENTS.md").write_text(original)
     (repo / "CLAUDE.md").write_text("Keep this Claude instruction.\n")
@@ -35,10 +34,10 @@ def test_both_hosts_preserve_user_files_and_reinstall_is_noop(repo, project):
         "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "echo existing"}]}]},
     }
     (repo / ".claude/settings.json").write_text(json.dumps(settings))
-    if project == "python":
-        (repo / "pyproject.toml").write_text('[project]\nname="existing"\nversion="1"\n')
-    elif project == "javascript":
-        (repo / "package.json").write_text('{"name":"existing"}')
+    pyproject = '[project]\nname="existing"\nversion="1"\n'
+    package = '{"name":"existing"}'
+    (repo / "pyproject.toml").write_text(pyproject)
+    (repo / "package.json").write_text(package)
     plan = make_plan(repo)
     assert plan["changes"]
     apply_plan(repo, plan)
@@ -47,6 +46,8 @@ def test_both_hosts_preserve_user_files_and_reinstall_is_noop(repo, project):
     assert installed["permissions"] == settings["permissions"]
     assert installed["model"] == "user-choice"
     assert installed["hooks"]["Stop"][0] == settings["hooks"]["Stop"][0]
+    assert (repo / "pyproject.toml").read_text() == pyproject
+    assert (repo / "package.json").read_text() == package
     assert (repo / ".claude/skills/debug").resolve() == (
         repo / ".agents/skills/debug"
     ).resolve()
@@ -419,3 +420,45 @@ def test_restore_plan_accepts_installation_id_and_legacy_option(repo, option, ca
     assert plan["receipt"] == record["id"]
     apply_plan(repo, plan)
     assert not (repo / ".neurath/install.json").exists()
+
+
+def test_existing_install_adopts_tracked_checkout_bootstrap_without_losing_user_config(repo):
+    source = __import__("pathlib").Path(__file__).resolve().parents[1]
+    (repo / ".codex").mkdir()
+    codex_user = 'model = "user-choice"\n[features]\nuser_feature = true\n'
+    (repo / ".codex/config.toml").write_text(codex_user)
+    (repo / ".claude").mkdir()
+    user_hook = {"hooks": [{"type": "command", "command": "echo user"}]}
+    (repo / ".claude/settings.json").write_text(
+        json.dumps({"model": "user-choice", "hooks": {"Stop": [user_hook]}}))
+    (repo / ".mcp.json").write_text(
+        json.dumps({"mcpServers": {"user": {"command": "user-server"}}}))
+    apply_plan(repo, make_plan(repo))
+
+    portable = {}
+    for name in (".codex/config.toml", ".codex/hooks.json",
+                 ".claude/settings.json", ".mcp.json"):
+        text = (source / name).read_text()
+        if name == ".codex/config.toml":
+            text = ("# neurath:checkout-bootstrap\n" + codex_user
+                    + "[mcp_servers.neurath_collaboration]"
+                    + text.split("[mcp_servers.neurath_collaboration]", 1)[1])
+        elif name == ".claude/settings.json":
+            settings = json.loads(text)
+            settings["model"] = "user-choice"
+            settings["hooks"]["Stop"].insert(0, user_hook)
+            text = json.dumps(settings, indent=2) + "\n"
+        elif name == ".mcp.json":
+            config = json.loads(text)
+            config["mcpServers"]["user"] = {"command": "user-server"}
+            text = json.dumps(config, indent=2) + "\n"
+        (repo / name).write_text(text)
+        portable[name] = text
+    (repo / "tools").mkdir()
+    (repo / "tools/checkout_host").write_text("#!/bin/sh\n")
+    subprocess.run(["git", "add", "-f", "tools/checkout_host", *portable],
+                   cwd=repo, check=True)
+
+    apply_plan(repo, make_plan(repo, action="update"))
+    assert {name: (repo / name).read_text() for name in portable} == portable
+    assert make_plan(repo)["changes"] == []

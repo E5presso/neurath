@@ -146,9 +146,34 @@ class WorktreeHookApplicationTest(TestCase):
             environment=self.other_environment,
         )
 
-        self.assertEqual(0, result.exit_code)
+        self.assertEqual(0, result.exit_code, result.stderr)
         self.assertIs(WorktreeHookDisposition.DEFER_TO_HOST, result.decision.disposition)
         self.assertEqual(WorktreeHookDecisionCode.HOST_MANAGED, result.decision.code)
+
+    def test_temporary_scratchpad_write_is_deferred_to_host(self) -> None:
+        session_id = SessionId("scratchpad-claude")
+        self._start_session(
+            session_id,
+            ActorId("claude-code:session:scratchpad-claude"),
+            SessionRuntime.CLAUDE_CODE,
+        )
+        scratchpad_dir = TemporaryDirectory(prefix="claude-")
+        self.addCleanup(scratchpad_dir.cleanup)
+        scratchpad = Path(scratchpad_dir.name)
+        payload = {
+            "tool_name": "Write",
+            "tool_input": {"file_path": str(scratchpad / "notes.md"), "content": "notes"},
+        }
+        result = WorktreeHookApplication(SessionRuntime.CLAUDE_CODE).run(
+            json.dumps(payload), {"CLAUDE_CODE_SESSION_ID": str(session_id)}, self.repository,
+        )
+        self.assertEqual(0, result.exit_code, result.stderr)
+        self.assertIs(WorktreeHookDisposition.DEFER_TO_HOST, result.decision.disposition)
+        unrelated = self._run({
+            "tool_name": "Write",
+            "tool_input": {"file_path": str(self.fixture_root / "scratchpad" / "notes.md")},
+        })
+        self.assertEqual(2, unrelated.exit_code)
 
     def test_host_managed_tools_require_neither_identity_nor_worktree_claim(self) -> None:
         """Web과 PTY control은 repository identity와 worktree claim을 요구하지 않습니다."""

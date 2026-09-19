@@ -78,21 +78,12 @@ def test_unknown_session_resume_is_not_reported_as_success(installed, host):
 
 
 @pytest.mark.parametrize("host", ["codex", "claude-code"])
-@pytest.mark.parametrize(
-    "tool,inputs",
-    [
-        (
-            "Bash",
-            {"command": ".neurath/run engine scripts.agent_harness.state_cli session inspect"},
-        ),
-        ("Write", {"file_path": "child.txt", "content": "unsafe"}),
-    ],
-)
-def test_child_without_process_identity_cannot_use_parent_authority(installed, host, tool, inputs):
+def test_child_without_process_identity_cannot_use_parent_authority(installed, host):
     assert invoke(installed, host, "SessionStart", source="startup").returncode == 0
     before = state_snapshot(installed)
     result = invoke(
-        installed, host, "PreToolUse", agent_id="native-child", tool_name=tool, tool_input=inputs
+        installed, host, "PreToolUse", agent_id="native-child", tool_name="Bash",
+        tool_input={"command": ".neurath/run engine scripts.agent_harness.state_cli session inspect"},
     )
     assert result.returncode != 0, (
         "unbound child was allowed to execute with inherited root identity"

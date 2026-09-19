@@ -73,6 +73,10 @@ An interrupted transaction has its own recovery route, `installation_recover`, f
 
 ## Develop Neurath itself
 
+A fresh Neurath source checkout includes shared Codex and Claude hook/MCP registration. After the host trusts the project, its first hook or MCP call runs `tools/checkout_host`, prepares the local runtime through `setup`, and continues the original call. No contributor home directory or checkout path is stored in the shared settings. The generated interpreter launcher and installation records remain local and ignored by Git.
+
+The bootstrap retains a private source fingerprint under Git metadata. A changed runtime manifest or dependency configuration triggers preparation again. Interrupted preparation is retried when the launcher or installation record is missing. Existing user settings and external MCP entries are preserved when an installed checkout adopts the shared registration. This automatic path is for the Neurath source checkout; installing Neurath into another project still follows the installation request above.
+
 The development environment and the installed runtime serve different purposes:
 
 ```sh

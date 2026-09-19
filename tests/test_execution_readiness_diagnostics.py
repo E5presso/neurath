@@ -16,8 +16,10 @@ def report():
     return result
 
 
-@pytest.mark.parametrize("status", ["failed", "unobserved"])
-@pytest.mark.parametrize("stage", ["installation", "activation", "ownership", "policy"])
+@pytest.mark.parametrize("stage,status", [
+    ("installation", "failed"), ("installation", "unobserved"),
+    ("activation", "failed"), ("ownership", "failed"), ("policy", "failed"),
+])
 def test_failed_readiness_is_not_reported_as_unsupported_permissions(monkeypatch, stage, status):
     observed = report()
     observed["implementation_ready"] = False

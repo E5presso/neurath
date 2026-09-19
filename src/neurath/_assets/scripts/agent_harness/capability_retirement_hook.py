@@ -13,6 +13,61 @@ class CapabilityRetirementPayloadError(ValueError):
     """PreToolUse payload나 closed command를 안전하게 정규화할 수 없습니다."""
 
 
+def strip_heredoc_bodies(command: str) -> str:
+    """Exclude literal heredoc data, retaining every executable command line.
+
+    An unquoted body may expand shell expressions. Reject it when expansion is
+    present rather than hiding executable text from the retirement guard.
+    """
+    lines = command.splitlines(keepends=True)
+    retained: list[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        try:
+            tokens = tuple(shlex.shlex(line, posix=False, punctuation_chars="<>&|;"))
+        except ValueError:
+            retained.append(line)
+            index += 1
+            continue
+        markers: list[tuple[str, bool, bool]] = []
+        for position, token in enumerate(tokens):
+            if token != "<<":
+                continue
+            if line.rstrip("\r\n").endswith("\\"):
+                raise ValueError("heredoc header with a continued line cannot be inspected")
+            if position + 1 >= len(tokens):
+                raise ValueError("heredoc delimiter is missing")
+            raw_marker = tokens[position + 1]
+            strip_tabs = raw_marker.startswith("-")
+            raw_marker = raw_marker[1:] if strip_tabs else raw_marker
+            quoted = (
+                len(raw_marker) >= 2
+                and raw_marker[0] in {"'", '"'}
+                and raw_marker[-1] == raw_marker[0]
+            )
+            marker = raw_marker[1:-1] if quoted else raw_marker
+            if not marker or any(char in marker for char in "$`\\"):
+                raise ValueError("heredoc delimiter cannot be inspected")
+            markers.append((marker, strip_tabs, quoted))
+        retained.append(line)
+        index += 1
+        for marker, strip_tabs, quoted in markers:
+            body: list[str] = []
+            while index < len(lines) and (
+                lines[index].rstrip("\r\n").lstrip("\t") if strip_tabs
+                else lines[index].rstrip("\r\n")
+            ) != marker:
+                body.append(lines[index])
+                index += 1
+            if index == len(lines):
+                raise ValueError(f"unterminated heredoc delimiter {marker!r}")
+            if not quoted and any(char in "".join(body) for char in "$`"):
+                raise ValueError("unquoted heredoc contains shell expansion")
+            index += 1
+    return "".join(retained)
+
+
 class CapabilityRetirementDecisionCode(StrEnum):
     """Hook caller와 regression이 공유하는 stable decision code입니다."""
 
@@ -87,7 +142,7 @@ class CapabilityRetirementHookApplication:
         }
     )
     _COMMAND_KEYS = ("command", "cmd", "input")
-    _COMMAND_SEPARATORS = frozenset({"&&", "||", ";", "|"})
+    _COMMAND_SEPARATORS = frozenset({"&&", "||", ";", "|", "\n"})
     _COMMAND_PREFIXES = frozenset({"command", "env", "sudo"})
     _PROTECTED_CONNECTORS = frozenset()
     _PROTECTED_PATHS = (".neurath",)
@@ -137,10 +192,10 @@ class CapabilityRetirementHookApplication:
             segments = self._execution_segments(
                 command, None if missing_execution_root else execution_root
             )
-        except CapabilityRetirementPayloadError:
+        except CapabilityRetirementPayloadError as error:
             return self._deny(
                 CapabilityRetirementDecisionCode.INVALID_INPUT,
-                "process command quoting is invalid",
+                str(error),
             )
         for segment, segment_root in segments:
             normalized = self._without_prefixes(segment)
@@ -194,9 +249,12 @@ class CapabilityRetirementHookApplication:
 
     def _segments(self, command: str) -> tuple[tuple[str, ...], ...]:
         try:
-            tokens = tuple(shlex.split(command, posix=True))
+            lexer = shlex.shlex(strip_heredoc_bodies(command), posix=True,
+                                punctuation_chars=";&|\n")
+            lexer.whitespace = " \t\r"
+            tokens = tuple(lexer)
         except ValueError as error:
-            raise CapabilityRetirementPayloadError("process command quoting is invalid") from error
+            raise CapabilityRetirementPayloadError(str(error)) from error
         segments: list[tuple[str, ...]] = []
         start = 0
         for index, token in enumerate(tokens):

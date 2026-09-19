@@ -12,7 +12,7 @@ CLI 옵션 문자열을 조립하지 않는다. 도구 응답은 현재 권한�
 | 독립 작업 실행 | `provider_run` | 실제 발행자의 정책 승계 |
 | 프로젝트 기억 | `memory_recall`, `memory_checkpoint` | 보고는 완료 권위 아님 |
 | 검증 | `verification_run`, `verification_builtin`, `verification_nodes` | 실제 실행과 소스 지문 |
-| 동료 통신 | `collaboration_discover/inbox/send/reply` | 실제 수신자와 안정된 메시지 ID |
+| 동료 통신 | `collaboration_discover/inbox/send/reply` | 실제 수신자와 안정된 메시지 ID. `delivery: pull-only`는 현재 깨울 수 있는 연결이 없으며 다음 네이티브 턴에서 읽힘 |
 | 뉴스 | `newsroom_headlines/read/publish` | 활성 동료의 참고 정보 |
 
 CLI는 최초 부트스트랩·서버 시작·호스트 콜백과 내부 실행 기반으로 유지한다.

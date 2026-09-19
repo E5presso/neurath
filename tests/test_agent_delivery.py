@@ -9,6 +9,7 @@ import threading
 import pytest
 
 from neurath.agents.delivery import DeliveryService, dispatch, receipt
+from neurath.agents.delivery_recovery import delivery_status
 from neurath.agents.store import AgentIdentity, MessageStore
 
 
@@ -33,6 +34,21 @@ def wait(service, store, message_id, status):
 
 def accepted(message_id):
     return {"delivery": "submitted", "transport": "fixture-native", "native_turn": message_id[:8]}
+
+
+def test_peer_delivery_mode_reports_live_wake_path(store):
+    assert next(row for row in store.discover() if row["address"] == "codex:issuer")["delivery"] == "pull-only"
+    queued = store.send("codex:worker", "codex:issuer", "question", key="pull-only")
+    assert queued["delivery"] == "pull-only"
+    assert "next native turn" in queued["delivery_note"]
+    assert delivery_status(store, "codex:worker", queued["id"])["delivery"] == "pull-only"
+    with DeliveryService(store, "codex:issuer", accepted):
+        peer = next(row for row in store.discover() if row["address"] == "codex:issuer")
+        assert peer["delivery"] == "push"
+        sent = store.send("codex:worker", "codex:issuer", "question", key="push")
+        assert sent["delivery"] == "push"
+        assert delivery_status(store, "codex:worker", sent["id"])["delivery"] == "push"
+    assert delivery_status(store, "codex:worker", sent["id"])["delivery"] == "pull-only"
 
 
 def test_batch_ack_preserves_recipient_and_body_read_checks_atomically(store):

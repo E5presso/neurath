@@ -5,6 +5,33 @@ import pytest
 from neurath.hosts.capabilities import capability_policy
 
 
+def test_continued_heredoc_header_cannot_hide_following_command(tmp_path):
+    command = "cat <<'EOF' \\\n; rm -rf .neurath\nbody\nEOF\n"
+    result = capability_policy(tmp_path).run(json.dumps({
+        "tool_name": "Bash", "cwd": str(tmp_path),
+        "tool_input": {"command": command, "workdir": str(tmp_path)},
+    }), tmp_path)
+    assert result.exit_code == 2
+    assert "continued line" in result.stderr
+
+
+@pytest.mark.parametrize("command,expected", [
+    ("cat <<'EOF'\nodd \" quote\nEOF\npython report.py", 0),
+    ("cat <<'EOF'\nrm -rf .neurath\nEOF\nrm -rf .neurath", 2),
+    ("cat <<-'EOF'\n\todd \" quote\n\tEOF\npython report.py", 0),
+    ("cat <<'ONE' <<'TWO'\nfirst \"\nONE\nsecond \"\nTWO\nrm -rf .neurath", 2),
+    ("sh -c \"cat <<'EOF'\nbody\nEOF\nrm -rf .neurath\"", 2),
+    ("sh -c \"cat <<'EOF'\nbody\nEOF\npython report.py\"", 0),
+    ("cat <<EOF\n$(rm -rf .neurath)\nEOF\npython report.py", 2),
+    ("cat <<< value\nrm -rf .neurath", 2),
+])
+def test_native_heredoc_inspection_keeps_executable_commands(tmp_path, command, expected):
+    payload = {"tool_name": "Bash", "cwd": str(tmp_path),
+               "tool_input": {"command": command, "workdir": str(tmp_path)}}
+    result = capability_policy(tmp_path).run(json.dumps(payload), tmp_path)
+    assert result.exit_code == expected, result.stderr
+
+
 @pytest.mark.parametrize(
     "command,expected",
     [

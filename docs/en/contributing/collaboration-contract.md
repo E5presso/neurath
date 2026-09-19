@@ -34,6 +34,8 @@ A precise assignment might ask: “Investigate API storage and responses for the
 | Lifecycle/result report | The executor or provider supervisor reported a particular outcome. |
 | Original task resolved | The owner recorded an outcome against the original task and its evidence. |
 
+Discovery, sending, and `delivery_status` include `delivery` and `delivery_note`. `push` means a registered notification endpoint is available; it is not proof of receipt. `pull-only` means no usable endpoint is registered, so the message waits for the recipient's next native turn. A missing or invalid socket is classified as `pull-only`. An app bridge can still be used through the host-owned forwarding route when available.
+
 Use `collaboration_inbox` to find pending messages and `collaboration_message(message_id)` to read a complete body. A notification preview is insufficient for acknowledgement. `collaboration_ack` accepts either one `message_id` or up to 100 `message_ids`; every item must belong to the recipient and have full read evidence. One invalid item rejects the entire batch. Re-acknowledging an already-read duplicate is allowed.
 
 `collaboration_reply(message_id, message, key)` replies and acknowledges atomically. `collaboration_forward` prepares a native notification route; it does not send the notification itself. Execute the returned tool through its owning host, then call `collaboration_submitted` only after that native tool reports successful submission. A sender's submission report remains distinct from the receiver's acknowledgement.

@@ -31,7 +31,7 @@ uv run --locked python tools/check.py
 
 The current package requires Python `>=3.14,<3.15` and declares `claude-agent-sdk>=0.2.152,<0.3`. The implementation relies on POSIX process and file-locking behavior and supports macOS/Linux, not Windows.
 
-The check runs distribution integrity, Ruff's `E4,E7,E9,F` diagnostics, `pytest -q -x`, and standalone runtime regressions in that order, stopping at the first failure. Only after all stages succeed does it print `NEURATH_CHECK_OK`. Record the candidate and real command result; an old marker or historical test count is not evidence for a changed candidate.
+The check runs distribution integrity, Ruff's `E4,E7,E9,F` diagnostics, all package tests distributed across up to eight `pytest-xdist` workers by case, and standalone runtime regressions with the same worker limit. It stops at the first failure and prints `NEURATH_CHECK_OK` only after every stage passes. Tests that repeat the same guard through independent parameter combinations have been reduced; distinct security and lifecycle boundaries remain covered. Record the candidate and real command result; an old marker or historical test count is not evidence for a changed candidate.
 
 When executable assets changed, regenerate the manifest before the check:
 

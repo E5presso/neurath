@@ -11,8 +11,10 @@ import secrets
 
 from neurath.memory.store import canonical, control_root
 
-ANSWERS = {"yes":"yes", "예":"yes", "네":"yes", "승인합니다":"yes",
-           "no":"no", "아니요":"no", "아니오":"no", "거절합니다":"no",
+ANSWERS = {"yes":"yes", "ye":"yes", "ne":"yes", "예":"yes", "네":"yes",
+           "승인합니다":"yes", "동의합니다":"yes", "동의":"yes", "ok":"yes", "okay":"yes",
+           "no":"no", "아니요":"no", "아니오":"no", "아니":"no", "거절합니다":"no",
+           "동의하지 않습니다":"no", "동의하지 않아요":"no",
            "later":"later", "나중에":"later", "보류":"later"}
 
 
@@ -102,10 +104,11 @@ def verify_answer(choice, receipt, messages):
     if digest(text)!=receipt["prompt_digest"]:
         raise ValueError("native user input does not match the current prompt receipt")
     if messages[-2][1].strip()!=choice["question"].strip():
-        raise ValueError("the native user did not answer this exact pending question")
+        raise ValueError("last assistant message must equal the prepared question verbatim; remove any preamble or trailing text")
     answer=ANSWERS.get(text.strip().casefold().rstrip(".!。").strip())
     if answer is None or answer not in choice["decisions"]:
-        raise ValueError("native choice answer is ambiguous or unsupported")
+        allowed=", ".join(choice["decisions"])
+        raise ValueError(f"native user reply is not an accepted answer for this choice ({allowed}); reply with one unambiguous allowed decision")
     return answer
 
 
@@ -123,7 +126,7 @@ def _visible(content):
 
 def _question(name, args):
     if name not in {"request_user_input", "functions.request_user_input",
-                    "request_user_input_async", "functions.request_user_input_async", "AskUserQuestion"}:
+                    "request_user_input_async", "functions.request_user_input_async"}:
         return None
     if isinstance(args,str):
         try:
@@ -294,8 +297,9 @@ def prepare(root, fields, *, identity, expected_turn, context):
     store = _store(root)
     result=store.prepare(identity.address,fields["key"],subject,receipt.to_payload())
     return {**result,"preview":subject["snapshot"],
-            "next_action":"Show this exact question as the final message or one native user-input question. "
-                          "Wait for the user's reply; preparation is not a decision."}
+            "next_action":"Send the returned question as the entire final assistant message, with no preamble or trailing notes. "
+                          "Wait for a fresh user reply. Accepted replies include yes, ye, ne, 예, 네, 승인합니다, 동의합니다, ok, okay, no, 아니요, 아니오, 거절합니다, or later when offered. "
+                          "Preparation is not a decision."}
 
 
 def validate(root, name, fields, *, identity, expected_turn, context):
