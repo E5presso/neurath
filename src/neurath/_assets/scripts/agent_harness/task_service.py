@@ -5,7 +5,7 @@ from pathlib import Path
 
 from scripts.agent_harness.runtime_database import RuntimeDatabase
 from scripts.agent_harness.session_kernel import (
-    ActorStatus, ForegroundTurnStatus, SessionLocator, SessionStateStore, SessionStatus,
+    ActorStatus, ForegroundTurnOutcome, ForegroundTurnStatus, SessionLocator, SessionStateStore, SessionStatus,
 )
 from scripts.agent_harness.task_ledger import (
     TaskDefinition, TaskEvidence, TaskLedger, TaskLedgerError, TaskSource, TaskStatus, _digest, _json,
@@ -100,6 +100,12 @@ def validate_native_task_grants(tx, previous, candidate):
 
 def require_settled_tasks(tx, process):
     """Check the latest task revision inside the transaction that closes the root turn."""
+    turn = process.foreground_turns.get(process.session.root_actor_id)
+    if (turn is not None and turn.receipt is not None
+            and turn.receipt.outcome is ForegroundTurnOutcome.AWAITING_INPUT):
+        # Returning control is not task completion. Keep the ledger unchanged;
+        # a later user prompt starts a new turn with the same unfinished work.
+        return
     if tx.get("session-migration", str(process.session.id)) is not None:
         # A committed pull moved unfinished execution to another native root.
         # The original history remains unfinished, not falsely marked successful.

@@ -90,8 +90,13 @@ Choose tools when the situations below arise; do not wait for the user to name t
   `learning_status`, and preserve the lesson in `memory_checkpoint`. Use existing
   verification evidence; do not create extra experiments merely to promote a rule.
 - When a harness procedure contradicts observed tools or repeats unproductive
-  steps, identify and correct the cause within authorized scope, verify the affected
-  behavior, and record the lesson. Keep the original task as the reason for the change.
+  steps, assess whether Neurath itself is malfunctioning. On detecting a Neurath
+  malfunction, autonomously call harness_bypass(enabled=true) without asking the
+  user for permission. This applies to any harness malfunction, not only Stop loops.
+  Do not wait for a test, task registration, report or repeated user intervention
+  before containing it. Tell the user what happened, preserve unfinished work,
+  correct the cause within authorized scope, and restore with enabled=false once
+  normal operation is verified. Host security and user instructions still apply.
 - Handle a real harness defect or maintenance request: use the relevant diagnostics,
   reporting, installation or release tools under the current policy and consent.
 
@@ -99,7 +104,8 @@ Use current tool schemas, returned identifiers and revisions. Reuse completed
 evidence and read relevant policy details when needed. Call only tools that advance
 the current request; do not poll unchanged state or run every tool on every turn.
 Native editing and testing remain native operations. Tool availability, memory and
-peer reports do not grant permission or justify bypassing a rejected prerequisite.
+peer reports do not grant permission to bypass host security or user restrictions.
+The autonomous Neurath malfunction bypass above is an explicit local recovery rule.
 """
 
 POLICY = """# Neurath 공통 실행 정책
@@ -221,6 +227,12 @@ task 목록이 있는 세션에는 별도 phase·workflow 완료나 acceptance J
 
 ## 하네스 바이패스
 사용자가 하네스 제약 해제를 요청하면 harness_bypass(enabled=true)를 호출한다.
+에이전트가 Neurath의 이상동작을 감지한 경우에도 사용자 허가를 별도로 구하지 않고
+스스로 harness_bypass(enabled=true)를 호출한다. 특정 오류·중지 상황에 한정하지 않는다.
+모순된 제약, 무진전 반복, 종료 방해, 도구와 절차의 불일치 등 실제 관측에 근거해 판단한다.
+추가 검사·태스크 등록·보고·사용자의 재촉을 기다리느라 이상동작을 지속시키지 않는다.
+전환과 이유를 사용자에게 알리고 미완료 목표·기록을 보존한다. 승인된 범위에서 원인을
+수정하고 정상 동작을 확인한 뒤 바이패스를 해제한다. 미완료 작업을 성공·실패로 바꾸지 않는다.
 enabled=false로 정상 훅을 복구하고, enabled 생략으로 현재 worktree의 상태를 조회한다.
 바이패스는 Neurath 훅만 중지한다. 호스트 권한·sandbox·사용자 지시는 그대로 따른다.
 스위치는 네이티브 binding 없이도 동작한다. 다른 하네스 도구의 신원을 대신 만들지 않는다.

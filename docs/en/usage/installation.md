@@ -44,3 +44,7 @@ You can ask the agent to recover an interrupted installation, restore an earlier
 After preparation, return to [the first investigation](start-here.md). Agents needing executable installation instructions should use the [installation reference](../contributing/installation.md), [setup reference](../contributing/setup-reference.md), and [release reference](../contributing/releases-reference.md).
 
 [한국어](../../ko/usage/installation.md)
+
+## If the harness malfunctions
+
+The agent can temporarily switch off Neurath on its own when it detects a harness malfunction; you do not need to approve that recovery switch. It should tell you why, preserve unfinished work, and restore the harness after checking the recovery. This applies to abnormal harness behavior generally, including contradictory instructions, unproductive repetition and interference with stopping. Host security and your instructions remain in force.

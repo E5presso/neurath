@@ -44,3 +44,7 @@
 준비를 마치면 [첫 조사 이야기](start-here.md)로 돌아가세요. 실행 가능한 설치 절차가 필요한 에이전트는 [설치 참조](../contributing/installation.md), [설정 참조](../contributing/setup-reference.md), [릴리스 참조](../contributing/releases-reference.md)를 사용합니다.
 
 [English](../../en/usage/installation.md)
+
+## 하네스가 이상동작할 때
+
+에이전트는 Neurath의 이상동작을 감지하면 별도 허가를 묻지 않고 스스로 하네스를 임시로 끌 수 있습니다. 전환 이유를 알리고 미완료 작업을 보존하며, 복구를 확인한 뒤 다시 켭니다. 특정 오류에 한정하지 않으며, 모순된 지침, 무진전 반복, 중지 방해 등 하네스의 이상동작 전반에 적용됩니다. 호스트 보안과 사용자의 지시는 그대로 유지됩니다.

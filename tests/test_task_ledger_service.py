@@ -152,6 +152,33 @@ def test_pending_task_rejects_normal_foreground_close(service):
     assert kernel.inspect(sk.SessionId("one")).foreground_turns[sk.ActorId("owner")].status is sk.ForegroundTurnStatus.READY_TO_STOP
 
 
+def test_awaiting_input_closes_turn_without_resolving_pending_tasks(service):
+    store, kernel, sk = service
+    original = store.define([item()], expected_revision=0, key="define")
+    turn = kernel.inspect(sk.SessionId("one")).foreground_turns[sk.ActorId("owner")]
+    ready = kernel.apply(sk.ForegroundTurnYielded(
+        session_id=sk.SessionId("one"), actor_id=sk.ActorId("owner"),
+        expected_turn_revision=turn.revision,
+        receipt=sk.ForegroundTurnReceipt(sk.ForegroundTurnOutcome.AWAITING_INPUT,
+            question="User requested a pause; await their instruction to resume."),
+        idempotency_key="pause"))
+    closed = kernel.apply(sk.ForegroundTurnClosed(
+        session_id=sk.SessionId("one"), actor_id=sk.ActorId("owner"),
+        expected_turn_revision=ready.foreground_turns[sk.ActorId("owner")].revision,
+        idempotency_key="close-paused"))
+    assert closed.foreground_turns[sk.ActorId("owner")].status is sk.ForegroundTurnStatus.CLOSED
+    assert store.list()["tasks"] == original["tasks"]
+    assert not store.list()["all_terminal"]
+    resumed = kernel.apply(sk.ForegroundTurnPrompted(
+        session_id=sk.SessionId("one"), actor_id=sk.ActorId("owner"),
+        vendor_turn_id="resume", prompt_digest="b" * 64, idempotency_key="resume"))
+    with pytest.raises(sk.TransitionRejected, match="task Stop gate"):
+        kernel.apply(sk.ForegroundTurnClosed(
+            session_id=sk.SessionId("one"), actor_id=sk.ActorId("owner"),
+            expected_turn_revision=resumed.foreground_turns[sk.ActorId("owner")].revision,
+            idempotency_key="unfinished-resume"))
+
+
 def test_append_after_stop_snapshot_invalidates_close_in_same_database(service):
     store, kernel, sk = service
     store.define([item()], expected_revision=0, key="define")

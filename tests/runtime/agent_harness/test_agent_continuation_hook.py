@@ -1788,7 +1788,7 @@ class StopTerminalReachabilityMatrixTest(TestCase):
             handle.inspect().foreground_turns[handle.actor_id].status,
         )
 
-    def test_replaced_awaiting_question_survives_pending_task_stop_gate(self) -> None:
+    def test_replaced_awaiting_question_preserves_pending_tasks(self) -> None:
         """Host replacement stays incomplete but retains the exact question for the response."""
         from scripts.agent_harness.session_kernel import ForegroundTurnClosed, ForegroundTurnReplaced, InvalidSessionState
         from scripts.agent_harness.session_state_codec import SessionStateCodec
@@ -1812,9 +1812,8 @@ class StopTerminalReachabilityMatrixTest(TestCase):
             original_tasks = original_record.payload
         self._awaiting_input_turn(handle, question=question)
         before = handle.inspect().foreground_turns[handle.actor_id]
-        with self.assertRaisesRegex(TransitionRejected, "task"):
-            handle.apply(ForegroundTurnClosed(session_id=handle.session_id, actor_id=handle.actor_id,
-                         expected_turn_revision=before.revision, idempotency_key="refuse-task-stop"))
+        # A host may replace a waiting turn before its normal Stop. Replacement
+        # retains the question and pending work; awaiting-input is not failure.
         event = ForegroundTurnReplaced(session_id=handle.session_id, actor_id=handle.actor_id,
                     expected_turn_revision=before.revision, replacement_reference="codex-turn:next-native-turn",
                     idempotency_key="host-replaces-awaiting-question")

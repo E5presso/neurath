@@ -125,3 +125,7 @@ Read the returned `native_todo` and submit its exact full argument object using 
 An `invalid-input` error calls for schema correction. `revision-conflict` calls for a fresh read and reconciliation. `task-contract-rejected` calls for inspecting the actual task definition, source, dependency, or outcome rule. A native binding, prompt, or ownership failure calls for restoring that native prerequisite, not altering task JSON to impersonate an admitted participant.
 
 Normal Stop is the final domain check, not a shortcut around these errors. Every current normal Stop remains blocked until prerequisites settle; a status question or repeated attempt does not waive them. Use the [runtime lifecycle](runtime-lifecycle.md) to identify which work or receipt remains unresolved.
+
+## Autonomous malfunction recovery
+
+When the agent detects Neurath malfunctioning, it may call `harness_bypass(enabled=true)` without asking the user for permission. This applies to any harness malfunction, not only a Stop loop. Contradictory constraints, repeated unproductive actions and blocked shutdown are examples, not an exhaustive checklist. Containment must not wait for tests, a new task, a report or another user intervention. The agent explains the switch, preserves unfinished goals and evidence, and restores Neurath after verifying recovery. This does not change host security, sandbox permissions or user restrictions.
