@@ -22,6 +22,41 @@ def test_exact_native_answer_binds_question_target_and_owner(tmp_path):
     with pytest.raises(ValueError):
         store.read("other",choice["user_choice_ref"])
 
+
+def test_choice_errors_identify_question_and_reply_failures(tmp_path):
+    store=ChoiceStore(tmp_path/"choices.sqlite3")
+    subject={"operation":"reporting_consent","target_id":"","snapshot":{},
+             "question":"Approve?","decisions":["yes","no"]}
+    choice=store.prepare("owner","ask",subject,receipt("prepare",1))
+    with pytest.raises(ValueError,match="entire|verbatim|preamble"):
+        verify_answer(choice,receipt("yes"),[("assistant",choice["question"]+"\nExplanation"),("user","yes")])
+    with pytest.raises(ValueError,match="not an accepted answer"):
+        verify_answer(choice,receipt("maybe"),[("assistant",choice["question"]),("user","maybe")])
+    for answer in ("동의합니다","동의","ok","okay","ye","ne"):
+        assert verify_answer(choice,receipt(answer),[("assistant",choice["question"]),("user",answer)])=="yes"
+
+
+def test_claude_ask_user_question_is_not_treated_as_a_verified_user_reply(tmp_path,monkeypatch):
+    import json
+    from types import SimpleNamespace
+    from neurath.hosts import identity as native_identity
+    from neurath.runtime.user_choices import native_messages
+    path=tmp_path/"native.jsonl"
+    monkeypatch.setattr(native_identity,"snapshot",lambda *a:{"transcript":str(path)})
+    records=[
+      {"type":"assistant","sessionId":"native","message":{"content":[{"type":"tool_use","id":"ask-1","name":"AskUserQuestion","input":{"questions":[{"question":"Approve?"}]}}]}},
+      {"type":"user","sessionId":"native","message":{"content":[{"type":"tool_result","tool_use_id":"ask-1","content":"yes"}]}},
+    ]
+    path.write_text("\n".join(json.dumps(r) for r in records)+"\n")
+    assert native_messages(tmp_path,SimpleNamespace(host="claude-code",session="native"))==[]
+    records.extend([
+      {"type":"assistant","sessionId":"native","message":{"content":[{"type":"text","text":"Approve?"}]}},
+      {"type":"user","sessionId":"native","message":{"content":"동의합니다"}},
+    ])
+    path.write_text("\n".join(json.dumps(r) for r in records)+"\n")
+    assert native_messages(tmp_path,SimpleNamespace(host="claude-code",session="native"))==[
+      ("assistant","Approve?"),("user","동의합니다")]
+
 @pytest.mark.parametrize("messages,answer", [
     ([("assistant","Different question?"),("user","yes")],"yes"),
     ([("assistant","QUESTION"),("tool","yes")],"yes"),

@@ -39,7 +39,7 @@ def quarantine(store, message_id, *, reason, expected_generation=None):
 
 
 def delivery_status(store, actor, message_id):
-    from neurath.agents.delivery import _schema
+    from neurath.agents.delivery import _schema, delivery_mode
     _schema(store)
     with store.connection() as db:
         message = store._message(db, message_id)
@@ -49,7 +49,8 @@ def delivery_status(store, actor, message_id):
         attempts = [dict(row) for row in db.execute(
             "SELECT * FROM delivery_history WHERE message=? ORDER BY id DESC LIMIT 100", (message_id,))]
         return {"message_id": message_id, "status": message["status"],
-                "hold": dict(hold) if hold else None, "recent_attempts": attempts}
+                "hold": dict(hold) if hold else None, "recent_attempts": attempts,
+                **delivery_mode(db, message["recipient"])}
 
 
 def redrive(store, actor, message_id, *, expected_revision, repair_reference, key):

@@ -122,6 +122,9 @@ def shell_segments(command, execution_root, depth=0):
     """
     if depth > 8:
         raise ValueError("shell wrapper nesting exceeds retirement inspection bound")
+    from scripts.agent_harness.capability_retirement_hook import strip_heredoc_bodies
+
+    command = strip_heredoc_bodies(command)
     fragments = []
     start = 0
     quote = None

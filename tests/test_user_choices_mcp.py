@@ -12,6 +12,8 @@ def test_choice_prepare_then_fresh_user_answer_records_consent_once(sessions,mon
     fields={"operation":"reporting_consent","target_id":"","key":"ask"}
     question=mcp.call_tool(root,bound_call(sessions,"maintenance_choice_prepare",fields),
                            name="maintenance_choice_prepare")
+    assert "entire final assistant message" in question["next_action"]
+    assert "no preamble or trailing notes" in question["next_action"]
     assert Reporting(root).status()["auto_report"] is None
     from pathlib import Path
     from neurath.hosts.identity import snapshot

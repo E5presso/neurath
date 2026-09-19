@@ -198,9 +198,10 @@ class MessageStore:
         if not 1 <= limit <= 100:
             raise ValueError("limit must be between 1 and 100")
         with self.connection() as db:
+            from neurath.agents.delivery import delivery_mode
             rows = db.execute("SELECT * FROM agents ORDER BY updated DESC").fetchall()
             return [
-                dict(row)
+                {**dict(row), **delivery_mode(db, row["address"])}
                 for row in rows
                 if query.casefold()
                 in (row["name"] + " " + row["summary"] + " " + row["address"]).casefold()
@@ -291,7 +292,8 @@ class MessageStore:
             if old["request"] != request:
                 raise ValueError("idempotency key reused for another message")
             db.notices.append(identity)
-            return self._public(old)
+            from neurath.agents.delivery import delivery_mode
+            return {**self._public(old), **delivery_mode(db, recipient)}
         if reply_to:
             parent = self._message(db, reply_to)
             route = db.execute("SELECT recipient FROM message_reply_routes WHERE message=?", (parent["id"],)).fetchone()
@@ -343,7 +345,8 @@ class MessageStore:
         if reply_to:
             db.execute("UPDATE messages SET status='replied' WHERE id=?", (reply_to,))
         db.notices.append(identity)
-        return self._public(self._message(db, identity))
+        from neurath.agents.delivery import delivery_mode
+        return {**self._public(self._message(db, identity)), **delivery_mode(db, recipient)}
 
     @staticmethod
     def _bind_reply_route(db, message_id, recipient):

@@ -1061,6 +1061,89 @@ def native_root_turn(root, path, session, turn_id):
     return True
 
 
+def _native_user_prompt(path, turn_id):
+    """Read the latest host-classified user text in the current Codex turn."""
+    for event in _reverse_native_records(path, {"message", "task_started"}):
+        item = event.get("payload")
+        if not isinstance(item, dict):
+            continue
+        if (event.get("type") == "event_msg" and item.get("type") == "task_started"
+                and item.get("turn_id") == turn_id):
+            break
+        if (event.get("type") != "response_item" or item.get("type") != "message"
+                or item.get("role") != "user"):
+            continue
+        metadata = item.get("internal_chat_message_metadata_passthrough")
+        if not isinstance(metadata, dict) or metadata.get("turn_id") != turn_id:
+            continue
+        if metadata.get("content_item_kinds") != ["user.text"]:
+            if (metadata.get("content_item_kinds") == ["skills.selected_skill_instructions"]
+                    or _native_context_refresh(item, turn_id)):
+                continue
+            return None
+        blocks = item.get("content")
+        if (not isinstance(blocks, list) or len(blocks) != 1
+                or not isinstance(blocks[0], dict)
+                or blocks[0].get("type") != "input_text"
+                or not isinstance(blocks[0].get("text"), str)):
+            return None
+        return blocks[0]["text"]
+    return None
+
+
+def recover_missing_codex_start(root, host, payload, environment):
+    """Replay startup only for a missing exact native root with a live user turn.
+
+    The transcript and runtime-owned thread identity must agree before any state
+    is created. Existing sessions, including ended ones, are never restarted.
+    """
+    if host != "codex":
+        return None
+    session = payload.get("session_id")
+    if not isinstance(session, str) or not session:
+        return None
+    from scripts.agent_harness.session_kernel import SessionId, SessionKernel, SessionNotFound
+
+    try:
+        SessionKernel(_locator(root)).inspect(SessionId(session))
+        return None
+    except SessionNotFound:
+        pass
+    if payload.get("agent_id") is not None:
+        raise ValueError("missing session recovery requires a native root actor")
+    turn_id = payload.get("turn_id")
+    if not isinstance(turn_id, str) or not turn_id:
+        raise ValueError("missing session recovery requires a native turn id")
+    runtime_thread = environment.get("CODEX_THREAD_ID")
+    if runtime_thread is not None and runtime_thread != session:
+        raise ValueError("missing session recovery conflicts with runtime thread identity")
+    if _journal_exists(root, session):
+        raise ValueError("missing session recovery found an existing host journal")
+    if Path(payload.get("cwd", "")).resolve() != Path(root).resolve():
+        raise ValueError("missing session recovery requires the exact native worktree")
+    value = payload.get("transcript_path")
+    if not isinstance(value, str):
+        raise ValueError("missing session recovery requires a native transcript")
+    path = _transcript(host, value, environment)
+    if not native_root_turn(root, path, session, turn_id):
+        raise ValueError("missing session recovery lacks a live native root turn")
+    prompt = _native_user_prompt(path, turn_id)
+    if prompt is None:
+        raise ValueError("missing session recovery lacks one current native user text")
+    if payload.get("hook_event_name") == "UserPromptSubmit" and payload.get("prompt") != prompt:
+        raise ValueError("missing session recovery prompt differs from native user text")
+    from neurath.hosts.lifecycle import lifecycle_hook
+
+    startup = {"session_id": session, "cwd": str(Path(root).resolve()),
+               "transcript_path": str(path), "hook_event_name": "SessionStart",
+               "source": "startup"}
+    code, _, diagnostic = lifecycle_hook(root, json.dumps(startup), environment)
+    if code:
+        raise ValueError(f"missing session startup failed: {diagnostic}")
+    record_start(root, host, startup, environment)
+    return prompt
+
+
 def _native_context_refresh(item, turn_id):
     """Only host-classified context is not a human prompt; never inspect its text."""
     metadata = item.get("internal_chat_message_metadata_passthrough")

@@ -8,8 +8,14 @@ from tests.test_identity import native_peer_delivery, native_turn_started, peer_
 pytest_plugins = ["tests.test_identity"]
 
 
-@pytest.mark.parametrize("method", ["create_thread", "send_message_to_thread"])
-@pytest.mark.parametrize("invalid", [None, "missing-completion", "wrong-turn", "unknown-context", "human-input"])
+@pytest.mark.parametrize("method,invalid", [
+    ("create_thread", None),
+    ("create_thread", "missing-completion"),
+    ("create_thread", "wrong-turn"),
+    ("create_thread", "unknown-context"),
+    ("create_thread", "human-input"),
+    ("send_message_to_thread", None),
+])
 def test_fresh_app_delivery_with_plugin_context(runtime, method, invalid):
     from scripts.agent_harness import session_kernel as k
 

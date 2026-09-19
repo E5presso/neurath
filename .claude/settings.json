@@ -1,0 +1,130 @@
+{
+  "_neurath_checkout_bootstrap": true,
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hook_root=\"$(git rev-parse --show-toplevel)\"; \"$hook_root/tools/checkout_host\" hook --host claude-code",
+            "timeout": 600
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hook_root=\"$(git rev-parse --show-toplevel)\"; \"$hook_root/tools/checkout_host\" hook --host claude-code",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hook_root=\"$(git rev-parse --show-toplevel)\"; \"$hook_root/tools/checkout_host\" hook --host claude-code",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hook_root=\"$(git rev-parse --show-toplevel)\"; \"$hook_root/tools/checkout_host\" hook --host claude-code",
+            "timeout": 600
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hook_root=\"$(git rev-parse --show-toplevel)\"; \"$hook_root/tools/checkout_host\" hook --host claude-code",
+            "timeout": 600
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hook_root=\"$(git rev-parse --show-toplevel)\"; \"$hook_root/tools/checkout_host\" hook --host claude-code",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hook_root=\"$(git rev-parse --show-toplevel)\"; \"$hook_root/tools/checkout_host\" hook --host claude-code",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hook_root=\"$(git rev-parse --show-toplevel)\"; \"$hook_root/tools/checkout_host\" hook --host claude-code",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hook_root=\"$(git rev-parse --show-toplevel)\"; \"$hook_root/tools/checkout_host\" hook --host claude-code",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hook_root=\"$(git rev-parse --show-toplevel)\"; \"$hook_root/tools/checkout_host\" hook --host claude-code",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PermissionDenied": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hook_root=\"$(git rev-parse --show-toplevel)\"; \"$hook_root/tools/checkout_host\" hook --host claude-code",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  },
+  "env": {
+    "CLAUDE_CODE_ENABLE_TODO_TOOLS": "1",
+    "CLAUDE_CODE_ENABLE_TASKS": "0"
+  }
+}

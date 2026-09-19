@@ -45,7 +45,11 @@ def instruction(tx, process, ledger):
     if candidate is None:
         return {"availability": "unsupported-runtime"}
     capability = tx.get(f"task-todo-capability:{ledger.session}", ledger.owner)
+    published = tx.get(f"task-todo-projection:{ledger.session}", ledger.owner)
+    current = (published is not None and
+               json.loads(published.payload).get("projection_digest") == candidate["projection_digest"])
     return {"availability": "observed-supported" if capability else "unobserved",
+            "display_status": "current" if current else "pending" if ledger.tasks else "empty",
             **candidate, "receipt_scope": "native-tool-submission"}
 
 

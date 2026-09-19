@@ -66,6 +66,8 @@ Choose tools when the situations below arise; do not wait for the user to name t
   requirement it advances. Use `task_resolve` with observed results; a failed
   attempt or time limit does not cancel the original requirement.
   After task changes, display the returned `native_todo` through its native tool;
+  keep concrete work and native TODO current without user reminders, including
+  during bypass. Reconcile the ledger after recovery before reporting progress.
   do not substitute an inline checklist. Report a missing host tool explicitly.
   Keep the ledger as truth and retain the native display requirement.
 - Reuse context before repeating an investigation: use `memory_recall`. At a
@@ -79,6 +81,8 @@ Choose tools when the situations below arise; do not wait for the user to name t
   `collaboration_inbox` and answer with `collaboration_reply`; read the actual
   result before acknowledging it. Preserve the host's delegation conditions.
   Use these messaging triggers across Codex and Claude peers as well.
+  Read the returned delivery mode: pull-only means no live wake endpoint exists;
+  the peer will read the message on its next native turn.
 - When you find a reproducible bug, a shared interface constraint or a reusable
   workaround, share it with active project peers using `newsroom_publish`.
   Follow relevant announced titles with `newsroom_read`; use `newsroom_headlines`
@@ -183,7 +187,10 @@ CLI와 공통 도메인 서비스는 내부 실행 기반이며 에이전트의 
 내부 실험의 새 결함·진전만으로 반복을 연장하지 않는다. 원래 태스크의 미달 조건이 줄어드는지 본다.
 진전 없는 수단은 폐기·교체하되 사용자 태스크는 유지한다. 수단의 성공을 새 완료 조건으로 추가하지 않는다.
 태스크는 단계적으로 정의한다. 조사·구현·검증 중 필요한 후속 작업이 구체화되면 즉시 task_define으로
-등록한다. 처음부터 모든 단계를 발명하지 않으며 남은 일을 설명이나 기억에만 두지 않는다.
+등록하고, 독립적으로 확인되는 결과를 하나의 포괄 태스크에 숨기지 않는다. 결과를 확인하면 즉시
+상태와 네이티브 TODO를 함께 갱신한다. 사용자의 진행 질문을 기다리지 않으며 진행률은 최신 목록에서
+계산한다. 바이패스 중에도 네이티브 TODO를 유지하고 복구 뒤 원장과 맞춘다.
+처음부터 모든 단계를 발명하지 않으며 남은 일을 설명이나 기억에만 두지 않는다.
 추가·선택 전에 어느 사용자 요구를 충족하는지, 기존 결과 뒤에도 필요한지, 완료하면 무엇이 달라지는지,
 선택한 방법을 완벽하게 만들려고 범위를 넓히는지를 판단한다. 기존 goal·acceptance에 필요한 범위를
 담고 원래 sources를 선택한다. 출처의 존재만으로 관련성을 자동 판정하거나 별도 심사 기록을 만들지 않는다.
@@ -295,6 +302,7 @@ DECLARED hook은 AVAILABLE host 증명이 아니다. 원시 agent_id는 direct-c
 전달한다. 복구 도구를 새 후속 작업이나 원래 작업의 재실행으로 사용하지 않는다.
 여러 메시지는 collaboration_send의 messages 배열로 묶고 각 항목의 to 배열에 수신자를 지정한다.
 일괄 전송 결과는 수신자별 ID로 확인하며 접수·전달·작업 완료를 구분한다.
+delivery가 pull-only이면 현재 깨울 수 있는 연결이 없으며 동료의 다음 네이티브 턴에서 읽힌다.
 과거 제한 시간 실행기는 저장된 호출의 내부 호환용이다. 새 에이전트 운용 경로로 권하지 않는다.
 실행 결과는 agent-report다. 외부 실행으로 DIRECT_CHILD나 독립 evaluator 권한을 만들지 않는다.
 provider 인증과 모델 접근 권한은 해당 CLI의 기존 설정을 사용하며, 다른 모델로 몰래 대체하지 않는다.
@@ -580,7 +588,10 @@ def asset_files(profile, hosts, skill_prefix=""):
         0o644,
     )
     run = (
-        '#!/bin/sh\nset -eu\nroot=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)\nexec '
+        '#!/bin/sh\nset -eu\nroot=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)\n'
+        'if [ "${1:-}" = __mcp ]; then\n    shift\n    exec '
+        + shlex.quote(sys.executable)
+        + ' -I -m neurath.agents.mcp --root "$root" "$@"\nfi\nexec '
         + shlex.quote(sys.executable)
         + ' -I -m neurath --root "$root" "$@"\n'
     )

@@ -16,6 +16,8 @@ A direct question requests information. A work assignment additionally gives the
 
 Messages and assignments are retained in the project's local runtime store. Linked Git worktrees—separate checkouts belonging to the same local repository—can share that store, including Claude Code and Codex sessions. Separate clones or computers do not gain a shared conversation merely because their code has the same remote repository.
 
+The agent reports whether a peer can receive a wake notification or will read the message only on its next turn. A user-started session without a delivery connection may remain idle until you resume it. A queued message alone does not mean the peer will respond automatically.
+
 ## Let active peers notice a relevant finding
 
 Suppose the browser investigator discovers that the saved value is returned correctly but replaced during page initialization. The agent can publish a short finding for other agents currently working on the project. Neurath calls this project-local publication space the **newsroom**.

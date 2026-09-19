@@ -37,6 +37,8 @@ Choose tools when the situations below arise; do not wait for the user to name t
   requirement it advances. Use `task_resolve` with observed results; a failed
   attempt or time limit does not cancel the original requirement.
   After task changes, display the returned `native_todo` through its native tool;
+  keep concrete work and native TODO current without user reminders, including
+  during bypass. Reconcile the ledger after recovery before reporting progress.
   do not substitute an inline checklist. Report a missing host tool explicitly.
   Keep the ledger as truth and retain the native display requirement.
 - Reuse context before repeating an investigation: use `memory_recall`. At a
@@ -50,6 +52,8 @@ Choose tools when the situations below arise; do not wait for the user to name t
   `collaboration_inbox` and answer with `collaboration_reply`; read the actual
   result before acknowledging it. Preserve the host's delegation conditions.
   Use these messaging triggers across Codex and Claude peers as well.
+  Read the returned delivery mode: pull-only means no live wake endpoint exists;
+  the peer will read the message on its next native turn.
 - When you find a reproducible bug, a shared interface constraint or a reusable
   workaround, share it with active project peers using `newsroom_publish`.
   Follow relevant announced titles with `newsroom_read`; use `newsroom_headlines`

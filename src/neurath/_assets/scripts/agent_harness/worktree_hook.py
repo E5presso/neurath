@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Mapping, Sequence
 from enum import StrEnum
@@ -396,6 +397,18 @@ class WorktreeHookApplication:
         if bounded_decision is not None:
             return bounded_decision
 
+        if (
+            self._hook_runtime is SessionRuntime.CLAUDE_CODE
+            and request.name == "write"
+            and not identities
+            and unresolved_targets
+            and all(self._is_host_temp_target(target) for target in unresolved_targets)
+        ):
+            return self._defer_to_host(
+                WorktreeHookDecisionCode.HOST_MANAGED,
+                "Claude temporary scratchpad writes are governed by the host runtime",
+            )
+
         unique_identities = self._unique_identities(identities)
         if not unique_identities:
             return self._deny(
@@ -545,6 +558,15 @@ class WorktreeHookApplication:
 
     def _canonical_target(self, target: Path) -> Path:
         return canonical_material_target(target)
+
+    def _is_host_temp_target(self, target: Path) -> bool:
+        """Leave non-repository temporary files to the host's file permissions."""
+        roots = {Path(tempfile.gettempdir()).resolve(), Path("/tmp").resolve()}
+        for root in roots:
+            if target != root and target.is_relative_to(root):
+                parts = target.relative_to(root).parts[:-1]
+                return bool(parts) and parts[0].startswith("claude-")
+        return False
 
     def _allow(
         self,

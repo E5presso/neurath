@@ -1,0 +1,104 @@
+{
+  "_neurath_checkout_bootstrap": true,
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hook_root=\"$(git rev-parse --show-toplevel)\"; \"$hook_root/tools/checkout_host\" hook --host codex",
+            "timeout": 600
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hook_root=\"$(git rev-parse --show-toplevel)\"; \"$hook_root/tools/checkout_host\" hook --host codex",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hook_root=\"$(git rev-parse --show-toplevel)\"; \"$hook_root/tools/checkout_host\" hook --host codex",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hook_root=\"$(git rev-parse --show-toplevel)\"; \"$hook_root/tools/checkout_host\" hook --host codex",
+            "timeout": 600
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hook_root=\"$(git rev-parse --show-toplevel)\"; \"$hook_root/tools/checkout_host\" hook --host codex",
+            "timeout": 600
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hook_root=\"$(git rev-parse --show-toplevel)\"; \"$hook_root/tools/checkout_host\" hook --host codex",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hook_root=\"$(git rev-parse --show-toplevel)\"; \"$hook_root/tools/checkout_host\" hook --host codex",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hook_root=\"$(git rev-parse --show-toplevel)\"; \"$hook_root/tools/checkout_host\" hook --host codex",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hook_root=\"$(git rev-parse --show-toplevel)\"; \"$hook_root/tools/checkout_host\" hook --host codex",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

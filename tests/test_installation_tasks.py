@@ -5,6 +5,11 @@ from tests.test_workflow_tasks import call
 pytest_plugins = ["tests.test_agent_hooks"]
 
 
+@pytest.fixture
+def sessions(installed_sessions):
+    return installed_sessions
+
+
 def test_installation_face_has_no_plan_path_or_cli_argv():
     arguments("installation_plan", {"action": "uninstall", "key": "prepare"})
     for extra in ({"root": "/foreign"}, {"argv": ["install"]}, {"output": "/foreign/plan.json"}):

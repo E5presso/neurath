@@ -1,0 +1,37 @@
+#!/bin/sh
+# A cloned Neurath source tree bootstraps its own host runtime on first use.
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+cd "$root"
+stamp=$(git rev-parse --git-path neurath-checkout-source.cksum)
+fingerprint=$(cksum src/neurath/manifest.json pyproject.toml)
+previous=$(cat "$stamp" 2>/dev/null || true)
+if [ ! -x .neurath/run ] || [ ! -f .neurath/install.json ] || [ "$fingerprint" != "$previous" ]; then
+    # The runtime and installer already serialize their own writes. A competing
+    # first call may report a stale plan after the other call has installed.
+    if ! ./setup --self >&2; then
+        attempts=0
+        until [ -x .neurath/run ] && [ -f .neurath/install.json ] \
+                && [ "$(cat "$stamp" 2>/dev/null || true)" = "$fingerprint" ]; do
+            attempts=$((attempts + 1))
+            [ "$attempts" -lt 600 ] || {
+                echo 'Neurath bootstrap failed before another call completed' >&2
+                exit 1
+            }
+            sleep 0.1
+        done
+    else
+        temporary="$stamp.$$"
+        printf '%s\n' "$fingerprint" > "$temporary"
+        mv -f "$temporary" "$stamp"
+    fi
+fi
+[ -x .neurath/run ] && [ -f .neurath/install.json ] || {
+    echo 'Neurath bootstrap did not complete installation' >&2
+    exit 1
+}
+if [ "${1:-}" = mcp ]; then
+    shift
+    exec .neurath/run __mcp "$@"
+fi
+exec .neurath/run "$@"

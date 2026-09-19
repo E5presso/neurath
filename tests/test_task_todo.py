@@ -24,6 +24,7 @@ def test_native_todo_accepts_explanation_but_fences_the_complete_request(service
     from scripts.agent_harness.task_ledger import TaskLedgerError
     store, kernel, sk = service
     defined = store.define([item()], expected_revision=0, key="define")
+    assert defined["native_todo"]["display_status"] == "pending"
     request = payload(defined)
     request["tool_input"]["explanation"] = "Show current progress"
     assert event(store, kernel, sk, request)
@@ -33,6 +34,7 @@ def test_native_todo_accepts_explanation_but_fences_the_complete_request(service
         event(store, kernel, sk, changed, True)
     assert event(store, kernel, sk, request, True)
     assert store.list()["tasks"] == defined["tasks"]
+    assert store.list()["native_todo"]["display_status"] == "current"
 
 
 def test_native_todo_exact_pair_preserves_task_truth_and_rejects_substitution(service):
@@ -62,6 +64,7 @@ def test_native_todo_old_success_cannot_cover_new_task_revision(service):
     request = payload(store.define([item()], expected_revision=0, key="define"))
     event(store, kernel, sk, request)
     store.define([item("later")], expected_revision=1, key="append")
+    assert store.list()["native_todo"]["display_status"] == "pending"
     event(store, kernel, sk, request, True)
     with store.database.transaction() as tx:
         process = store.session_store.read_transaction(tx, sk.SessionId("one"))
@@ -77,6 +80,28 @@ def test_native_todo_unobserved_support_is_not_invented(service):
     with store.database.transaction() as tx:
         process = store.session_store.read_transaction(tx, sk.SessionId("one"))
         _, ledger = read_ledger(tx, process)
+
+
+def test_next_tool_proactively_reminds_about_pending_native_display(sessions):
+    from tests.test_workflow_tasks import call
+    from tests.test_task_ledger_service import item
+    _, invoke = sessions
+    defined = call(sessions, "task_define", {"tasks": [item()], "expected_revision": 0,
+        "key": "pending-display"})
+    def read(invocation):
+        return invoke("codex", "api", "PreToolUse", tool_name="Read",
+                      tool_use_id=invocation, tool_input={})[1]
+    assert "TODO display is pending" in json.dumps(read("first-read"))
+    assert "TODO display is pending" not in json.dumps(read("second-read"))
+    request = dict(tool_name="update_plan", tool_input=defined["native_todo"]["arguments"],
+                   tool_use_id="display-now")
+    assert invoke("codex", "api", "PreToolUse", **request)[0] == 0
+    assert invoke("codex", "api", "PostToolUse", **request,
+                  tool_response={"success": True})[0] == 0
+    assert "TODO display is pending" not in json.dumps(read("displayed-read"))
+    current = call(sessions, "task_list", {})
+    assert current["native_todo"]["display_status"] == "current"
+    assert current["tasks"] == defined["tasks"]
 
 
 def test_task_result_requests_native_display_without_substitution(service):

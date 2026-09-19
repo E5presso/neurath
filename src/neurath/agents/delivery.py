@@ -70,6 +70,16 @@ def _private_socket(path):
             and stat.S_IMODE(entry.st_mode) == 0o600)
 
 
+def delivery_mode(db, address):
+    """Describe the currently available wake path without granting delivery authority."""
+    table = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='delivery_endpoints'").fetchone()
+    endpoint = (db.execute("SELECT endpoint FROM delivery_endpoints WHERE address=?", (address,)).fetchone()
+                if table else None)
+    if endpoint and _private_socket(endpoint["endpoint"]):
+        return {"delivery": "push", "delivery_note": "A native delivery endpoint is registered; delivery attempts and recipient acknowledgement determine success."}
+    return {"delivery": "pull-only", "delivery_note": "No available native delivery endpoint; the peer reads this message on its next native turn."}
+
+
 def dispatch(store, message_id):
     """Called after the message transaction commits. Notification is not receipt."""
     _message_id(message_id)

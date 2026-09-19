@@ -77,10 +77,6 @@ graphify-out/
 .claude/skills/pr-feedback
 .claude/skills/update-deps
 .claude/skills/update-status
-.claude/settings.json
-.codex/hooks.json
-/.codex/config.toml
-/.mcp.json
 CLAUDE.md
 .neurath/*
 !.neurath/project.json

@@ -101,17 +101,26 @@ def test_user_guides_do_not_require_manual_cli_or_configuration():
         )
 
 
-def test_fresh_checkout_excludes_machine_local_mcp_settings(tmp_path):
+def test_fresh_checkout_shares_portable_config_and_ignores_local_runtime(tmp_path):
     import subprocess
 
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     (tmp_path / ".gitignore").write_bytes((ROOT / ".gitignore").read_bytes())
-    (tmp_path / ".codex").mkdir()
-    for name in (".mcp.json", ".codex/config.toml"):
-        (tmp_path / name).write_text("machine-specific configuration\n")
+    shared = {".mcp.json", ".codex/config.toml", ".codex/hooks.json", ".claude/settings.json"}
+    for name in shared:
+        content = (ROOT / name).read_text()
+        assert str(ROOT) not in content
+        assert str(Path.home()) not in content
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+    (tmp_path / ".neurath").mkdir()
+    for name in ("run", "install.json"):
+        (tmp_path / ".neurath" / name).write_text("machine-specific installation\n")
     result = subprocess.run(
         ["git", "-C", str(tmp_path), "ls-files", "--others", "--exclude-standard"],
         capture_output=True, text=True, check=True,
     )
-    assert ".mcp.json" not in result.stdout.splitlines()
-    assert ".codex/config.toml" not in result.stdout.splitlines()
+    visible = set(result.stdout.splitlines())
+    assert shared <= visible
+    assert not {".neurath/run", ".neurath/install.json"} & visible

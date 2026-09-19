@@ -24,6 +24,8 @@ Show its exact question, then wait for the actual user response. The returned `u
 {"decision": "yes", "user_choice_ref": "RETURNED_USER_CHOICE_REF", "key": "reporting-consent-1"}
 ```
 
+Send the returned question as the entire final assistant message, without introductory or trailing explanation. The supported Claude path is a fresh plain-text user reply; `AskUserQuestion` tool results do not produce the required prompt receipt. Common replies such as `yes`, `네`, `동의합니다`, `ok`, `no`, and `아니요` are recognized. Errors distinguish a changed question from an unsupported answer.
+
 Use `no` for a decline or revocation. Reporting state uses canonical private `LocalState`/SQLite storage; old reporting JSON is migration input, not a second current authority.
 
 ## Write and inspect a bounded draft

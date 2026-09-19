@@ -62,6 +62,14 @@ class CapabilityRetirementHookApplicationTest(TestCase):
                 self.assertEqual(0, result.exit_code)
                 self.assertIs(CapabilityRetirementDecisionCode.HOST_MANAGED, result.code)
 
+    def test_quoted_heredoc_body_is_data_but_following_command_is_inspected(self) -> None:
+        root, application = self._prepare_fixture()
+        body = "cat <<'EOF'\nunterminated \"quote\nEOF\n"
+        allowed = application.run(self._payload(root, "Bash", body + "python report.py"), root)
+        denied = application.run(self._payload(root, "Bash", body + "rm -rf .agents/skills/explore-ui"), root)
+        self.assertEqual(0, allowed.exit_code)
+        self.assertIs(CapabilityRetirementDecisionCode.PROTECTED_CAPABILITY, denied.code)
+
     def test_canvas_artifact_purge_does_not_authorize_penpot_connector_removal(self) -> None:
         """Canvas artifact가 실제로 없어져도 protected connector retirement는 deny됩니다."""
         root, application = self._prepare_fixture()
