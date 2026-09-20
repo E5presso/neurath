@@ -111,6 +111,10 @@ def test_fresh_checkout_shares_portable_config_and_ignores_local_runtime(tmp_pat
         content = (ROOT / name).read_text()
         assert str(ROOT) not in content
         assert str(Path.home()) not in content
+        if name == ".codex/hooks.json":
+            assert set(json.loads(content)) <= {"description", "hooks"}
+        if name.endswith(".json"):
+            assert "_neurath_checkout_bootstrap" not in json.loads(content)
         path = tmp_path / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)

@@ -141,8 +141,7 @@ def _matches_checkout_bootstrap(root, path, raw):
         parsed = json.loads(raw)
         if not isinstance(parsed, dict):
             return False
-        return (parsed.get("_neurath_checkout_bootstrap") is True
-                and parsed.get("mcpServers", {}).get("neurath_collaboration") == server)
+        return parsed.get("mcpServers", {}).get("neurath_collaboration") == server
     host = "codex" if path == ".codex/hooks.json" else "claude-code"
     events = list(host_hooks(root, host))
     command = ('hook_root="$(git rev-parse --show-toplevel)"; '
@@ -156,7 +155,7 @@ def _matches_checkout_bootstrap(root, path, raw):
     parsed = json.loads(raw)
     if not isinstance(parsed, dict):
         return False
-    if parsed.get("_neurath_checkout_bootstrap") is not True:
+    if host == "codex" and set(parsed) - {"description", "hooks"}:
         return False
     hooks = parsed.get("hooks", {})
     return all(isinstance(hooks.get(event), list)
@@ -226,7 +225,13 @@ def _preserves_user_config(previous, current):
 def _migrate_checkout_bootstrap(root, path, record, current):
     """Adopt tracked portable registration only when existing user values survive."""
     try:
-        old_user = _user_host_config(root, path, record["installed"], portable=False,
+        old_raw = bytes_of(record["installed"]).decode()
+        if path.endswith(".json"):
+            old_config = json.loads(old_raw)
+            old_config.pop("_neurath_checkout_bootstrap", None)
+            old_raw = json.dumps(old_config)
+        old_portable = _matches_checkout_bootstrap(root, path, old_raw)
+        old_user = _user_host_config(root, path, record["installed"], portable=old_portable,
                                      original=record["original"])
         new_user = _user_host_config(root, path, current, portable=True)
         if not _preserves_user_config(old_user, new_user):

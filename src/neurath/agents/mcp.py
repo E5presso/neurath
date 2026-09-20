@@ -178,7 +178,9 @@ def call_tool(root, inputs, *, name="agent"):
     token = inputs.get("_neurath_binding")
     if not isinstance(token, str) or len(token) != 64:
         raise TaskError("native-binding-required", "communication call must be bound by the native PreToolUse hook",
-                        next_action="Check installation and native hook activation; start a new native invocation after recovery. Never supply a binding yourself.")
+                        next_action="Inspect host hooks/list or /hooks for configuration parse warnings and hook trust status. "
+                                    "Modified hooks require host approval before they can attach a binding. "
+                                    "After recovery, make a new native invocation. Never supply a binding yourself.")
     store = _store(root)
     with store.connection() as db:
         row = db.execute("SELECT * FROM collaboration_calls WHERE token=?", (token,)).fetchone()
