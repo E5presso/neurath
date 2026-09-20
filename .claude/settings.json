@@ -1,5 +1,4 @@
 {
-  "_neurath_checkout_bootstrap": true,
   "hooks": {
     "SessionStart": [
       {

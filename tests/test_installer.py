@@ -56,6 +56,20 @@ def test_both_hosts_preserve_user_files_and_reinstall_is_noop(repo):
     assert read_state(repo)["profile"] == "generic"
 
 
+@pytest.mark.parametrize("name", [".codex/hooks.json", ".claude/settings.json", ".mcp.json"])
+def test_portable_marker_removal_preserves_existing_installation_config(repo, name):
+    from pathlib import Path
+    from neurath.install.transaction import _migrate_checkout_bootstrap, file_value
+
+    current = file_value((Path(__file__).resolve().parents[1] / name).read_bytes())
+    legacy = json.loads((Path(__file__).resolve().parents[1] / name).read_text())
+    legacy["_neurath_checkout_bootstrap"] = True
+    record = {"original": None, "installed": file_value(json.dumps(legacy).encode())}
+    assert _migrate_checkout_bootstrap(repo, name, record, current) == {
+        "original": current, "installed": current,
+    }
+
+
 def test_stale_plan_refused_without_partial_mutation(repo):
     plan = make_plan(repo)
     (repo / "AGENTS.md").write_text("edited after planning")
