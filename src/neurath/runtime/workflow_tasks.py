@@ -3,6 +3,9 @@
 import json
 from pathlib import Path
 
+ADAPTIVE_STATE_TASKS = frozenset({"adaptive_replace", "adaptive_override_goal",
+                                  "evaluation_prepare", "evaluation_execute"})
+
 
 def _object(fields, *, optional=()):
     return {"type": "object", "additionalProperties": False, "properties": fields,
@@ -103,6 +106,8 @@ def definitions():
         "evidence_refs": {**strings(), "description": "Use the reference returned by phase_evidence_prepare, adaptive_control_initialized, adaptive_control_receipt, or delegation:<consumed-delegation-id>. The server resolves registered evidence and existing authority; raw evidence strings are rejected."}}
     terminal = {"terminal_state": text_field(128)}
     adaptive = adaptive_schema()
+    state_inputs = {"state": adaptive, "state_ref": {**text_field(71),
+        "description": "Use the sha256 reference returned by artifact_put for the complete adaptive state."}}
     assignment = _object({**{name: text_field() for name in ("candidate_ref", "goal_fingerprint", "kind", "source_revision", "trajectory_digest", "target_workflow_payload_digest", "workflow_id", "workflow_payload_digest")},
         **{name: {"type": "integer", "minimum": 0} for name in ("intent_revision", "target_workflow_revision", "workflow_revision")}})
     entries = {
@@ -117,16 +122,16 @@ def definitions():
         "phase_finalize": ({**workflow, **revision, **key, **terminal}, False),
         "adaptive_read": (workflow, True),
         "adaptive_preflight": ({"workflow_id": text_field(256, default="")}, True),
-        "adaptive_replace": ({**workflow, **revision, **key, "state": adaptive}, False),
-        "adaptive_override_goal": ({**workflow, **revision, **key, "state": adaptive}, False),
+        "adaptive_replace": ({**workflow, **revision, **key, **state_inputs}, False),
+        "adaptive_override_goal": ({**workflow, **revision, **key, **state_inputs}, False),
         "delegation_prepare": ({"delegation_id": text_field(128), "assignment": text_field(8192),
             "task_id": {**_nullable(text_field(128)), "default": None},
             "expected_task_revision": {**_nullable({"type": "integer", "minimum": 1,
                 "maximum": 2**53 - 1}), "default": None}, **key}, False),
         "delegation_assign": ({**workflow, "delegation_id": text_field(128), "assignment": text_field(8192), "target": text_field(512), **key}, False),
-        "evaluation_prepare": ({**workflow, **key, "state": adaptive}, False),
+        "evaluation_prepare": ({**workflow, **key, **state_inputs}, False),
         "evaluation_read": ({**workflow, "assignment": assignment}, True),
-        "evaluation_execute": ({**workflow, **key, "state": adaptive, "criterion_id": text_field(256),
+        "evaluation_execute": ({**workflow, **key, **state_inputs, "criterion_id": text_field(256),
             "evidence_kind": choice("example-test", "property-test", "metamorphic-test", "mutation-test"), "pytest_node": text_field(4096)}, False),
         "evaluation_report": ({"delegation_id": text_field(128), **key, "verdict": text_field(128), "summary": text_field(),
             "outcome_ref": text_field(4096), "blocking_findings": strings()}, False),
@@ -254,12 +259,27 @@ def _save(root, actor, name, key, result, *, store=None):
         db.execute("UPDATE workflow_task_requests SET result=? WHERE actor=? AND operation=? AND key=?", (canonical(result), actor, name, key))
 
 
+def resolve_adaptive_state(handle, fields):
+    """A reference transports data; domain revisions and authority still apply."""
+    from scripts.agent_harness.adaptive_control_store import AdaptiveControlState
+    from neurath.runtime.task_schema import _validate
+    if "state_ref" in fields:
+        from scripts.agent_harness.artifact_store import SessionArtifactStore
+        document = SessionArtifactStore(handle).read_json(fields["state_ref"])
+        _validate(document, adaptive_schema(), "state")
+    else:
+        document = fields["state"]
+    return AdaptiveControlState.from_payload(document)
+
+
 def _preflight_start(root, name, fields, handle):
     """Reject known pre-creation failures before reserving a side-effect key.
 
     The actual domain write repeats these checks. Failures after reservation keep
     their uncertain outcome; an existing completed request still replays first.
     """
+    if name in ADAPTIVE_STATE_TASKS:
+        resolve_adaptive_state(handle, fields)
     if name not in {"phase_start", "workflow_start"}:
         return
     from neurath.skill_names import source_id
@@ -315,11 +335,10 @@ def _dispatch(root, name, fields, handle):
             AdaptiveControlAuthorityVerifier,
         )
         from scripts.agent_harness.adaptive_control_store import (
-            AdaptiveControlState,
             AdaptiveControlStore,
         )
         from scripts.agent_harness.skill_state_store import SkillStateStore
-        candidate = AdaptiveControlState.from_payload(fields["state"])
+        candidate = resolve_adaptive_state(handle, fields)
         verifier = AdaptiveControlAuthorityVerifier(handle, workflow_id)
         verifier.validate_candidate(candidate, fields["expected_revision"])
         store = AdaptiveControlStore(SkillStateStore(handle, workflow_id))
@@ -475,13 +494,12 @@ def _delegation(root, name, fields, handle):
 
 
 def _evaluation(name, fields, handle, workflow_id):
-    from scripts.agent_harness.adaptive_control_store import AdaptiveControlState
     from scripts.agent_harness.adaptive_evaluation_candidate import AdaptiveEvaluationCandidateStore
 
     from neurath.runtime.task_schema import TaskError
     store = AdaptiveEvaluationCandidateStore(handle, workflow_id)
     if name == "evaluation_prepare":
-        prepared = store.prepare(AdaptiveControlState.from_payload(fields["state"]))
+        prepared = store.prepare(resolve_adaptive_state(handle, fields))
         return {"workflow_id": str(workflow_id), "candidate_ref": prepared.candidate_ref,
                 "assignment": json.loads(prepared.assignment_json)}
     if name == "evaluation_read":
@@ -492,7 +510,7 @@ def _evaluation(name, fields, handle, workflow_id):
         raise TaskError("invalid-input", "unknown workflow task")
     from scripts.agent_harness.adaptive_control import EvidenceKind
     from scripts.agent_harness.adaptive_execution_receipt import AdaptiveExecutionReceiptStore
-    state = AdaptiveControlState.from_payload(fields["state"])
+    state = resolve_adaptive_state(handle, fields)
     issued = AdaptiveExecutionReceiptStore(handle, workflow_id).execute_pytest(state.contract,
         criterion_id=fields["criterion_id"], evidence_kind=EvidenceKind(fields["evidence_kind"]), pytest_node=fields["pytest_node"])
     evidence = issued.evidence

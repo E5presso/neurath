@@ -120,11 +120,17 @@ Read the returned `native_todo` and submit its exact full argument object using 
 
 `phase_start` requires `workflow_id`, `key`, `skill`, `run_id`, and `north_star`. `phase_complete` requires `workflow_id`, `expected_revision`, `key`, `phase_id`, `status`, and `summary`; valid statuses are `completed`, `skipped`, `failed`, and `blocked`. Optional evidence and terminal fields remain subject to the selected phase contract. An operational final phase can finalize atomically using its `terminal_state`; do not finalize it twice.
 
+## Reuse immutable adaptive state
+
+Prepare a complete adaptive state once with `artifact_put(document, key)`. Pass its returned `sha256:` reference as `state_ref` to `adaptive_replace`, `adaptive_override_goal`, `evaluation_prepare`, or `evaluation_execute`. These advertised inputs avoid repeating the full nested state schema. Saved calls with inline `state` remain supported; provide exactly one of `state` and `state_ref`.
+
+A reference is data, not authority. Consumption checks the same-session artifact digest, complete state schema, typed state, current native caller, workflow revision and applicable independent evaluator or execution receipts. Invalid references or malformed state are rejected before reserving a mutation key. Replays bind the original selector; the same key cannot be reused with a different reference. `evaluation_read` still reads its authenticated evaluation candidate, not a generic artifact.
+
 ## Recover at the failed boundary
 
 An `invalid-input` error calls for schema correction. `revision-conflict` calls for a fresh read and reconciliation. `task-contract-rejected` calls for inspecting the actual task definition, source, dependency, or outcome rule. A native binding, prompt, or ownership failure calls for restoring that native prerequisite, not altering task JSON to impersonate an admitted participant.
 
-Normal Stop is the final domain check, not a shortcut around these errors. Every current normal Stop remains blocked until prerequisites settle; a status question or repeated attempt does not waive them. Use the [runtime lifecycle](runtime-lifecycle.md) to identify which work or receipt remains unresolved.
+Normal Stop is the final domain check, not a shortcut around these errors. Unresolved prerequisites still reject canonical completion, but the host receives a nonblocking diagnostic instead of an automatic model retry; a returned answer does not resolve tasks. Use the [runtime lifecycle](runtime-lifecycle.md) to identify which work or receipt remains unresolved.
 
 ## Autonomous malfunction recovery
 

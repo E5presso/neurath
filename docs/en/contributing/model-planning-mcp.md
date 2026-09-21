@@ -60,6 +60,8 @@ A minimal *shape* for inheritance is shown below. Replace every placeholder with
 
 If the default model cannot yet be resolved, the system can permit `preparation-only` for the same authorized session when that preparation does not violate hard constraints. A constrained unknown default or an unsupported explicit reasoning setting cannot be guessed into validity. Substantive work waits for actual model/default readback. Do not create an unrelated discovery session to evade this boundary.
 
+Before saving an inherited-policy plan, the runtime applies the same permission mapping used at execution. Unsupported hook/tool controls or conflicting requested modes reject the proposal before it can become ready. Existing target configuration observations remain read-only; planning does not dispatch a model job. Explicit `target-native` remains a separate choice, never an automatic fallback after failed inheritance.
+
 ## Preserve revisions through dispatch and change
 
 The returned plan includes its identity and revision, the resolved model or preparation-only state, and binding to the assignment, inventory facts, policy, owner, and target. `provider_plan_read(plan_id, plan_revision)` retrieves that exact version. Pass the returned reference to `provider_run`; use actual returned revisions instead of assuming every plan is still revision 1.

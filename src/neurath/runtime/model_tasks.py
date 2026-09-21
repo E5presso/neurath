@@ -242,9 +242,13 @@ def run(root, name, fields, *, identity, expected_turn=None, verified_policy_evi
                   "freshness": "session-observation"}
     elif name == "provider_plan":
         fields = {**fields, "worktree": str(target)}
-        from neurath.runtime.provider_policy import planning_policy
+        from neurath.runtime.provider_policy import admit_inheritance, planning_policy
         policy = observed_policy(root, identity, expected_turn, verified_policy_evidence)
-        result = prepare_plan(store, identity, fields, planning_policy(root, identity, fields, policy))
+        observed = planning_policy(root, identity, fields, policy)
+        execution = {"provider": fields["provider"], **execution_fields(fields)}
+        if execution["mode"] != "target-native":
+            admit_inheritance(identity, execution, observed)
+        result = prepare_plan(store, identity, fields, observed)
     elif name == "provider_plan_read":
         result = store.plans.read(identity.address, fields["plan_id"], fields["plan_revision"])
     else:

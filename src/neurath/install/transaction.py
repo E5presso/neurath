@@ -369,11 +369,15 @@ def _rebase_codex_config(record, current):
         native_block = re.search(
             r"(?m)^# neurath:native-todo\r?\n\[tools\.update_plan\]\r?\n"
             r"enabled\s*=\s*true\r?\n# /neurath:native-todo\r?\n", live)
-        if (CODEX_TODO_DEFAULT.encode() in bytes_of(record["installed"])
-                and CODEX_TODO_DEFAULT.encode() not in bytes_of(record["original"])
+        if (CODEX_TODO_DEFAULT.encode() in bytes_of(record["installed"]).replace(b"\r\n", b"\n")
+                and CODEX_TODO_DEFAULT.encode() not in bytes_of(record["original"]).replace(b"\r\n", b"\n")
                 and native_block is not None):
             before = tomllib.loads(live)
-            stripped = live[:native_block.start()] + live[native_block.end():]
+            start = native_block.start()
+            separator = re.search(r"(?:^|\r?\n)(\r?\n)\Z", live[:start])
+            if separator:
+                start -= len(separator.group(1))
+            stripped = live[:start] + live[native_block.end():]
             after = tomllib.loads(stripped)
             expected = copy.deepcopy(before)
             if expected.get("tools", {}).get("update_plan") != {"enabled": True}:
@@ -392,9 +396,12 @@ def _rebase_codex_config(record, current):
         for line in live.splitlines(keepends=True):
             stripped = line.strip()
             if stripped.startswith("["):
+                was_owned = owned
                 owned = re.fullmatch(r"\[mcp_servers\.neurath_collaboration(?:\.[A-Za-z0-9_]+)*\]\s*(?:#.*)?", stripped) is not None
+                if owned and not was_owned and output and not output[-1].strip():
+                    output.pop()  # Remove the separator appended with this block.
                 found |= owned
-            if not owned or not stripped or stripped.startswith("#"):
+            if not owned or stripped.startswith("#"):
                 output.append(line)
             elif "#" in line:
                 # Do not discard user comments attached to an owned assignment.

@@ -173,6 +173,44 @@ def test_codex_managed_permission_change_is_still_a_conflict(repo):
         make_plan(repo, action="update")
 
 
+def test_repeated_codex_rebase_does_not_accumulate_owned_blank_lines(repo, monkeypatch):
+    monkeypatch.setenv("CODEX_HOME", str(repo / "absent-user-config"))
+    path = repo / ".codex/config.toml"
+    path.parent.mkdir()
+    user = '# User formatting\n\n\nmodel = "chosen-model"\n'
+    path.write_text(user)
+    apply_plan(repo, make_plan(repo))
+    extra = '\n# Keep my shell settings\n[shell_environment_policy]\ninherit = "core"\n'
+    path.write_text(path.read_text() + extra)
+    stable = None
+    for _ in range(3):
+        # Native formatters may separate each per-tool table with a blank line.
+        path.write_text(path.read_text().replace(
+            '\n[mcp_servers.neurath_collaboration.tools.',
+            '\n\n[mcp_servers.neurath_collaboration.tools.'))
+        apply_plan(repo, make_plan(repo, action="update"))
+        current = path.read_text()
+        assert user in current and extra in current
+        assert '\n' * 5 not in current
+        if stable is not None:
+            assert current == stable
+        stable = current
+
+
+def test_codex_rebase_removes_owned_crlf_separator_without_changing_user_bytes():
+    from neurath.install.projection import CODEX_TODO_DEFAULT
+    from neurath.install.transaction import _rebase_codex_config, bytes_of, file_value
+
+    original = b'model = "chosen"\r\n\r\n'
+    user = original
+    owned = (CODEX_TODO_DEFAULT + '\n[mcp_servers.neurath_collaboration]\ncommand = "neurath"\n').replace('\n', '\r\n').encode()
+    for _ in range(3):
+        current = file_value(user + owned, 0o644)
+        record = {"original": file_value(user, 0o644), "installed": current}
+        user = bytes_of(_rebase_codex_config(record, current)["original"])
+        assert user == original
+
+
 def test_host_selection_update_and_restore(repo):
     apply_plan(repo, make_plan(repo))
     receipt = apply_plan(repo, make_plan(repo, action="update", hosts=["codex"]))
