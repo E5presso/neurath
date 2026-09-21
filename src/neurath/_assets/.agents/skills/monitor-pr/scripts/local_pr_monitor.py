@@ -1947,14 +1947,12 @@ class MonitorDelegationReader:
                 continue
             try:
                 raw_assignment: object = json.loads(delegation.assignment)
-            except json.JSONDecodeError as error:
-                raise MonitorWorkflowStateError(
-                    f"delegation assignment is invalid: {delegation_id}"
-                ) from error
+            except json.JSONDecodeError:
+                # Generic delegations carry free-form instructions. Without a
+                # structured workflow identity they are not monitor assignments.
+                continue
             if not isinstance(raw_assignment, Mapping):
-                raise MonitorWorkflowStateError(
-                    f"delegation assignment must be an object: {delegation_id}"
-                )
+                continue
             if raw_assignment.get("workflow_id") != str(self._workflow_id):
                 continue
             required = ("kind", "scope", "started_at", "target", "workflow_id")

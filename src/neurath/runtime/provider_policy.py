@@ -156,11 +156,9 @@ def planning_policy(root, identity, fields, evidence):
             "target_observation_status": target_observation["status"]}
 
 
-def resolve_policy(root, identity, fields, evidence):
+def admit_inheritance(identity, fields, observed):
+    """Validate an observed permission mapping without launching or saving work."""
     provider = fields["provider"]
-    if fields.get("mode") == "target-native":
-        return _target_native(root, identity, fields, evidence)
-    observed = planning_policy(root, identity, fields, evidence)
     snapshot = snapshot_from_evidence(identity.host, observed["native_fields"], source="current-native-readiness",
                                       controls=observed["source_controls"], controls_source=observed["source_observation"])
     requested = {k: fields[k] for k in ("approval_policy", "approvals_reviewer", "collaboration_mode", "permission_mode") if fields.get(k)}
@@ -172,11 +170,22 @@ def resolve_policy(root, identity, fields, evidence):
     if mode not in (None, "", "inherit", "native"):
         if provider != "codex" or settings.get("sandbox_policy", {}).get("type") != mode:
             raise ValueError("permission inheritance unsupported: requested:sandbox_policy.type")
+    if provider == "codex" and settings["sandbox_policy"].get("type") not in {
+            "read-only", "workspace-write", "danger-full-access"}:
+        raise ValueError("permission inheritance unsupported: sandbox_policy")
+    return mapped
+
+
+def resolve_policy(root, identity, fields, evidence):
+    provider = fields["provider"]
+    if fields.get("mode") == "target-native":
+        return _target_native(root, identity, fields, evidence)
+    observed = planning_policy(root, identity, fields, evidence)
+    mapped = admit_inheritance(identity, fields, observed)
+    settings = mapped.settings
     result = {**fields}
     if provider == "codex":
         sandbox = settings["sandbox_policy"]
-        if sandbox.get("type") not in {"read-only", "workspace-write", "danger-full-access"}:
-            raise ValueError("permission inheritance unsupported: sandbox_policy")
         result.update(mode=sandbox["type"], approval_policy=settings["approval_policy"],
                       approvals_reviewer=settings.get("approvals_reviewer"),
                       collaboration_mode=settings.get("collaboration_mode") or "default", permission_mode=None)

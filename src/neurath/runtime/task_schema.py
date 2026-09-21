@@ -5,7 +5,7 @@ import json
 import math
 
 from neurath.runtime.state_tasks import definitions as state_definitions
-from neurath.runtime.workflow_tasks import definitions as workflow_definitions
+from neurath.runtime.workflow_tasks import ADAPTIVE_STATE_TASKS, definitions as workflow_definitions
 from neurath.runtime.maintenance_tasks import definitions as maintenance_definitions
 from neurath.runtime.model_tasks import definitions as model_definitions
 from neurath.runtime.communication_schema import definitions as communication_definitions
@@ -221,15 +221,20 @@ COMPATIBILITY_TASKS = frozenset({"workflow_start", "workflow_advance", "workflow
 
 
 def definitions():
-    return [{"name": name, "description": description,
-             "annotations": {"readOnlyHint": readonly, "destructiveHint": name == "provider_run",
-                             "openWorldHint": False},
-             "inputSchema": {"type": "object", "additionalProperties": False,
-                             "required": [key for key, rule in fields.items() if "default" not in rule],
-                             "properties": {**deepcopy(fields), "_neurath_binding": text_field(64)}},
-             "outputSchema": deepcopy(OUTPUT_SCHEMA)}
-            for name, (_, _, description, fields, readonly) in TASKS.items()
-            if name not in COMPATIBILITY_TASKS and not name.startswith(("material_", "verification_"))]
+    result = []
+    for name, (_, _, description, fields, readonly) in TASKS.items():
+        if name in COMPATIBILITY_TASKS or name.startswith(("material_", "verification_")):
+            continue
+        public_fields = deepcopy(fields)
+        if name in ADAPTIVE_STATE_TASKS:
+            public_fields.pop("state")  # Retained in TASKS for saved legacy calls.
+        result.append({"name": name, "description": description,
+            "annotations": {"readOnlyHint": readonly, "destructiveHint": name == "provider_run", "openWorldHint": False},
+            "inputSchema": {"type": "object", "additionalProperties": False,
+                "required": [key for key, rule in public_fields.items() if "default" not in rule],
+                "properties": {**public_fields, "_neurath_binding": text_field(64)}},
+            "outputSchema": deepcopy(OUTPUT_SCHEMA)})
+    return result
 
 
 def _validate(value, rule, path):
@@ -267,7 +272,9 @@ def _validate(value, rule, path):
     if "enum" in rule and value not in rule["enum"]:
         raise TaskError("invalid-input", f"{path} is not an allowed value")
     if isinstance(value, list):
-        if not rule.get("minItems", 0) <= len(value) <= rule["maxItems"]:
+        if len(value) < rule.get("minItems", 0):
+            raise TaskError("invalid-input", f"{path} has too few items")
+        if len(value) > rule["maxItems"]:
             raise TaskError("invalid-input", f"{path} has too many items")
         for item in value:
             _validate(item, rule["items"], path)
@@ -286,8 +293,13 @@ def arguments(name, inputs):
     fields = TASKS[name][3]
     if not isinstance(inputs, dict) or set(inputs) - (set(fields) | {"_neurath_binding"}):
         raise TaskError("invalid-input", "unexpected task fields; identity is supplied by the host")
+    state_input = name in ADAPTIVE_STATE_TASKS
+    if state_input and len({"state", "state_ref"}.intersection(inputs)) != 1:
+        raise TaskError("invalid-input", "supply exactly one of state or state_ref")
     result = {}
     for key, rule in fields.items():
+        if state_input and key in {"state", "state_ref"} and key not in inputs:
+            continue  # Keep legacy request serialization and replay identity exact.
         if key not in inputs and "default" not in rule:
             raise TaskError("invalid-input", f"missing required field: {key}")
         value = deepcopy(inputs[key] if key in inputs else rule["default"])
