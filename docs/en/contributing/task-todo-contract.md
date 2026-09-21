@@ -90,7 +90,7 @@ These receipts have scope `native-tool-submission`. They do not establish task s
 
 ## Close and migrate without losing work
 
-The current ledger check shares the transaction that closes the root turn, so a newly appended task cannot be missed between an earlier read and closure. Unsettled tasks reject normal Stop. An already registered ledger is the task-completion authority; checkpoints, learning, TODO state, and independent review are not additional ordinary task-completion votes. Explicitly selected phase or review contracts retain their own requirements.
+The current ledger check shares the transaction that closes the root turn, so a newly appended task cannot be missed between an earlier read and closure. Unsettled tasks reject canonical root closure. The host Stop adapter reports that denial without requesting another model turn; returning a response does not resolve tasks. An already registered ledger is the task-completion authority; checkpoints, learning, TODO state, and independent review are not additional ordinary task-completion votes. Explicitly selected phase or review contracts retain their own requirements.
 
 A committed memory adoption preserves source outcomes and records `superseded_by`. The migrated source is barred from further task mutations, while the receiver continues imported unfinished work under its own native identity. Migration does not rewrite unfinished source history as success.
 

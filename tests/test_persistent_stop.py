@@ -24,7 +24,7 @@ def test_codex_repeated_stop_cannot_abandon_original_work(stop_runtime, monkeypa
     send, kernel = _pending(stop_runtime, monkeypatch, "codex")
     for active in (False, True, False, True):
         code, result, diagnostic = send("codex", "Stop", stop_hook_active=active)
-        assert code == 0 and result.get("decision") == "block", diagnostic
+        assert code == 1 and "decision" not in result, diagnostic
         assert result.get("continue") is not False
     state = kernel.inspect(k.SessionId("root"))
     assert state.workflows[k.WorkflowId("original-work")].status.value == "active"
@@ -33,10 +33,10 @@ def test_codex_repeated_stop_cannot_abandon_original_work(stop_runtime, monkeypa
 def test_claude_side_question_preserves_stop_obligation(stop_runtime, monkeypatch):
     from scripts.agent_harness import session_kernel as k
     send, kernel = _pending(stop_runtime, monkeypatch, "claude-code")
-    assert send("claude-code", "Stop", stop_hook_active=False)[1].get("decision") == "block"
+    assert send("claude-code", "Stop", stop_hook_active=False)[0] == 1
     assert send("claude-code", "UserPromptSubmit", prompt="Explain the model tool; this is a side question")[0] == 0
     for active in (True, False, True):
         code, result, diagnostic = send("claude-code", "Stop", stop_hook_active=active)
-        assert code == 0 and result.get("decision") == "block", diagnostic
+        assert code == 1 and "decision" not in result, diagnostic
     state = kernel.inspect(k.SessionId("root"))
     assert state.workflows[k.WorkflowId("original-work")].goal == "Implement the original request"

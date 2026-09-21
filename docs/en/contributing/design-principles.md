@@ -53,11 +53,11 @@ Memory stores context and supports explicit migration. A checkpoint is an agent-
 
 For the filter example, a useful handoff includes the save/reload reproduction, the changed persistence path, the API review result, the outstanding observation, and the verified project test command. The receiver uses these facts to continue the same goal rather than repeating every earlier command.
 
-## A normal Stop must satisfy the current domain checks
+## Separate task completion from returning a response
 
-Neurath rejects each current normal Stop until the kernel prerequisites are met. There is no exemption for a status question, elapsed time, repeated rejection, or `stop_hook_active`. The host owns explicit user interruption separately.
+Kernel prerequisites remain authoritative for canonical completion. A status answer, elapsed time, repeated rejection, or `stop_hook_active` cannot mark unfinished work complete. The host may nevertheless return a response: a failed Stop validation produces a nonblocking diagnostic, never an automatic model continuation request. Preserving work does not require repeatedly invoking the model.
 
-The Stop adapter revalidates the current root, turn, transcript, and connection before requesting continuation. A stale or foreign event cannot close newer work or grant another execution turn. A denial means the agent must inspect and address the actual unresolved prerequisite; it is not evidence that a task failed or was cancelled.
+The Stop adapter validates ingress before canonical mutations. A stale or foreign event cannot close newer work or grant execution authority. The agent must address unresolved requirements within the user's current instructions; a diagnostic alone is not evidence of failure or cancellation.
 
 ## Keep the product independent of its development environment
 

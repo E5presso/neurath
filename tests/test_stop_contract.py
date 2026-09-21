@@ -66,7 +66,7 @@ def test_missing_session_stop_is_nonblocking_and_creates_no_state(stop_runtime, 
 
 
 @pytest.mark.parametrize("host", ["codex", "claude-code"])
-def test_unfinished_work_keeps_blocking_across_user_turns(
+def test_unfinished_work_is_preserved_across_user_turns_without_reentry(
     stop_runtime, monkeypatch, host,
 ):
     from neurath.memory import hooks as memory
@@ -92,8 +92,8 @@ def test_unfinished_work_keeps_blocking_across_user_turns(
         owner_actor_id=state.session.root_actor_id, kind="checkpoint",
         goal="Complete all acceptance criteria", payload={}, idempotency_key="unfinished",
     ))
-    assert send(host, "Stop", stop_hook_active=False)[1].get("decision") == "block"
-    assert send(host, "Stop", stop_hook_active=True)[1].get("decision") == "block"
+    assert send(host, "Stop", stop_hook_active=False)[0] == 1
+    assert send(host, "Stop", stop_hook_active=True)[0] == 1
     state = kernel.inspect(k.SessionId("root"))
     assert state.workflows[k.WorkflowId("unfinished")].status.value == "active"
     assert state.foreground_turns[state.session.root_actor_id].status.value == "active"
@@ -106,7 +106,7 @@ def test_unfinished_work_keeps_blocking_across_user_turns(
     assert send(host, "SessionStart", source="resume")[0] == 0
     assert send(host, "UserPromptSubmit", turn_id="turn-2", prompt="Continue the same work")[0] == 0
     code, output, diagnostic = send(host, "Stop", turn_id="turn-2", stop_hook_active=False)
-    assert code == 0 and output.get("decision") == "block", diagnostic
+    assert code == 1 and "decision" not in output, diagnostic
     assert kernel.inspect(k.SessionId("root")).workflows[k.WorkflowId("unfinished")].status.value == "active"
 
 
@@ -201,7 +201,7 @@ def test_external_stop_readback_never_holds_up_human_input(stop_runtime, monkeyp
 
 
 @pytest.mark.parametrize("host", ["codex", "claude-code"])
-def test_yielded_turn_with_pending_task_still_emits_blocking_stop(stop_runtime, monkeypatch, host):
+def test_side_answer_preserves_pending_tasks_without_reentering_model(stop_runtime, monkeypatch, host):
     from neurath.memory import hooks as memory
     from scripts.agent_harness import session_kernel as k
     from scripts.agent_harness.state_handle import StateHandle, RuntimeIdentityBinding
@@ -227,6 +227,7 @@ def test_yielded_turn_with_pending_task_still_emits_blocking_stop(stop_runtime, 
         idempotency_key="yield-side-answer"))
     for active in (False, True):
         code, reply, diagnostic = send(host, "Stop", stop_hook_active=active)
-        assert code == 0 and reply.get("decision") == "block", diagnostic
+        assert code == 1 and "decision" not in reply, diagnostic
+        assert "task Stop gate" in diagnostic
     assert tasks.list()["tasks"][0]["status"] == "pending"
     assert kernel.inspect(state.session.id).foreground_turns[state.session.root_actor_id].status is k.ForegroundTurnStatus.ACTIVE

@@ -46,9 +46,11 @@ def _host_hook(root, host, raw, environment=None, stop_guard=None):
 
     runtime = SessionRuntime(host)
     if event in {"UserPromptSubmit", "PreToolUse"}:
-        from neurath.hosts.identity import recover_missing_codex_start
+        from neurath.hosts.identity import recover_missing_codex_prompt, recover_missing_codex_start
 
         recovered_prompt = recover_missing_codex_start(root, host, payload, env)
+        if recovered_prompt is None and event == "PreToolUse":
+            recovered_prompt = recover_missing_codex_prompt(root, host, payload, env)
         if recovered_prompt is not None and event == "PreToolUse":
             prompt_payload = {
                 "session_id": payload["session_id"],

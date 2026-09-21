@@ -78,7 +78,7 @@ flowchart LR
 
 Where the task ledger is registered, unsettled tasks reject completion in the closing transaction. An explicit `awaiting-input` receipt may close the foreground turn while preserving every unfinished task. Task history is the task-completion authority; legacy phase and TODO display states are not extra task-completion gates. Independent domain obligations, including relevant incidents and unconsumed delegations, still have their own checks. Legacy workflows retain their applicable lifecycle rules where no ledger has been registered.
 
-The adapter rejects every current normal Stop until the prerequisites hold. Repeated rejection, `stop_hook_active`, and side questions do not establish completion. On detecting Neurath malfunctioning, the agent may autonomously enable harness bypass without additional user permission. A stale event cannot close a later turn. Explicit user interruption remains owned by the host.
+Canonical closure remains rejected until the prerequisites hold. The root Stop adapter returns a nonblocking diagnostic instead of requesting another model turn, so a response can return while unfinished work is preserved. Repeated rejection, `stop_hook_active`, and side questions do not establish completion. On detecting Neurath malfunctioning, the agent may autonomously enable harness bypass without additional user permission. A stale event cannot close a later turn. Explicit user interruption remains owned by the host.
 
 ## Continuing after context or transport loss
 

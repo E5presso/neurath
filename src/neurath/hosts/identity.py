@@ -1075,7 +1075,7 @@ def _native_user_prompt(path, turn_id):
             continue
         metadata = item.get("internal_chat_message_metadata_passthrough")
         if not isinstance(metadata, dict) or metadata.get("turn_id") != turn_id:
-            continue
+            return None
         if metadata.get("content_item_kinds") != ["user.text"]:
             if (metadata.get("content_item_kinds") == ["skills.selected_skill_instructions"]
                     or _native_context_refresh(item, turn_id)):
@@ -1142,6 +1142,39 @@ def recover_missing_codex_start(root, host, payload, environment):
         raise ValueError(f"missing session startup failed: {diagnostic}")
     record_start(root, host, startup, environment)
     return prompt
+
+
+def recover_missing_codex_prompt(root, host, payload, environment):
+    """Recover a skipped prompt from the current native root, never tool input.
+
+    Bypass can suppress UserPromptSubmit while the host starts a new turn.
+    Re-enter ordinary prompt handling before tool admission, using only text
+    classified by the host as this live root turn's human input.
+    """
+    if (host != "codex" or payload.get("hook_event_name") != "PreToolUse"
+            or payload.get("agent_id") or not payload.get("session_id")
+            or not payload.get("turn_id")):
+        return None
+    from scripts.agent_harness.session_kernel import ActorStatus, SessionStatus
+
+    session = payload["session_id"]
+    state = _state(root, session)
+    actor = state.actors.get(state.session.root_actor_id)
+    turn = state.foreground_turns.get(state.session.root_actor_id)
+    if (state.session.runtime.value != host or state.session.status is not SessionStatus.ACTIVE
+            or actor is None or actor.status not in {ActorStatus.ACTIVE, ActorStatus.IDLE}
+            or turn is None or turn.vendor_turn_id == payload["turn_id"]):
+        return None
+    if environment.get("CODEX_THREAD_ID") not in (None, session):
+        raise ValueError("prompt recovery conflicts with runtime thread identity")
+    if Path(payload.get("cwd", "")).resolve() != Path(root).resolve():
+        raise ValueError("prompt recovery requires the exact native worktree")
+    path = _transcript(host, payload["transcript_path"], environment)
+    data = snapshot(root, session)
+    _validate_root_transcript(root, host, payload, path, data)
+    if data.get("connected") is False or not native_root_turn(root, path, session, payload["turn_id"]):
+        return None
+    return _native_user_prompt(path, payload["turn_id"])
 
 
 def _native_context_refresh(item, turn_id):

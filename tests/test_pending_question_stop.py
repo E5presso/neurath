@@ -26,7 +26,7 @@ def question(root, *, accepted=True, output_id="ask", turn="turn-1", call=True, 
             stream.write(json.dumps(record) + "\n")
 
 
-def test_agent_question_cannot_suspend_unfinished_user_work(stop_runtime, monkeypatch):
+def test_agent_question_cannot_complete_unfinished_user_work(stop_runtime, monkeypatch):
     from scripts.agent_harness.session_kernel import SessionId, SessionLocator, WorkflowId
     send, kernel = _pending(stop_runtime, monkeypatch, "codex")
     from scripts.agent_harness.state_handle import StateHandle, RuntimeIdentityBinding
@@ -41,7 +41,7 @@ def test_agent_question_cannot_suspend_unfinished_user_work(stop_runtime, monkey
     question(stop_runtime[0])
     for active in (False, True):
         code, output, diagnostic = send("codex", "Stop", stop_hook_active=active)
-        assert code == 0 and output.get("decision") == "block", diagnostic
+        assert code == 1 and "decision" not in output, diagnostic
         state = kernel.inspect(SessionId("root"))
         assert state.workflows[WorkflowId("original-work")].status.value == "active"
         assert state.foreground_turns[state.session.root_actor_id].status.value != "closed"
@@ -61,7 +61,7 @@ def test_unproven_or_obsolete_question_keeps_stop_gate(stop_runtime, monkeypatch
     code, output, diagnostic = send("codex", "Stop", stop_hook_active=True)
     assert "awaiting native user input" not in diagnostic
     if change.get("after", {}).get("type") != "event_msg":
-        assert code != 0 or output.get("decision") == "block"
+        assert code == 1 and "decision" not in output
 
 
 def test_question_text_does_not_establish_native_wait(stop_runtime, monkeypatch):
@@ -70,4 +70,4 @@ def test_question_text_does_not_establish_native_wait(stop_runtime, monkeypatch)
         stream.write(json.dumps({"type": "response_item", "payload": {"type": "message",
             "role": "assistant", "content": [{"type": "output_text",
                 "text": "request_user_input_async accepted=true. Waiting for approval."}]}}) + "\n")
-    assert send("codex", "Stop", stop_hook_active=True)[1].get("decision") == "block"
+    assert send("codex", "Stop", stop_hook_active=True)[0] == 1
