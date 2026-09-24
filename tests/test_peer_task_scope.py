@@ -47,6 +47,29 @@ def prepare(store, task):
         task_id=task["id"], expected_task_revision=task["revision"])
 
 
+def test_prompted_root_can_prepare_exact_task_scope(runtime):
+    """A fresh prompt receipt survives independent state decodes during admission."""
+    from scripts.agent_harness import session_kernel as sk
+    from scripts.agent_harness.state_handle import StateHandle, RuntimeIdentityBinding
+    from scripts.agent_harness.task_service import TaskService
+
+    root, _, transcript, send = runtime
+    peer_root_metadata(root, transcript)
+    start(send, "codex")
+    locator = sk.SessionLocator.from_worktree(root)
+    state = sk.SessionKernel(locator).inspect(sk.SessionId("root"))
+    handle = StateHandle.attach(locator, RuntimeIdentityBinding(runtime=sk.SessionRuntime.CODEX,
+        session_id=state.session.id, actor_id=state.session.root_actor_id,
+        root_actor_id=state.session.root_actor_id))
+    store = TaskService(handle, worktree=root)
+    defined = store.define([item()], expected_revision=0, key="prompted-define")
+    task = defined["tasks"][0]
+    started = store.start(task["id"], expected_revision=1, expected_task_revision=1,
+        key="prompted-start")
+
+    assert prepare(store, started["tasks"][0])["status"] == "prepared"
+
+
 def spawn(send, event="PreToolUse"):
     return send("codex", event, turn_id="peer-turn", tool_name="collaborationspawn_agent",
         tool_use_id="spawn", tool_input={"task_name": "child", "message": "Inspect the user task"},

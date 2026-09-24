@@ -239,7 +239,7 @@
     "hosts/lifecycle.py": "d262513ddc543ea1bfc8412f5a09415256b34fc237b574632243973da84f469e",
     "hosts/process.py": "417426f3a136e061fd94c089b7dd5fec2248c0222045e407010ce34658399a6d",
     "hosts/stopping.py": "b41b36a4025b8bc31838c1dbf4f167a9264d90c0fadb8e13868a051f5c6f4b5e",
-    "hosts/task_scope.py": "3d90e0d97dd84d9e6a50ca5a386e09588ca98b2c1da1cb478387f661ad42216c",
+    "hosts/task_scope.py": "9cf6e68f6bd4fec755796efc89bb468b2a509c6734ae6d7051d0f8f267e06ada",
     "install/__init__.py": "cd42ec5aca5db7861be6ca5bb58f0f2ccc2297b4d37a13780d34986a2c7345c5",
     "install/cutover.py": "71255e740e5c0144179335f9d7f9eca3daa31f59ecdd1b156844610b9bd56960",
     "install/mcp_guidance.py": "40c0bff5c94f321229a428df06830670df6bdd5936648fa497c8bdc6932d4e24",
