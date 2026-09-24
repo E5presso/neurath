@@ -1227,6 +1227,16 @@ class PhaseRunner:
             failures.extend(self._adaptive_control_transition_failures(state, phase, store))
         if phase.name == "publication" and "local_review_head_sha" in phase.required_evidence:
             failures.extend(self._publication_semantic_failures(evidence))
+        elif "push_head_match" in required_evidence:
+            failures.extend(self._push_head_match_semantic_failures(evidence))
+            previous_commit = self._previous_evidence_item(state, "commit_sha")
+            pushed = self._evidence_item(evidence, "push_head_match")
+            if (
+                previous_commit
+                and self._head_evidence_value(previous_commit)
+                != self._head_evidence_value(pushed)
+            ):
+                failures.append("push_head_match.commit_sha_mismatch")
         if phase.name == "monitoring":
             failures.extend(
                 self._monitoring_semantic_failures(
@@ -1679,8 +1689,23 @@ class PhaseRunner:
         if pushed_head != local_head:
             failures.append("push_head_match.local_review_mismatch")
         failures.extend(self._exact_head_failures("commit_sha", commit_head))
-        failures.extend(self._push_upstream_failures(pushed_head))
+        failures.extend(self._push_head_match_semantic_failures(evidence))
         failures.extend(self._local_review_matrix_receipt_failures(matrix_receipt, local_head))
+        return failures
+
+    def _push_head_match_semantic_failures(self, evidence: tuple[str, ...]) -> list[str]:
+        """Structured push evidence를 current local과 live remote exact head에 결속합니다."""
+        pushed = self._evidence_item(evidence, "push_head_match")
+        pushed_head = self._head_evidence_value(pushed)
+        pushed_local = self._evidence_value(pushed, "local_sha")
+        pushed_remote = self._evidence_value(pushed, "remote_sha")
+        failures: list[str] = []
+        if pushed_local != pushed_head:
+            failures.append("push_head_match.local_sha_mismatch")
+        if pushed_remote != pushed_head or not self._evidence_flag(pushed, "match"):
+            failures.append("push_head_match.remote_sha_mismatch")
+        failures.extend(self._exact_head_failures("push_head_match", pushed_head))
+        failures.extend(self._push_upstream_failures(pushed_remote))
         return failures
 
     def _push_upstream_failures(self, pushed_head: str) -> list[str]:
@@ -1695,19 +1720,35 @@ class PhaseRunner:
         return []
 
     def _upstream_head(self) -> str:
-        """현재 branch upstream ref의 exact head를 반환합니다."""
+        """현재 branch upstream의 live remote exact head를 반환합니다."""
+        branch = self._git_read("branch", "--show-current")
+        if not branch:
+            return ""
+        remote = self._git_read("config", "--get", f"branch.{branch}.remote")
+        merge = self._git_read("config", "--get", f"branch.{branch}.merge")
+        if not remote or not merge:
+            return ""
+        lines = self._git_read("ls-remote", "--exit-code", remote, merge).splitlines()
+        if len(lines) != 1:
+            return ""
+        parts = lines[0].split()
+        if len(parts) != 2 or parts[1] != merge:
+            return ""
+        return parts[0] if re.fullmatch(r"[0-9a-f]{40}", parts[0]) else ""
+
+    def _git_read(self, *args: str) -> str:
+        """Repository에서 read-only Git 결과를 읽고 실패 시 빈 문자열을 반환합니다."""
         environment = {
             key: value for key, value in os.environ.items() if not key.startswith("GIT_")
         }
         result = subprocess.run(
-            ["git", "-C", str(self._repository.root), "rev-parse", "@{upstream}"],
+            ["git", "-C", str(self._repository.root), *args],
             capture_output=True,
             text=True,
             check=False,
             env=environment,
         )
-        head = result.stdout.strip()
-        return head if result.returncode == 0 and re.fullmatch(r"[0-9a-f]{40}", head) else ""
+        return result.stdout.strip() if result.returncode == 0 else ""
 
     def _local_review_matrix_receipt_failures(
         self,
@@ -2355,18 +2396,8 @@ class PhaseRunner:
 
     def _repository_head(self) -> str:
         """Git fixture가 있을 때 repository exact head를 반환합니다."""
-        environment = {
-            key: value for key, value in os.environ.items() if not key.startswith("GIT_")
-        }
-        result = subprocess.run(
-            ["git", "-C", str(self._repository.root), "rev-parse", "HEAD"],
-            capture_output=True,
-            text=True,
-            check=False,
-            env=environment,
-        )
-        head = result.stdout.strip()
-        return head if result.returncode == 0 and re.fullmatch(r"[0-9a-f]{40}", head) else ""
+        head = self._git_read("rev-parse", "HEAD")
+        return head if re.fullmatch(r"[0-9a-f]{40}", head) else ""
 
     def _repository_worktree_sha(self) -> str:
         """HEAD와 ignored file을 뺀 tracked/untracked current bytes를 digest합니다."""

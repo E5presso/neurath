@@ -105,7 +105,7 @@ def prepare(root, handle, fields):
             if not value:
                 raise ValueError("no staged files were observed")
         elif label == "commit_sha":
-            value = _git(root,"rev-parse","HEAD")
+            value = "head_sha=" + _git(root,"rev-parse","HEAD")
         elif label == "branch_name":
             value = _git(root,"branch","--show-current")
         elif label == "worktree_absolute_path":
@@ -129,7 +129,9 @@ def prepare(root, handle, fields):
                 local = _git(root,"rev-parse","HEAD")
                 if value != local:
                     raise ValueError("remote head does not match current HEAD")
-                value = f"local_head={local} remote_head={value} match=true"
+                value = (
+                    f"head_sha={local} local_sha={local} remote_sha={value} match=true"
+                )
         evidence.append(label+": "+value)
         provenance.append({"label":label,"authority":"source-readback"})
     for note in fields["notes"]:

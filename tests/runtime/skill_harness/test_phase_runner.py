@@ -2210,7 +2210,8 @@ class PhaseRunnerApplicationTest(TestCase):
                 f"head_sha={reviewed_head} kind=final-local-review outcome=result-applied"
             ),
             f"commit_sha: head_sha={'b' * 40}",
-            f"push_head_match: head_sha={reviewed_head}",
+            f"push_head_match: head_sha={reviewed_head} local_sha={reviewed_head} "
+            f"remote_sha={reviewed_head} match=true",
         )
 
         runner = PhaseRunner(SkillContractRepository(Path.cwd()))
@@ -2227,7 +2228,8 @@ class PhaseRunnerApplicationTest(TestCase):
                 f"head_sha={reviewed_head} kind=final-local-review outcome=result-applied"
             ),
             f"commit_sha: head_sha={reviewed_head}",
-            f"push_head_match: head_sha={reviewed_head}",
+            f"push_head_match: head_sha={reviewed_head} local_sha={reviewed_head} "
+            f"remote_sha={reviewed_head} match=true",
         )
 
         runner = PhaseRunner(SkillContractRepository(Path.cwd()))
@@ -2251,7 +2253,8 @@ class PhaseRunnerApplicationTest(TestCase):
                 "outcome=result-applied"
             ),
             f"commit_sha: head_sha={reviewed_head}",
-            f"push_head_match: head_sha={reviewed_head}",
+            f"push_head_match: head_sha={reviewed_head} local_sha={reviewed_head} "
+            f"remote_sha={reviewed_head} match=true",
         )
 
         with TemporaryDirectory() as temporary_directory:
@@ -2259,6 +2262,23 @@ class PhaseRunnerApplicationTest(TestCase):
             failures = runner._publication_semantic_failures(evidence)
 
         self.assertEqual([], failures)
+
+    def test_publication_rejects_structured_push_sha_mismatch(self) -> None:
+        """Canonical push payload 내부의 local/remote SHA 불일치를 거부합니다."""
+        reviewed_head = "a" * 40
+        evidence = (
+            *self._publication_evidence(reviewed_head)[:-1],
+            (
+                f"push_head_match: head_sha={reviewed_head} local_sha={'b' * 40} "
+                f"remote_sha={'c' * 40} match=true"
+            ),
+        )
+
+        runner = PhaseRunner(SkillContractRepository(Path.cwd()))
+        failures = runner._publication_semantic_failures(evidence)
+
+        self.assertIn("push_head_match.local_sha_mismatch", failures)
+        self.assertIn("push_head_match.remote_sha_mismatch", failures)
 
     def test_publication_rejects_commit_head_that_is_not_repository_head(self) -> None:
         """Publication commit evidence는 실제 repository HEAD와 일치해야 합니다."""
@@ -2298,6 +2318,28 @@ class PhaseRunnerApplicationTest(TestCase):
             failures = runner._publication_semantic_failures(evidence)
 
         self.assertEqual([], failures)
+
+    def test_publication_rejects_remote_advanced_after_evidence_preparation(self) -> None:
+        """Cached upstream이 같아도 실제 remote가 전진한 stale push evidence는 거부합니다."""
+        with TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            repository = root / "repo"
+            repository.mkdir()
+            origin = root / "origin.git"
+            prepared_head = self._initialize_git_repository(repository, upstream_root=origin)
+            evidence = self._publication_evidence(prepared_head)
+
+            peer = root / "peer"
+            self._git(root, "clone", "-b", "develop", str(origin), str(peer))
+            (peer / "remote.txt").write_text("advanced", encoding="utf-8")
+            self._git(peer, "add", "remote.txt")
+            self._git(peer, "commit", "--no-verify", "-m", "advance remote")
+            self._git(peer, "push", "origin", "develop")
+
+            runner = PhaseRunner(SkillContractRepository(repository))
+            failures = runner._publication_semantic_failures(evidence)
+
+        self.assertIn("push_head_match.upstream_mismatch", failures)
 
     def test_publication_rejects_upstream_head_behind_local_commit(self) -> None:
         """Push evidence는 upstream ref가 실제 HEAD와 같을 때만 수락됩니다."""
@@ -2410,7 +2452,7 @@ class PhaseRunnerApplicationTest(TestCase):
                 "outcome=result-applied"
             ),
             f"commit_sha: head_sha={head}",
-            f"push_head_match: head_sha={head}",
+            f"push_head_match: head_sha={head} local_sha={head} remote_sha={head} match=true",
         )
 
     def _merge_cleanup_readback_evidence(self, merged_receipt: str) -> tuple[str, ...]:
@@ -3439,6 +3481,7 @@ class PhaseRunnerApplicationTest(TestCase):
         with PhaseRunnerFixture() as fixture:
             fixture.write_process_ticket_publication_contract()
             fixture.run("init", "--skill", "process-ticket", "--run-id", "run-001")
+            head = "a" * 40
 
             result = fixture.run(
                 "complete",
@@ -3449,9 +3492,9 @@ class PhaseRunnerApplicationTest(TestCase):
                 "--summary",
                 "publication finished",
                 "--evidence",
-                "commit_sha: abc123",
+                f"commit_sha: head_sha={head}",
                 "--evidence",
-                "push_head_match: yes",
+                f"push_head_match: head_sha={head} local_sha={head} remote_sha={head} match=true",
                 "--evidence",
                 "pr_readback_metadata: 목적 구현 요약 인수 기준 검증 위험",
                 "--evidence",

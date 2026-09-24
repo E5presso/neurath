@@ -906,7 +906,7 @@
           ],
           "evidence_patterns": {
             "commit_sha": "head_sha=[0-9a-f]{40}",
-            "push_head_match": "head_sha=[0-9a-f]{40}",
+            "push_head_match": "head_sha=[0-9a-f]{40}.*local_sha=[0-9a-f]{40}.*remote_sha=[0-9a-f]{40}.*match=true",
             "local_review_head_sha": "kind=final-local-review.*outcome=result-applied.*head_sha=[0-9a-f]{40}",
             "local_review_matrix_receipt": "matrix_id=[0-9a-f]{64}.*frozen=true.*head_sha=[0-9a-f]{40}.*row_count=[0-9]+.*verified_rows=[0-9]+.*blocking_findings=0.*verdict=pass.*kind=final-local-review.*outcome=result-applied",
             "github_metadata_language": "validator=scripts\\.skill_harness\\.github_metadata_language.*policy_passed=true"
@@ -1455,7 +1455,10 @@
           "min_evidence_count": 1,
           "required_evidence": [
             "commit_sha"
-          ]
+          ],
+          "evidence_patterns": {
+            "commit_sha": "head_sha=[0-9a-f]{40}"
+          }
         },
         {
           "id": 4,
@@ -1465,7 +1468,7 @@
             "push_head_match"
           ],
           "evidence_patterns": {
-            "push_head_match": "local_head=[0-9a-f]{40}.*remote_head=[0-9a-f]{40}.*match=true"
+            "push_head_match": "head_sha=[0-9a-f]{40}.*local_sha=[0-9a-f]{40}.*remote_sha=[0-9a-f]{40}.*match=true"
           }
         },
         {
