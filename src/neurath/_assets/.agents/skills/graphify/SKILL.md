@@ -69,6 +69,13 @@ Follow these steps in order. Do not skip steps.
 worktree CWD에서 typed claim을 먼저 소유해야 합니다. Query/path/explain 같은 read-only
 호출은 claim을 만들지 않습니다.
 
+`graphify-out` must be a real directory inside the claimed worktree and must not be a symlink.
+Do not redirect it into Git metadata, another worktree, or an external shared directory. If an
+existing `graphify-out` is a symlink, stop before writing and report that the generated artifacts
+must be rebuilt in a worktree-local directory. This keeps Graphify scratch files inside the same
+fenced resource without granting access to Git configuration, hooks, the index, or foreign
+worktrees.
+
 ```bash
 python3 -m scripts.agent_harness.state_cli worktree claim
 ```

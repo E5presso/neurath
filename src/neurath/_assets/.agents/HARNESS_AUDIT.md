@@ -89,7 +89,7 @@ Skill entry 외 필수 reference, path rule, hook protocol, name/path wrapper는
 | `explain-code` | 8189 | 506 | 44701 |
 | `explore-ui` | 3000 | 190 | 39512 |
 | `finish-session` | 3260 | 392 | 39772 |
-| `graphify` | 8944 | 134 | 45456 |
+| `graphify` | 9432 | 134 | 45944 |
 | `implement-ui` | 2792 | 146 | 39304 |
 | `investigate` | 2838 | 78 | 39350 |
 | `monitor-pr` | 9776 | 111 | 46288 |

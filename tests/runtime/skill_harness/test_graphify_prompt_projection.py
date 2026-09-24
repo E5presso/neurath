@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 GRAPHIFY_SKILL = ROOT / ".agents/skills/graphify/SKILL.md"
+GRAPHIFY_SOURCE_SKILL = ROOT / "src/neurath/_assets/.agents/skills/graphify/SKILL.md"
 FULL_BUILD = ROOT / ".agents/skills/graphify/references/full-build.md"
 
 
@@ -48,6 +49,17 @@ class GraphifyPromptProjectionTest(unittest.TestCase):
         ):
             self.assertIn(f"`{name}`", full_build)
             self.assertTrue((FULL_BUILD.parent / name).is_file())
+
+    def test_source_requires_worktree_local_graphify_output_directory(self) -> None:
+        """Generated output stays in the claimed worktree instead of Git metadata."""
+        source_path = (
+            GRAPHIFY_SOURCE_SKILL if GRAPHIFY_SOURCE_SKILL.is_file() else GRAPHIFY_SKILL
+        )
+        source = source_path.read_text(encoding="utf-8")
+
+        self.assertIn("real directory inside the claimed worktree", source)
+        self.assertIn("must not be a symlink", source)
+        self.assertIn("Git metadata", source)
 
 
 if __name__ == "__main__":

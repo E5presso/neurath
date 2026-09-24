@@ -1,4 +1,4 @@
-<!-- updated: 2026-09-14 | synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
+<!-- updated: 2026-09-24 | synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
 
 # Ask for the work you need
 
@@ -11,6 +11,8 @@ A reusable procedure that guides an agent through a kind of work is a **skill**.
 ## Move from an observation to a checked change
 
 The agent may use `debug` to reproduce the loss and trace the save and load paths. If it needs to explain the relevant code first, `explain-code` supports that request. `graphify` helps examine code relationships. These procedures help the agent investigate; none guarantees that the first suspected cause is correct.
+
+When Graphify creates or refreshes generated files, `graphify-out` must be a real directory inside the current working tree. Neurath rejects writes through a replacement symlink into Git metadata, another working tree, or an external shared directory. This keeps generated analysis separate from Git configuration, hooks, and the index.
 
 Once the cause is understood, implementation and review can follow the scope you authorized. The same filter investigation can lead to a recorded issue and an implementation, or stay a direct repair. Creating an issue, commit, or pull request is a separate action to include in your request when you want it.
 
