@@ -17,11 +17,25 @@ def instruction_scope(root, state, task_id, expected_task_revision):
         actor = current.session.root_actor_id
         turn = current.foreground_turns.get(actor)
         observed = state.foreground_turns.get(actor)
-        if (current.session.status.value != "active" or current.actors[actor].status.value != "active"
-                or turn is None or turn.status.value != "active" or observed is None
-                or (turn.generation, turn.vendor_turn_id, turn.user_prompt_receipt) !=
-                   (observed.generation, observed.vendor_turn_id, observed.user_prompt_receipt)):
-            raise TaskLedgerError("task delegation requires the current active root turn")
+        if (current.session.id != state.session.id
+                or actor != state.session.root_actor_id):
+            raise TaskLedgerError("task delegation root session or actor changed")
+        if current.session.status.value != "active":
+            raise TaskLedgerError("task delegation requires an active root session")
+        root_actor = current.actors.get(actor)
+        if root_actor is None or root_actor.status.value != "active":
+            raise TaskLedgerError("task delegation requires an active root actor")
+        if turn is None or turn.status.value != "active" or observed is None:
+            raise TaskLedgerError("task delegation requires an active root turn")
+        if turn.generation != observed.generation:
+            raise TaskLedgerError("task delegation root turn generation changed")
+        if turn.vendor_turn_id != observed.vendor_turn_id:
+            raise TaskLedgerError("task delegation root vendor turn changed")
+        current_prompt = turn.user_prompt_receipt
+        observed_prompt = observed.user_prompt_receipt
+        if ((None if current_prompt is None else current_prompt.to_payload()) !=
+                (None if observed_prompt is None else observed_prompt.to_payload())):
+            raise TaskLedgerError("task delegation root prompt receipt changed")
         if tx.get("session-migration", str(state.session.id)) is not None:
             raise TaskLedgerError("migrated source cannot delegate task work")
         _, ledger = read_ledger(tx, current)
