@@ -68,6 +68,8 @@
 
 일반 작업의 완료 기준은 작업 원장입니다. TODO 표시, 체크포인트, 학습된 안내, 독립적으로 받은 검토 의견이 일반 완료 판정에 추가 표를 행사하지 않습니다. 승인된 작업에 명시적 단계·검토 계약을 선택했다면 그 계약은 적용됩니다. 시도 실패, 곁가지 질문, 예산 한도로 원래 필터 요구가 취소되지는 않습니다.
 
+`review-pr`은 저장소에 필요한 `.github/workflows/ai-review.yml` approval 자동화가 존재하고 활성 상태인지 확인한 뒤에만 comment와 exact-head `ai-review` status를 게시합니다. Workflow가 없거나 비활성·조회 불가이면 지원되지 않는 전제 조건으로 실패하며 원격 게시 부작용을 만들지 않습니다. 절차는 status-only 저장소 정책을 추정하거나 승인자를 꾸며내지 않습니다.
+
 ## 계약과 실패를 원본에서 확인하기
 
 소스·공개 이름 연결은 [src/neurath/skill_names.py](../../../src/neurath/skill_names.py), 설치 투영은 [src/neurath/install/projection.py](../../../src/neurath/install/projection.py)에 있습니다. 계약은 [src/neurath/_assets/.agents/skills/contracts.json](../../../src/neurath/_assets/.agents/skills/contracts.json)에 모여 있고 각 스킬 디렉터리에 지침과 해당하는 단계 파일이 있습니다. 아래 표의 단계 수와 허용 종결 상태로 절차를 찾을 수 있으며 정확한 label과 근거 패턴은 선택한 계약을 확인해야 합니다.

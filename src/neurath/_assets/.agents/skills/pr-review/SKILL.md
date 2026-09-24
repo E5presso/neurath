@@ -45,6 +45,10 @@ Phase 1 complete 뒤 adaptive authority를 refresh하고 별도 finalize합니�
 - Local HEAD, `commit_done.sha`, `push_done.local_sha`, `push_done.remote_sha`,
   `pr_opened.head_sha`, consumed review head, review matrix head, PR `headRefOid`가 모두
   같아야 합니다.
+- Publisher는 GitHub Actions API에서 exact `.github/workflows/ai-review.yml`을 읽고
+  `state=active`를 확인합니다. Workflow가 없거나 비활성·조회 불가이면 mandatory GitHub
+  approval automation을 사용할 수 없다는 prerequisite 오류로 실패하고 comment와 status를
+  게시하지 않습니다. 별도 선언이 없는 repository를 status-only 정책으로 추정하지 않습니다.
 - Live PR의 number와 URL은 `pr_opened` 및 `monitor_event_subscription`의 repo/PR과
   같은 canonical PR identity여야 합니다.
 - `LOCAL_REVIEW_OUTCOME_REF`는 publisher가 digest까지 검증한 artifact reference이며
@@ -150,6 +154,7 @@ local-review: <LOCAL_REVIEW_OUTCOME_REF>
   status입니다.
 - Fork, draft, stale head, incomplete matrix, unresolved blocker, dirty worktree,
   open harness incident에서는 아무 신호도 게시하지 않습니다.
+- Exact approval workflow의 active 상태를 확인할 수 없어도 아무 신호도 게시하지 않습니다.
 - 로컬 login, 프로젝트 ID, repo 경로를 하드코딩하지 않습니다.
 
 $ARGUMENTS

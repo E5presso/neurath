@@ -330,6 +330,97 @@ class PublishFinalReviewTest(TestCase):
         with self.assertRaisesRegex(MODULE.HarnessIncidentValidationError, 'unresolved harness incident'):
             publisher.publish(repo='E5presso/neurath', pr_number=131)
 
+    def test_rejects_missing_approval_automation_before_remote_publication(self) -> None:
+        """필수 approval workflow가 없으면 comment/status를 전혀 게시하지 않습니다."""
+        fixture = self.fixture()
+
+        class Gateway(MODULE.PublicationCommandGateway):
+            def __init__(self) -> None:
+                self.remote_mutations: list[tuple[str, ...]] = []
+
+            def run(self, args, *, input_text=None):
+                command = tuple(args)
+                if command[-2:] == ("rev-parse", "HEAD"):
+                    return fixture.head
+                if command[-2:] == ("status", "--porcelain"):
+                    return ""
+                self.remote_mutations.append(command)
+                raise AssertionError("remote publication must not happen")
+
+            def read_pr(self, repo, pr_number):
+                return fixture.valid_pr()
+
+            def require_approval_automation(self, repo):
+                raise MODULE.PublicationError(
+                    "mandatory GitHub approval automation is unavailable: "
+                    "active .github/workflows/ai-review.yml was not found"
+                )
+
+            def existing_comment_url(self, repo, pr_number, marker):
+                return None
+
+        gateway = Gateway()
+        publisher = MODULE.FinalReviewPublisher(
+            handle=fixture.root_handle,
+            workflow_id=fixture.workflow_id,
+            worktree=fixture.worktree,
+            gateway=gateway,
+        )
+
+        with self.assertRaisesRegex(
+            MODULE.PublicationError,
+            "mandatory GitHub approval automation is unavailable",
+        ):
+            publisher.publish(repo="E5presso/neurath", pr_number=131)
+        self.assertEqual([], gateway.remote_mutations)
+
+    def test_gateway_requires_exact_active_approval_workflow(self) -> None:
+        """Preflight는 fixed workflow path와 active state를 모두 검증합니다."""
+
+        class Gateway(MODULE.PublicationCommandGateway):
+            def __init__(self, payload) -> None:
+                self.payload = payload
+                self.commands: list[tuple[str, ...]] = []
+
+            def load_json(self, args):
+                self.commands.append(tuple(args))
+                return self.payload
+
+        gateway = Gateway({
+            "path": ".github/workflows/ai-review.yml",
+            "state": "active",
+        })
+        gateway.require_approval_automation("E5presso/neurath")
+        self.assertEqual(
+            [("gh", "api", "repos/E5presso/neurath/actions/workflows/ai-review.yml")],
+            gateway.commands,
+        )
+
+        for payload in (
+            {"path": ".github/workflows/ai-review.yml", "state": "disabled_manually"},
+            {"path": ".github/workflows/other.yml", "state": "active"},
+            [],
+        ):
+            with self.subTest(payload=payload):
+                with self.assertRaisesRegex(
+                    MODULE.PublicationError,
+                    "mandatory GitHub approval automation is unavailable",
+                ):
+                    Gateway(payload).require_approval_automation("E5presso/neurath")
+
+    def test_gateway_reports_unreadable_approval_workflow_as_unavailable(self) -> None:
+        """GitHub API 실패도 status-only fallback 없이 precise prerequisite로 남깁니다."""
+
+        class Gateway(MODULE.PublicationCommandGateway):
+            def load_json(self, args):
+                raise MODULE.PublicationError("command failed: HTTP 404")
+
+        with self.assertRaisesRegex(
+            MODULE.PublicationError,
+            "active .github/workflows/ai-review.yml could not be verified",
+        ):
+            Gateway().require_approval_automation("E5presso/neurath")
+
     def test_reads_consumed_final_review_from_one_canonical_session_snapshot(self) -> None:
         """Workflow evidence와 consumed delegation/artifact가 일치하면 receipt를 만듭니다."""
         fixture = self.fixture()
