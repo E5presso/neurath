@@ -95,7 +95,7 @@ Skill entry 외 필수 reference, path rule, hook protocol, name/path wrapper는
 | `monitor-pr` | 9776 | 111 | 46288 |
 | `optimize-harness` | 3521 | 315 | 40033 |
 | `plan-issues` | 11960 | 307 | 48472 |
-| `pr-review` | 7689 | 92 | 44201 |
+| `pr-review` | 8225 | 92 | 44737 |
 | `process-ticket` | 9040 | 114 | 45552 |
 | `promote-memory` | 2723 | 522 | 39235 |
 | `review-code` | 17901 | 139 | 54413 |

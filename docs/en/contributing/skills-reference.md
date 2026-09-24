@@ -68,6 +68,8 @@ A procedure can contain issue creation, push, PR publication, cleanup, or promot
 
 Ordinary task completion follows the task ledger. TODO display, a checkpoint, learned guidance, and a free-standing review are not additional ordinary completion votes. Explicit phase/review contracts still apply when chosen for authorized work. A failed attempt, a side question, or a budget limit does not cancel the original filter requirement.
 
+`review-pr` publishes its comment and exact-head `ai-review` status only after it verifies that the repository's required `.github/workflows/ai-review.yml` approval automation exists and is active. A missing, disabled, or unreadable workflow is an unsupported prerequisite and produces no publication side effect. The procedure does not infer a status-only repository policy or invent an approving reviewer.
+
 ## Inspect a contract and a failure at their source
 
 The source/public mapping is [src/neurath/skill_names.py](../../../src/neurath/skill_names.py); projection is in [src/neurath/install/projection.py](../../../src/neurath/install/projection.py). Contracts are collected in [src/neurath/_assets/.agents/skills/contracts.json](../../../src/neurath/_assets/.agents/skills/contracts.json); each skill's instructions and any phase files are in its own directory. The table records phase count and allowed terminal states to help locate the right procedure; exact labels and evidence patterns belong to the selected contract.

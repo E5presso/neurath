@@ -38,6 +38,7 @@ from scripts.agent_harness.state_handle import (
 )
 
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+APPROVAL_WORKFLOW_PATH = ".github/workflows/ai-review.yml"
 
 
 class PublicationError(RuntimeError):
@@ -389,6 +390,37 @@ class PublicationCommandGateway:
             raise PublicationError("PR metadata read-back 형식이 올바르지 않습니다.")
         return pr
 
+    def require_approval_automation(self, repo: str) -> None:
+        """필수 GitHub approval workflow가 현재 활성 상태인지 확인합니다.
+
+        Args:
+            repo: GitHub owner/name입니다.
+
+        Raises:
+            PublicationError: Exact workflow를 읽을 수 없거나 활성 상태가 아닐 때
+                발생합니다.
+        """
+        endpoint = f"repos/{repo}/actions/workflows/ai-review.yml"
+        try:
+            workflow = self.load_json(("gh", "api", endpoint))
+        except PublicationError as error:
+            raise PublicationError(
+                "mandatory GitHub approval automation is unavailable: "
+                f"active {APPROVAL_WORKFLOW_PATH} could not be verified ({error})"
+            ) from error
+        if (
+            not isinstance(workflow, dict)
+            or workflow.get("path") != APPROVAL_WORKFLOW_PATH
+            or workflow.get("state") != "active"
+        ):
+            path = workflow.get("path") if isinstance(workflow, dict) else None
+            state = workflow.get("state") if isinstance(workflow, dict) else None
+            raise PublicationError(
+                "mandatory GitHub approval automation is unavailable: "
+                f"expected path={APPROVAL_WORKFLOW_PATH!r} state='active', "
+                f"observed path={path!r} state={state!r}"
+            )
+
     def existing_comment_url(self, repo: str, pr_number: int, marker: str) -> str | None:
         """Exact-head marker를 이미 포함하는 idempotent comment URL을 찾습니다.
 
@@ -498,6 +530,7 @@ class FinalReviewPublisher:
             pr=self._gateway.read_pr(repo, pr_number),
             local_head=local_head,
         )
+        self._gateway.require_approval_automation(repo)
         comment_body = self._policy.build_comment(receipt)
         marker = f"<!-- ai-review verdict=AUTO_APPROVE head={receipt.head_sha} -->"
         comment_url = self._gateway.existing_comment_url(repo, pr_number, marker)
