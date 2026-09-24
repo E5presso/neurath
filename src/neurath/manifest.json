@@ -3,7 +3,7 @@
   "files": {
     "__init__.py": "91fd27e199bf4a66e0f188a33a1408b6b3d7c010c0c3718756cf6486312406fc",
     "__main__.py": "e376bc7dbac5a8dda3b5bcd173341d2e2965859dc9d1ee468ab596699b7f96d7",
-    "_assets/.agents/HARNESS_AUDIT.md": "5d287e7e2c3fb05fc02da5e218d8344dc476cbf890664d19600014fb6eeda7bf",
+    "_assets/.agents/HARNESS_AUDIT.md": "133394106e2bd01e1df7db287d27183d43da695885ec7758306ea41b9c645474",
     "_assets/.agents/HARNESS_INDEX.md": "936f7b9543743facb7edfb8e7981bb12691ab050c73556c99209b32e6a645f98",
     "_assets/.agents/design-collaboration-policy.json": "176ef2af38b42c9c794d489041f6d7be23cf5a4e32a10598ce411ee6b126cb6f",
     "_assets/.agents/rules/behavioral.md": "5bff005fe7b4f9c0de6171496b6000e061676b11e34d5c5f7ed293aba0eaede7",
@@ -58,7 +58,7 @@
     "_assets/.agents/skills/finish-session/SKILL.md": "1465945b960be568644ea796c01ec0c47d74b2f049755bf0a38b35e555772433",
     "_assets/.agents/skills/finish-session/agents/openai.yaml": "76fed78a62429710f33d349b9f5c9bbb3a806370424b510b505e4ef557fa374a",
     "_assets/.agents/skills/graphify/.graphify_version": "ba967d885b5ceb6d4ea2ed5abeace12d44f86fa486d9d8efff7a6fdab7e6c87c",
-    "_assets/.agents/skills/graphify/SKILL.md": "ee029a6c6b24f14240faeaa09c9ca41d1db55658ea30ec2de1dd0847c48ea952",
+    "_assets/.agents/skills/graphify/SKILL.md": "96fc5faf646133e995fd5a2a0eb0806203b268c5bac86d995948b4eb51d4fee3",
     "_assets/.agents/skills/graphify/references/add-watch.md": "b3f67570240582689c2834b4831917550c2d1aaf042148868c39dcbf387ce3fd",
     "_assets/.agents/skills/graphify/references/exports.md": "ee47fae477f106d8aed38798c58493b5a7f060a0d9d2581ce6132302827bc14b",
     "_assets/.agents/skills/graphify/references/extraction-spec.md": "43db279adc4d68fa5ed885d6417b4ca95f805f6e3de146f6df3683242938819f",

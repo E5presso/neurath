@@ -642,6 +642,50 @@ class WorktreeHookApplicationTest(TestCase):
         self.assertEqual(2, result.exit_code)
         self.assertEqual(WorktreeHookDecisionCode.RESOURCE_UNAVAILABLE, result.decision.code)
 
+    def test_graphify_output_symlink_into_git_metadata_is_denied_without_git_mutation(
+        self,
+    ) -> None:
+        """Graphify scratch output cannot turn a worktree claim into Git metadata access."""
+        git_directory = self.repository / ".git"
+        generated = git_directory / "neurath-generated" / "graphify"
+        generated.mkdir(parents=True)
+        output = self.worktree / "graphify-out"
+        output.symlink_to(generated, target_is_directory=True)
+        hook = git_directory / "hooks" / "pre-commit"
+        hook.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        protected = {
+            path: path.read_bytes()
+            for path in (git_directory / "config", git_directory / "index", hook)
+        }
+        target = output / ".graphify_semantic.json"
+
+        result = self._run({
+            "tool_name": "Write",
+            "tool_input": {"file_path": str(target)},
+        })
+
+        self.assertEqual(2, result.exit_code)
+        self.assertEqual(WorktreeHookDecisionCode.RESOURCE_UNAVAILABLE, result.decision.code)
+        self.assertFalse(target.exists())
+        self.assertEqual(protected, {path: path.read_bytes() for path in protected})
+
+    def test_graphify_output_symlink_to_foreign_worktree_is_denied(self) -> None:
+        """Graphify output cannot use the current claim to write through another worktree."""
+        foreign_output = self.repository / "foreign-graphify-output"
+        foreign_output.mkdir()
+        output = self.worktree / "graphify-out"
+        output.symlink_to(foreign_output, target_is_directory=True)
+        target = output / "graph.json"
+
+        result = self._run({
+            "tool_name": "Write",
+            "tool_input": {"file_path": str(target)},
+        })
+
+        self.assertEqual(2, result.exit_code)
+        self.assertEqual(WorktreeHookDecisionCode.RESOURCE_UNAVAILABLE, result.decision.code)
+        self.assertFalse(target.exists())
+
     def test_canonical_state_direct_mutation_is_always_denied(self) -> None:
         """Canonical state는 owner라도 StateHandle 밖에서 쓸 수 없습니다."""
         state_path = self.locator.locate(SessionId("owner-session")).process_state
