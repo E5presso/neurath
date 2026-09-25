@@ -135,7 +135,13 @@ def _host_hook(root, host, raw, environment=None, stop_guard=None):
             from neurath.runtime.task_todo import host_event
             if host_event(root, host, payload, raw):
                 return 0, {}, ""
-    if event in {"PreToolUse", "PostToolUse"} and payload.get("tool_name") in SPAWN_TOOLS:
+    if event == "PreToolUse":
+        from neurath.hosts.waves import before_wait
+        try:
+            before_wait(root, payload)
+        except ValueError as error:
+            return 2, {}, str(error)
+    if event in {"PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied"} and payload.get("tool_name") in SPAWN_TOOLS:
         try:
             return 0, spawn_hook(root, host, payload, env), ""
         except (ValueError, KeyError, OSError) as error:

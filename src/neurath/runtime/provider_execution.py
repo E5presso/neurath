@@ -29,6 +29,10 @@ def run(root, inputs, *, identity=None, expected_turn=None, verified_policy_evid
             raise TaskError("native-prompt-changed", "caller changed before initial reconciliation")
         result = reconcile_admission(root, identity, fields["key"], fields)
     else:
+        from neurath.providers.collaboration_policy import select
+        selection = select(identity.host, fields["provider"], fields.get("purpose", "task"), fields.get("reason", ""))
+        if selection["kind"] == "native-subagent":
+            raise TaskError("native-subagent-required", "Use delegation_prepare and the native child tool for work owned by this session")
         policy = observed_policy(root, identity, expected_turn or canonical(list(before[:2])), verified_policy_evidence)
         fields = admitted_request(root, identity, fields, policy)
         fields = resolve_policy(root, identity, fields, policy)

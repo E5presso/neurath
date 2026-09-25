@@ -124,7 +124,20 @@ def definitions():
         "adaptive_preflight": ({"workflow_id": text_field(256, default="")}, True),
         "adaptive_replace": ({**workflow, **revision, **key, **state_inputs}, False),
         "adaptive_override_goal": ({**workflow, **revision, **key, **state_inputs}, False),
-        "delegation_prepare": ({"delegation_id": text_field(128), "assignment": text_field(8192),
+        "delegation_wave_read": ({"wave_id": text_field(128)}, True),
+        "delegation_wave_retry": ({"wave_id": text_field(128), "delegation_id": text_field(128),
+            "replacement_id": text_field(128), **key}, False),
+        "delegation_wave_prepare": ({"wave_id": text_field(128), "task_id": text_field(128),
+            "workflow_id": text_field(256, default=""),
+            "expected_task_revision": {"type": "integer", "minimum": 1, "maximum": 2**53-1},
+            "max_parallel": {"type": "integer", "minimum": 1, "maximum": 64},
+            "capacity_basis": text_field(2048), "serialization_reason": text_field(2048, default=""),
+            "entries": {"type": "array", "minItems": 1, "maxItems": 128, "items": {
+                "type": "object", "additionalProperties": False, "required": ["delegation_id", "depends_on"],
+                "properties": {"delegation_id": text_field(128), "depends_on": {
+                    "type": "array", "maxItems": 128, "uniqueItems": True, "items": text_field(128)}}}},
+            **key}, False),
+        "delegation_prepare": ({"role": {**choice("worker", "review"), "default": "worker"}, "delegation_id": text_field(128), "assignment": text_field(8192),
             "task_id": {**_nullable(text_field(128)), "default": None},
             "expected_task_revision": {**_nullable({"type": "integer", "minimum": 1,
                 "maximum": 2**53 - 1}), "default": None}, **key}, False),
@@ -149,6 +162,9 @@ def definitions():
         "adaptive_preflight": "Inspect registered independent-evaluator admission without creating a workflow.",
         "adaptive_replace": "Validate a complete adaptive state and its external evidence against the exact workflow revision before replacement.",
         "adaptive_override_goal": "Apply a typed goal override only after validating current native user-intent authority; input text is not user approval.",
+        "delegation_wave_read": "Read actual native wave dispatch and consumed-result status after an event; not periodic polling.",
+        "delegation_wave_retry": "Replace one observed failed attempt with a fresh delegation identity; preserve original history and unresolved dependencies. Uncertain dispatch is not retryable.",
+        "delegation_wave_prepare": "Bind a DAG of native child dispatches to an exact active task. Declare observed capacity and any serial fallback reason. Prepare and spawn every ready slot before waiting; root consumes results and retains workflow ownership.",
         "delegation_prepare": "Bind the next native child spawn. A peer-resumed turn without a current user prompt requires task_id and expected_task_revision for an in-progress task with retained user instructions. Does not grant new authority or claim a worktree.",
         "delegation_assign": "Assign an active owned workflow task to an already discovered host-attested direct child. Use collaboration_assign for independent peer sessions.",
         "evaluation_prepare": "Persist an immutable adaptive candidate and return its authenticated structured evaluator assignment.",
@@ -168,7 +184,7 @@ def execute(root, name, fields, *, identity, expected_turn, verified_policy_evid
     activate(root)
     handle = _guarded_handle(root, _handle(root, identity, expected_turn, verified_policy_evidence),
                              identity, expected_turn, verified_policy_evidence)
-    reads = {"phase_current", "adaptive_read", "adaptive_preflight", "evaluation_read"}
+    reads = {"phase_current", "adaptive_read", "adaptive_preflight", "evaluation_read", "delegation_wave_read"}
     if name not in reads | {"evaluation_report", "evaluation_consume", "delegation_prepare"}:
         from scripts.agent_harness.worktree_registry import WorktreeNotClaimed
         try:
@@ -465,10 +481,13 @@ def _delegation(root, name, fields, handle):
     )
 
     from neurath.runtime.task_schema import TaskError
+    if name in {"delegation_wave_prepare", "delegation_wave_read", "delegation_wave_retry"}:
+        from neurath.hosts import waves
+        return getattr(waves, name.removeprefix("delegation_wave_"))(root, handle, **fields)
     if name == "delegation_prepare":
         from neurath.hosts.identity import prepare_bound_delegation
         return prepare_bound_delegation(root, handle, fields["delegation_id"], fields["assignment"],
-            task_id=fields.get("task_id"), expected_task_revision=fields.get("expected_task_revision"))
+            task_id=fields.get("task_id"), expected_task_revision=fields.get("expected_task_revision"), role=fields.get("role", "worker"))
     state = handle.inspect()
     common = {"session_id": handle.session_id, "delegation_id": DelegationId(fields["delegation_id"]),
               "idempotency_key": "task:" + name + ":" + fields["key"]}

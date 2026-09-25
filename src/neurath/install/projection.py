@@ -293,9 +293,21 @@ DECLARED hook은 AVAILABLE host 증명이 아니다. 원시 agent_id는 direct-c
 사소한 설명 요청에 stateful workflow를 강제하지 않는다.
 
 ## Provider 선택과 작업 간 대화
-같은 작업에서 분리할 수 있는 leaf 작업은 네이티브 직접 자식을 기본으로 사용한다.
-별도 세션 수명, 다른 provider, 또는 기본 자식 도구가 제공하지 못하는 필수 격리가 실제로
-필요할 때만 provider_run을 선택하고 그 이유를 남긴다. 단순 메시지 전달은 새 실행이 아니다.
+현재 목표의 위임은 티켓 규모·실행 시간·worktree 수와 무관하게 네이티브 직접 자식이 기본이다.
+사용자가 해당 대화를 직접 방문하여 이어갈 가능성이 있을 때만 사용자용 독립 세션을 선택한다.
+다른 provider의 충분한 추론 능력과 새로운 관점·대안·반증이 유용하면 에이전트가 자율적으로
+provider worker를 선택하고 구체적인 이유를 남긴다. 별도 교차 검증 요청을 선행 조건으로 삼지 않는다.
+provider_route와 provider_run의 purpose는 task, perspective, user-session을 구분한다.
+task는 native child로 보내며 provider_run 직접 호출로 새 세션을 만들지 않는다.
+관점 다양화를 위한 기술적 worker는 사용자가 관리할 앱 대화와 다르다. 앱 생성 도구의 별도
+명시적 요청 조건은 유지한다. 단순 메시지 전달은 새 실행이 아니다.
+Autopilot root는 task와 workflow, 통합, review, monitor 결과 수락을 소유한다. 구현 자식과
+리뷰 자식은 root가 각각 배정하며 자식에게 재위임·root 쓰기 권한을 넘기지 않는다.
+DAG는 delegation_wave_prepare로 현재 태스크에 결속하고 가용 슬롯의 준비된 항목을 모두
+prepare/spawn한 뒤 기다린다. 실제 실패한 attempt만 wave_retry로 대체하며 원래 기록을 보존한다.
+독립 리뷰는 role=review로 준비하고 새 컨텍스트에서 생성한다. Codex는 fork_turns=none,
+Claude는 새 Agent 호출을 사용한다. 구현 자식을 리뷰어로 재사용하지 않는다. 호스트가 관측한
+격리 출처가 없으면 정식 review 근거로 수락하지 않는다.
 새 독립 세션은 기본 `mode=inherit`로 바로 위 발행자의 실제 실행 정책을 승계한다.
 `provider_status`는 이벤트 후 진단, `provider_cancel`은 취소 요청, `provider_recover`는 실제 종료가
 확인된 소유 연결 복구다. 후속 질문은 발견한 실제 주소에 `collaboration_send` 또는 `collaboration_reply`로

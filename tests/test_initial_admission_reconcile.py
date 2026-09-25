@@ -214,3 +214,13 @@ def test_initial_failure_report_rollback_preserves_reconciliation(accepted, monk
         assert db.execute('SELECT COUNT(*) FROM provider_worker_leases WHERE run_id=?', (run_id,)).fetchone()[0] == 0
     assert jobs.start(root, identity, fields, key='key')['status'] == 'failed'
     assert len(MessageStore(root).inbox(identity.address)) == 1
+
+
+def test_legacy_admission_replay_ignores_only_new_empty_selection_defaults(accepted):
+    root, identity, fields, run_id = accepted
+    result = model_tasks.previous_admission(root, identity, 'key',
+        {**fields, 'key': 'key', 'purpose': 'task', 'reason': ''})
+    assert result['run_id'] == run_id
+    with pytest.raises(ValueError, match='changed request'):
+        model_tasks.previous_admission(root, identity, 'key',
+            {**fields, 'key': 'key', 'purpose': 'user-session', 'reason': 'Changed intent'})

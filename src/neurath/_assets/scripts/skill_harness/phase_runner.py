@@ -797,6 +797,10 @@ class PhaseRunStore(ABC):
             Direct-child authority가 발행한 digest-verified snapshot입니다.
         """
 
+    def read_native_wave(self, wave_id: str) -> Mapping[str, object]:
+        """Read a workflow-bound native wave; legacy stores cannot certify it."""
+        raise ValueError("native wave readback is unavailable")
+
     @abstractmethod
     def validate_harness_incidents(self, worktree: Path) -> None:
         """Runtime-bound process state의 typed incident lifecycle을 검증합니다.
@@ -1258,6 +1262,13 @@ class PhaseRunner:
             failures.extend(self._adaptive_control_initialized_failures(state, evidence, store))
         if "adaptive_control_receipt" in required_evidence:
             failures.extend(self._adaptive_control_receipt_failures(evidence, store))
+        if state.skill == "autopilot" and phase.name == "execute_waves":
+            wave_id = self._evidence_value(self._evidence_item(evidence, "native_wave_receipt"), "wave_id")
+            try:
+                if not wave_id or store.read_native_wave(wave_id).get("all_succeeded") is not True:
+                    failures.append("native_wave_receipt")
+            except (ValueError, KeyError):
+                failures.append("native_wave_receipt")
         if state.skill == "evaluate-harness":
             failures.extend(self._evaluate_harness_semantic_failures(state, phase, evidence, store))
         if state.skill == "review-code" and phase.name == "execute":

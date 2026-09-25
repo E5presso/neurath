@@ -1660,3 +1660,26 @@ def test_rotated_transcript_requires_native_root_proof(runtime, rotation_event, 
             deliver()
     assert kernel.inspect(SessionId("root")).revision == before.revision
     assert snapshot(root, "root") == receipt
+
+@pytest.mark.parametrize('fork,expected', [('none', 'fresh'), ('all', 'inherited'), ('3', 'inherited'), (None, 'unknown')])
+def test_native_spawn_records_context_from_tool_input(runtime, fork, expected):
+    from neurath.hosts.identity import snapshot
+    root, _, _, send = runtime
+    start(send, 'codex')
+    inputs = {'task_name': 'reviewer', 'message': 'Review independently'}
+    if fork is not None:
+        inputs['fork_turns'] = fork
+    code, _, error = send('codex', 'PreToolUse', tool_name='collaborationspawn_agent',
+                          tool_use_id='context-spawn', turn_id='parent-turn', tool_input=inputs)
+    assert code == 0, error
+    assert snapshot(root, 'root')['spawns']['context-spawn']['context']['mode'] == expected
+
+
+def test_spawn_context_cannot_change_on_same_native_call(runtime):
+    root, _, _, send = runtime
+    start(send, 'codex')
+    inputs = {'task_name': 'reviewer', 'message': 'Review', 'fork_turns': 'all'}
+    assert send('codex', 'PreToolUse', tool_name='spawn_agent', tool_use_id='same',
+                turn_id='parent-turn', tool_input=inputs)[0] == 0
+    assert send('codex', 'PreToolUse', tool_name='spawn_agent', tool_use_id='same',
+                turn_id='parent-turn', tool_input={**inputs, 'fork_turns': 'none'})[0] != 0

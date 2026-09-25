@@ -17,3 +17,8 @@ dependency graph와 execution wave를 구성합니다.
 - graph에 cycle이 있습니다.
 - ordering을 바꾸는 dependency metadata가 빠졌습니다.
 - scope 안의 모든 issue에 대해 product intent가 충분히 확정되지 않았습니다.
+
+DAG는 설명 문자열만 남기지 않습니다. 현재 태스크의 실행 단위를 고유 delegation_id와
+depends_on 목록으로 정규화하여 phase 3의 delegation_wave_prepare에 전달합니다.
+서로 충돌하는 쓰기는 root가 통합 순서를 정하고, 독립적인 구현 준비는 병렬로 진행합니다.
+가용 동시 실행 수와 관측 근거, 직렬화가 필요한 구체적 사유를 기록합니다.

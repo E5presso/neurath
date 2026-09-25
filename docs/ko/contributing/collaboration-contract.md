@@ -265,3 +265,23 @@
 | `expected_revision` | 필수 | 정수; 1–9007199254740991 |
 | `repair_reference` | 필수 | 문자열; 1–1024 자 |
 | `key` | 필수 | 문자열; 1–512 자 |
+
+## 병렬 wave와 협업 방식 선택
+
+현재 대화가 소유한 작업은 큰 티켓을 포함해 native subagent에 맡기는 것이 기본입니다. 실행 시간과 별도 worktree는 실행 환경의 속성이며 사용자용 독립 대화의 생성 사유가 아닙니다. 사용자가 그 대화를 직접 방문하여 작업을 이어갈 가능성이 있을 때만 사용자용 세션을 선택합니다. 충분한 추론 능력을 가진 다른 provider의 관점이 대안, 반복되는 가정, 놓친 반증을 찾는 데 유용하면 에이전트가 자율적으로 선택할 수 있습니다. 결과는 원래 orchestrator가 회수하며 기술적 provider worker가 새 사용자용 앱 작업을 의미하지는 않습니다. 호스트 도구의 명시적 생성 요청 조건은 유지합니다.
+
+`provider_route`와 `provider_run`은 `purpose` (`task`, `perspective`, `user-session`)와 `reason`을 받습니다. 기본 `task`는 native delegation으로 안내하고 provider 직접 실행에서는 거부합니다. `perspective`는 다른 provider와 구체적인 이유가 필요합니다. `user-session`은 사용자가 이어서 작업할 것으로 예상하는 이유가 필요합니다. 이 선택은 모델 계획, 권한 승계, 실제 호스트 준비 상태 검증을 대신하지 않습니다.
+
+Root가 각 티켓 workflow, 통합, 리뷰를 소유합니다. 구현과 리뷰를 각각 직접 자식에게 배정하고 구현 자식에게 리뷰어 생성을 맡기지 않습니다. 쓰기 권한이 확인되지 않은 worker는 patch artifact를 반환하고 root가 자신의 claim 아래 통합합니다.
+
+`delegation_wave_prepare`는 DAG를 정확한 in-progress 태스크 revision에 결속합니다. 입력은 `wave_id`, `task_id`, `expected_task_revision`, `entries` (각 `delegation_id`, `depends_on`), `max_parallel`, `capacity_basis`, 선택적 `serialization_reason`, 안정된 `key`입니다. capacity는 소유자의 관측이며 숫자를 제출했다고 호스트 확인이 되는 것은 아닙니다. 순환과 누락 dependency를 거부하고 독립 작업을 한 슬롯으로 제한하면 직렬화 이유를 요구합니다.
+
+준비된 항목을 가용 슬롯만큼 prepare·spawn한 뒤 기다립니다. Native hook은 spawn 예약과 실제 dispatch를 집계하고 준비된 작업과 빈 슬롯이 남아 있으면 대기를 거부합니다. Claude 병렬 Agent는 background 실행을 사용합니다. 소유자가 consume한 성공 결과만 후속 의존 작업을 해제하며 실패 또는 보고만 된 결과는 해제하지 않습니다. 이벤트 후 `delegation_wave_read(wave_id)`로 상태를 읽습니다. `delegation_wave_retry(wave_id, delegation_id, replacement_id, key)`는 실제 실패한 시도만 교체하고 원래 이력을 보존합니다. 미완료 또는 실패한 wave가 있으면 태스크 성공을 기록할 수 없습니다. 이 기록은 기존 태스크의 실행을 설명하며 별도 목표 목록이 아닙니다.
+
+## 독립 리뷰 컨텍스트
+
+`delegation_prepare(role="review")`로 준비한 뒤 새 native child를 생성합니다. Codex는 `fork_turns="none"`을 명시하고 Claude는 기존 자식을 재개하지 않는 새 Agent를 사용합니다. Native spawn journal이 관측한 옵션을 실제 자식에 결속합니다. 일반적인 컨텍스트 상속 자식은 비리뷰 작업에 계속 사용할 수 있습니다. 구현 자식을 리뷰어로 재사용할 수는 없습니다.
+
+리뷰 배정, 결과 소비, 이전 리뷰 재사용, 게시 단계가 동일한 컨텍스트 증거와 함께 계보, exact head, artifact digest를 검증합니다. 컨텍스트 출처가 없거나 상속된 경우 거부하며 리뷰어가 제출한 플래그로 대신할 수 없습니다. exact diff, 요구사항, 수용 조건, 원문 근거를 제공하고 구현자의 결론을 정답처럼 주입하지 않습니다.
+
+기존 phase workflow는 wave 준비 시 `workflow_id`를 결속하고 완료 시 `native_wave_receipt: wave_id=...`를 제출합니다. phase gate는 해당 workflow에 결속된 실제 wave 결과를 읽습니다.

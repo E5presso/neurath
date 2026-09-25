@@ -64,6 +64,9 @@ def test_inventory_is_task_shaped_and_preserves_legacy():
         "collaboration_unsubscribe",
         "delegation_assign",
         "delegation_prepare",
+        "delegation_wave_prepare",
+        "delegation_wave_read",
+        "delegation_wave_retry",
         "delivery_redrive",
         "delivery_status",
         "diagnostics_continuation",
@@ -513,6 +516,7 @@ def test_provider_task_route_shares_cli_and_never_creates_a_session(sessions, mo
 
     root, _ = sessions
     inputs = {"provider": "codex", "operation": "create", "project_id": "project-from-inventory",
+              "purpose": "user-session", "reason": "User continuation",
               "requested": {"collaboration_mode": "plan"}}
     bound = bound_call(sessions, "provider_route", inputs)
     report = mcp.call_tool(root, bound, name="provider_route")
@@ -523,6 +527,7 @@ def test_provider_task_route_shares_cli_and_never_creates_a_session(sessions, mo
     emitted = []
     monkeypatch.setattr("neurath.cli.emit", emitted.append)
     assert main(["--root", str(root), "provider", "route", "codex", "create",
+                 "--purpose", "user-session", "--reason", "User continuation",
                  "--project-id", inputs["project_id"], "--requested-json", json.dumps(inputs["requested"])]) == 0
     assert emitted == [report]
 

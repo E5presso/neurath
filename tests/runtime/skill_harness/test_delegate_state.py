@@ -98,6 +98,9 @@ class DelegateCliFixture:
             )
         )
 
+        from scripts.agent_harness.tests.review_context_fixture import record_review_spawn
+        record_review_spawn(self.root_handle, actor_id)
+
     def run_cli(
         self,
         *arguments: str,
@@ -760,6 +763,8 @@ class DelegateStateTest(TestCase):
         second_actor = ActorId("codex:delta-reviewer")
         fixture.start_actor(first_actor)
         fixture.start_actor(second_actor)
+        unrelated_actor = ActorId("codex:unrelated-worker")
+        fixture.start_actor(unrelated_actor)
         for assignment in (
             "Inspect the installed package",
             '"generic JSON string"',
@@ -768,7 +773,7 @@ class DelegateStateTest(TestCase):
             json.dumps({"workflow_id": str(fixture.workflow_id), "kind": "package-check"}),
             json.dumps({"workflow_id": str(fixture.workflow_id), "kind": {"generic": True}}),
         ):
-            fixture.consume_generic(first_actor, assignment)
+            fixture.consume_generic(unrelated_actor, assignment)
         before = fixture.workflow_snapshot()
 
         first = fixture.begin(
@@ -829,7 +834,9 @@ class DelegateStateTest(TestCase):
         _, head = fixture.create_review_heads()
         actor = ActorId("codex:full-reviewer")
         fixture.start_actor(actor)
-        generic = fixture.consume_generic(actor, "Review the package independently")
+        unrelated_actor = ActorId("codex:unrelated-worker")
+        fixture.start_actor(unrelated_actor)
+        generic = fixture.consume_generic(unrelated_actor, "Review the package independently")
         malformed_review = fixture.consume_generic(actor, json.dumps({
             "workflow_id": str(fixture.workflow_id), "kind": "final-local-review",
         }))

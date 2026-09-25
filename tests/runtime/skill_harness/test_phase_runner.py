@@ -5243,6 +5243,8 @@ class PhaseRunnerFixture:
                 lineage_assurance=ActorLineageAssurance.HOST_ATTESTED,
             )
         )
+        from scripts.agent_harness.tests.review_context_fixture import record_review_spawn
+        record_review_spawn(self._state_handle, reviewer_id)
         assignment = json.dumps(
             {
                 "kind": "review-code",

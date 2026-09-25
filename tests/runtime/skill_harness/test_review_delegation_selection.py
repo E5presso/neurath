@@ -26,14 +26,26 @@ from scripts.skill_harness.tests.test_phase_runner import PhaseRunnerFixture
 def add_delegation(fixture, identifier, *, assignment=None, verdict="pass", consumed=True):
     owner = fixture._state_handle
     original = owner.inspect().delegations[DelegationId("review-1")]
+    target = original.target_actor_id
+    try:
+        review_kind = json.loads(assignment or original.assignment).get("kind")
+    except (ValueError, AttributeError):
+        review_kind = None
+    if review_kind not in {"review-code", "final-local-review"}:
+        from scripts.agent_harness.session_kernel import ActorId, ActorKind, ActorStarted, ActorLineageAssurance
+        target = ActorId("codex:unrelated-" + identifier)
+        owner.apply(ActorStarted(session_id=owner.session_id, actor_id=target,
+            parent_actor_id=owner.actor_id, kind=ActorKind.SUBAGENT,
+            lineage_assurance=ActorLineageAssurance.HOST_ATTESTED, idempotency_key=identifier + ":actor"))
     owner.apply(DelegationAssigned(session_id=owner.session_id,
         delegation_id=DelegationId(identifier), owner_actor_id=owner.actor_id,
-        target_actor_id=original.target_actor_id, assignment=assignment or original.assignment,
+        target_actor_id=target, assignment=assignment or original.assignment,
         idempotency_key=identifier + ":assign", topology_policy=DelegationTopologyPolicy.DIRECT_CHILD))
     reviewer = StateHandle.attach(fixture.locator, RuntimeIdentityBinding(runtime=owner.runtime,
-        session_id=owner.session_id, actor_id=original.target_actor_id, root_actor_id=owner.actor_id))
+        session_id=owner.session_id, actor_id=target, root_actor_id=owner.actor_id))
     artifact = SessionArtifactStore(reviewer).read_json(original.result.outcome_ref)
     artifact["delegation_id"] = identifier
+    artifact["target_agent_id"] = str(target)
     artifact["report"]["verdict"] = verdict
     artifact["report"]["blocking_findings"] = ["F-block"] if verdict == "block" else []
     ref = SessionArtifactStore(reviewer).put_json(artifact).reference

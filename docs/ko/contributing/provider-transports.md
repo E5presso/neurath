@@ -6,7 +6,7 @@
 
 provider는 에이전트를 실행하는 호스트로, 현재 Codex와 Claude Code를 지원합니다. 전송 경로(transport)는 그 호스트의 세션을 생성하거나 통신하는 연결 방법입니다. 승인된 작업에 별도 신원·설정·활성화·체크아웃 소유권을 가진 독립 루트가 필요할 때 Neurath가 이 연결을 사용합니다.
 
-가상의 필터 문제에서는 첫 루트가 새로고침 복원을 조사하는 동안 두 번째 루트가 API 저장과 응답을 독립적으로 확인할 수 있습니다. 이미 존재하는 동료가 답을 알고 있을 수도 있고, 제한된 조사라면 직접 자식으로 충분할 수도 있습니다. [협업 계약](collaboration-contract.md)에 따라 관계를 먼저 정해야 합니다. 독립 세션 생성은 별도 동작입니다.
+필터 결함을 조사할 때는 현재 작업 안의 독립 조사에 native child를 기본으로 사용합니다. 같은 가정을 반복하고 있다면 Codex root가 Claude technical worker에 다른 관점을 요청할 수 있습니다. 사용자용 독립 세션은 사용자가 직접 방문해 작업을 이어갈 것으로 예상되는 경우에 선택합니다. 실행 시간과 worktree 격리만으로 이 경로를 선택하지 않습니다. [협업 계약](collaboration-contract.md)에 따라 관계를 먼저 고릅니다.
 
 ## 사용할 경로를 찾는 것과 실행하는 것
 
@@ -36,9 +36,13 @@ provider는 에이전트를 실행하는 호스트로, 현재 Codex와 Claude Co
 
 계획을 사용하는 호출은 다음 형태입니다. 꺾쇠괄호 값은 실제 관측값이나 반환된 참조로 교체해야 합니다.
 
+아래 예제는 Codex root가 Claude에 다른 관점을 요청하는 경우입니다.
+
 ```json
 {
-  "provider": "codex",
+  "provider": "claude-code",
+  "purpose": "perspective",
+  "reason": "API 저장 동작에 대한 반복된 가정을 다른 관점에서 검토",
   "worktree": "<승인된 워크트리 절대 경로>",
   "assignment": "<계획에 기록한 API 조사 과업 원문>",
   "assignment_revision": 1,
@@ -95,6 +99,8 @@ Claude의 `ResultMessage`는 결과를 담는 형식이지 성공 판정 자체�
 
 | 필드 | 필수 여부·기본값 | 형식·제한 |
 | --- | --- | --- |
+| `purpose` | 선택; 기본 `"task"` | 문자열: `"task"`, `"perspective"`, `"user-session"` |
+| `reason` | 선택; 기본 `""` | 문자열; 0–2400 자; 기본 외 선택에는 구체적인 이유 필수 |
 | `provider` | 필수 | 문자열: `"codex"`, `"claude-code"` |
 | `operation` | 필수 | 문자열: `"create"`, `"discover"`, `"connect"`, `"status"`, `"message"`, `"resume"`, `"cancel"`, `"peer"` |
 | `native_session` | 선택; 기본 `""` | 문자열; 0–256 자 |
@@ -118,6 +124,8 @@ Claude의 `ResultMessage`는 결과를 담는 형식이지 성공 판정 자체�
 
 | 필드 | 필수 여부·기본값 | 형식·제한 |
 | --- | --- | --- |
+| `purpose` | 선택; 기본 `"task"` | 문자열: `"task"`, `"perspective"`, `"user-session"` |
+| `reason` | 선택; 기본 `""` | 문자열; 0–2400 자; 기본 외 선택에는 구체적인 이유 필수 |
 | `worktree` | 필수 | 문자열; 1–4096 자 |
 | `assignment` | 필수 | 문자열; 1–16000 자 |
 | `model` | 선택; 기본 `""` | 문자열; 0–256 자 |

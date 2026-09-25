@@ -57,3 +57,7 @@ The combined result should explain what the API saved, what the browser loaded, 
 If the originating session must stop, use [receiver-led recovery](memory.md) to continue its unfinished work safely. For exact communication and execution contracts, see the [agent reference](../contributing/agents-reference.md), [collaboration contract](../contributing/collaboration-contract.md), and [model planning reference](../contributing/model-planning-mcp.md).
 
 [한국어](../../ko/usage/agents.md)
+
+## Parallel ticket work
+
+Ask the agent to analyze ticket dependencies and run independent work in parallel. The current conversation keeps responsibility for integration, review and completion. Large tickets or long running work do not automatically create new conversations. Separate conversations are useful when you expect to visit them and continue working there. The agent may consult another provider when a different perspective helps, and must review implementation changes in a separate context.

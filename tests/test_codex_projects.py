@@ -20,7 +20,7 @@ class ProjectHost(Host):
 
 
 def test_route_keeps_saved_project_for_independent_assignment():
-    result = route("codex", "create", project_id="saved", worktree="/work", assignment="Implement",
+    result = route("codex", "create", purpose="user-session", reason="User continuation", project_id="saved", worktree="/work", assignment="Implement",
                    requested={"sandbox": "workspace-write", "approval_policy": "never",
                               "collaboration_mode": "default"})
     assert result["next_operation"]["arguments"]["project_id"] == "saved"
