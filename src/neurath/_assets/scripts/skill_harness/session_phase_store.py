@@ -346,6 +346,21 @@ class SessionPhaseStateStore:
             execution_status=snapshot.state.execution_status,
         )
 
+    def read_native_wave(self, wave_id: str) -> Mapping[str, object]:
+        """Require actual wave results for this exact workflow and root owner."""
+        import json
+        from scripts.agent_harness.runtime_database import RuntimeDatabase
+        from scripts.agent_harness.delegation_wave import projection
+        state = self._handle.inspect()
+        with RuntimeDatabase(self._handle._repository_control_root()).transaction() as tx:
+            record = tx.get("host-journal", str(self._handle.session_id))
+        data = {} if record is None else json.loads(record.payload)
+        wave = data.get("waves", {}).get(wave_id)
+        if (wave is None or wave.get("owner") != str(self._handle.actor_id)
+                or wave.get("workflow_id") != str(self._workflow_id)):
+            raise ValueError("native wave belongs to another workflow or owner")
+        return projection(wave, state, data.get("spawns", {}))
+
     def read_review_evidence(
         self,
         expected_kind: str,
@@ -751,6 +766,9 @@ class SessionPhaseRunnerStore(PhaseRunStore):
             같은 revision의 decision, authority, criterion metadata입니다.
         """
         return self._store.read_adaptive_control_transition()
+
+    def read_native_wave(self, wave_id: str) -> Mapping[str, object]:
+        return self._store.read_native_wave(wave_id)
 
     def read_review_evidence(
         self,

@@ -6,7 +6,7 @@
 
 A provider is the host through which an agent executes: currently Codex or Claude Code. A transport is the connection used to create or communicate with that host's session. Neurath uses these connections when authorized work needs an independent root with its own native identity, settings, activation, and checkout ownership.
 
-For the hypothetical saved-filter defect, a second root could independently inspect API storage and responses while the first investigates reload restoration. An existing peer may already have the answer, and a direct native child may be sufficient for a bounded investigation. Choose the relationship first using [the collaboration contract](collaboration-contract.md); creating an independent session is a distinct action.
+For the saved-filter defect, native children are the default for independent investigations within the current task. A Codex root can ask a Claude technical worker for another perspective when repeated assumptions need challenging. A user-facing independent session is reserved for work the user is expected to visit and continue. Duration and worktree isolation alone do not select that route. Choose the relationship using [the collaboration contract](collaboration-contract.md).
 
 ## From an available route to actual execution
 
@@ -34,11 +34,13 @@ An explicitly authorized `target-native` mode uses the destination's existing de
 
 ## Read admission as the start of supervision
 
-A planned call has this shape. Angle-bracket values stand for exact observations or returned references and must be replaced before invocation.
+For a Codex root seeking an alternative perspective from Claude, a planned call has this shape. Angle-bracket values stand for exact observations or returned references and must be replaced before invocation.
 
 ```json
 {
-  "provider": "codex",
+  "provider": "claude-code",
+  "purpose": "perspective",
+  "reason": "An independent alternative to repeated assumptions about API persistence",
   "worktree": "<authorized absolute worktree>",
   "assignment": "<the exact planned API investigation>",
   "assignment_revision": 1,
@@ -95,6 +97,8 @@ Every response has `ok` and `operation`. A successful call carries its canonical
 
 | Field | Presence / default | Type and limits |
 | --- | --- | --- |
+| `purpose` | optional; default `"task"` | string: `"task"`, `"perspective"`, `"user-session"` |
+| `reason` | optional; default `""` | string; 0–2400 characters; nonempty for nondefault selection |
 | `provider` | required | text: `"codex"`, `"claude-code"` |
 | `operation` | required | text: `"create"`, `"discover"`, `"connect"`, `"status"`, `"message"`, `"resume"`, `"cancel"`, `"peer"` |
 | `native_session` | optional; default `""` | text; 0–256 characters |
@@ -118,6 +122,8 @@ Every response has `ok` and `operation`. A successful call carries its canonical
 
 | Field | Presence / default | Type and limits |
 | --- | --- | --- |
+| `purpose` | optional; default `"task"` | string: `"task"`, `"perspective"`, `"user-session"` |
+| `reason` | optional; default `""` | string; 0–2400 characters; nonempty for nondefault selection |
 | `worktree` | required | text; 1–4096 characters |
 | `assignment` | required | text; 1–16000 characters |
 | `model` | optional; default `""` | text; 0–256 characters |

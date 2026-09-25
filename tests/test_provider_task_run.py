@@ -24,7 +24,7 @@ def test_provider_run_never_uses_missing_caller_policy_as_permission(sessions, m
     claim_fixture(root)
     monkeypatch.setitem(sys.modules, "neurath.providers.execution",
         SimpleNamespace(run=lambda *a, **k: pytest.fail("provider started without caller policy")))
-    bound = bound_call(sessions, "provider_run", {"worktree": str(root), "assignment": "Read only"})
+    bound = bound_call(sessions, "provider_run", {"worktree": str(root), "assignment": "Read only", "purpose": "user-session", "reason": "User continuation"})
     from neurath.runtime.task_schema import TaskError
     with pytest.raises(TaskError, match="readiness") as caught:
         mcp.call_tool(root, bound, name="provider_run")
@@ -57,8 +57,8 @@ def test_provider_run_cli_and_mcp_share_results(sessions, monkeypatch, status):
     emitted = []
     monkeypatch.setattr("neurath.cli.emit", emitted.append)
     assert main(["--root", str(root), "provider", "run", "--worktree", str(root),
-                 "--assignment", "Read only"]) == (0 if status == "accepted" else 1)
-    bound = bound_call(sessions, "provider_run", {"worktree": str(root), "assignment": "Read only"})
+                 "--assignment", "Read only", "--purpose", "user-session", "--reason", "User continuation"]) == (0 if status == "accepted" else 1)
+    bound = bound_call(sessions, "provider_run", {"worktree": str(root), "assignment": "Read only", "purpose": "user-session", "reason": "User continuation"})
     result = mcp.response(root, {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
         "params": {"name": "provider_run", "arguments": bound}})["result"]
     assert result["structuredContent"]["result"] == emitted[-1] == report

@@ -113,6 +113,8 @@ class PublisherFixture:
                 lineage_assurance=ActorLineageAssurance.HOST_ATTESTED,
             )
         )
+        from scripts.agent_harness.tests.review_context_fixture import record_review_spawn
+        record_review_spawn(self.root_handle, self.reviewer_id)
         self.delegation_id = DelegationId("final-review-131")
         matrix = self._matrix()
         assignment = json.dumps(

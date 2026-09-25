@@ -116,7 +116,9 @@ def journal(root, session):
                 for key, value in data.get(group, {}).items()
                 if value != old.get(group, {}).get(key)
                 and value.get("foreground", {}).get("task_scope") is not None]
-            if changed_scopes:
+            changed_waves = [value for key, value in data.get("waves", {}).items()
+                             if value != old.get("waves", {}).get(key)]
+            if changed_scopes or changed_waves:
                 from scripts.agent_harness.session_kernel import SessionStateStore, SessionId
                 from scripts.agent_harness.task_service import validate_scoped_foreground
                 locator = _locator(root)
@@ -124,6 +126,10 @@ def journal(root, session):
                     tx, SessionId(session))
                 for foreground in changed_scopes:
                     validate_scoped_foreground(tx, state, foreground)
+                if changed_waves:
+                    from scripts.agent_harness.delegation_wave import validate_mutation
+                    for wave in changed_waves:
+                        validate_mutation(tx, state, wave)
             tx.put("host-journal", session,
                    json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(),
                    expected_revision=None if record is None else record.revision)
@@ -313,6 +319,16 @@ def _resume_snapshot(turn):
     }
 
 
+def spawn_context(host, inputs):
+    """Only actual host spawn options describe context inheritance."""
+    if host == "codex":
+        fork = inputs.get("fork_turns")
+        mode = "fresh" if fork == "none" else "unknown" if fork is None else "inherited"
+        return {"mode": mode, "fork_turns": fork}
+    resumed = bool(inputs.get("resume"))
+    return {"mode": "inherited" if resumed else "fresh", "resume": resumed}
+
+
 def spawn_hook(root, host, payload, environment):
     session = payload["session_id"]
     if payload.get("agent_id") is not None:
@@ -343,12 +359,18 @@ def spawn_hook(root, host, payload, environment):
         if payload["hook_event_name"] == "PreToolUse":
             record = data["spawns"].get(call)
             if record is None:
+                from neurath.hosts.waves import admit
+                if scoped and scoped.get("assignment") is not None:
+                    for identifier, intent in data.get("intents", {}).items():
+                        if intent == scoped:
+                            admit(root, state, data, identifier, host=host, inputs=payload.get("tool_input", {}))
                 record = {
                     "foreground": foreground,
                     "nonce": secrets.token_hex(24),
                     "child": None,
                     "parent": str(state.session.root_actor_id),
                     "host": host,
+                    "context": spawn_context(host, payload.get("tool_input", {})),
                 }
                 data["spawns"][call] = record
                 intents = [
@@ -362,6 +384,11 @@ def spawn_hook(root, host, payload, environment):
                     key, intent = intents[0]
                     intent["call_id"] = call
                     record["delegation"] = {"id": key, "assignment": intent["assignment"]}
+                    record["role"] = intent.get("role", "worker")
+            if record.get("context") != spawn_context(host, payload.get("tool_input", {})):
+                raise ValueError("native spawn context changed for the same call")
+            if record.get("role") == "review" and record["context"]["mode"] != "fresh":
+                raise ValueError("review requires a fresh context; Codex fork_turns must be none")
             if record["foreground"] != foreground:
                 raise ValueError("native spawn id reused across foreground turns")
             if host == "claude-code":
@@ -382,6 +409,9 @@ def spawn_hook(root, host, payload, environment):
                     }
                 }
         elif call in data["spawns"]:
+            if payload["hook_event_name"] in {"PostToolUseFailure", "PermissionDenied"}:
+                data["spawns"][call]["spawn_error"] = payload["hook_event_name"]
+                return {}
             response = payload.get("tool_response")
             if isinstance(response, str):
                 try:
@@ -712,7 +742,7 @@ def prepare_delegation(root, delegation_id, assignment, environment=None):
 
 
 def prepare_bound_delegation(root, handle, delegation_id, assignment, *,
-                             task_id=None, expected_task_revision=None):
+                             task_id=None, expected_task_revision=None, role="worker"):
     """Native-bound core operation; no environment or caller identity input."""
     from scripts.agent_harness.session_kernel import DelegationId
     DelegationId(delegation_id)
@@ -727,13 +757,18 @@ def prepare_bound_delegation(root, handle, delegation_id, assignment, *,
     if task_id is not None:
         from neurath.hosts.task_scope import instruction_scope
         scope = instruction_scope(root, state, task_id, expected_task_revision)
+    if role not in {"worker", "review"}:
+        raise ValueError("unknown delegation role")
     foreground = _foreground(state, root, task_scope=scope)
     with journal(root, str(handle.session_id)) as data:
         intents = data.setdefault("intents", {})
-        candidate = {"assignment": assignment, "foreground": foreground, "call_id": None}
+        from neurath.hosts.waves import admit
+        if delegation_id not in intents:
+            admit(root, state, data, delegation_id)
+        candidate = {"assignment": assignment, "foreground": foreground, "call_id": None, "role": role}
         existing = intents.get(delegation_id)
         if existing:
-            if existing["assignment"] != assignment or existing["foreground"] != foreground:
+            if existing["assignment"] != assignment or existing["foreground"] != foreground or existing.get("role", "worker") != role:
                 raise ValueError("delegation intent conflicts with existing authority")
         else:
             if any(

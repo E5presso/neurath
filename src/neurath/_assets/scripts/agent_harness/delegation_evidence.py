@@ -89,6 +89,7 @@ class ConsumedDelegationEvidenceSnapshot:
     """한 process revision에서 선택한 consumed delegation의 immutable read model입니다."""
 
     __slots__ = (
+        "context_provenance",
         "assignment",
         "delegation_id",
         "kind",
@@ -118,6 +119,7 @@ class ConsumedDelegationEvidenceSnapshot:
         skill_state: Mapping[str, object],
         assignment: Mapping[str, object],
         report: Mapping[str, object],
+        context_provenance: Mapping[str, object] | None = None,
     ) -> None:
         """Cross-aggregate read 결과를 mutation 불가능한 snapshot으로 고정합니다.
 
@@ -135,6 +137,7 @@ class ConsumedDelegationEvidenceSnapshot:
             assignment: Typed record가 보존한 self-contained assignment object입니다.
             report: Outcome reference로 읽고 typed result와 대조한 artifact report입니다.
         """
+        object.__setattr__(self, "context_provenance", None if context_provenance is None else MappingProxyType(dict(context_provenance)))
         object.__setattr__(self, "process_revision", process_revision)
         object.__setattr__(self, "workflow_id", workflow_id)
         object.__setattr__(self, "workflow_revision", workflow_revision)
@@ -455,7 +458,15 @@ class ConsumedDelegationEvidenceReader:
         except ArtifactStoreError as error:
             raise DelegationEvidenceInvalid(str(error)) from error
         report = self._artifact_report(artifact, delegation)
+        context = None
+        if selected_kind in {"review-code", "final-local-review"}:
+            from scripts.agent_harness.review_context import read_context
+            try:
+                context = read_context(self._handle, delegation.target_actor_id, state=state)
+            except ValueError as error:
+                raise DelegationEvidenceInvalid(str(error)) from error
         return ConsumedDelegationEvidenceSnapshot(
+            context_provenance=context,
             process_revision=state.revision,
             workflow_id=self._workflow_id,
             workflow_revision=workflow.revision,
@@ -584,6 +595,12 @@ class FinalReviewEvidencePolicy:
             DelegationEvidenceInvalid: Kind, matrix, coverage, audit, verdict가 review
                 계약과 다르면 발생합니다.
         """
+        from scripts.agent_harness.review_context import validate_context
+        try:
+            validate_context(snapshot.context_provenance, snapshot.owner_actor_id, snapshot.target_actor_id)
+        except ValueError as error:
+            raise DelegationEvidenceInvalid(str(error)) from error
+
         normalized_kind = expected_kind.strip()
         if not normalized_kind:
             raise DelegationEvidenceInvalid("expected delegation kind must be non-empty")

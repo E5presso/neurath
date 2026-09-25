@@ -2,6 +2,13 @@
 
 승인된 scope만 구현하고 tight review loop를 실행합니다.
 
+독립 리뷰는 root owner가 `delegation_prepare(role=review)` 뒤 새 직접 자식을 생성합니다.
+Codex는 `fork_turns="none"`, Claude는 재개 없는 새 Agent를 사용합니다. 실제 생성 옵션의
+호스트 기록이 fresh context임을 증명해야 합니다. 구현에 참여한 자식을 리뷰어로 재사용하거나
+reviewer 자신의 선언을 격리 증거로 제출하지 않습니다. 최초 입력에는 exact diff, 목표·수용 기준,
+제약·원문 출처를 담고 구현자의 판단 결론을 정답으로 주입하지 않습니다.
+Autopilot의 구현 자식은 root에 결과를 반환하며 root가 별도의 리뷰 자식을 배정합니다.
+
 ## 형식화된 위임 권한 (`typed delegation authority`)
 
 Owner helper는 runtime identity로 `StateHandle.attach`하고, 예상한 상태가 그대로일 때만

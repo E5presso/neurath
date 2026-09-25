@@ -265,3 +265,23 @@ Every response has `ok` and `operation`. A successful call carries its canonical
 | `expected_revision` | required | integer; 1–9007199254740991 |
 | `repair_reference` | required | text; 1–1024 characters |
 | `key` | required | text; 1–512 characters |
+
+## Parallel waves and collaboration choice
+
+Native subagents are the default for work owned by the current conversation, including large tickets. Duration and separate worktrees are execution properties, not reasons to create a user-facing conversation. Select a user session only when the user is expected to visit it and continue the work. A different provider may be selected autonomously when capable reasoning from another perspective can expose alternatives, repeated assumptions or missed counterexamples. The owning orchestrator collects the result; a technical provider worker does not imply a new user-managed app task. Host tools retain their own explicit-creation requirements.
+
+`provider_route` and `provider_run` accept `purpose` (`task`, `perspective`, `user-session`) and `reason`. The default `task` route points to native delegation; direct provider execution rejects that default. `perspective` requires a different provider and a concrete rationale. `user-session` requires a reason describing expected user continuation. These choices do not replace model planning, permission inheritance or native readiness checks.
+
+The root owns each ticket workflow, integration and review. It dispatches implementation and review as separate direct children; implementation children do not spawn reviewers. Workers without verified write authority return patch artifacts for the root to integrate under its claim.
+
+`delegation_wave_prepare` binds a DAG to an exact in-progress task revision. Inputs are `wave_id`, `task_id`, `expected_task_revision`, `entries` (each with `delegation_id` and `depends_on`), `max_parallel`, `capacity_basis`, optional `serialization_reason`, and a stable `key`. Capacity is an owner observation, not host-attested merely because a number was supplied. Cycles and missing dependencies are rejected. If independent work is restricted to one slot, a serialization reason is required.
+
+Prepare and spawn each ready entry before waiting. The native hook counts in-flight spawn reservations and actual dispatches; it rejects waiting while ready work has a free slot. Claude parallel Agent dispatch uses background execution. Successful consumed results unlock dependents; failed or merely reported results do not. After an event, `delegation_wave_read(wave_id)` gives the current projection. `delegation_wave_retry(wave_id, delegation_id, replacement_id, key)` replaces only an observed failed attempt, preserving its history. A task cannot report success while its wave remains unfinished or unsuccessful. These records describe execution under the existing task ledger; they are not a second goal list.
+
+## Independent review context
+
+Prepare reviewers with `delegation_prepare(role="review")` and create a fresh native child. Codex must explicitly use `fork_turns="none"`; a new Claude Agent must not resume an existing child. The native spawn journal binds these observed options to the actual child. Ordinary inherited-context children remain usable for non-review work. An implementation child cannot be reused as the reviewer.
+
+Review admission, result consumption, prior-review reuse and publication read the same context proof in addition to lineage, exact head and artifact digests. Missing or inherited context is rejected. A reviewer-provided flag is insufficient. Provide the exact diff, requirements, acceptance conditions and source evidence; avoid supplying the implementation conclusion as the expected verdict.
+
+Legacy phase workflows also supply `workflow_id` when preparing the wave and submit `native_wave_receipt: wave_id=...` at completion. The phase gate reads the actual wave bound to that exact workflow.

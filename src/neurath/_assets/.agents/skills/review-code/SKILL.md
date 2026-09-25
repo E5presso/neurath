@@ -22,9 +22,9 @@ task 목록 없이 기존 phase workflow를 실행·복구할 때만 `uv run pyt
 `/review-code` 실행으로 인정하지 않는다. Runtime에서 subagent spawn
 capability가 없거나 policy가 dispatch를 막으면 `/review-code`는 blocked이며,
 구현 에이전트는 리뷰를 대신 수행했다고 주장하지 않고 capability gap을 보고한다.
-Codex hook이 바로 위 부모를 확인했다는 근거를 주지 않으면(계약 문구로 `Codex hook에 immediate parent-bound child provenance가 없으면`)
-`agent_id`만으로 바로 아래 자식(`direct-child`)을 추정하지 않습니다. 해당 runtime의
-`/review-code`는 정식 근거로 사용할 수 없음(`UNAVAILABLE`)으로 blocked입니다.
+`Codex hook에 immediate parent-bound child provenance가 없으면` review는 UNAVAILABLE입니다.
+Root는 `delegation_prepare(role=review)` 뒤 새 리뷰 자식을 생성합니다. Codex `fork_turns="none"`,
+Claude 새 Agent의 native 격리 근거를 요구하며 구현 자식을 재사용하지 않습니다.
 
 `personas/judgment.md`는 전체 판단 태세이며 모든 전문 persona보다 먼저 읽습니다.
 탐색 범위는 넓게 유지하되 병합 차단은 증거로 제한하고, 구현자의 반박도 reviewer의

@@ -120,6 +120,7 @@ def test_fresh_native_owner_can_observe_plan_and_admit_target_native(roots,monke
         return {'status':'accepted'}
     monkeypatch.setattr('neurath.providers.jobs.start',start)
     result=provider_execution.run(source,{'provider':target_host,'worktree':str(target),
+        'purpose':'perspective','reason':'Independent alternative from the other provider',
         'assignment':'Continue work','mode':'target-native','model':'exact','plan_id':plan['plan_id'],
         'plan_revision':plan['revision'],'key':'run'},identity=caller,expected_turn='turn')
     assert result['status']=='accepted' and len(launched)==1

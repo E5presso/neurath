@@ -385,7 +385,13 @@ def previous_admission(root, identity, key, fields):
         return None
     request = json.loads(row["request"])
     incoming = {k:v for k,v in fields.items() if k != "key"}
-    if request.get("model_request", request) != incoming:
+    original = request.get("model_request", request)
+    # Additive schema defaults must not turn an old accepted request into a new
+    # execution. Explicit nondefault intent still conflicts with the saved key.
+    for name, default in (("purpose", "task"), ("reason", "")):
+        if name not in original and incoming.get(name) == default:
+            incoming.pop(name, None)
+    if original != incoming:
         raise ValueError("provider request key changed request")
     result = json.loads(row["result"]) if row["result"] else None
     return {"run_id":identifier,"status":row["status"],"replayed":True,

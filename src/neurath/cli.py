@@ -99,13 +99,16 @@ def main(arguments=None):
     route = provider.add_parser("route")
     route.add_argument("provider", choices=HOSTS)
     route.add_argument("operation", choices=("create", "discover", "connect", "status", "message", "resume", "cancel", "peer"))
-    for field in ("native-session", "model", "project-id", "message-id", "worktree", "assignment"):
+    for field in ("native-session", "model", "project-id", "message-id", "worktree", "assignment", "reason"):
         route.add_argument("--" + field, default="")
+    route.add_argument("--purpose", choices=("task", "perspective", "user-session"), default="task")
     route.add_argument("--requested-json", default="{}")
     provider_run = provider.add_parser("run")
     provider_run.add_argument("--worktree", required=True)
     provider_run.add_argument("--project-id", default="")
     provider_run.add_argument("--assignment", required=True)
+    provider_run.add_argument("--purpose", choices=("task", "perspective", "user-session"), default="task")
+    provider_run.add_argument("--reason", default="")
     provider_run.add_argument("--provider", choices=("codex", "claude-code"), default="codex")
     provider_run.add_argument("--model", default="")
     provider_run.add_argument("--mode", choices=("inherit", "read-only", "workspace-write", "danger-full-access", "native"), default="inherit")
@@ -202,7 +205,7 @@ def main(arguments=None):
 
                 fields = {name: getattr(args, name) for name in ("worktree", "assignment", "model",
                     "provider", "mode", "permission_mode", "approval_policy", "approvals_reviewer", "collaboration_mode", "project_id", "key",
-                    "plan_id", "plan_revision", "assignment_revision", "reasoning_effort")}
+                    "plan_id", "plan_revision", "assignment_revision", "reasoning_effort", "purpose", "reason")}
                 result = run(root, fields, identity=_native_or_terminal(root))
                 emit(result)
                 return 0 if result["status"] in {"accepted", "starting", "completed"} else 1
@@ -211,9 +214,11 @@ def main(arguments=None):
             fields = {"provider": args.provider}
             if args.provider_command == "route":
                 fields.update({name: getattr(args, name) for name in (
-                    "operation", "native_session", "model", "project_id", "message_id", "worktree", "assignment")})
+                    "operation", "native_session", "model", "project_id", "message_id", "worktree", "assignment", "purpose", "reason")})
                 fields["requested"] = json.loads(args.requested_json)
-            emit(provider_task("provider_" + args.provider_command, fields))
+            issuer = (_native_or_terminal(root) if fields.get("purpose") == "perspective" else None)
+            emit(provider_task("provider_" + args.provider_command, fields,
+                               source_provider=issuer.host if issuer else None))
             return 0
         if args.command == "session-status":
             from neurath.runtime.tasks import session_status

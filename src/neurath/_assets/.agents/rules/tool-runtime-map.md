@@ -67,9 +67,10 @@ Skill과 phase file은 아래 stable `tool:<key>`로 Claude Code와 Codex tool c
   turn, outbox를 persist하지 않습니다. Raw `parent_agent_id` 자체도 authority가 아닙니다.
 - Host가 바로 위 부모를 확인했을 때만(`host-attested exact parent`) registered actor와 독립적인
   바로 아래 자식 권한(`DIRECT_CHILD`)을 만들고,
-  persisted child의 `SubagentStop`이 gate를 닫습니다. Codex의 current child schema에는 바로 위 부모 값
-  (`immediate parent`)이 없습니다. 상태 제어·저장소 변경·검증자 지정·의미 보고서 승인은 사용 불가
-  (`UNAVAILABLE`)입니다. 권한 없는 child(`state-free child`)를 root로 대신 쓰지 않으며 Team/message/task control은 nonmaterial입니다.
+  persisted child의 `SubagentStop`이 gate를 닫습니다. Codex는 실제 transcript의 parent metadata와
+  root 생성 호출을 대조합니다. 실제 증명이 없는 child의 상태 변경·검토 권한은 UNAVAILABLE입니다.
+  child의 실행 권한과 worktree 소유권은 별도 확인하며 root 권한을 대신 사용하지 않습니다.
+  리뷰에는 계보와 별도로 native spawn의 fresh context와 review 역할을 검증합니다.
 - Stateful command 예시는 한 physical line의 literal argv로 기록합니다. 실제 option grammar와
   authority는 각 CLI와 host runtime이 소유합니다. `UPPER_SNAKE_CASE`는 invocation 전에 실제 값으로
   치환하고 native `workdir`를 사용합니다.

@@ -337,7 +337,7 @@ def _worker(root, run_id, store, lease, *, recovery=False):
         observed("starting", {"run_id": run_id})
         # Ordinary sessions have no execution deadline. RPC handshakes remain bounded.
         execution_fields = {key: value for key, value in fields.items() if key not in {
-            "model_request", "plan_id", "plan_revision", "assignment_revision"}}
+            "model_request", "plan_id", "plan_revision", "assignment_revision", "purpose", "reason"}}
         if "model_plan" in execution_fields:
             execution_fields.update(model_owner=owner, run_id=run_id)
         result = execute_session(root, **execution_fields, timeout=None, event_callback=observed)

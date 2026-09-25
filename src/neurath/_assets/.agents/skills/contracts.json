@@ -32,12 +32,16 @@
         {
           "id": 3,
           "name": "execute_waves",
-          "min_evidence_count": 2,
+          "min_evidence_count": 3,
           "required_evidence": [
             "wave_plan",
-            "process_ticket_terminal_states"
+            "process_ticket_terminal_states",
+            "native_wave_receipt"
           ],
-          "phase_file": "phases/phase-3-wave-loop.md"
+          "phase_file": "phases/phase-3-wave-loop.md",
+          "evidence_patterns": {
+            "native_wave_receipt": "wave_id=[A-Za-z0-9_-]+"
+          }
         },
         {
           "id": 4,

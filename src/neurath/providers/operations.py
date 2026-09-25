@@ -48,7 +48,8 @@ def _requested(value):
 
 
 def route(provider, operation, *, native_session=None, model=None, project_id=None,
-          requested=None, message_id=None, worktree=None, assignment=None):
+          requested=None, message_id=None, worktree=None, assignment=None,
+          source_provider=None, purpose="task", reason=""):
     catalog(provider)
     if operation not in OPERATIONS:
         raise UnsupportedOperation("unsupported provider operation")
@@ -70,12 +71,28 @@ def route(provider, operation, *, native_session=None, model=None, project_id=No
               "mode": {"requested": requested, "effective": None, "verification": "unobserved"},
               "prerequisites": ["actual host tool available", "current user-authorized task scope"],
               "implementation_dispatched": False}
+    if operation == "create":
+        if purpose == "perspective" and source_provider is None:
+            return {**result, "status": "source-provider-required",
+                    "reason": "A perspective route needs the actual issuing provider; the target is not the issuer."}
+        from neurath.providers.collaboration_policy import select
+        selection = select(source_provider or provider, provider, purpose, reason)
+        result["collaboration"] = selection
+        if selection["kind"] == "provider-worker" and (not worktree or not assignment):
+            return {**result, "status": "assignment-input-required",
+                    "reason": "A technical provider worker requires a bounded assignment and worktree; no app-session fallback."}
+        if selection["kind"] == "native-subagent":
+            return {**result, "next_operation": {"tool": "delegation_prepare",
+                    "arguments": {"assignment": assignment} if assignment else {},
+                    "schema_source": "current-native-host"},
+                    "reason": "Use the current session's native child; task size, duration and worktrees do not require a user session.",
+                    "after_preparation": "Spawn using the native tool. The root owns implementation integration, review and completion. Missing child capability is blocked, not permission to create a session."}
     if assignment is not None or worktree is not None:
         if not worktree or not assignment:
             return {**result, "status": "assignment-input-required"}
         if not requested:
             arguments = {"provider": provider, "mode": "inherit", "worktree": worktree,
-                         "assignment": assignment}
+                         "assignment": assignment, "purpose": purpose, "reason": reason}
             if model is not None:
                 arguments["model"] = model
             if project_id is not None:
@@ -89,7 +106,7 @@ def route(provider, operation, *, native_session=None, model=None, project_id=No
             if not worktree or not assignment:
                 return {**result, "status": "assignment-input-required"}
             arguments = {"provider": provider, "mode": "native", "permission_mode": requested["permission_mode"],
-                         "worktree": worktree, "assignment": assignment}
+                         "worktree": worktree, "assignment": assignment, "purpose": purpose, "reason": reason}
             if model is not None:
                 arguments["model"] = model
             return {**result, "next_operation": {"tool": "provider_run", "arguments": arguments},
@@ -107,7 +124,7 @@ def route(provider, operation, *, native_session=None, model=None, project_id=No
                 or requested["sandbox"] == "workspace-write" and requested["collaboration_mode"] == "plan"):
             return {**result, "status": "unsupported-setting",
                     "reason": "No implemented execution transport supports this request; no app fallback."}
-        arguments = {"worktree": worktree, "assignment": assignment,
+        arguments = {"worktree": worktree, "assignment": assignment, "purpose": purpose, "reason": reason,
                      "mode": requested["sandbox"],
                      **{key: value for key, value in requested.items() if key != "sandbox"}}
         if project_id is not None:
@@ -159,6 +176,7 @@ def route(provider, operation, *, native_session=None, model=None, project_id=No
                 "next_operation": {"tool": "create_thread", "arguments": arguments},
                 "prerequisites": [*result["prerequisites"],
                     "project_id came from list_projects and isGitRepository is true",
+                    "the host create_thread tool requires an explicit user request for a new task",
                     "bootstrap only; activation and claim do not transfer from parent",
                     "an app worktree does not copy ignored harness installation files; arrange installation before implementation"],
                 "after_creation": "Wait for a real threadId; a clientThreadId is pending setup. "

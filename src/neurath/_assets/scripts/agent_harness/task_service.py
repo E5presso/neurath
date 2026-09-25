@@ -259,6 +259,14 @@ class TaskService:
         _text(summary, 4096)
 
         def transform(tx, process, ledger):
+            if requested is TaskStatus.SUCCEEDED:
+                from .delegation_wave import require_complete
+                record = tx.get("host-journal", str(process.session.id))
+                if record is not None:
+                    try:
+                        require_complete(json.loads(record.payload), process, task_id)
+                    except ValueError as error:
+                        raise TaskLedgerError(str(error)) from error
             def resolver(task, refs):
                 report = {"schema": "neurath.task-result.v1", "task_id": task.id,
                     "definition_digest": task.definition.digest, "status": requested.value,

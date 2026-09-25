@@ -12,11 +12,12 @@ SETTINGS = {"sandbox": "workspace-write", "approval_policy": "never",
 
 
 def test_implementation_route_selects_executable_transport_without_app_fallback():
-    result = route("codex", "create", worktree="/installed-worktree", assignment="Implement the fix",
+    result = route("codex", "create", purpose="user-session", reason="User continuation", worktree="/installed-worktree", assignment="Implement the fix",
                    requested=SETTINGS)
     assert result["next_operation"] == {"tool": "provider_run", "arguments": {
         "worktree": "/installed-worktree", "assignment": "Implement the fix",
-        "mode": "workspace-write", "approval_policy": "never", "collaboration_mode": "default"}}
+        "mode": "workspace-write", "approval_policy": "never", "collaboration_mode": "default",
+        "purpose": "user-session", "reason": "User continuation"}}
     assert result["implementation_dispatched"] is False
     assert result["mode"]["verification"] == "unobserved"
 
@@ -82,7 +83,7 @@ def test_preparation_wait_delivery_and_native_completion_are_distinct(monkeypatc
 
 @pytest.mark.parametrize("missing", list(SETTINGS))
 def test_assignment_with_missing_setting_has_no_creation_route(missing):
-    result = route("codex", "create", worktree="/installed-worktree", assignment="Implement",
+    result = route("codex", "create", purpose="user-session", reason="User continuation", worktree="/installed-worktree", assignment="Implement",
                    requested={key: value for key, value in SETTINGS.items() if key != missing})
     assert result["status"] == "settings-required"
     assert result["next_operation"] is None
@@ -90,7 +91,7 @@ def test_assignment_with_missing_setting_has_no_creation_route(missing):
 
 
 def test_manual_approval_request_is_preserved_and_not_replaced_with_never():
-    result = route("codex", "create", worktree="/installed-worktree", assignment="Implement",
+    result = route("codex", "create", purpose="user-session", reason="User continuation", worktree="/installed-worktree", assignment="Implement",
                    requested={**SETTINGS, "approval_policy": "on-request"})
     assert result["status"] == "unsupported-setting"
     assert result["next_operation"] is None

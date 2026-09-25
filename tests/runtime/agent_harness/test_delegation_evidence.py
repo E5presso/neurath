@@ -55,7 +55,9 @@ class DelegationEvidenceTest(TestCase):
         )
         matrix_id = hashlib.sha256(matrix_identity.encode()).hexdigest()
         row_ids = [row_id for row_id, _category, _severity in REVIEW_ROWS]
+        from scripts.agent_harness.tests.review_context_fixture import context_provenance
         return ConsumedDelegationEvidenceSnapshot(
+            context_provenance=context_provenance("codex:session-42", "codex:reviewer-42"),
             process_revision=8,
             workflow_id=WorkflowId("process-ticket-42"),
             workflow_revision=5,
@@ -119,6 +121,7 @@ class DelegationEvidenceTest(TestCase):
         assignment = source.assignment_payload()
         assignment["kind"] = "review-code"
         review_code = ConsumedDelegationEvidenceSnapshot(
+            context_provenance=source.context_provenance,
             process_revision=source.process_revision,
             workflow_id=source.workflow_id,
             workflow_revision=source.workflow_revision,
@@ -169,6 +172,7 @@ class DelegationEvidenceTest(TestCase):
             self.fail("review matrix must be an object")
         matrix["row_count"] = 13
         corrupted = ConsumedDelegationEvidenceSnapshot(
+            context_provenance=snapshot.context_provenance,
             process_revision=snapshot.process_revision,
             workflow_id=snapshot.workflow_id,
             workflow_revision=snapshot.workflow_revision,
@@ -197,3 +201,12 @@ class DelegationEvidenceTest(TestCase):
             self.assertNotIn("state", parameters)
             self.assertNotIn("session_id", parameters)
         self.assertNotIn("require_direct_child", read.parameters)
+
+
+def test_final_review_rejects_missing_native_context_provenance():
+    import pytest
+    snapshot = DelegationEvidenceTest().snapshot()
+    # Unit fixture deliberately removes the separate host observation.
+    object.__setattr__(snapshot, 'context_provenance', None)
+    with pytest.raises(DelegationEvidenceInvalid, match='context'):
+        FinalReviewEvidencePolicy().verify(snapshot)

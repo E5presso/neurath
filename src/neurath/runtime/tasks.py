@@ -95,7 +95,7 @@ def execute(root, name, inputs, *, identity, expected_turn=None, verified_policy
         return run(root, fields, identity=identity, expected_turn=expected_turn,
                    verified_policy_evidence=verified_policy_evidence)
     if domain == "provider":
-        return provider_task(name, fields)
+        return provider_task(name, fields, source_provider=identity.host if identity else None)
     if domain == "session":
         return session_status(root, identity=identity, expected_turn=expected_turn,
                               verified_policy_evidence=verified_policy_evidence, **fields)
@@ -142,7 +142,7 @@ def lifecycle(root, action, fields, identity):
     return {**result, "notification": store.forward(identity.address, result["message"]["id"])}
 
 
-def provider_task(name, inputs):
+def provider_task(name, inputs, *, source_provider=None):
     from neurath.providers import operations
 
     fields = arguments(name, inputs)
@@ -151,7 +151,7 @@ def provider_task(name, inputs):
     from neurath.runtime.model_tasks import planned_route
     planning = {key: fields.pop(key) for key in
                 ("plan_id", "plan_revision", "assignment_revision", "reasoning_effort")}
-    result = operations.route(fields.pop("provider"), fields.pop("operation"),
+    result = operations.route(fields.pop("provider"), fields.pop("operation"), source_provider=source_provider,
                               **{key: value or None for key, value in fields.items()})
     return planned_route(result, planning)
 

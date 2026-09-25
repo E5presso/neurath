@@ -667,6 +667,9 @@ class DelegateStateService:
         state = self._handle.inspect()
         if target_actor_id not in state.actors:
             raise DelegateInputError(f"delegation actor is unavailable: {target_actor_id}")
+        if kind in REVIEW_KINDS:
+            from scripts.agent_harness.review_context import read_context
+            read_context(self._handle, target_actor_id, state=state)
         reviewed_head_sha = self._text.commit_sha(args.reviewed_head_sha)
         matrix = self._review.matrix(kind, reviewed_head_sha)
         delegation_id = DelegationId(uuid4().hex)
@@ -819,6 +822,8 @@ class DelegateStateService:
         }
         kind = self._text.nonblank(assignment.get("kind"), "kind")
         if kind in REVIEW_KINDS:
+            from scripts.agent_harness.review_context import read_context
+            read_context(self._handle, delegation.target_actor_id)
             matrix = self._review.assignment_matrix(assignment)
             completion.update({
                 "review_report": report,
@@ -959,6 +964,8 @@ class DelegateStateService:
             kind = candidate.get("kind")
             if not isinstance(kind, str) or kind not in REVIEW_KINDS:
                 continue
+            from scripts.agent_harness.review_context import read_context
+            read_context(self._handle, delegation.target_actor_id)
             assignment = self._codec.decode(delegation.assignment)
             matrix = self._review.assignment_matrix(assignment)
             artifact = self._artifacts.read_json(delegation.result.outcome_ref)
