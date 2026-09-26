@@ -402,12 +402,22 @@ def _phase(root, name, fields, handle):
             result = runner.finalize(store, fields["terminal_state"])
         else:
             transition = fields["transition"] if name == "workflow_advance" else fields
-            evidence = _evidence_refs(handle, workflow_id, transition.get("evidence_refs", []), root=root)
+            references = transition.get("evidence_refs", [])
+            current = runner.current(store)
+            if (current["skill"] == "finish-session" and transition["status"] == "skipped"
+                    and current["phase"]["name"] in {"stage_scope", "commit"}):
+                if len(references) != 1 or not references[0].startswith("evidence:"):
+                    raise TaskError("invalid-evidence-reference", "clean skip requires registered source evidence")
+            evidence = _evidence_refs(handle, workflow_id, references, root=root)
             if transition["status"] == "completed":
-                required = runner.current(store)["required_evidence"]
+                required = current["required_evidence"]
                 labels = {item.partition(":")[0].strip() for item in evidence}
                 if set(required) - labels:
                     raise TaskError("invalid-evidence-reference", "each required evidence label needs its own exact structured entry")
+            elif (current["skill"] == "finish-session" and transition["status"] == "skipped"
+                  and current["phase"]["name"] in {"stage_scope", "commit"}):
+                if len(evidence) != 1 or not evidence[0].startswith("clean_tree: "):
+                    raise TaskError("invalid-evidence-reference", "clean skip requires source-produced clean_tree evidence")
             result = runner.complete(store, transition["phase_id"], transition["status"], evidence,
                 transition["summary"], transition.get("reason") or None,
                 terminal_state=transition.get("terminal_state") or None)

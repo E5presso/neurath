@@ -157,6 +157,155 @@ def finish_session_committed_fixture(sessions, monkeypatch):
     return root, remote, phase_three
 
 
+def finish_session_clean_fixture(sessions, monkeypatch):
+    root, _ = sessions
+    (root / ".gitignore").write_text(".neurath/\nhost-storage/\n")
+    subprocess.run(["git", "config", "user.name", "Fixture"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.email", "fixture@example.invalid"], cwd=root, check=True)
+    (root / "tracked.txt").write_text("initial\n")
+    subprocess.run(["git", "add", ".gitignore", "tracked.txt"], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-qm", "Initial"], cwd=root, check=True)
+    remote = root.parent / f"{root.name}-remote.git"
+    subprocess.run(["git", "init", "--bare", "-q", str(remote)], check=True)
+    subprocess.run(["git", "remote", "add", "origin", str(remote)], cwd=root, check=True)
+    subprocess.run(["git", "push", "-qu", "origin", "HEAD"], cwd=root, check=True)
+
+    call(sessions, "worktree_claim", {})
+    start(sessions, skill="finish-session")
+    monkeypatch.setattr("neurath.runtime.tasks._mcp_execution_policy", lambda *a, **k: None)
+    ready = prepare(sessions, ["git_status"], [
+        {"label":"session_finish_approval", "text":
+            "approved_by=user commit=true push=true graphify=true worktree_release=true"},
+        {"label":"diff_review", "text":"No staged or unstaged changes"},
+    ], key="finish-clean-ready")
+    first = call(sessions, "phase_complete", {
+        "workflow_id":"phase", "expected_revision":0, "phase_id":1,
+        "status":"completed", "summary":"Clean tree and approval observed",
+        "evidence_refs":[ready["reference"]], "key":"finish-clean-phase-one",
+    }, invocation="finish-clean-phase-one")
+    return root, first["workflow_revision"]
+
+
+def test_finish_session_clean_tree_skips_staging_and_commit_with_source_evidence(sessions, monkeypatch):
+    root, revision = finish_session_clean_fixture(sessions, monkeypatch)
+    stage = prepare(sessions, ["clean_tree"], revision=revision, key="finish-clean-stage")
+    skipped_stage = call(sessions, "phase_complete", {
+        "workflow_id":"phase", "expected_revision":revision, "phase_id":2,
+        "status":"skipped", "summary":"No files to stage",
+        "evidence_refs":[stage["reference"]], "key":"finish-skip-stage",
+    }, invocation="finish-skip-stage")
+    assert skipped_stage["completed_phase"]["status"] == "skipped"
+
+    revision = skipped_stage["workflow_revision"]
+    commit = prepare(sessions, ["clean_tree"], revision=revision, key="finish-clean-commit")
+    skipped_commit = call(sessions, "phase_complete", {
+        "workflow_id":"phase", "expected_revision":revision, "phase_id":3,
+        "status":"skipped", "summary":"No commit to create",
+        "evidence_refs":[commit["reference"]], "key":"finish-skip-commit",
+    }, invocation="finish-skip-commit")
+    assert skipped_commit["completed_phase"]["status"] == "skipped"
+
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, check=True,
+                          capture_output=True, text=True).stdout.strip()
+    pushed = prepare(sessions, ["push_head_match"], revision=skipped_commit["workflow_revision"],
+                     key="finish-clean-push")
+    readback = call(sessions, "phase_complete", {
+        "workflow_id":"phase", "expected_revision":skipped_commit["workflow_revision"],
+        "phase_id":4, "status":"completed", "summary":"Existing remote HEAD matches",
+        "evidence_refs":[pushed["reference"]], "key":"finish-clean-push-complete",
+    }, invocation="finish-clean-push-complete")
+    assert f"head_sha={head}" in " ".join(readback["completed_phase"]["evidence"])
+
+
+@pytest.mark.parametrize("change", ["staged", "unstaged", "untracked"])
+def test_finish_session_clean_skip_rejects_changed_tree(sessions, monkeypatch, change):
+    root, revision = finish_session_clean_fixture(sessions, monkeypatch)
+    if change == "untracked":
+        (root / "new.txt").write_text("new\n")
+    else:
+        (root / "tracked.txt").write_text("changed\n")
+        if change == "staged":
+            subprocess.run(["git", "add", "tracked.txt"], cwd=root, check=True)
+    with pytest.raises(ValueError, match="clean tree|clean-tree"):
+        prepare(sessions, ["clean_tree"], revision=revision, key="dirty-clean-proof")
+
+
+def test_finish_session_clean_skip_rejects_stale_and_unregistered_proof(sessions, monkeypatch):
+    root, revision = finish_session_clean_fixture(sessions, monkeypatch)
+    with pytest.raises(ValueError, match="evidence|source"):
+        call(sessions, "phase_complete", {
+            "workflow_id":"phase", "expected_revision":revision, "phase_id":2,
+            "status":"skipped", "summary":"Unproven clean skip", "evidence_refs":[],
+            "key":"finish-unproven-skip",
+        }, invocation="finish-unproven-skip")
+    clean = prepare(sessions, ["clean_tree"], revision=revision, key="stale-clean-proof")
+    (root / "new.txt").write_text("new\n")
+    with pytest.raises(ValueError, match="source changed"):
+        call(sessions, "phase_complete", {
+            "workflow_id":"phase", "expected_revision":revision, "phase_id":2,
+            "status":"skipped", "summary":"Stale clean skip",
+            "evidence_refs":[clean["reference"]], "key":"finish-stale-skip",
+        }, invocation="finish-stale-skip")
+
+
+def test_finish_session_clean_skip_rejects_staged_or_agent_report_proof(sessions, monkeypatch):
+    root, revision = finish_session_clean_fixture(sessions, monkeypatch)
+    with pytest.raises(ValueError, match="reserved source"):
+        prepare(sessions, [], [{"label":"clean_tree", "text":"head_sha=claimed index=clean worktree=clean"}],
+                revision=revision, key="claimed-clean-proof")
+    (root / "tracked.txt").write_text("changed\n")
+    subprocess.run(["git", "add", "tracked.txt"], cwd=root, check=True)
+    staged = prepare(sessions, ["staged_files"], revision=revision, key="dirty-stage-proof")
+    with pytest.raises(ValueError, match="source-produced clean_tree evidence"):
+        call(sessions, "phase_complete", {
+            "workflow_id":"phase", "expected_revision":revision, "phase_id":2,
+            "status":"skipped", "summary":"Invalid staged skip",
+            "evidence_refs":[staged["reference"]], "key":"skip-with-staged-files",
+        }, invocation="skip-with-staged-files")
+
+
+def test_finish_session_clean_skip_rejects_head_change_after_stage_skip(sessions, monkeypatch):
+    root, revision = finish_session_clean_fixture(sessions, monkeypatch)
+    stage = prepare(sessions, ["clean_tree"], revision=revision, key="stage-clean-before-head-change")
+    skipped_stage = call(sessions, "phase_complete", {
+        "workflow_id":"phase", "expected_revision":revision, "phase_id":2,
+        "status":"skipped", "summary":"No files to stage",
+        "evidence_refs":[stage["reference"]], "key":"stage-clean-before-head-change-complete",
+    }, invocation="stage-clean-before-head-change-complete")
+    (root / "tracked.txt").write_text("new commit\n")
+    subprocess.run(["git", "add", "tracked.txt"], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-qm", "Unexpected"], cwd=root, check=True)
+    revision = skipped_stage["workflow_revision"]
+    commit = prepare(sessions, ["clean_tree"], revision=revision, key="commit-clean-after-head-change")
+    with pytest.raises(ValueError, match="clean_tree_head_changed"):
+        call(sessions, "phase_complete", {
+            "workflow_id":"phase", "expected_revision":revision, "phase_id":3,
+            "status":"skipped", "summary":"Invalid changed HEAD skip",
+            "evidence_refs":[commit["reference"]], "key":"commit-skip-after-head-change",
+        }, invocation="commit-skip-after-head-change")
+
+
+def test_finish_session_stage_skip_cannot_complete_a_later_commit(sessions, monkeypatch):
+    root, revision = finish_session_clean_fixture(sessions, monkeypatch)
+    stage = prepare(sessions, ["clean_tree"], revision=revision, key="stage-clean-before-new-commit")
+    skipped_stage = call(sessions, "phase_complete", {
+        "workflow_id":"phase", "expected_revision":revision, "phase_id":2,
+        "status":"skipped", "summary":"No files to stage",
+        "evidence_refs":[stage["reference"]], "key":"stage-clean-before-new-commit-complete",
+    }, invocation="stage-clean-before-new-commit-complete")
+    (root / "tracked.txt").write_text("unscoped commit\n")
+    subprocess.run(["git", "add", "tracked.txt"], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-qm", "Unscoped"], cwd=root, check=True)
+    revision = skipped_stage["workflow_revision"]
+    committed = prepare(sessions, ["commit_sha"], revision=revision, key="unscoped-commit-proof")
+    with pytest.raises(ValueError, match="stage_scope_not_completed"):
+        call(sessions, "phase_complete", {
+            "workflow_id":"phase", "expected_revision":revision, "phase_id":3,
+            "status":"completed", "summary":"Reject commit without staged scope",
+            "evidence_refs":[committed["reference"]], "key":"unscoped-commit-complete",
+        }, invocation="unscoped-commit-complete")
+
+
 def test_finish_session_push_readback_rejects_remote_advanced_after_prepare(sessions, monkeypatch):
     root, remote, phase_three = finish_session_committed_fixture(sessions, monkeypatch)
     subprocess.run(["git", "push", "-q"], cwd=root, check=True)

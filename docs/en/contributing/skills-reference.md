@@ -56,6 +56,8 @@ An explicit phase contract is a stateful procedure. `phase_start` binds a `workf
 
 `phase_evidence_prepare` creates an immutable evidence reference for the current phase and revision. Evidence labels come from that skill's contract. Its notes distinguish agent reports from observed source or execution evidence. `phase_complete` uses the exact expected revision and evidence reference. `phase_finalize` records the allowed terminal state when a separate finalization is required. An operational final phase may finalize atomically with `terminal_state`; do not finalize it twice.
 
+For `finish-session`, a clean Git tree lets `stage_scope` and `commit` be skipped. Prepare a fresh source-read `clean_tree` reference at each phase revision; it proves that the index and working tree are empty and binds the unchanged HEAD across both skips. Changed trees still require `staged_files` and `commit_sha` on the completed path. The later `push_readback` still checks the exact remote HEAD.
+
 For the filter example, a QA phase may need the actual browser observation, API/network result, and persistence readback. A screenshot of the selected filter before refresh cannot substitute for evidence that it survives a fresh load. A test name in a plan cannot substitute for its observed execution result.
 
 Contracts have different semantics. Operational procedures project bounded actions such as preparing a commit or checkpoint. Semantic/adaptive procedures can require independent evaluation and an exact candidate binding. The latter must have the right evaluator role and authenticated report consumption; an arbitrary peer's positive comment does not satisfy that contract. Changed source, intent, owner, or workflow revisions can invalidate old candidate evidence.

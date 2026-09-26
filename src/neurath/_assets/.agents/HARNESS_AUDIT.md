@@ -88,7 +88,7 @@ Skill entry 외 필수 reference, path rule, hook protocol, name/path wrapper는
 | `evaluate-harness` | 16513 | 113 | 54360 |
 | `explain-code` | 8189 | 506 | 46036 |
 | `explore-ui` | 3000 | 190 | 40847 |
-| `finish-session` | 3260 | 392 | 41107 |
+| `finish-session` | 3731 | 392 | 41578 |
 | `graphify` | 9432 | 134 | 47279 |
 | `implement-ui` | 2792 | 146 | 40639 |
 | `investigate` | 2838 | 78 | 40685 |
