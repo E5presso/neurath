@@ -3,6 +3,32 @@
 from neurath.runtime.task_schema import TaskError, arguments
 
 
+def _worktree_worker_preflight(root, fields):
+    """Keep root ticket routing separate from an ordinary same-checkout child."""
+    from pathlib import Path
+    from neurath.providers.execution import _target
+    from neurath.runtime.process_tasks import _git, _isolation
+    from scripts.agent_harness.session_kernel import SessionLocator
+    from scripts.agent_harness.worktree_registry import (
+        WorktreeIdentityResolver, WorktreeNotClaimed, WorktreeRegistry,
+    )
+
+    source = Path(root).resolve()
+    locator = SessionLocator.from_worktree(source)
+    if source != locator.control_root:
+        raise TaskError("root-worktree-required", "worktree-worker is only for a repository-root ticket entry")
+    target = _target(source, fields["worktree"], "workspace-write")
+    _isolation(target, source)
+    if _git(target, "status", "--porcelain=v1", "--untracked-files=all"):
+        raise TaskError("target-worktree-dirty", "worktree-worker target has uncommitted changes")
+    worktree = WorktreeIdentityResolver().resolve(target)
+    try:
+        WorktreeRegistry(locator).get(worktree.worktree_id)
+    except WorktreeNotClaimed:
+        return
+    raise TaskError("target-worktree-claimed", "worktree-worker target already has an owner")
+
+
 def run(root, inputs, *, identity=None, expected_turn=None, verified_policy_evidence=None):
     from neurath.runtime.tasks import _mcp_execution_policy, _verification_owner
 
@@ -33,6 +59,8 @@ def run(root, inputs, *, identity=None, expected_turn=None, verified_policy_evid
         selection = select(identity.host, fields["provider"], fields.get("purpose", "task"), fields.get("reason", ""))
         if selection["kind"] == "native-subagent":
             raise TaskError("native-subagent-required", "Use delegation_prepare and the native child tool for work owned by this session")
+        if fields.get("purpose") == "worktree-worker":
+            _worktree_worker_preflight(root, fields)
         policy = observed_policy(root, identity, expected_turn or canonical(list(before[:2])), verified_policy_evidence)
         fields = admitted_request(root, identity, fields, policy)
         fields = resolve_policy(root, identity, fields, policy)

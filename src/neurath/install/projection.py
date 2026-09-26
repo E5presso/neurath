@@ -297,8 +297,9 @@ DECLARED hook은 AVAILABLE host 증명이 아니다. 원시 agent_id는 direct-c
 사용자가 해당 대화를 직접 방문하여 이어갈 가능성이 있을 때만 사용자용 독립 세션을 선택한다.
 다른 provider의 충분한 추론 능력과 새로운 관점·대안·반증이 유용하면 에이전트가 자율적으로
 provider worker를 선택하고 구체적인 이유를 남긴다. 별도 교차 검증 요청을 선행 조건으로 삼지 않는다.
-provider_route와 provider_run의 purpose는 task, perspective, user-session을 구분한다.
+provider_route와 provider_run의 purpose는 task, perspective, worktree-worker, user-session을 구분한다.
 task는 native child로 보내며 provider_run 직접 호출로 새 세션을 만들지 않는다.
+worktree-worker는 루트 ticket을 별도로 설치한 issue worktree에 옮기는 같은 provider의 제한된 경로다.
 관점 다양화를 위한 기술적 worker는 사용자가 관리할 앱 대화와 다르다. 앱 생성 도구의 별도
 명시적 요청 조건은 유지한다. 단순 메시지 전달은 새 실행이 아니다.
 Autopilot root는 task와 workflow, 통합, review, monitor 결과 수락을 소유한다. 구현 자식과
