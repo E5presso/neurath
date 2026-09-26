@@ -1,0 +1,87 @@
+name: ai-review
+
+on:
+  status:
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: write
+  statuses: read
+
+jobs:
+  approve-exact-head:
+    if: >-
+      github.event.context == 'ai-review' &&
+      github.event.state == 'success' &&
+      github.event.sender.login == github.repository_owner
+    runs-on: ubuntu-latest
+    steps:
+      - name: Approve verified same-repository PR head
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const sha = context.payload.sha;
+            if (!/^[0-9a-f]{40}$/.test(sha ?? '')) {
+              core.setFailed('Status event has no exact commit SHA');
+              return;
+            }
+
+            const { data: combined } = await github.rest.repos.getCombinedStatusForRef({
+              owner, repo, ref: sha,
+            });
+            const latest = combined.statuses.find(status => status.context === 'ai-review');
+            if (latest?.state !== 'success' || latest.creator?.login !== owner) {
+              core.setFailed('Latest ai-review status is not an owner-created success');
+              return;
+            }
+
+            const associated = await github.paginate(
+              github.rest.repos.listPullRequestsAssociatedWithCommit,
+              { owner, repo, commit_sha: sha, per_page: 100 },
+            );
+            const fullName = `${owner}/${repo}`;
+            const matching = associated.filter(pr =>
+              pr.state === 'open' && !pr.draft &&
+              pr.head.sha === sha && pr.base.ref === 'main' &&
+              pr.head.repo?.full_name === fullName &&
+              pr.base.repo?.full_name === fullName
+            );
+            if (matching.length !== 1) {
+              core.setFailed('Expected exactly one open same-repository PR at this HEAD');
+              return;
+            }
+            const pr = matching[0];
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number: pr.number, per_page: 100,
+            });
+            const marker = `<!-- ai-review verdict=AUTO_APPROVE head=${sha} -->`;
+            if (!comments.some(comment =>
+              comment.user?.login === owner && comment.body?.includes(marker)
+            )) {
+              core.setFailed('Verified exact-head local review comment is missing');
+              return;
+            }
+
+            const { data: current } = await github.rest.pulls.get({
+              owner, repo, pull_number: pr.number,
+            });
+            if (current.state !== 'open' || current.head.sha !== sha || current.draft) {
+              core.setFailed('PR head changed before approval');
+              return;
+            }
+            const reviews = await github.paginate(github.rest.pulls.listReviews, {
+              owner, repo, pull_number: pr.number, per_page: 100,
+            });
+            if (reviews.some(review =>
+              review.user?.login === 'github-actions[bot]' &&
+              review.state === 'APPROVED' && review.commit_id === sha
+            )) return;
+
+            await github.rest.pulls.createReview({
+              owner, repo, pull_number: pr.number, commit_id: sha,
+              event: 'APPROVE',
+              body: `Neurath verified final-local-review and ai-review status for exact head ${sha}.`,
+            });
