@@ -433,6 +433,7 @@ def _current_resume_policy(handle, lease):
     if (current.get("status") != "verified" or granted.get("status") != "verified"
             or any(current.get("evidence", {}).get(key) != granted.get("evidence", {}).get(key) for key in keys)):
         raise ValueError("native resume policy changed or is unobserved; recover through monitor_recover")
+    return turn.status
 
 
 class BoundResumeAdapter:
@@ -450,10 +451,11 @@ class BoundResumeAdapter:
     def _args(self, **extra):
         if self.policy_guard is None:
             raise ValueError("bound resume requires current native policy verification")
-        self.policy_guard()
+        owner_turn_status = self.policy_guard()
         return SimpleNamespace(thread_id=self.resources.session_id, cwd=str(self.resources.worktree),
             socket_path=str(self.resources.app_server_socket_path), turn_timeout_seconds=5,
-            expected_head_sha=None, preserve_native_policy=True, **extra)
+            expected_head_sha=None, preserve_native_policy=True,
+            owner_turn_status=getattr(owner_turn_status, "value", owner_turn_status), **extra)
 
     def probe(self):
         from neurath.runtime.bundled_services import service
@@ -467,6 +469,9 @@ class BoundResumeAdapter:
             return {"resume_status": "queued-no-adapter"}
         base = service("monitor").ResumeAdapter(None)
         args = self._args()
+        if args.owner_turn_status not in (None, "closed"):
+            return {"resume_status": "pending-delivery", "delivery_method": "active-turn-deferred",
+                    "turn_completion": {"status": "deferred", "reason": "owner-turn-active"}}
         args.expected_head_sha = event.get("snapshot", {}).get("headRefOid")
         return service("monitor_resume").resume_thread(args, base._resume_prompt(event))
 
