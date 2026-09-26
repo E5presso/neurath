@@ -10,7 +10,7 @@ In the hypothetical saved-filter investigation, `debug` can structure reproducti
 
 ## Use public names and edit owned sources
 
-The installed catalog contains 31 public skills: 29 have phase contracts; `explain-code` and `graphify` are supporting skills without one. Public names are mapped from source identifiers. For example, users invoke `debug` while the source directory and contract identify `investigate`. An installation prefix changes invocation spelling, not the internal skill identity or phase IDs.
+The installed catalog contains 32 public skills: 29 have phase contracts; `explain-code`, `graphify`, and `update-neurath` have none. Public names are mapped from source identifiers. For example, users invoke `debug` while the source directory and contract identify `investigate`. An installation prefix changes invocation spelling, not the internal skill identity or phase IDs.
 
 The editable originals live under [src/neurath/_assets/.agents/skills/](../../../src/neurath/_assets/.agents/skills/). Installed `.agents/skills` and `.neurath/rules` are projections. Change the original asset and update its generated manifest in an authorized implementation change. Installation, package execution, and real-host activation remain separate validation work; merely editing the procedure does not prove that an already-open host loaded it.
 
@@ -48,6 +48,7 @@ The catalog below starts from the work the agent needs to do. Read the selected 
 | `user-docs` | Update reader-facing usage documentation. | `sync-user-docs` | 1 | `completed`, `blocked`, `failed` |
 | `pr-feedback` | Triage and address pull-request feedback. | `triage-comments` | 1 | `completed`, `blocked`, `failed` |
 | `update-deps` | Apply and verify authorized dependency updates. | `update-dependencies` | 1 | `completed`, `blocked`, `failed` |
+| `update-neurath` | Check, prepare, apply, and verify an exact Neurath release in the installed project. | `update-neurath` | — | Release service result |
 | `update-status` | Reflect verified progress in project status. | `update-project-status` | 1 | `completed`, `blocked`, `failed` |
 
 ## Record progress only when its evidence exists

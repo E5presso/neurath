@@ -46,8 +46,11 @@ def test_bound_session_turn_and_claim_without_cli(sessions, monkeypatch, host, s
 
 def test_worktree_foreign_owner_and_stale_release_are_denied(sessions):
     claim = call(sessions, "worktree_claim")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as conflict:
         call(sessions, "worktree_claim", host="claude-code", session="ui")
+    assert conflict.value.details["code"] == "claim-conflict"
+    assert "worktree_inspect" in conflict.value.details["next_action"]
+    assert "owning session" in conflict.value.details["next_action"]
     with pytest.raises(ValueError):
         call(sessions, "worktree_release", {"expected_lease_epoch": claim["lease_epoch"] + 1,
              "fencing_token": claim["fencing_token"]})

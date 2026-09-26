@@ -61,6 +61,9 @@ Choose tools when the situations below arise; do not wait for the user to name t
 - Start or resume substantive work: use `session_status` and `task_list` to recover
   actual readiness, ownership and unfinished requirements. Before writing, use
   `worktree_claim` when the current native actor needs a claim.
+- On a claim conflict, use `worktree_inspect` and host tools to read the owning session,
+  even if idle. Send an authorized message for finish-session or safe handoff. Verify
+  release before reclaiming; never force-reclaim.
 - When a new requirement, acceptance gap or necessary next step becomes concrete,
   use `task_define` and `task_start` immediately. Before adding work, ask which unmet user
   requirement it advances. Use `task_resolve` with observed results; a failed
@@ -75,14 +78,10 @@ Choose tools when the situations below arise; do not wait for the user to name t
   remaining work and lessons. When another session stops, use `memory_pull` to
   inspect and, when safe, adopt its unfinished work; do not require a final push
   from the stopped session.
-- When work overlaps another agent, a blocker needs their input, or a result is
-  ready to hand back, use `collaboration_discover` and `collaboration_send` or the
-  applicable assignment/delegation tools. Read pending messages with
-  `collaboration_inbox` and answer with `collaboration_reply`; read the actual
-  result before acknowledging it. Preserve the host's delegation conditions.
-  Use these messaging triggers across Codex and Claude peers as well.
-  Read the returned delivery mode: pull-only means no live wake endpoint exists;
-  the peer will read the message on its next native turn.
+- For overlap, blockers or handoff, use `collaboration_discover` and
+  `collaboration_send` or assignment tools across Codex and Claude. Use
+  `collaboration_inbox`/`collaboration_reply`; read results before acknowledging.
+  Preserve delegation conditions. Pull-only delivery does not wake the peer.
 - When you find a reproducible bug, a shared interface constraint or a reusable
   workaround, share it with active project peers using `newsroom_publish`.
   Follow relevant announced titles with `newsroom_read`; use `newsroom_headlines`
@@ -538,6 +537,8 @@ def project_text(text, profile, skill_prefix=""):
 def asset_files(profile, hosts, skill_prefix=""):
     validate_skill_prefix(skill_prefix)
     files = {}
+    contracted_skills = set(json.loads(
+        (BUNDLE / ".agents/skills/contracts.json").read_text())["skills"])
     for skill in skills():
         name = public_name(skill, skill_prefix)
         source = BUNDLE / ".agents/skills" / skill
@@ -553,8 +554,12 @@ def asset_files(profile, hosts, skill_prefix=""):
                     # Frontmatter is retained; the authority boundary precedes the source body.
                     split = content.split("---", 2)
                     if len(split) == 3:
+                        contract_guidance = (
+                            f"내장 계약: `{skill}`. 기존 workflow를 실행·복구할 때 `phase_current`와 `phase_evidence_prepare`를 사용합니다. task 목록이 있으면 task 도구로 결과를 한 번 기록하며 별도 phase 완료를 요구하지 않습니다.\n"
+                            if skill in contracted_skills else ""
+                        )
                         split[2] = (
-                            f"\n\n먼저 `.neurath/policy.md`와 `.neurath/project.json`을 읽으세요.\n이 문서는 Neurath의 `{name}` 절차입니다. 대상 프로젝트의 지침과 설정에 연결하여 실행합니다.\n하네스 작업은 현재 노출된 명명 MCP 도구와 구조화 입력을 사용합니다. CLI 문법이나 --help를 탐색하지 않습니다. 현재 정책에서 실행할 수 없으면 구체적인 미지원 사유를 보고합니다.\n내장 계약: `{skill}`. 기존 workflow를 실행·복구할 때 `phase_current`와 `phase_evidence_prepare`를 사용합니다. task 목록이 있으면 task 도구로 결과를 한 번 기록하며 별도 phase 완료를 요구하지 않습니다.\n"
+                            f"\n\n먼저 `.neurath/policy.md`와 `.neurath/project.json`을 읽으세요.\n이 문서는 Neurath의 `{name}` 절차입니다. 대상 프로젝트의 지침과 설정에 연결하여 실행합니다.\n하네스 작업은 현재 노출된 명명 MCP 도구와 구조화 입력을 사용합니다. CLI 문법이나 --help를 탐색하지 않습니다. 현재 정책에서 실행할 수 없으면 구체적인 미지원 사유를 보고합니다.\n{contract_guidance}"
                             + split[2]
                         )
                         content = "---".join(split)

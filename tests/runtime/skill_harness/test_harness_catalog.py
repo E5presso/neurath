@@ -20,7 +20,7 @@ class HarnessCatalogTest(TestCase):
         skills = {item.name: item for item in catalog.skills}
 
         self.assertEqual(8, len(rules))
-        self.assertEqual(31, len(skills))
+        self.assertEqual(32, len(skills))
         self.assertEqual("path", rules["worktree-isolation"].injection)
         self.assertIn(".agents/worktrees/**", rules["worktree-isolation"].paths)
         self.assertEqual("always", rules["behavioral"].injection)
@@ -49,7 +49,8 @@ class HarnessCatalogTest(TestCase):
         self.assertEqual("product-ui.roundtrip-review", skills["review-ui"].intent_class)
         self.assertFalse(skills["explain-code"].contracted)
         self.assertFalse(skills["graphify"].contracted)
-        self.assertEqual(("explain-code", "graphify"), catalog.uncontracted_skills)
+        self.assertFalse(skills["update-neurath"].contracted)
+        self.assertEqual(("explain-code", "graphify", "update-neurath"), catalog.uncontracted_skills)
         self.assertEqual((), catalog.orphan_contracts)
 
     def test_committed_navigation_and_audit_indexes_are_exact_projections(self) -> None:
@@ -82,5 +83,5 @@ class HarnessCatalogTest(TestCase):
         self.assertIn(optimize.description, audit)
         self.assertIn("`harness-prompt.optimize`", audit)
         self.assertIn("`repository-prompt-surface`", audit)
-        self.assertIn("Uncontracted skills: `explain-code`, `graphify`", audit)
+        self.assertIn("Uncontracted skills: `explain-code`, `graphify`, `update-neurath`", audit)
         self.assertIn("Orphan contracts: none", audit)

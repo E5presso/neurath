@@ -7,7 +7,7 @@
 설치된 투영의 drift는 `diagnostics_project` MCP로 검사합니다. 소스 생성은 `tools/build_manifest.py`가 담당합니다.
 
 - Rules: 8
-- Skills: 31
+- Skills: 32
 - Contracted skills: 29
 
 ## Rules
@@ -57,6 +57,7 @@
 | [`sync-user-docs`](skills/sync-user-docs/SKILL.md) | no | `user-docs.sync` | `repository-source` | `docs.route`<br>`developer-docs.sync` | `contracted` | 승인된 product behavior가 존재한 뒤 user-facing documentation을 동기화합니다. |
 | [`triage-comments`](skills/triage-comments/SKILL.md) | yes | `pull-request-comments.triage` | `github-pr-state` | `source.review`<br>`pull-request.monitor` | `contracted` | PR 리뷰 코멘트를 분석하여 수용/반론을 판단하고, 결정 근거를 스레드에 남깁니다. |
 | [`update-dependencies`](skills/update-dependencies/SKILL.md) | yes | `dependency.update` | `external-primary-source` | `dependency.audit`<br>`source.refactor` | `contracted` | Neurath dependency를 통제되고 검증된 방식으로 update합니다. |
+| [`update-neurath`](skills/update-neurath/SKILL.md) | yes | `harness.update` | `verified-release-offer` | `dependency.update`<br>`source.refactor` | `uncontracted` | 설치된 프로젝트의 Neurath 릴리스를 한 번의 스킬 호출로 확인, 준비, 사용자 선택, 적용 및 결과 확인까지 진행합니다. 프로젝트 의존성 업데이트에는 사용하지 않습니다. |
 | [`update-project-status`](skills/update-project-status/SKILL.md) | no | `project-status.update` | `github-work-item` | `ticket.create`<br>`ticket.execute` | `contracted` | GitHub Issue 또는 project status metadata를 update합니다. |
 
 ## Prompt source measurements
@@ -68,9 +69,9 @@ Skill entry 외 필수 reference, path rule, hook protocol, name/path wrapper는
 
 | Surface | Declared acquisition | Source bytes |
 |---|---|---:|
-| Neurath policy + common rules | Claude native source proxy | 77221 |
+| Neurath policy + common rules | Claude native source proxy | 77696 |
 | Neurath policy + behavioral | Codex explicit base | 37988 |
-| Skill descriptions | Native discovery source | 4828 |
+| Skill descriptions | Native discovery source | 5053 |
 
 ## Skill entry measurements
 
@@ -106,9 +107,10 @@ Skill entry 외 필수 reference, path rule, hook protocol, name/path wrapper는
 | `sync-user-docs` | 1019 | 92 | 39007 |
 | `triage-comments` | 10977 | 110 | 48965 |
 | `update-dependencies` | 1686 | 74 | 39674 |
+| `update-neurath` | 3088 | 225 | 41076 |
 | `update-project-status` | 953 | 63 | 38941 |
 
 ## Join diagnostics
 
-- Uncontracted skills: `explain-code`, `graphify`
+- Uncontracted skills: `explain-code`, `graphify`, `update-neurath`
 - Orphan contracts: none

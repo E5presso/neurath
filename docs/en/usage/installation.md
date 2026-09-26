@@ -35,7 +35,9 @@ This is also where the agent may ask once whether common Neurath problems may be
 
 During active work, supported hooks can remind the agent that a release check is due. The agent can then check for a stable release and present an update notice; the hook itself does not make a network request or start another session. Routine checks are spaced at least a day apart, and you can request a fresh check. A notice does not install the update. A failed network check leaves availability unknown and does not stop your original task.
 
-> Show the available Neurath update and its effect on this installation. Apply the prepared version when I choose it, and verify the active host connection afterward.
+> Run the `update-neurath` skill in this project. Show the available release and its effect on this installation, apply the version I choose, and verify the active host connection afterward.
+
+One skill invocation carries the check, exact preview, choice, application, and result readback. The agent pauses for your decision on the prepared version; invoking the skill does not approve an unseen change.
 
 The choice applies to the prepared release. If that preview changes, the agent needs a new choice. A version you postpone stays deferred. Updates continue to preserve project bindings and local settings; changed managed content remains a conflict to resolve.
 

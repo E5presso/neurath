@@ -10,7 +10,7 @@
 
 ## 공개 이름을 사용하고 원본 자산 수정하기
 
-설치되는 공개 스킬은 31개입니다. 29개에 단계 계약이 있고 `explain-code`, `graphify`는 단계 계약이 없는 보조 스킬입니다. 공개 이름과 소스 식별자가 연결됩니다. 예를 들어 사용자는 `debug`를 부르지만 소스 디렉터리와 계약의 식별자는 `investigate`입니다. 설치 접두사는 호출 표기만 바꾸며 내부 스킬 식별자나 단계 ID를 바꾸지 않습니다.
+설치되는 공개 스킬은 32개입니다. 29개에 단계 계약이 있고 `explain-code`, `graphify`, `update-neurath`에는 단계 계약이 없습니다. 공개 이름과 소스 식별자가 연결됩니다. 예를 들어 사용자는 `debug`를 부르지만 소스 디렉터리와 계약의 식별자는 `investigate`입니다. 설치 접두사는 호출 표기만 바꾸며 내부 스킬 식별자나 단계 ID를 바꾸지 않습니다.
 
 수정할 원본은 [src/neurath/_assets/.agents/skills/](../../../src/neurath/_assets/.agents/skills/) 아래 있습니다. 설치된 `.agents/skills`, `.neurath/rules`는 투영 결과입니다. 승인된 구현 변경에서는 원본 자산을 고치고 생성된 manifest를 갱신합니다. 설치, 패키지 실행, 실제 호스트 활성화는 따로 검증해야 합니다. 절차 파일을 고쳤다고 이미 열린 호스트가 새 내용을 읽었다는 뜻은 아닙니다.
 
@@ -48,6 +48,7 @@
 | `user-docs` | 사용자용 사용 문서 갱신 | `sync-user-docs` | 1 | `completed`, `blocked`, `failed` |
 | `pr-feedback` | PR 피드백 분류·처리 | `triage-comments` | 1 | `completed`, `blocked`, `failed` |
 | `update-deps` | 승인된 의존성 갱신·검증 | `update-dependencies` | 1 | `completed`, `blocked`, `failed` |
+| `update-neurath` | 설치된 프로젝트에서 정확한 Neurath 릴리스를 확인·준비·적용하고 결과를 검증 | `update-neurath` | — | 릴리스 서비스 결과 |
 | `update-status` | 확인한 진행 내용을 프로젝트 상태에 반영 | `update-project-status` | 1 | `completed`, `blocked`, `failed` |
 
 ## 근거가 있을 때만 단계 진행 기록하기

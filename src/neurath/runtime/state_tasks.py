@@ -90,6 +90,7 @@ def execute(root, name, fields, *, identity, expected_turn, verified_policy_evid
     from scripts.agent_harness.session_kernel import SessionLocator
     from scripts.agent_harness.worktree_registry import (
         WorktreeClaim,
+        WorktreeAlreadyClaimed,
         WorktreeIdentityResolver,
         WorktreeNotClaimed,
         WorktreeRegistry,
@@ -117,8 +118,15 @@ def execute(root, name, fields, *, identity, expected_turn, verified_policy_evid
     canonical = WorktreeIdentityResolver().resolve(root)
     registry = WorktreeRegistry(SessionLocator.from_worktree(root))
     if name == "worktree_claim":
-        return registry.claim(WorktreeClaim(worktree_id=canonical.worktree_id,
-            path=canonical.path, session_id=handle.session_id, actor_id=handle.actor_id)).to_payload()
+        try:
+            return registry.claim(WorktreeClaim(worktree_id=canonical.worktree_id,
+                path=canonical.path, session_id=handle.session_id, actor_id=handle.actor_id)).to_payload()
+        except WorktreeAlreadyClaimed as error:
+            raise TaskError("claim-conflict", str(error), next_action=(
+                "Call worktree_inspect to identify the owning session. Read that session's current "
+                "state through the host's existing-session tools and send an authorized follow-up "
+                "requesting finish-session when eligible, or a safe handoff. Observe an actual "
+                "release before claiming again; never force-reclaim the foreign claim.")) from error
     try:
         claim = registry.get(canonical.worktree_id)
     except WorktreeNotClaimed:

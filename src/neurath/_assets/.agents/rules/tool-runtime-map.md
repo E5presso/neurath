@@ -82,8 +82,12 @@ Skill과 phase file은 아래 stable `tool:<key>`로 Claude Code와 Codex tool c
 - 독립 read-only 조사 둘 이상은 root가 병렬 위임하고 대조합니다.
   상한을 채우지 않으며 child 재위임·mutation·권위 위임은 금지합니다. `/review-code`는
   독립 single-subagent readback 없으면 blocked이고 serial fallback이 없습니다.
+- Claim 충돌은 `worktree_inspect`로 실제 owner를 읽고 기존 세션의 현재 작업 상태를 확인한다.
+  기존 세션이 끝낼 수 있으면 `finish-session`, 미완료 작업이 있으면 안전한 인계와 claim 반환을 요청한다.
+  실제 release를 다시 읽기 전에는 claim을 재시도하지 않는다.
 - Codex app의 기존 세션은 현재 `read_thread`로 상태를 확인하고 승인된 `send_message_to_thread`를 우선한다.
   Claude는 현재 `ListAgents`로 동료를 발견하고 정확한 반환 주소와 현재 schema로 `SendMessage`를 사용한다.
-  수신 보류·거부·대기 상태를 보존하고, 비활성 동료를 임의로 깨우지 않는다.
+  수신 보류·거부·대기 상태를 보존한다. 사용자 승인 아래 막힌 claim을 조율할 때는 idle owner에도
+  후속 메시지를 보낼 수 있다. 일반 알림을 위해 비활성 동료를 임의로 깨우지 않는다.
   외부 app-server는 해당 adapter가 소유한 세션만 제어한다. CLI resume은 terminal이 소유한 실행에 한정하며,
   이미 실행 중인 app·Claude 세션을 다른 headless process로 대신하지 않는다.

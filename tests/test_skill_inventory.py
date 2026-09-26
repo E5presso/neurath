@@ -22,7 +22,7 @@ RETAINED = {
     "investigate", "monitor-pr", "optimize-harness", "plan-issues", "pr-review",
     "process-ticket", "promote-memory", "review-code", "review-ui", "sync-design",
     "sync-dev-docs", "sync-docs", "sync-user-docs", "triage-comments",
-    "update-dependencies", "update-project-status",
+    "update-dependencies", "update-neurath", "update-project-status",
 }
 LEGACY_BLOCK = (
     "\n<!-- neurath:managed -->\n## Neurath\n\n"
@@ -76,11 +76,22 @@ def contents(repo):
 def test_inventory_retires_only_the_seven_approved_skills():
     assert set(skills()) == RETAINED
     contracts = json.loads((BUNDLE / ".agents/skills/contracts.json").read_text())["skills"]
-    assert set(contracts) == RETAINED - {"explain-code", "graphify"}
+    assert set(contracts) == RETAINED - {"explain-code", "graphify", "update-neurath"}
     cases = json.loads((BUNDLE / ".agents/skills/intent-routing-evals.json").read_text())["cases"]
     for case in cases:
         assert case.get("expected_selected_skill") not in RETIRED
         assert not (set(case.get("expected_rejected_skills", [])) & RETIRED)
+
+
+def test_neurath_update_skill_uses_exact_release_offer_and_native_choice(repo):
+    installer.apply_plan(repo, installer.make_plan(repo, hosts=["codex", "claude-code"]))
+    skill = (repo / ".agents/skills/update-neurath/SKILL.md").read_text()
+    assert "releases_check" in skill
+    assert "releases_prepare" in skill
+    assert "maintenance_choice_prepare" in skill
+    assert "releases_choose" in skill
+    assert "releases_apply" in skill
+    assert (repo / ".claude/skills/update-neurath").resolve() == repo / ".agents/skills/update-neurath"
 
 
 @pytest.mark.parametrize("hosts", [["codex"], ["claude-code"], ["codex", "claude-code"]])

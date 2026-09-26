@@ -32,6 +32,9 @@ Choose tools when the situations below arise; do not wait for the user to name t
 - Start or resume substantive work: use `session_status` and `task_list` to recover
   actual readiness, ownership and unfinished requirements. Before writing, use
   `worktree_claim` when the current native actor needs a claim.
+- On a claim conflict, use `worktree_inspect` and host tools to read the owning session,
+  even if idle. Send an authorized message for finish-session or safe handoff. Verify
+  release before reclaiming; never force-reclaim.
 - When a new requirement, acceptance gap or necessary next step becomes concrete,
   use `task_define` and `task_start` immediately. Before adding work, ask which unmet user
   requirement it advances. Use `task_resolve` with observed results; a failed
@@ -46,14 +49,10 @@ Choose tools when the situations below arise; do not wait for the user to name t
   remaining work and lessons. When another session stops, use `memory_pull` to
   inspect and, when safe, adopt its unfinished work; do not require a final push
   from the stopped session.
-- When work overlaps another agent, a blocker needs their input, or a result is
-  ready to hand back, use `collaboration_discover` and `collaboration_send` or the
-  applicable assignment/delegation tools. Read pending messages with
-  `collaboration_inbox` and answer with `collaboration_reply`; read the actual
-  result before acknowledging it. Preserve the host's delegation conditions.
-  Use these messaging triggers across Codex and Claude peers as well.
-  Read the returned delivery mode: pull-only means no live wake endpoint exists;
-  the peer will read the message on its next native turn.
+- For overlap, blockers or handoff, use `collaboration_discover` and
+  `collaboration_send` or assignment tools across Codex and Claude. Use
+  `collaboration_inbox`/`collaboration_reply`; read results before acknowledging.
+  Preserve delegation conditions. Pull-only delivery does not wake the peer.
 - When you find a reproducible bug, a shared interface constraint or a reusable
   workaround, share it with active project peers using `newsroom_publish`.
   Follow relevant announced titles with `newsroom_read`; use `newsroom_headlines`

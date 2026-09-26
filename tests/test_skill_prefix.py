@@ -182,11 +182,15 @@ def test_prefix_projects_calls_links_policy_and_preserves_contract_ids():
     default = asset_files("generic", ["codex", "claude-code"])
     entries = {path.split("/")[2]: data.decode() for path, (data, _) in projected.items()
                if path.startswith(".agents/skills/") and path.endswith("/SKILL.md")}
+    contracted = set(json.loads(projected[".neurath/reference/contracts.json"][0])["skills"])
     assert set(entries) == {public_name(name, prefix) for name in skills()}
     for internal in skills():
         name = public_name(internal, prefix)
         assert f"\nname: {name}\n" in entries[name]
-        assert f"내장 계약: `{internal}`" in entries[name]
+        if internal in contracted:
+            assert f"내장 계약: `{internal}`" in entries[name]
+        else:
+            assert "phase_current" not in entries[name]
         assert "명명 MCP 도구" in entries[name]
         assert ".neurath/run skill" not in entries[name]
     policy = projected[".neurath/policy.md"][0].decode()

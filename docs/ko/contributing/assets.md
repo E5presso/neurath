@@ -19,7 +19,7 @@
 
 표의 모든 원본 경로는 `src/neurath` 아래에 있습니다. 다른 저장소는 빌드 입력이 아닙니다. 대상 프로젝트의 제품 문서와 검증 명령은 `.neurath/project.json`으로 연결합니다.
 
-현재 공개 스킬은 31개입니다. 29개는 단계 계약이 있고 `explain-code`, `graphify`는 그런 계약 없이 작업을 돕는 스킬입니다. 공개 이름은 독자가 요청할 작업을 나타내고 내부 ID는 저장된 워크플로를 안정적으로 유지합니다. 예를 들어 원본 계약 `investigate`는 `debug`로, `monitor-pr`은 `watch-pr`로 호출합니다. `neurath-` 접두어를 설정하면 `/neurath-debug`가 되지만 내부 계약 이름은 바뀌지 않습니다. 전체 매핑은 [스킬 참조](skills-reference.md)에 있습니다.
+현재 공개 스킬은 32개입니다. 29개는 단계 계약이 있고 `explain-code`, `graphify`, `update-neurath`는 그런 계약 없이 작업을 돕는 스킬입니다. 공개 이름은 독자가 요청할 작업을 나타내고 내부 ID는 저장된 워크플로를 안정적으로 유지합니다. 예를 들어 원본 계약 `investigate`는 `debug`로, `monitor-pr`은 `watch-pr`로 호출합니다. `neurath-` 접두어를 설정하면 `/neurath-debug`가 되지만 내부 계약 이름은 바뀌지 않습니다. 전체 매핑은 [스킬 참조](skills-reference.md)에 있습니다.
 
 ## 원본 변경이 설치본에 반영되는 과정
 

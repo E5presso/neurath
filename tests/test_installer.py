@@ -379,6 +379,9 @@ def test_agents_guidance_routes_work_and_preserves_other_integrations(repo, pref
                  "newsroom_headlines", "newsroom_read", "newsroom_publish",
                  "provider_models", "provider_plan", "provider_run", "learning_pending"):
         assert f"`{tool}`" in content
+    assert "claim conflict" in content
+    assert "owning session" in content
+    assert "finish-session" in content
     assert content.count("<!-- neurath:managed -->") == 1
     assert len(content[len(original):].encode()) < 4500
     assert make_plan(repo)["changes"] == []
