@@ -45,7 +45,8 @@ def test_bound_resume_adapter_never_resolves_identity_from_worker_environment(mo
     assert "claim" in observed[0][1]
 
 
-def test_owned_monitor_callback_starts_from_grant_and_returns_real_observation(sessions, monkeypatch):
+@pytest.mark.parametrize("observe_only", [True, False])
+def test_owned_monitor_callback_starts_from_grant_and_returns_real_observation(sessions, monkeypatch, observe_only):
     import os
     import time
     from neurath.runtime import monitor_runtime
@@ -70,7 +71,7 @@ def test_owned_monitor_callback_starts_from_grant_and_returns_real_observation(s
     # fixture exercises the actual process/grant/lease/readback callback path.
     monkeypatch.setattr(service("monitor_handoff").MonitorRuntimeHandoffService, "prepare", lambda *a, **k: {"state":"completed"})
     admitted = call(sessions, "monitor_start", {"workflow_id":"phase", "repo":"example/project",
-        "pr_number":1, "observe_only":True, "once":True, "key":"start"})
+        "pr_number":1, "observe_only":observe_only, "once":True, "key":"start"})
     assert admitted["status"] == "accepted"
     store = monitor_runtime._store(root)
     deadline = time.monotonic()+15
@@ -85,7 +86,7 @@ def test_owned_monitor_callback_starts_from_grant_and_returns_real_observation(s
     subscription = state["workflows"]["phase"]["payload"]["skill_state"]["monitor_event_subscription"]
     assert subscription["runtime_id"] == admitted["run_id"]+"-1"
     assert subscription["pid"] == row["pid"]
-    assert subscription["resume_adapter"] == "unavailable"
+    assert subscription["resume_adapter"] == ("unavailable" if observe_only else "app-server")
     with store.connection() as db:
         states = [r[0] for r in db.execute("SELECT e.state FROM task_events e JOIN task_links t ON t.id=e.task WHERE t.transport='monitor-service' ORDER BY e.sequence")]
         assert states == ["started", "completed"]

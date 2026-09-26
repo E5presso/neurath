@@ -360,7 +360,33 @@ def hook(root, host, raw, environment=None):
     if isinstance(switch, dict) and switch.get("tool_name") == "mcp__neurath_collaboration__harness_bypass":
         return 0, {}, ""
     if mode(root)["enabled"]:
-        return 0, {}, ""
+        # Bypass skips Neurath enforcement, but named MCP calls still need the
+        # host-attested PreToolUse binding. No other hook work runs here.
+        from neurath.agents.mcp import TOOL_NAMES, bind_call
+
+        if (not isinstance(switch, dict) or switch.get("hook_event_name") != "PreToolUse"
+                or switch.get("tool_name") not in TOOL_NAMES):
+            return 0, {}, ""
+        try:
+            if host not in HOSTS:
+                raise ValueError("unsupported host")
+            cwd = Path(switch.get("cwd", root)).resolve()
+            installed_root = Path(root).resolve()
+            if cwd != installed_root and not cwd.is_relative_to(installed_root):
+                raise ValueError("hook cwd is outside installed repository")
+            activate(root)
+            env = dict(os.environ if environment is None else environment)
+            from neurath.hosts.identity import validate_tool_foreground
+
+            validate_tool_foreground(root, host, switch, env)
+            if switch.get("agent_id") is not None:
+                from neurath.hosts.lifecycle import ensure_child
+
+                if not ensure_child(installed_root, host, switch, env):
+                    raise ValueError("child-identity-unverified")
+            return 0, bind_call(root, host, switch), ""
+        except (KeyError, OSError, TypeError, ValueError) as error:
+            return 2, {}, str(error)
     try:
         request = json.loads(raw)
     except ValueError, TypeError:

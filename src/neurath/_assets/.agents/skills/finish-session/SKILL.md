@@ -37,8 +37,12 @@ non-fast-forward, 검증 실패, Graphify 실패, typed release 실패처럼 다
 
 1. `git status --short --branch` 실행으로 현재 branch와 변경 범위를 고정합니다.
 2. staged와 unstaged diff 검사로 사용자 변경과 무관한 파일이 섞이지 않았는지 확인합니다.
-3. 관련 파일만 stage합니다.
-4. `/commit` 계약에 따라 대상 저장소의 commit 규칙에 맞게 commit하고 exact commit SHA를 읽습니다.
+3. 변경 파일이 있으면 관련 파일만 stage합니다. 변경이 전혀 없으면 `phase_evidence_prepare`의
+   `clean_tree` Git 원본 근거로 `stage_scope`를 `skipped` 처리합니다. 이전 phase의 상태
+   보고나 agent 메모를 빈 index의 근거로 대신하지 않습니다.
+4. 변경 파일을 stage했다면 `/commit` 계약에 따라 대상 저장소의 commit 규칙에 맞게 commit하고
+   exact commit SHA를 읽습니다. `stage_scope`를 건너뛰었다면 새 revision에서
+   `clean_tree` 근거를 다시 준비해 `commit`도 `skipped` 처리하며 빈 commit을 만들지 않습니다.
 5. 현재 branch를 push하고 remote HEAD를 다시 읽습니다. Local HEAD와 remote HEAD가 exact하게
    같지 않으면 claim을 유지한 채 중단합니다.
 6. Claim을 유지한 상태에서 `/graphify` 계약에 따라 `graphify update .` 실행을 완료하고

@@ -12,7 +12,7 @@ from neurath.agents.store import MessageStore
 from neurath.memory.store import canonical
 from neurath.resources import distribution_id
 
-GIT_LABELS = ("git_status", "staged_files", "commit_sha", "branch_name", "worktree_absolute_path",
+GIT_LABELS = ("git_status", "staged_files", "clean_tree", "commit_sha", "branch_name", "worktree_absolute_path",
               "remote_branch", "remote_head", "push_head_match")
 SOURCE_LABELS = (*GIT_LABELS, "worktree_release_receipt")
 AUTHORITY_LABELS = {"adaptive_control_initialized", "adaptive_control_receipt"}
@@ -53,7 +53,9 @@ def _context(root, handle, workflow_id):
     current = PhaseRunner(SkillContractRepository(root)).current(SessionPhaseRunnerStore.open_existing(handle, workflow_id))
     if not isinstance(current.get("phase"), dict):
         raise ValueError("workflow has no current phase for evidence preparation")
-    return workflow, state, set(current["phase"]["required_evidence"])
+    allowed = set(current["phase"]["required_evidence"])
+    allowed.update(current["phase"].get("skip_evidence", []))
+    return workflow, state, allowed
 
 
 def _store(root):
@@ -91,7 +93,7 @@ def prepare(root, handle, fields):
     if set(labels) & AUTHORITY_LABELS:
         raise ValueError("reserved adaptive authority must use its current evidence reference")
     all_labels = {item for contract in json.loads((Path(__file__).parents[1]/"_assets/.agents/skills/contracts.json").read_text())["skills"].values()
-                  for phase in contract["phase_contracts"] for item in phase["required_evidence"]} | AUTHORITY_LABELS
+                  for phase in contract["phase_contracts"] for item in phase["required_evidence"]} | AUTHORITY_LABELS | set(SOURCE_LABELS)
     before = _basis(root)
     evidence, provenance = [], []
     for label in fields["labels"]:
@@ -104,6 +106,10 @@ def prepare(root, handle, fields):
             value = _git(root,"diff","--cached","--name-only")
             if not value:
                 raise ValueError("no staged files were observed")
+        elif label == "clean_tree":
+            if _git(root,"status","--porcelain=v1","--untracked-files=all"):
+                raise ValueError("clean tree evidence requires an empty index and working tree")
+            value = "head_sha=" + _git(root,"rev-parse","HEAD") + " index=clean worktree=clean"
         elif label == "commit_sha":
             value = "head_sha=" + _git(root,"rev-parse","HEAD")
         elif label == "branch_name":

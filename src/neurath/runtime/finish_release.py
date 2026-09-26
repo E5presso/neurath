@@ -16,9 +16,16 @@ def _phase(workflow):
     return PhaseRunState.from_payload(dict(workflow.payload.get("phase_run", {})))
 
 
-def _prefix(phase):
+def _prefix(phase, head):
     prefix = [item for item in phase.phases if item.id < 6]
-    if [item.id for item in prefix] != [1, 2, 3, 4, 5] or any(item.status != "completed" for item in prefix):
+    if [item.id for item in prefix] != [1, 2, 3, 4, 5]:
+        raise ValueError("finish prerequisites are not completed")
+    statuses = [item.status for item in prefix]
+    if statuses == ["completed", "skipped", "skipped", "completed", "completed"]:
+        proof = f"clean_tree: head_sha={head} index=clean worktree=clean"
+        if any(item.evidence != (proof,) for item in prefix[1:3]):
+            raise ValueError("finish clean skip proof differs from current HEAD")
+    elif statuses != ["completed"] * 5:
         raise ValueError("finish prerequisites are not completed")
     return _digest([asdict(item) for item in prefix])
 
@@ -40,9 +47,10 @@ def capture_finish_context(root, handle):
     workflow, phase = candidates[0]
     if phase.north_star != workflow.goal or phase.phase(6).name != "worktree_release":
         raise ValueError("finish workflow identity changed")
+    head = _git(root, "rev-parse", "HEAD")
     return {"schema": "neurath.finish-release.v1", "workflow_id": str(workflow.id),
             "goal": workflow.goal, "phase_digest": _digest(dict(workflow.payload["phase_run"])),
-            "prefix_digest": _prefix(phase), "head": _git(root, "rev-parse", "HEAD"),
+            "prefix_digest": _prefix(phase, head), "head": head,
             "branch": _git(root, "branch", "--show-current"), "source_fingerprint": _basis(root)}
 
 
@@ -67,7 +75,7 @@ def _validate(root, handle, registry, worktree_id, name, fields):
             or workflow.owner_actor_id != handle.actor_id or workflow.goal != context["goal"]):
         raise ValueError("finish workflow differs from release context")
     phase = _phase(workflow)
-    if _prefix(phase) != context["prefix_digest"] or phase.north_star != context["goal"]:
+    if _prefix(phase, _git(root, "rev-parse", "HEAD")) != context["prefix_digest"] or phase.north_star != context["goal"]:
         raise ValueError("finish prerequisites changed after release")
     if phase.current_phase_id not in (6, None) or phase.terminal_state not in (None, "finished"):
         raise ValueError("post-release workflow is outside its terminal phase")

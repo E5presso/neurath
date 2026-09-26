@@ -1171,7 +1171,9 @@ class PhaseRunner:
             )
         pattern_failures: list[str] = []
         if not terminal:
-            pattern_failures = self._pattern_failures(phase, evidence)
+            clean_skip = (state.skill == "finish-session" and status == "skipped"
+                          and phase.name in {"stage_scope", "commit"})
+            pattern_failures = [] if clean_skip else self._pattern_failures(phase, evidence)
             pattern_failures.extend(
                 self._semantic_failures(
                     state,
@@ -1234,6 +1236,8 @@ class PhaseRunner:
         elif "push_head_match" in required_evidence:
             failures.extend(self._push_head_match_semantic_failures(evidence))
             previous_commit = self._previous_evidence_item(state, "commit_sha")
+            if state.skill == "finish-session" and state.phase(3).status == "skipped":
+                previous_commit = self._previous_evidence_item(state, "clean_tree")
             pushed = self._evidence_item(evidence, "push_head_match")
             if (
                 previous_commit
@@ -1262,6 +1266,19 @@ class PhaseRunner:
             failures.extend(self._adaptive_control_initialized_failures(state, evidence, store))
         if "adaptive_control_receipt" in required_evidence:
             failures.extend(self._adaptive_control_receipt_failures(evidence, store))
+        if state.skill == "finish-session" and status == "skipped" and phase.name in {"stage_scope", "commit"}:
+            proof = self._evidence_item(evidence, "clean_tree")
+            if not re.fullmatch(r"clean_tree: head_sha=[0-9a-f]{40} index=clean worktree=clean", proof or ""):
+                failures.append("finish_session.clean_tree")
+            if phase.name == "commit":
+                previous = state.phase(2)
+                if previous.status != "skipped":
+                    failures.append("finish_session.stage_scope_not_skipped")
+                elif self._head_evidence_value(self._evidence_item(previous.evidence, "clean_tree")) != self._head_evidence_value(proof):
+                    failures.append("finish_session.clean_tree_head_changed")
+        if (state.skill == "finish-session" and phase.name == "commit" and status == "completed"
+                and state.phase(2).status != "completed"):
+            failures.append("finish_session.stage_scope_not_completed")
         if state.skill == "autopilot" and phase.name == "execute_waves":
             wave_id = self._evidence_value(self._evidence_item(evidence, "native_wave_receipt"), "wave_id")
             try:
@@ -1395,6 +1412,8 @@ class PhaseRunner:
         required = self._effective_required_evidence(state, phase, "completed")
         payload["required_evidence"] = list(required)
         payload["min_evidence_count"] = max(phase.min_evidence_count, len(required))
+        if state.skill == "finish-session" and phase.name in {"stage_scope", "commit"}:
+            payload["skip_evidence"] = ["clean_tree"]
         return payload
 
     def _effective_required_evidence(
@@ -1406,6 +1425,9 @@ class PhaseRunner:
         """Adaptive policy를 skill별 분기 없이 first/final phase에 합성합니다."""
         if status in TERMINAL_PHASE_STATUSES:
             return ()
+        if (state.skill == "finish-session" and status == "skipped"
+                and phase.name in {"stage_scope", "commit"}):
+            return ("clean_tree",)
         required = list(phase.required_evidence)
         if not state.adaptive_control_required:
             return tuple(required)

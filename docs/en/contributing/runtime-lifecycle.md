@@ -33,6 +33,8 @@ For the filter repair, a useful report distinguishes the reproduced save/reload 
 
 A PR monitor observes a specific workflow and pull request and can resume its owner only through its authorized route. `monitor_start` returns admission before actual startup. The worker must consume a single-use launch grant bound to its real PID and process start identity, generation, installed distribution, and the owner’s native policy. A supplied PID or a process merely being created is not that evidence.
 
+Startup does not issue `thread/resume` while the owner is still in the turn that requested the monitor. The monitor records its subscription from the first observation; a later idle-owner resume checks the current native policy immediately before using the app-server route.
+
 `poll_interval_seconds` defaults to `30` and accepts `5`–`600`; `once` and `observe_only` both default to `false`. An observe-only monitor does not resume the owner or claim resume delivery. `monitor_readback` reads the live process and subscription receipts. `monitor_ack` consumes the exact event occurrence using current live evidence and a compare-and-swap check of the workflow revision.
 
 Before resuming a Codex owner, the monitor rereads that owner’s latest native policy even when the foreground turn is idle. Changed or unobserved approval policy, approvals reviewer, sandbox policy, or collaboration mode rejects resume and requires `monitor_recover`. Recovery first requires the actual previous process to have exited, then starts a new generation while retaining the workflow and PR scope. `monitor_cancel` requests cancellation through a durable flag and private authenticated control channel; inspect the terminal result before reporting cancellation complete.

@@ -87,6 +87,31 @@ def test_bypass_does_not_create_identity_for_other_mcp_tools(tmp_path):
     assert reply["structuredContent"]["error"]["code"] == "native-binding-required"
 
 
+def test_bypass_keeps_current_named_task_tools_bound_without_running_other_hooks(tmp_path, monkeypatch):
+    from tests.test_agent_hooks import _sessions
+
+    root, invoke = _sessions(tmp_path, monkeypatch, installed=False)
+    mode(root, True)
+    monkeypatch.setattr(hooks, "_dispatch_hook", lambda *_: pytest.fail("bypassed hook constraint ran"))
+    code, output, diagnostic = invoke("codex", "api", "PreToolUse",
+        tool_name="mcp__neurath_collaboration__task_list", tool_use_id="bypass-list", tool_input={})
+    assert code == 0, diagnostic
+    bound = output["hookSpecificOutput"]["updatedInput"]
+    assert mcp.call_tool(root, bound, name="task_list")["tasks"] == []
+
+
+def test_bypass_named_binding_rejects_a_stale_foreground_turn(tmp_path, monkeypatch):
+    from tests.test_agent_hooks import _sessions
+
+    root, invoke = _sessions(tmp_path, monkeypatch, installed=False)
+    mode(root, True)
+    code, output, diagnostic = invoke("codex", "api", "PreToolUse", turn_id="stale-turn",
+        tool_name="mcp__neurath_collaboration__task_list", tool_use_id="stale-list", tool_input={})
+    assert code != 0
+    assert not output.get("hookSpecificOutput", {}).get("updatedInput")
+    assert "turn" in diagnostic or "foreground" in diagnostic
+
+
 def test_stdio_switch_works_when_worker_capacity_is_exhausted(tmp_path, monkeypatch):
     from neurath.agents.stdio import StdioCalls
 

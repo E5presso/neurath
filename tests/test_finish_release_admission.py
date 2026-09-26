@@ -42,7 +42,8 @@ def finish(tmp_path):
     return tmp_path, handle, registry, claim
 
 
-def test_released_finish_workflow_completes_through_named_mcp(sessions, monkeypatch):
+@pytest.mark.parametrize("clean_skip", [False, True])
+def test_released_finish_workflow_completes_through_named_mcp(sessions, monkeypatch, clean_skip):
     from tests.test_workflow_tasks import call
     from neurath.hosts.identity import _state
     from neurath.resources import BUNDLE
@@ -56,9 +57,14 @@ def test_released_finish_workflow_completes_through_named_mcp(sessions, monkeypa
     state = _state(root, "api")
     phase = PhaseRunState.initialize(SkillContractRepository(BUNDLE).get("finish-session"),
                                     "finish", "Finish approved work")
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, check=True,
+                          capture_output=True, text=True).stdout.strip()
+    clean_proof = f"clean_tree: head_sha={head} index=clean worktree=clean"
     # Prior five phases are an explicit fixture; exercise actual final admission,
     # release observation, evidence preparation and terminal transition below.
     phase = replace(phase, current_phase_id=6, phases=tuple(
+        replace(item, status="skipped", summary="clean", evidence=(clean_proof,))
+        if clean_skip and item.id in (2, 3) else
         replace(item, status="completed", summary="fixture", evidence=("fixture",)) if item.id < 6 else item
         for item in phase.phases))
     sk.SessionKernel(sk.SessionLocator.from_worktree(root)).apply(sk.WorkflowStarted(
