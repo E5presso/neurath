@@ -827,6 +827,16 @@ def resolve_socket_path(args: argparse.Namespace) -> Path:
     return Path(socket_path).expanduser()
 
 
+def _defer_active_writer(error: RuntimeError) -> dict[str, Any]:
+    if "already has an active writer" not in str(error):
+        raise error
+    return {
+        "resume_status": "pending-delivery",
+        "delivery_method": "active-turn-deferred",
+        "turn_completion": {"status": "deferred", "reason": "owner-turn-active"},
+    }
+
+
 def resume_thread(args: argparse.Namespace, prompt: str) -> dict[str, Any]:
     """PR monitor resume 요청과 app-server 응답을 실제 Codex turn 상태로 변환합니다.
 
@@ -865,13 +875,7 @@ def resume_thread(args: argparse.Namespace, prompt: str) -> dict[str, Any]:
         try:
             resume_response = initialize_and_resume_thread(client, args)
         except RuntimeError as error:
-            if "already has an active writer" not in str(error):
-                raise
-            return {
-                "resume_status": "pending-delivery",
-                "delivery_method": "active-turn-deferred",
-                "turn_completion": {"status": "deferred", "reason": "owner-turn-active"},
-            }
+            return _defer_active_writer(error)
         if (
             thread_is_active(resume_response)
             or not managed_app_server_receipt_exists(socket_path)
@@ -879,7 +883,10 @@ def resume_thread(args: argparse.Namespace, prompt: str) -> dict[str, Any]:
             return deliver_and_wait(client, args, prompt, resume_response)
     restart_managed_app_server(socket_path, codex_binary)
     with AppServerClient(socket_path) as client:
-        resume_response = initialize_and_resume_thread(client, args)
+        try:
+            resume_response = initialize_and_resume_thread(client, args)
+        except RuntimeError as error:
+            return _defer_active_writer(error)
         return deliver_and_wait(client, args, prompt, resume_response)
 
 
