@@ -25,6 +25,19 @@ metadata 보정은 중간 사용자 승인 사유가 아닙니다. 아래 중단
 
 ## 결정적 phase 실행
 
+### Repository root 진입
+
+Branch/PR ticket을 repository root에서 받았다면 phase workflow를 시작하기 전에
+별도 issue worktree를 만들고 그곳에 Neurath를 설치해 `.neurath/run`과 설치 진단을
+확인합니다. `provider_route`에 현재 provider와 같은 provider,
+`purpose=worktree-worker`, 구체적인 reason, target worktree와 전체 ticket assignment를
+전달하고 model plan을 거친 `provider_run`으로 별도 native worker를 시작합니다.
+Root owner는 durable run과 실제 worker 결과를 확인할 때까지 원래 task의 소유자입니다.
+Worker가 자기 native session에서 target claim과 `worktree_isolation`을 확인한 뒤
+workflow를 시작합니다. Shell cwd만 바꿔 root actor가 target claim을 시도하지 않습니다.
+설치, branch 분리, root와 target의 clean 상태, target claim 또는 worker readiness가 실패하면
+원래 root workflow를 실행하지 않고 그 조건을 보존합니다.
+
 계약이 있는 phase 작업은 하나의 required `workflow_id`에서 단계별 실행 기록으로 실행합니다.
 Runtime이 주입한 session/actor identity가 먼저 존재해야 하며, agent가 state path나
 session path를 고르지 않습니다.

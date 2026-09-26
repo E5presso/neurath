@@ -72,9 +72,9 @@ def route(provider, operation, *, native_session=None, model=None, project_id=No
               "prerequisites": ["actual host tool available", "current user-authorized task scope"],
               "implementation_dispatched": False}
     if operation == "create":
-        if purpose == "perspective" and source_provider is None:
+        if purpose in {"perspective", "worktree-worker"} and source_provider is None:
             return {**result, "status": "source-provider-required",
-                    "reason": "A perspective route needs the actual issuing provider; the target is not the issuer."}
+                    "reason": "A provider worker needs the actual issuing provider before routing."}
         from neurath.providers.collaboration_policy import select
         selection = select(source_provider or provider, provider, purpose, reason)
         result["collaboration"] = selection

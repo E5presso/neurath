@@ -1,6 +1,7 @@
 """Adapter/authority fixtures only; these tests do not validate real provider runs."""
 
 import sys
+import subprocess
 from types import SimpleNamespace
 
 import pytest
@@ -8,6 +9,40 @@ import pytest
 from tests.test_agent_hooks import sessions  # noqa: F401
 from tests.test_task_tools import bound_call, claim_fixture
 from neurath.agents import mcp
+
+
+def test_root_worktree_worker_requires_installed_isolated_unclaimed_target(tmp_path, monkeypatch):
+    from neurath.runtime.provider_execution import _worktree_worker_preflight
+    from scripts.agent_harness.worktree_registry import WorktreeRegistry
+
+    root, target = tmp_path / "repo", tmp_path / "ticket"
+    subprocess.run(["git", "init", "-q", "-b", "main", str(root)], check=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.email", "fixture@example.invalid"], check=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.name", "Fixture"], check=True)
+    (root / "README").write_text("fixture\n")
+    subprocess.run(["git", "-C", str(root), "add", "README"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "base"], check=True)
+    (root / ".git/info/exclude").write_text(".neurath/\n.agents/resources/\n")
+    subprocess.run(["git", "-C", str(root), "worktree", "add", "-q", "-b", "issue-1", str(target)], check=True)
+    fields = {"worktree": str(target)}
+    with pytest.raises(ValueError, match="installed"):
+        _worktree_worker_preflight(root, fields)
+    (target / ".neurath").mkdir()
+    (target / ".neurath/run").write_text("fixture\n")
+    _worktree_worker_preflight(root, fields)
+    assert not subprocess.run(["git", "-C", str(root), "status", "--porcelain=v1", "--untracked-files=all"],
+                              check=True, capture_output=True, text=True).stdout
+    monkeypatch.setattr(WorktreeRegistry, "get", lambda *a: object())
+    with pytest.raises(ValueError, match="already has an owner"):
+        _worktree_worker_preflight(root, fields)
+    monkeypatch.undo()
+    (target / "dirty").write_text("unrelated work\n")
+    with pytest.raises(ValueError, match="target has uncommitted changes"):
+        _worktree_worker_preflight(root, fields)
+    (target / "dirty").unlink()
+    (root / "dirty").write_text("owner work\n")
+    with pytest.raises(ValueError, match="root worktree has uncommitted changes"):
+        _worktree_worker_preflight(root, fields)
 
 
 def test_provider_run_exposes_structured_creation_inputs():

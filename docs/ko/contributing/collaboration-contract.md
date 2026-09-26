@@ -270,7 +270,7 @@
 
 현재 대화가 소유한 작업은 큰 티켓을 포함해 native subagent에 맡기는 것이 기본입니다. 실행 시간과 별도 worktree는 실행 환경의 속성이며 사용자용 독립 대화의 생성 사유가 아닙니다. 사용자가 그 대화를 직접 방문하여 작업을 이어갈 가능성이 있을 때만 사용자용 세션을 선택합니다. 충분한 추론 능력을 가진 다른 provider의 관점이 대안, 반복되는 가정, 놓친 반증을 찾는 데 유용하면 에이전트가 자율적으로 선택할 수 있습니다. 결과는 원래 orchestrator가 회수하며 기술적 provider worker가 새 사용자용 앱 작업을 의미하지는 않습니다. 호스트 도구의 명시적 생성 요청 조건은 유지합니다.
 
-`provider_route`와 `provider_run`은 `purpose` (`task`, `perspective`, `user-session`)와 `reason`을 받습니다. 기본 `task`는 native delegation으로 안내하고 provider 직접 실행에서는 거부합니다. `perspective`는 다른 provider와 구체적인 이유가 필요합니다. `user-session`은 사용자가 이어서 작업할 것으로 예상하는 이유가 필요합니다. 이 선택은 모델 계획, 권한 승계, 실제 호스트 준비 상태 검증을 대신하지 않습니다.
+`provider_route`와 `provider_run`은 `purpose` (`task`, `perspective`, `worktree-worker`, `user-session`)와 `reason`을 받습니다. 기본 `task`는 native delegation으로 안내하고 provider 직접 실행에서는 거부합니다. `perspective`는 다른 provider와 구체적인 이유가 필요합니다. `worktree-worker`는 루트에서 시작한 ticket에 별도로 설치되고 깨끗하며 아직 claim되지 않은 issue worktree가 필요할 때 쓰는 같은 provider의 제한된 경로입니다. 루트가 task 소유권을 유지하고 worker가 대상 worktree에서 자신의 native 신원과 claim을 확인합니다. `user-session`은 사용자가 이어서 작업할 것으로 예상하는 이유가 필요합니다. 이 선택은 모델 계획, 권한 승계, 실제 호스트 준비 상태 검증을 대신하지 않습니다.
 
 Root가 각 티켓 workflow, 통합, 리뷰를 소유합니다. 구현과 리뷰를 각각 직접 자식에게 배정하고 구현 자식에게 리뷰어 생성을 맡기지 않습니다. 쓰기 권한이 확인되지 않은 worker는 patch artifact를 반환하고 root가 자신의 claim 아래 통합합니다.
 

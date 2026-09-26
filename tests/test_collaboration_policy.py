@@ -27,6 +27,18 @@ def test_new_perspective_can_select_other_provider_without_user_cross_review_req
     assert result['next_operation']['arguments']['purpose'] == 'perspective'
 
 
+def test_root_worktree_worker_routes_to_same_provider_without_changing_default_task():
+    result = route('codex', 'create', source_provider='codex', purpose='worktree-worker',
+                   reason='Move a root ticket into an isolated checkout',
+                   worktree='/linked', assignment='Implement the ticket')
+    assert result['collaboration']['kind'] == 'provider-worker'
+    assert result['next_operation']['tool'] == 'provider_run'
+    assert result['next_operation']['arguments']['purpose'] == 'worktree-worker'
+    with pytest.raises(ValueError):
+        route('claude-code', 'create', source_provider='codex', purpose='worktree-worker',
+              reason='Move a root ticket', worktree='/linked', assignment='Implement')
+
+
 @pytest.mark.parametrize('purpose,reason,provider', [
     ('perspective', '', 'claude-code'),
     ('perspective', 'Need a different model perspective', 'codex'),

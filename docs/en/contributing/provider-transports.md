@@ -97,7 +97,7 @@ Every response has `ok` and `operation`. A successful call carries its canonical
 
 | Field | Presence / default | Type and limits |
 | --- | --- | --- |
-| `purpose` | optional; default `"task"` | string: `"task"`, `"perspective"`, `"user-session"` |
+| `purpose` | optional; default `"task"` | string: `"task"`, `"perspective"`, `"worktree-worker"`, `"user-session"` |
 | `reason` | optional; default `""` | string; 0–2400 characters; nonempty for nondefault selection |
 | `provider` | required | text: `"codex"`, `"claude-code"` |
 | `operation` | required | text: `"create"`, `"discover"`, `"connect"`, `"status"`, `"message"`, `"resume"`, `"cancel"`, `"peer"` |
@@ -122,7 +122,7 @@ Every response has `ok` and `operation`. A successful call carries its canonical
 
 | Field | Presence / default | Type and limits |
 | --- | --- | --- |
-| `purpose` | optional; default `"task"` | string: `"task"`, `"perspective"`, `"user-session"` |
+| `purpose` | optional; default `"task"` | string: `"task"`, `"perspective"`, `"worktree-worker"`, `"user-session"` |
 | `reason` | optional; default `""` | string; 0–2400 characters; nonempty for nondefault selection |
 | `worktree` | required | text; 1–4096 characters |
 | `assignment` | required | text; 1–16000 characters |

@@ -1280,7 +1280,7 @@
       "ordered_fragments": [
         "Source checkout native CWD",
         "git worktree add -b",
-        "새 worktree native CWD",
+        "실제로 결속된 native actor",
         "assert_worktree_isolation.sh --init ISSUE_NUMBER"
       ],
       "required_fragments": [
