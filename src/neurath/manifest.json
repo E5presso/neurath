@@ -74,7 +74,7 @@
     "_assets/.agents/skills/monitor-pr/SKILL.md": "13dd6f2dec8fcebb0858a74ec99d0667414437be73f026db6069c7ddbb6196ab",
     "_assets/.agents/skills/monitor-pr/references/event-delivery.md": "d27dbf8682b428035ff6c6004366ffee4c1ff890bd1078de530080d06a32d803",
     "_assets/.agents/skills/monitor-pr/scripts/acknowledge_event.py": "fe6050b42e35d43498dc0e252a38e80723b4e6e07255f46b8d265ef9a272cd92",
-    "_assets/.agents/skills/monitor-pr/scripts/app_server_resume.py": "6d72afc43cdccc1053a9b6fa86da75e1a903af4a496f095ae515b9d48e1229fe",
+    "_assets/.agents/skills/monitor-pr/scripts/app_server_resume.py": "52678da396646181d8e85674939775f04c6ce043a31de7b384878411ce182b35",
     "_assets/.agents/skills/monitor-pr/scripts/check_filters.sh": "748ab9875537a891e4d851668139dd71edde68337ed697a4ae1fd0b9270b0666",
     "_assets/.agents/skills/monitor-pr/scripts/collect_comments.sh": "4d6b432edd1d9f8afb69938c90c1a1cdb23b3f5ea98802dc74ce5fd8df2b1932",
     "_assets/.agents/skills/monitor-pr/scripts/launch_agent_plist.py": "dc9a40179bbb847df8115d7377645e4bd19a4b04343723e1f11248a67141d5f8",

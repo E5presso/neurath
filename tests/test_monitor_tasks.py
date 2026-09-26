@@ -58,6 +58,37 @@ def test_bound_resume_defers_while_owner_turn_is_active(monkeypatch):
     assert result["turn_completion"]["status"] == "deferred"
 
 
+def test_monitor_resume_defers_active_writer_on_second_connection(monkeypatch):
+    from pathlib import Path
+    from types import SimpleNamespace
+    from neurath.runtime.bundled_services import service
+    module = service("monitor_resume")
+    class Client:
+        def __init__(self, *args): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+    monkeypatch.setattr(module, "AppServerClient", Client)
+    monkeypatch.setattr(module, "worktree_has_owner_changes", lambda *a: False)
+    monkeypatch.setattr(module, "worktree_owner_head_state", lambda *a: "matched")
+    monkeypatch.setattr(module, "resolve_socket_path", lambda *a: Path("/fixture/socket"))
+    monkeypatch.setattr(module, "select_codex_binary", lambda: "codex")
+    monkeypatch.setattr(module, "ensure_app_server", lambda *a: None)
+    monkeypatch.setattr(module, "restart_managed_app_server", lambda *a: None)
+    monkeypatch.setattr(module, "managed_app_server_receipt_exists", lambda *a: True)
+    calls = []
+    def resume(*args):
+        calls.append(1)
+        if len(calls) == 2:
+            raise RuntimeError('{"code":-32600,"message":"thread already has an active writer"}')
+        return {"thread": {"status": {"type": "idle"}}}
+    monkeypatch.setattr(module, "initialize_and_resume_thread", resume)
+    args = SimpleNamespace(cwd="/fixture", expected_head_sha=None)
+    result = module.resume_thread(args, "event")
+    assert len(calls) == 2
+    assert result["delivery_method"] == "active-turn-deferred"
+    assert result["turn_completion"]["status"] == "deferred"
+
+
 @pytest.mark.parametrize("observe_only", [True, False])
 def test_owned_monitor_callback_starts_from_grant_and_returns_real_observation(sessions, monkeypatch, observe_only):
     import os
