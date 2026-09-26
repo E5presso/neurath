@@ -151,7 +151,10 @@ def test_bypass_suppresses_decision_context_and_restoring_enables_it(sessions):
     fields = dict(tool_name="mcp__neurath_collaboration__task_define", tool_use_id="bypass-define",
                   tool_input={"tasks": [item("follow-up")], "expected_revision": 1, "key": "follow-up"})
     mode(root, True)
-    assert invoke("codex", "api", "PreToolUse", **fields) == (0, {}, "")
+    code, output, diagnostic = invoke("codex", "api", "PreToolUse", **fields)
+    assert code == 0, diagnostic
+    assert output["hookSpecificOutput"]["updatedInput"]["_neurath_binding"]
+    assert not context(output)
     mode(root, False)
     code, output, diagnostic = invoke("codex", "api", "PreToolUse", **fields)
     assert code == 0, diagnostic

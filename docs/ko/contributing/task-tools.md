@@ -11,9 +11,9 @@
 
 MCP 서버는 `tools/list`로 이름이 정해진 도구를 공개합니다. 현재 소스는 내부 작업 138개 중 공개 도구 128개를 제공합니다. 설치된 버전에서 발견한 입력 스키마를 사용합니다. [기능별 도구 안내](capability-map.md)는 모든 공개 이름을 목적에 따라 정리합니다.
 
-각 작업은 닫힌 JSON 객체를 받으며 알 수 없는 필드는 거부합니다. 호스트 훅이 현재 호출에 대한 `_neurath_binding`을 제공합니다. 에이전트는 actor·session·turn·binding을 만들어 넣으면 안 됩니다. 명시적인 예외는 `harness_bypass`입니다. 호스트 binding 없이 우회 스위치를 읽거나 복원할 수 있으며 다른 도구를 사용할 수 없는 우회 상태에서도 호출할 수 있습니다.
+각 작업은 닫힌 JSON 객체를 받으며 알 수 없는 필드는 거부합니다. 호스트 훅이 현재 호출에 대한 `_neurath_binding`을 제공합니다. 에이전트는 actor·session·turn·binding을 만들어 넣으면 안 됩니다. 명시적인 예외는 `harness_bypass`로, 호스트 binding 없이 우회 스위치를 읽거나 복원할 수 있습니다. 우회 중에도 현재 호스트가 확인한 `PreToolUse`가 명명 MCP 호출을 결속해 태스크 원장을 사용할 수 있으며, 다른 Neurath 훅 제약은 우회합니다.
 
-`harness_bypass`에서 `enabled`를 생략하거나 `null`로 보내면 현재 워크트리의 스위치를 조회합니다. `true`는 우회를 켜고 `false`는 Neurath 훅 제약을 복원합니다. 설정된 MCP 연결은 호스트 binding이나 사용 가능한 호출 worker 슬롯 없이 이 비상 조회·변경을 처리합니다. 커널 저장소가 정상 호출 허용 근거를 제공하지 못하는 경우에도 쓸 수 있습니다. 이 스위치는 호스트 권한과 기존 기록을 유지하며 다른 태스크나 도구의 권한을 부여하지 않습니다. 제약을 복원한 뒤에도 다른 도구에는 각각 유효한 호스트 호출이 필요합니다.
+`harness_bypass`에서 `enabled`를 생략하거나 `null`로 보내면 현재 워크트리의 스위치를 조회합니다. `true`는 우회를 켜고 `false`는 Neurath 훅 제약을 복원합니다. 설정된 MCP 연결은 호스트 binding이나 사용 가능한 호출 worker 슬롯 없이 이 비상 조회·변경을 처리합니다. 커널 저장소가 정상 호출 허용 근거를 제공하지 못하는 경우에도 쓸 수 있습니다. 이 스위치는 호스트 권한과 기존 기록을 유지하며 다른 태스크나 도구의 권한을 부여하지 않습니다. 우회 중 명명 도구도 현재 네이티브 신원·전경 턴과 각 도메인의 정상 호출 허용 조건이 필요합니다. 우회 중 건너뛴 사용자 프롬프트를 도구 인자로 대신할 수 없습니다.
 
 소스 스키마는 `src/neurath/runtime/task_schema.py`, 가져온 정의 모듈, `definitions()` / `arguments()`에서 확인합니다. 현재 발견 경로는 `phase_*`를 사용합니다. `workflow_start`, `workflow_advance`, `workflow_finalize`는 저장된 호출의 호환 경로로 남아 있습니다. `material_*`, `verification_*`, 일반 `agent(argv)` 기반 경로는 공개 목록 밖에 있습니다. 일반 편집과 테스트에 material 또는 verification 상태를 중복 기록할 필요는 없습니다.
 

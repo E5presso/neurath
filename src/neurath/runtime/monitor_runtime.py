@@ -636,7 +636,10 @@ def worker(root, run_id, namespace):
         if enabled:
             if row["host"] != "codex":
                 raise ValueError("the configured resume backend does not support this host; use explicit observe-only mode")
-            adapter.probe()
+            # The owner is usually still in the turn that called monitor_start.
+            # thread/resume is a write operation and cannot probe an active writer.
+            # The adapter verifies current native policy immediately before any
+            # later resume, after the owner lifecycle has become idle.
         module = service("monitor")
         monitor = module.LocalPrMonitor(handle=handle, workflow_id=WorkflowId(row["workflow"]),
             worktree=WorktreeIdentityResolver().resolve(root), runtime_id=namespace.runtime_id,

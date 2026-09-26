@@ -9,7 +9,7 @@ For a user's web application whose saved filter disappears after reload, the mai
 
 This catalog covers all **128 public named tools** in the current source. There are **138 internal operations**; saved-call compatibility and internal material/verification operations are not additional public tools. The table lists required top-level arguments and whether the schema labels the operation read-only. Optional arguments, nested shapes and domain prerequisites remain part of the discovered schema. A read-only label grants no authority; a state-changing label does not mean the tool edits product files.
 
-Native hooks supply `_neurath_binding`; it is omitted below because the agent must not invent it. Except for `harness_bypass`, the named operations require a valid native invocation and are unavailable during bypass. Use [task tools](task-tools.md) for input, error and retry conventions.
+Native hooks supply `_neurath_binding`; it is omitted below because the agent must not invent it. Except for `harness_bypass`, named operations require a valid native invocation. During bypass, the current host-attested `PreToolUse` still binds them while other Neurath hook constraints are skipped. Use [task tools](task-tools.md) for input, error and retry conventions.
 
 ## Establish the current session and ownership
 
