@@ -862,7 +862,16 @@ def resume_thread(args: argparse.Namespace, prompt: str) -> dict[str, Any]:
     codex_binary = select_codex_binary()
     ensure_app_server(socket_path, codex_binary)
     with AppServerClient(socket_path) as client:
-        resume_response = initialize_and_resume_thread(client, args)
+        try:
+            resume_response = initialize_and_resume_thread(client, args)
+        except RuntimeError as error:
+            if "already has an active writer" not in str(error):
+                raise
+            return {
+                "resume_status": "pending-delivery",
+                "delivery_method": "active-turn-deferred",
+                "turn_completion": {"status": "deferred", "reason": "owner-turn-active"},
+            }
         if (
             thread_is_active(resume_response)
             or not managed_app_server_receipt_exists(socket_path)

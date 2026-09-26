@@ -45,6 +45,19 @@ def test_bound_resume_adapter_never_resolves_identity_from_worker_environment(mo
     assert "claim" in observed[0][1]
 
 
+def test_bound_resume_defers_while_owner_turn_is_active(monkeypatch):
+    from types import SimpleNamespace
+    from neurath.runtime.monitor_runtime import BoundResumeAdapter
+    from neurath.runtime.bundled_services import service
+    module = service("monitor_resume")
+    monkeypatch.setattr(module, "resume_thread", lambda *a: pytest.fail("resumed active writer"))
+    resources = SimpleNamespace(session_id="owner", worktree="/fixture", app_server_socket_path="/fixture/socket")
+    adapter = BoundResumeAdapter(resources, True, policy_guard=lambda: "active")
+    result = adapter.resume({"snapshot": {"headRefOid": "a" * 40}})
+    assert result["delivery_method"] == "active-turn-deferred"
+    assert result["turn_completion"]["status"] == "deferred"
+
+
 @pytest.mark.parametrize("observe_only", [True, False])
 def test_owned_monitor_callback_starts_from_grant_and_returns_real_observation(sessions, monkeypatch, observe_only):
     import os
