@@ -1,17 +1,21 @@
 """Reuse retirement enforcement with repository-selected capability names and paths."""
 
 import json
+import os
 import re
 import shlex
+import shutil
+import subprocess
 from pathlib import Path
 
-from neurath.install.projection import skills
+from neurath.install.projection import asset_files, skills
 from neurath.install.transaction import safe_path
 from neurath.runtime.engine import activate
 from neurath.skill_names import public_name
 
 
 def capability_policy(root):
+    root = Path(root).resolve()
     activate()
     from scripts.agent_harness.capability_retirement_hook import CapabilityRetirementHookApplication
 
@@ -54,6 +58,64 @@ def capability_policy(root):
             *(f"{directory}/{public_name(name)}"
               for directory in (".agents/skills", ".claude/skills") for name in skills()),
         )
+
+        def _deletes_protected_capability(self, segment, cwd, execution_root):
+            if self._verified_index_only_untrack(segment, execution_root):
+                return False
+            return super()._deletes_protected_capability(segment, cwd, execution_root)
+
+        def _verified_index_only_untrack(self, segment, execution_root):
+            """Allow one exact packaged skill to leave Git's index, never the disk."""
+            trusted_git = shutil.which("git")
+            if (trusted_git is None or not Path(trusted_git).is_absolute()
+                    or root == Path(trusted_git).resolve()
+                    or root in Path(trusted_git).resolve().parents):
+                return False
+            if (len(segment) not in {4, 5} or segment[0] != trusted_git
+                    or segment[1:3] != ("rm", "--cached")
+                    or (len(segment) == 5 and segment[3] != "--")):
+                return False
+            target = Path(segment[-1])
+            if not target.is_absolute() and execution_root is None:
+                return False
+            absolute = Path(os.path.abspath(target if target.is_absolute()
+                                            else execution_root / target))
+            try:
+                relative = absolute.relative_to(root).as_posix()
+            except ValueError:
+                return False
+            parts = relative.split("/")
+            if (len(parts) != 4 or parts[:2] != [".agents", "skills"]
+                    or parts[-1] != "SKILL.md"):
+                return False
+            try:
+                from neurath.install.transaction import (
+                    bytes_of, file_value, read_state, repository, safe_path, snapshot,
+                )
+                repository(root)
+                safe_path(root, relative)
+                ignore = root / ".gitignore"
+                if ignore.is_symlink() or not ignore.is_file():
+                    return False
+                if f"/{relative}" not in ignore.read_text().splitlines():
+                    return False
+                state = read_state(root)
+                if state is None or relative not in state["owned"]:
+                    return False
+                installed = state["owned"][relative]["installed"]
+                packaged = asset_files(state["profile"], state["hosts"],
+                                       state.get("skill_prefix", "")).get(relative)
+                if packaged is None or installed != file_value(*packaged):
+                    return False
+                if snapshot(root, relative) != installed:
+                    return False
+                indexed = subprocess.run(
+                    [trusted_git, "-C", str(root), "show", f":{relative}"],
+                    capture_output=True, check=False,
+                )
+                return indexed.returncode == 0 and indexed.stdout == bytes_of(installed)
+            except (RuntimeError, OSError, ValueError, KeyError, TypeError):
+                return False
 
     return RepositoryCapabilityPolicy()
 
