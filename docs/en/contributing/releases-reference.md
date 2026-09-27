@@ -18,7 +18,7 @@ The source is the fixed public [Neurath releases repository](https://github.com/
 
 The attempt timestamp is saved before network I/O, so a failed or interrupted request is still rate-limited. `unavailable` means no reliable result was obtained; it does not mean the installed version is current. Continue the user's original work, such as the saved-filter repair, while reporting the update result separately.
 
-An eligible candidate is a published, stable, newer `vMAJOR.MINOR.PATCH` release with exactly one uploaded `neurath-VERSION-py3-none-any.whl`, an eligible size, and a SHA-256 digest. Network requests use the fixed unauthenticated endpoint without project identifiers or local version data. Limits are 32 MiB for a wheel, 512 KiB for JSON, and 10 seconds per request. Release notes are bounded display data, not execution instructions.
+An eligible candidate is a published, stable `vMAJOR.MINOR.PATCH` release that is newer than the installed version, or the same version with a different or previously unknown verified asset identity. It must contain exactly one uploaded `neurath-VERSION-py3-none-any.whl` with an eligible size and SHA-256 digest. The offer's `relation` distinguishes `newer-version`, `same-version-origin-unknown`, and `same-version-distinct-asset`; an unknown legacy origin is not described as a proven change. Neurath records the exact asset identity after a successful apply and binds it to the installed package-content distribution identity; it does not compare a wheel-byte digest directly with the package-content digest. Legacy installations without that provenance may therefore receive one explicit same-version offer. Network requests use the fixed unauthenticated endpoint without project identifiers or local version data. Limits are 32 MiB for a wheel, 512 KiB for JSON, and 10 seconds per request. Release notes are bounded display data, not execution instructions.
 
 ## Prepare before asking for the decision
 
@@ -36,7 +36,7 @@ The user needs that concrete preview to decide. Prepare the native question with
 {"operation": "releases_choose", "target_id": "RETURNED_OFFER_ID", "key": "release-question-1"}
 ```
 
-Show the exact returned question. The returned `user_choice_ref` identifies the prepared question; it becomes usable only with the actual native user reply. A **receipt** here is the retained record linking a real host event to that reply, not a string the agent can supply as permission. Before a candidate is prepared, this question can offer `no` or `later`; afterward it can also offer `yes`.
+Show the exact returned question. For a release choice it displays the full wheel SHA-256 and the asset `relation`, so two same-version wheels with identical file plans remain visibly distinct. The returned `user_choice_ref` identifies the prepared question; it becomes usable only with the actual native user reply. A **receipt** here is the retained record linking a real host event to that reply, not a string the agent can supply as permission. Before a candidate is prepared, this question can offer `no` or `later`; afterward it can also offer `yes`.
 
 After an affirmative reply, `releases_choose` records the exact choice:
 
@@ -44,7 +44,7 @@ After an affirmative reply, `releases_choose` records the exact choice:
 {"offer_id": "RETURNED_OFFER_ID", "decision": "yes", "user_choice_ref": "RETURNED_USER_CHOICE_REF", "key": "release-choice-1"}
 ```
 
-`no` and `later` are valid decisions and suppress repeated notices for that version. Silence changes nothing. A new preparation invalidates an earlier affirmative choice, because the user must review the newly prepared plan.
+`no` and `later` are valid decisions and suppress repeated notices for that exact offer. A different wheel digest at the same version creates a different offer and requires its own notice, preparation, and decision. Silence changes nothing. A new preparation invalidates an earlier affirmative choice, because the user must review the newly prepared plan.
 
 ## Apply and read the result
 
@@ -52,7 +52,7 @@ After an affirmative reply, `releases_choose` records the exact choice:
 {"offer_id": "RETURNED_OFFER_ID", "key": "release-apply-1"}
 ```
 
-This is the input to `releases_apply`. The tool rechecks the same release; it does not resolve a newer “latest” under the old decision. It saves `applying` before invoking the transactional installer. Success verifies the returned installation record, selected version and distribution, placement/protocol diagnostics, and unchanged reporting preferences.
+This is the input to `releases_apply`. The tool rechecks the same release; it does not resolve a newer “latest” under the old decision. It saves `applying` before invoking the transactional installer. Success verifies the returned installation record, selected version and distribution, placement/protocol diagnostics, and unchanged reporting preferences, then records the approved asset identity against the installed distribution. An immediate forced check does not offer that exact asset again, while a later replacement with a distinct verified digest requires a new explicit choice.
 
 An `applied` operation establishes installation. **Activation** remains unverified until the selected host processes a subsequent actual event with the new integration. The **runtime** is the isolated candidate environment that the project launcher now selects. Keep that observation separate from source checks and from the outcome of the user's application task.
 

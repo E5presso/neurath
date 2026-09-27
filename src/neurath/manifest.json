@@ -355,14 +355,14 @@
     "runtime/task_schema.py": "500baf6b85df3030f407cfe88cb32cc55b640cc48c388aacb7cd1117b2a9ed0a",
     "runtime/task_todo.py": "c9571933c68d783341e2063b0b9ee0e57dbed53154c9cc802e4c72a04bccdffc",
     "runtime/tasks.py": "76607c12874f557a987923bef9a42cb822fc45c697b4cfcec3047bc4c63697f5",
-    "runtime/user_choices.py": "720ec3f11dfd77dc10975984e9d81758ee06443e1f779e02d0f22aa5b7cfae72",
+    "runtime/user_choices.py": "e325001d92aa7334f1a24c5a8b78f85e2c639401b95ff011aa527e047d062d66",
     "runtime/verification.py": "596e5235fc5067d6a97d917c79d2ee7025b03dc544207765fdcf75e99b8a5bee",
     "runtime/workflow_tasks.py": "efa49d8cb8d019f128a6fda3b90bedf9216b66388bcfdf5e3f208fe835afbd25",
     "serialization.py": "ec1c9cf5ad65229d340d06cad14727198e412253ac0ac21cc170feba016ee9b1",
     "skill_names.py": "320bb5e2a2c59834e3e6da732dad0892e566dd19caa8b381bae26559b918285d",
     "templates/common-report.md": "b9e5629ed246a1aa7c286068a596ea48695323c07a40f186cc82fcbf254e78bc",
     "templates/contribution.md": "55a22bfc39bb6666bdbc23f6b69771c2ca23bce693ad61d615b10550c0b84a88",
-    "updates.py": "918fb3bd0e8a5680edf423e0f01d44753c6e680e73531a567bad693113324428",
+    "updates.py": "05fb956c0056b757d992596351b3534cfb80d17b4a0ae6f3913fed37db9bc8b8",
     "updates_cli.py": "917002f0a180aba14e764b296aed5eee70a252f1d2a7bccf2c7b581f34856cba"
   }
 }

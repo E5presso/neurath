@@ -107,13 +107,25 @@ def test_ineligible_release_never_offered(service, monkeypatch, edit):
     assert service.check()["offer"] is None
 
 
-def test_changed_asset_cannot_reuse_consent_or_repeat_rejected_version(service, monkeypatch):
+def test_same_version_changed_wheel_is_offered_without_asset_provenance(service, monkeypatch):
+    value = release(version="0.1.0", digest="b" * 64)
+    monkeypatch.setattr("neurath.updates.fetch_release", lambda *args: value)
+
+    result = service.check()
+
+    assert result["status"] == "available"
+    assert result["offer"]["current"] == result["offer"]["version"] == "0.1.0"
+    assert result["offer"]["sha256"] == "b" * 64
+    assert result["offer"]["relation"] == "same-version-origin-unknown"
+
+
+def test_changed_asset_requires_a_new_notice_and_cannot_reuse_consent(service, monkeypatch):
     old = service.check()["offer"]
     service.choose(old["id"], "no", user_confirmed=True)
     monkeypatch.setattr("neurath.updates.fetch_release", lambda *args: release(digest="b" * 64))
     new = service.check(force=True)["offer"]
     assert new["id"] != old["id"]
-    assert service.notice() is None
+    assert service.notice()["id"] == new["id"]
     with pytest.raises(ValueError, match="offer"):
         service.choose(old["id"], "yes", user_confirmed=True)
 
@@ -165,9 +177,8 @@ def test_download_hash_checked_before_execution(service, monkeypatch, tmp_path):
     assert service.status()["decision"] is None
 
 
-@pytest.fixture(scope="module")
-def wheel_bytes():
-    """Build a real installable future-version wheel from the current package in isolation."""
+def build_wheel_bytes(version):
+    """Build a real installable wheel from the current package in isolation."""
     import base64
     import io
     import zipfile
@@ -175,12 +186,13 @@ def wheel_bytes():
     entries = {p.relative_to(PACKAGE).as_posix(): p.read_bytes() for p in PACKAGE.rglob("*")
                if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc"
                and p.name != "manifest.json"}
-    entries["__init__.py"] = entries["__init__.py"].replace(b'"0.1.0"', b'"0.2.0"')
+    entries["__init__.py"] = entries["__init__.py"].replace(b'"0.1.0"', f'"{version}"'.encode())
     entries["manifest.json"] = json.dumps(dict(schema=1, files={name: hashlib.sha256(data).hexdigest()
                                           for name, data in entries.items()})).encode()
     files = {"neurath/" + name: data for name, data in entries.items()}
-    dist = "neurath-0.2.0.dist-info/"
-    files[dist + "METADATA"] = b"Metadata-Version: 2.1\nName: neurath\nVersion: 0.2.0\nRequires-Python: >=3.14,<3.15\n"
+    dist = f"neurath-{version}.dist-info/"
+    files[dist + "METADATA"] = ("Metadata-Version: 2.1\nName: neurath\n"
+                                f"Version: {version}\nRequires-Python: >=3.14,<3.15\n").encode()
     files[dist + "WHEEL"] = b"Wheel-Version: 1.0\nGenerator: neurath-test\nRoot-Is-Purelib: true\nTag: py3-none-any\n"
     record = "\n".join(f"{name},sha256={base64.urlsafe_b64encode(hashlib.sha256(data).digest()).decode().rstrip('=')},{len(data)}"
                        for name, data in files.items()) + f"\n{dist}RECORD,,\n"
@@ -190,6 +202,16 @@ def wheel_bytes():
         for name, data in files.items():
             wheel.writestr(name, data)
     return stream.getvalue()
+
+
+@pytest.fixture(scope="module")
+def wheel_bytes():
+    return build_wheel_bytes("0.2.0")
+
+
+@pytest.fixture(scope="module")
+def same_version_wheel_bytes():
+    return build_wheel_bytes("0.1.0")
 
 
 @pytest.fixture
@@ -203,6 +225,29 @@ def prepared(service, monkeypatch, wheel_bytes):
     assert result["operation"]["phase"] == "prepared"
     assert read_state(service.root)["version"] == "0.1.0"
     return service, offer
+
+
+def test_applied_same_version_asset_is_not_reoffered(service, monkeypatch,
+                                                      same_version_wheel_bytes):
+    digest = hashlib.sha256(same_version_wheel_bytes).hexdigest()
+    value = release(version="0.1.0", digest=digest)
+    value["assets"][0]["size"] = len(same_version_wheel_bytes)
+    monkeypatch.setattr("neurath.updates.fetch_release", lambda *args: value)
+    monkeypatch.setattr("neurath.release_install.download_asset",
+                        lambda *args: same_version_wheel_bytes)
+
+    offer = service.check()["offer"]
+    service.prepare(offer["id"])
+    service.choose(offer["id"], "yes", user_confirmed=True)
+    assert service.apply(offer["id"])["status"] == "current"
+    assert service.check(force=True)["offer"] is None
+
+    changed = release(version="0.1.0", digest="b" * 64)
+    monkeypatch.setattr("neurath.updates.fetch_release", lambda *args: changed)
+    result = service.check(force=True)
+    assert result["status"] == "available"
+    assert result["offer"]["sha256"] == "b" * 64
+    assert result["offer"]["relation"] == "same-version-distinct-asset"
 
 
 def test_real_wheel_update_preserves_choices_settings_and_restores(prepared):
