@@ -4,6 +4,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -65,7 +66,12 @@ def capability_policy(root):
 
         def _verified_index_only_untrack(self, segment, execution_root):
             """Allow one exact packaged skill to leave Git's index, never the disk."""
-            if (len(segment) not in {4, 5} or Path(segment[0]).name != "git"
+            trusted_git = shutil.which("git")
+            if (trusted_git is None or not Path(trusted_git).is_absolute()
+                    or root == Path(trusted_git).resolve()
+                    or root in Path(trusted_git).resolve().parents):
+                return False
+            if (len(segment) not in {4, 5} or segment[0] != trusted_git
                     or segment[1:3] != ("rm", "--cached")
                     or (len(segment) == 5 and segment[3] != "--")):
                 return False
@@ -104,7 +110,7 @@ def capability_policy(root):
                 if snapshot(root, relative) != installed:
                     return False
                 indexed = subprocess.run(
-                    ["git", "-C", str(root), "show", f":{relative}"],
+                    [trusted_git, "-C", str(root), "show", f":{relative}"],
                     capture_output=True, check=False,
                 )
                 return indexed.returncode == 0 and indexed.stdout == bytes_of(installed)

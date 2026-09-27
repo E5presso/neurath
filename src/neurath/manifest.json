@@ -236,7 +236,7 @@
     "doctor.py": "95b2541d3ed800f38e5abe5bf428a1720d27705a33c74cfef866afa9e9439647",
     "hosts/__init__.py": "fa5c338717c2412349106ccc2ff80afa628fd9e7474118e9c1ee73fd442a0dd0",
     "hosts/app_projects.py": "621fb008829f2f15d245c3217317943df4c71d17adee6d87bb9ba62c4e637316",
-    "hosts/capabilities.py": "4402ed8a3e61b22fd4e425819588e42f624179d4eadd0125120c2eded273875a",
+    "hosts/capabilities.py": "eedce7a3be53d55204e1d2a944abb0d06b9868525da86895a784cc65faea0101",
     "hosts/hooks.py": "08f42419dd84b883277ca1823c251294d9e62901faf6ddecd5b21a9dbd2c9a43",
     "hosts/identity.py": "958e9793c6d7e024f6abca36b450f8a73dca5217745fdc0ef7a0cf030f6fc15c",
     "hosts/lifecycle.py": "d262513ddc543ea1bfc8412f5a09415256b34fc237b574632243973da84f469e",

@@ -90,7 +90,7 @@ Neurath projects the task list to Codex `update_plan` or Claude Code `TodoWrite`
 
 A host capability begins as `unobserved` until a relevant native submission is observed. An unsupported runtime returns `unsupported-runtime`. Read [task and TODO contract](task-todo-contract.md) before treating a native “completed” marker as a successful task outcome.
 
-The capability retirement hook permits index-only removal of one installed skill's `SKILL.md` when its Git index blob, worktree bytes, installation ownership record, and packaged asset all match, and the root `.gitignore` contains an exact anchored rule for that file. An absolute target works when the native shell omits `workdir`; a relative target requires an explicit execution directory. File deletion, broad targets, and changed assets remain denied.
+The capability retirement hook permits index-only removal of one installed skill's `SKILL.md` when its Git index blob, worktree bytes, installation ownership record, and packaged asset all match, and the root `.gitignore` contains an exact anchored rule for that file. The command must invoke the host's resolved Git executable by its absolute path. An absolute target works when the native shell omits `workdir`; a relative target requires an explicit execution directory. File deletion, broad targets, and changed assets remain denied.
 
 For native maintenance choices, the prompt receipt remains the authority. A Codex visible user frame may contain terminal line breaks omitted from that receipt; choice validation compares the exact text first, then the text without terminal line breaks. Other text changes still fail the receipt check.
 

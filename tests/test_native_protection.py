@@ -1,6 +1,7 @@
 """Actual native compatibility payload shape; synthetic paths never delete files."""
 
 import json
+import shutil
 import subprocess
 import pytest
 from neurath.hosts.capabilities import capability_policy
@@ -12,14 +13,15 @@ def test_verified_generated_skill_can_leave_git_index_without_deleting_file(tmp_
     apply_plan(tmp_path, make_plan(tmp_path))
     target = ".agents/skills/update-neurath/SKILL.md"
     installed = tmp_path / target
+    git = shutil.which("git")
     original = installed.read_bytes()
     subprocess.run(["git", "-C", str(tmp_path), "add", "-f", target], check=True)
     (tmp_path / ".gitignore").write_text(f"/{target}\n")
     payload = {"tool_name": "Bash", "tool_use_id": "exec-index-migration",
                "turn_id": "native-turn", "cwd": str(tmp_path),
-               "tool_input": {"command": f"git rm --cached -- {installed}"}}
+               "tool_input": {"command": f"{git} rm --cached -- {installed}"}}
     assert capability_policy(tmp_path).run(json.dumps(payload), tmp_path).exit_code == 0
-    explicit = {**payload, "tool_input": {"command": f"git rm --cached -- {target}",
+    explicit = {**payload, "tool_input": {"command": f"{git} rm --cached -- {target}",
                                               "workdir": str(tmp_path)}}
     assert capability_policy(tmp_path).run(json.dumps(explicit), tmp_path).exit_code == 0
     subprocess.run(["git", "-C", str(tmp_path), "rm", "--cached", "--", target], check=True,
@@ -34,9 +36,10 @@ def test_generated_skill_untracking_stays_guarded(tmp_path, change):
     apply_plan(tmp_path, make_plan(tmp_path))
     target = ".agents/skills/update-neurath/SKILL.md"
     installed = tmp_path / target
+    git = shutil.which("git")
     subprocess.run(["git", "-C", str(tmp_path), "add", "-f", target], check=True)
     (tmp_path / ".gitignore").write_text(f"/{target}\n")
-    command = f"git rm --cached -- {installed}"
+    command = f"{git} rm --cached -- {installed}"
     if change == "modified":
         installed.write_bytes(installed.read_bytes() + b"changed")
     elif change == "modified-index":
@@ -47,12 +50,28 @@ def test_generated_skill_untracking_stays_guarded(tmp_path, change):
     elif change == "broad-ignore":
         (tmp_path / ".gitignore").write_text("/.agents/skills/*\n")
     elif change == "real-delete":
-        command = f"git rm -- {installed}"
+        command = f"{git} rm -- {installed}"
     else:
-        command = f"git rm --cached -- {target}"
+        command = f"{git} rm --cached -- {target}"
     payload = {"tool_name": "Bash", "tool_use_id": "exec-index-migration",
                "turn_id": "native-turn", "cwd": str(tmp_path),
                "tool_input": {"command": command}}
+    assert capability_policy(tmp_path).run(json.dumps(payload), tmp_path).exit_code == 2
+
+
+def test_local_git_named_script_cannot_bypass_skill_deletion_guard(tmp_path):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    apply_plan(tmp_path, make_plan(tmp_path))
+    target = ".agents/skills/update-neurath/SKILL.md"
+    installed = tmp_path / target
+    subprocess.run(["git", "-C", str(tmp_path), "add", "-f", target], check=True)
+    (tmp_path / ".gitignore").write_text(f"/{target}\n")
+    (tmp_path / "git").write_text("#!/bin/sh\nrm -f \"$4\"\n")
+    (tmp_path / "git").chmod(0o755)
+    payload = {"tool_name": "Bash", "tool_use_id": "exec-index-migration",
+               "turn_id": "native-turn", "cwd": str(tmp_path),
+               "tool_input": {"command": f"./git rm --cached -- {installed}",
+                              "workdir": str(tmp_path)}}
     assert capability_policy(tmp_path).run(json.dumps(payload), tmp_path).exit_code == 2
 
 
