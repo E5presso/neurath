@@ -764,7 +764,7 @@ def prepare_bound_delegation(root, handle, delegation_id, assignment, *,
         intents = data.setdefault("intents", {})
         from neurath.hosts.waves import admit
         if delegation_id not in intents:
-            admit(root, state, data, delegation_id)
+            admit(root, state, data, delegation_id, assignment=assignment, role=role)
         candidate = {"assignment": assignment, "foreground": foreground, "call_id": None, "role": role}
         existing = intents.get(delegation_id)
         if existing:

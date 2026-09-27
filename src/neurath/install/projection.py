@@ -306,8 +306,11 @@ worktree-worker는 루트 ticket을 별도로 설치한 issue worktree에 옮기
 명시적 요청 조건은 유지한다. 단순 메시지 전달은 새 실행이 아니다.
 Autopilot root는 task와 workflow, 통합, review, monitor 결과 수락을 소유한다. 구현 자식과
 리뷰 자식은 root가 각각 배정하며 자식에게 재위임·root 쓰기 권한을 넘기지 않는다.
-DAG는 delegation_wave_prepare로 현재 태스크에 결속하고 가용 슬롯의 준비된 항목을 모두
-prepare/spawn한 뒤 기다린다. 실제 실패한 attempt만 wave_retry로 대체하며 원래 기록을 보존한다.
+DAG는 delegation_wave_prepare의 assignment가 포함된 entries로 현재 태스크에 결속한다.
+Codex는 모든 항목의 dispatch_prepare_code를 보존하고 ready 항목의 정확한 코드를
+functions.exec에 제출한 뒤 직접 spawn한다. 정확한 dispatch_read_code는 ready slot
+중에도 상태 조회에 사용할 수 있다. 가용 슬롯을 모두 dispatch한 뒤 기다린다. 실제 실패한 attempt만
+wave_retry로 대체하며 원래 기록을 보존한다.
 독립 리뷰는 role=review로 준비하고 새 컨텍스트에서 생성한다. Codex는 fork_turns=none,
 Claude는 새 Agent 호출을 사용한다. 구현 자식을 리뷰어로 재사용하지 않는다. 호스트가 관측한
 격리 출처가 없으면 정식 review 근거로 수락하지 않는다.

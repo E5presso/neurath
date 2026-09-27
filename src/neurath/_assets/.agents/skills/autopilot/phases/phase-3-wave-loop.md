@@ -13,13 +13,28 @@ Root는 구현 자식과 별도의 `role=review` 직접 자식을 새 컨텍스�
 
 1. 구현 대상 이슈마다 `issue-<번호>`를 고유 delegation ID로 사용합니다.
    `delegation_wave_prepare`에 현재 in-progress task ID/revision, 고유 wave ID,
-   entries(delegation_id, depends_on), max_parallel, capacity_basis를 기록합니다.
+   entries(delegation_id, assignment, depends_on, 선택적 role), max_parallel,
+   capacity_basis를 기록합니다. role은 `worker` 또는 `review`이며 선언한
+   assignment와 함께 실제 native 준비에서 다시 검증됩니다.
    기존 phase workflow에서는 workflow_id도 결속하고 완료 시 native_wave_receipt의 wave_id를
    제출합니다. phase gate가 같은 workflow의 실제 consumed 성공 결과를 다시 읽습니다.
    Cycle·누락 dependency는 실행 전에 거부합니다. capacity는 실제 도구 inventory에서 관측한
    한도와 현재 사용량을 근거로 선택하며, 병렬 가능한 work를 1개로 제한하면
    serialization_reason을 남깁니다. 선언된 숫자를 호스트 확인으로 표현하지 않습니다.
-   각 ready entry에 `delegation_prepare → tool:spawn_agent`를 실행합니다.
+   모든 entry의 `dispatch_prepare_code`를 wave 준비 결과로 보존하고, 각 ready entry에
+   해당 `dispatch_prepare_code[delegation_id]`를
+   Codex `functions.exec` 코드로 정확히 제출하여 `delegation_prepare`를 실행한 뒤
+   `tool:spawn_agent`를 직접 호출합니다. 준비된 slot이 남아 있는 동안 다른
+   `functions.exec` 호출은 중첩 대기 여부를 호스트가 증명할 수 없어 거부됩니다.
+   준비 코드는 해당 entry의 assignment와 현재 task revision에 결속되므로
+   수정하거나 다른 호출과 합치지 않습니다. Claude에서는 같은 명명
+   `delegation_prepare`와 native Agent dispatch를 사용합니다.
+   설치 전 생성된 wave에 assignment가 없으면 `delegation_wave_read`의
+   `dispatch_prepare_keys`를 사용해 정확한 단일 `delegation_prepare` 호출만
+   제출합니다. 코드가 없는 기존 wave는 `wave_id`만 담은 정확한 단일
+   `delegation_wave_read` 호출로 key를 회수합니다. 반환된 `dispatch_read_code`는
+   이후 readback에도 사용합니다. 다른 `functions.exec` 코드는 준비된 slot이
+   남으면 거부됩니다.
    현재 wave의 가용 slot을 모두 채운 뒤 기다립니다. Claude의 병렬 Agent는
    run_in_background=true를 사용합니다. spawn hook이 실제 접수와 자식을 결속하며,
    준비된 항목과 빈 slot이 남았으면 wait hook이 대기를 거부합니다.

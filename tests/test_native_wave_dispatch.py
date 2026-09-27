@@ -64,6 +64,35 @@ def test_cycles_missing_edges_and_unexplained_serialization_rejected(tmp_path):
         with pytest.raises(ValueError):
             validate(value)
 
+
+def test_named_wave_prepare_requires_assignments_for_wrapper_fence(tmp_path):
+    domain(tmp_path)
+    from neurath.runtime.task_schema import arguments
+
+    request = {'wave_id': 'strict-wave', 'task_id': 'task-id',
+        'expected_task_revision': 2, 'max_parallel': 2,
+        'capacity_basis': 'two observed native slots', 'key': 'prepare',
+        'entries': sample()['entries'][:2]}
+    with pytest.raises(ValueError):
+        arguments('delegation_wave_prepare', request)
+    request['entries'] = [{**entry, 'assignment': 'Inspect ' + entry['delegation_id']}
+                          for entry in request['entries']]
+    assert arguments('delegation_wave_prepare', request)['entries'] == request['entries']
+
+
+def test_dispatch_prepare_key_distinguishes_colon_bearing_ids():
+    import re
+    from neurath.hosts.waves import _dispatch_prepare_code
+
+    first = _dispatch_prepare_code(
+        {'wave_id': 'a:b', 'task_id': 'task', 'task_revision': 2},
+        {'delegation_id': 'c', 'assignment': 'Inspect c'})
+    second = _dispatch_prepare_code(
+        {'wave_id': 'a', 'task_id': 'task', 'task_revision': 2},
+        {'delegation_id': 'b:c', 'assignment': 'Inspect b:c'})
+    key = lambda code: re.search(r'"key":"([^"]+)"', code).group(1)
+    assert key(first) != key(second)
+
 from tests.test_identity import runtime  # noqa: F401, E402
 from tests.test_peer_task_scope import setup_peer  # noqa: E402
 
@@ -97,6 +126,135 @@ def test_real_hook_blocks_early_wait_and_task_success(runtime, wait_tool):
                 tool_use_id='full-wait', turn_id='peer-turn', tool_input={})[0] == 0
 
 
+def test_outer_exec_only_admits_exact_wave_dispatch_preparation(runtime):
+    from neurath.hosts.waves import prepare
+    from neurath.hosts.identity import prepare_bound_delegation
+
+    store, _, task = setup_peer(runtime)
+    config = sample()
+    config['entries'] = [
+        {**entry, 'assignment': 'Inspect ' + entry['delegation_id']}
+        for entry in config['entries'][:2]
+    ]
+    prepared = prepare(store.worktree, store.handle, wave_id='strict-wave',
+        task_id=task['id'], expected_task_revision=task['revision'], **config)
+    code = prepared['dispatch_prepare_code']['a']
+    assert 'delegation_prepare' in code
+    send = runtime[3]
+    unsafe = {'code': 'await tools.write_stdin({session_id:123})'}
+    assert send('codex', 'PreToolUse', tool_name='functions.exec',
+        tool_use_id='nested-wait', turn_id='peer-turn', tool_input=unsafe)[0] != 0
+    from neurath.hosts.hooks import SHELL_TOOLS
+    for shell_tool in sorted(SHELL_TOOLS):
+        shell_code, _, shell_diagnostic = send('codex', 'PreToolUse',
+            tool_name=shell_tool, tool_use_id='direct-shell-' + shell_tool,
+            turn_id='peer-turn', tool_input={'cmd': 'sleep 60'})
+        assert shell_code != 0 and 'dispatch' in shell_diagnostic
+    assert send('codex', 'PreToolUse', tool_name='functions.exec',
+        tool_use_id='exact-prepare', turn_id='peer-turn', tool_input={'code': code})[0] == 0
+    assert send('codex', 'PreToolUse', tool_name='functions.exec',
+        tool_use_id='hidden-extra-wait', turn_id='peer-turn',
+        tool_input={'code': code + ';await tools.write_stdin({session_id:123})'})[0] != 0
+    for identifier in ('a', 'b'):
+        prepare_bound_delegation(store.worktree, store.handle, identifier,
+            'Inspect ' + identifier, task_id=task['id'],
+            expected_task_revision=task['revision'])
+        assert send('codex', 'PreToolUse', tool_name='spawn_agent',
+            tool_use_id='strict-' + identifier, turn_id='peer-turn',
+            tool_input={'task_name': identifier, 'message': 'Inspect'})[0] == 0
+        assert send('codex', 'PostToolUse', tool_name='spawn_agent',
+            tool_use_id='strict-' + identifier, turn_id='peer-turn',
+            tool_response={'agent_id': 'strict-child-' + identifier})[0] == 0
+    assert send('codex', 'PreToolUse', tool_name='functions.exec',
+        tool_use_id='nonwait-after-dispatch', turn_id='peer-turn',
+        tool_input={'code': 'text("nonwaiting work")'})[0] == 0
+
+
+def test_strict_wave_returns_code_for_dependent_entry_before_it_becomes_ready(runtime):
+    from neurath.hosts.waves import prepare
+
+    store, _, task = setup_peer(runtime)
+    config = sample()
+    config['entries'] = [{**entry, 'assignment': 'Inspect ' + entry['delegation_id']}
+                         for entry in config['entries']]
+    prepared = prepare(store.worktree, store.handle, wave_id='dependent-wave',
+        task_id=task['id'], expected_task_revision=task['revision'], **config)
+    assert prepared['dispatch_required'] == ['a', 'b']
+    assert 'c' in prepared['dispatch_prepare_code']
+    assert runtime[3]('codex', 'PreToolUse', tool_name='functions.exec',
+        tool_use_id='not-ready-c', turn_id='peer-turn',
+        tool_input={'code': prepared['dispatch_prepare_code']['c']})[0] != 0
+
+
+def test_review_wave_entry_preserves_native_review_role(runtime):
+    from neurath.hosts.waves import prepare
+
+    store, _, task = setup_peer(runtime)
+    config = sample(capacity=1)
+    config['entries'] = [{'delegation_id': 'review-a', 'assignment': 'Review the exact diff',
+                          'role': 'review', 'depends_on': []}]
+    prepared = prepare(store.worktree, store.handle, wave_id='review-wave',
+        task_id=task['id'], expected_task_revision=task['revision'], **config)
+    code = prepared['dispatch_prepare_code']['review-a']
+    assert '"role":"review"' in code
+    assert runtime[3]('codex', 'PreToolUse', tool_name='functions.exec',
+        tool_use_id='prepare-review', turn_id='peer-turn', tool_input={'code': code})[0] == 0
+
+
+def test_strict_wave_rejects_changed_assignment_before_spawn(runtime):
+    from neurath.hosts.waves import prepare
+    from neurath.hosts.identity import prepare_bound_delegation
+
+    store, _, task = setup_peer(runtime)
+    prepare(store.worktree, store.handle, wave_id='bound-assignment',
+        task_id=task['id'], expected_task_revision=task['revision'],
+        entries=[{'delegation_id': 'a', 'assignment': 'Approved inspect only',
+                  'depends_on': []}], max_parallel=1,
+        capacity_basis='one observed slot')
+    with pytest.raises(ValueError, match='assignment'):
+        prepare_bound_delegation(store.worktree, store.handle, 'a', 'Do unrelated work',
+            task_id=task['id'], expected_task_revision=task['revision'])
+
+
+def test_legacy_ready_wave_blocks_nested_wait_but_allows_one_exact_prepare(runtime):
+    from neurath.hosts.waves import _dispatch_prepare_code, prepare
+    from neurath.hosts.identity import journal, prepare_bound_delegation
+
+    store, _, task = setup_peer(runtime)
+    config = sample()
+    config['entries'] = config['entries'][:2]
+    prepared = prepare(store.worktree, store.handle, wave_id='legacy-wave',
+        task_id=task['id'], expected_task_revision=task['revision'], **config)
+    assert prepared['dispatch_required'] == ['a', 'b']
+    with journal(store.worktree, 'root') as data:
+        data['waves']['legacy-wave'].pop('wave_id')
+        data['waves']['legacy-wave'].pop('strict_wrapper_fence')
+    send = runtime[3]
+    assert send('codex', 'PreToolUse', tool_name='functions.exec',
+        tool_use_id='legacy-nested-wait', turn_id='peer-turn',
+        tool_input={'code': 'await tools.write_stdin({session_id:123})'})[0] != 0
+    read_code = ('const r=await tools.mcp__neurath_collaboration__delegation_wave_read('
+                 '{"wave_id":"legacy-wave"});text(r.structuredContent??r)')
+    assert send('codex', 'PreToolUse', tool_name='functions.exec',
+        tool_use_id='legacy-safe-read', turn_id='peer-turn',
+        tool_input={'code': read_code})[0] == 0
+    safe_code = _dispatch_prepare_code({'wave_id': 'legacy-wave', 'task_id': task['id'],
+        'task_revision': task['revision']}, {'delegation_id': 'a', 'assignment': 'Inspect a'})
+    assert prepared['dispatch_prepare_keys']['a'] in safe_code
+    assert send('codex', 'PreToolUse', tool_name='functions.exec',
+        tool_use_id='legacy-single-prepare', turn_id='peer-turn',
+        tool_input={'code': safe_code})[0] == 0
+    review_code = _dispatch_prepare_code({'wave_id': 'legacy-wave',
+        'task_id': task['id'], 'task_revision': task['revision']},
+        {'delegation_id': 'a', 'assignment': 'Review a', 'role': 'review'})
+    assert send('codex', 'PreToolUse', tool_name='functions.exec',
+        tool_use_id='legacy-review-prepare', turn_id='peer-turn',
+        tool_input={'code': review_code})[0] == 0
+    assert prepare_bound_delegation(store.worktree, store.handle, 'a', 'Review a',
+        task_id=task['id'], expected_task_revision=task['revision'],
+        role='review')['status'] == 'prepared'
+
+
 def test_wave_rejects_stale_task_and_changed_plan(runtime):
     from neurath.hosts.waves import prepare
     store, _, task = setup_peer(runtime)
@@ -114,11 +272,14 @@ def test_only_observed_failed_attempt_can_be_replaced(runtime):
     from neurath.hosts.waves import prepare, retry, read
     from neurath.hosts.identity import prepare_bound_delegation, journal
     store, _, task = setup_peer(runtime)
+    config = sample()
+    config['entries'] = [{**entry, 'assignment': 'Inspect ' + entry['delegation_id']}
+                         for entry in config['entries']]
     prepare(store.worktree, store.handle, wave_id='wave', task_id=task['id'],
-            expected_task_revision=task['revision'], **sample())
+            expected_task_revision=task['revision'], **config)
     with pytest.raises(ValueError, match='observed failed'):
         retry(store.worktree, store.handle, wave_id='wave', delegation_id='a', replacement_id='a2')
-    prepare_bound_delegation(store.worktree, store.handle, 'a', 'Inspect',
+    prepare_bound_delegation(store.worktree, store.handle, 'a', 'Inspect a',
                              task_id=task['id'], expected_task_revision=task['revision'])
     send = runtime[3]
     assert send('codex', 'PreToolUse', tool_name='spawn_agent', tool_use_id='a',
@@ -129,6 +290,8 @@ def test_only_observed_failed_attempt_can_be_replaced(runtime):
         data['spawns']['a']['spawn_error'] = 'observed failed spawn'
     result = retry(store.worktree, store.handle, wave_id='wave', delegation_id='a', replacement_id='a2')
     assert result['dispatch_required'] == ['a2', 'b']
+    assert 'a2' in result['dispatch_prepare_code']
+    assert 'Inspect a' in result['dispatch_prepare_code']['a2']
     assert read(store.worktree, store.handle, wave_id='wave')['attempts'] == [{'failed': 'a', 'replacement': 'a2'}]
 
 
