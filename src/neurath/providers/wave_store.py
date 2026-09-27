@@ -36,6 +36,9 @@ def open_wave_store(root):
         db.execute("""CREATE TABLE IF NOT EXISTS provider_wave_operations (
             owner TEXT NOT NULL, key TEXT NOT NULL, request TEXT NOT NULL,
             PRIMARY KEY(owner,key))""")
+        db.execute("""CREATE TABLE IF NOT EXISTS provider_wave_supersessions (
+            old_wave_id TEXT PRIMARY KEY, new_wave_id TEXT NOT NULL,
+            owner TEXT NOT NULL, key TEXT NOT NULL)""")
     return store
 
 

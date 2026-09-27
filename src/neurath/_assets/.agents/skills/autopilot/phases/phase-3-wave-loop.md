@@ -42,6 +42,12 @@ Codex 리뷰는 `fork_turns="none"`이며 실제 호스트의 계보·컨텍스�
      이전 attempt의 요청·결과·지문·소비 기록을 변경 없이 보존합니다.
      모든 wave 연결 run과 이전 attempt에서 `provider_recover`를 사용하지 않습니다.
      Inbox 연결 복구로 구현 assignment가 완료됐다고 처리하지 않습니다.
+   - 과거 native 연결 종료 근거가 없어 terminal failed/cancelled wave를 재시도할 수
+     없으면 같은 task·workflow·entry DAG·provider·worktree의 별도 wave를 실행할 수
+     있습니다. 대체 wave의 모든 항목을 root가 정확한 성공 결과로 수락한 뒤에만
+     `provider_wave_supersede(old_wave_id, new_wave_id, key)`로 이전 wave를 task 완료
+     계산에서 제외합니다. 이전 결과와 누락된 종료 근거는 그대로 보존하며, 이 도구를
+     과거 run의 재시도나 성공 처리로 표현하지 않습니다.
    - Crash 조정은 인증된 owner의 read·동일 요청 replay·정확한 consume과 worker 종료
      callback에서 수행합니다. 영속 실행 신원과 lease로 중복 실행을 막습니다.
      Startup scanner나 주기적 polling은 없으며, 미제출 실행 replay와 새 구현 retry를 구분합니다.

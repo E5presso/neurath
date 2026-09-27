@@ -57,6 +57,14 @@ lease 해제를 확인해야 합니다. Native 세션이 생성됐다면 해당 
 취소됐다면 재시도할 수 없습니다. 이전 attempt의 요청·결과·지문·소비 기록은
 변경 없이 보존합니다.
 
+과거 native 연결 종료가 확인되지 않아 terminal failed/cancelled wave를 재시도할 수
+없다면, 별도 wave가 같은 이슈 그래프를 완료할 수 있습니다. 대체 wave의 모든 항목을
+root가 정확한 성공 결과로 수락한 뒤 `provider_wave_supersede(old_wave_id,
+new_wave_id, key)`로 task 원장을 조정합니다. Task 정의, workflow, 항목 의존성,
+provider와 worktree가 같아야 하며 이전 worker lease는 종료되고 OS 잠금도 풀려
+있어야 합니다. 이전 결과는 failed/cancelled로 남고, 이 조정은 누락된 연결 종료를
+증명하거나 이전 native 세션의 재실행을 허용하지 않습니다.
+
 이전 attempt를 포함한 모든 wave 연결 run은 `provider_recover`를 거부합니다.
 이 도구의 inbox 연결 복구는 구현 assignment를 충족할 수 없습니다. 새로 검증한
 구현 attempt와 같은 신원으로 영속 저장된 미제출 실행을 재개하는 것은 구분합니다.

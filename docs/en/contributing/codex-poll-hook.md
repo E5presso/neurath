@@ -59,6 +59,15 @@ a native session was created, verified closure of that session's connection and
 process. Accepted work, accepted descendants and a cancelled wave cannot retry.
 The old attempt's request, result, digest and consumption remain immutable.
 
+If a terminal failed or cancelled wave cannot retry because its historical
+native closure is unverified, a separate wave may finish the same issue graph.
+After every replacement entry has an exact owner-accepted success, the root may
+use `provider_wave_supersede(old_wave_id, new_wave_id, key)` for task accounting.
+It requires the same task definition, workflow, entry dependencies, providers
+and worktrees, plus finished and unlocked old worker leases. The old result
+remains failed or cancelled; supersession never supplies missing closure proof
+or permits replay of the old native session.
+
 Every wave-associated run, including prior attempts, rejects `provider_recover`.
 That operation restores an inbox connection and cannot satisfy an implementation
 assignment. A new admitted implementation attempt is distinct from replaying a
