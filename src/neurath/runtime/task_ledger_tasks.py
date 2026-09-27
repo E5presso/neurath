@@ -13,19 +13,19 @@ def _require_autopilot_phase(root, identity, process, actor_id):
         return
     user_messages = [text for role, text in messages if role == "user"]
     invocation = r"\[\$autopilot\]\(|(?<!\w)\$autopilot\b|(?<!\w)/autopilot\b"
-    if not any(re.search(invocation, text) for text in user_messages):
-        return
-    # A finished earlier run does not bind a fresh explicit invocation. A
-    # follow-up to the same unfinished run still requires its phase workflow.
-    if (user_messages and not re.search(invocation, user_messages[-1])
-            and any(workflow.kind == "autopilot"
-                    and workflow.status.value == "completed"
-                    for workflow in process.workflows.values())):
+    invocation_count = sum(bool(re.search(invocation, text)) for text in user_messages)
+    if not invocation_count:
         return
     if any(workflow.kind == "autopilot"
            and workflow.status.value == "active"
            and str(workflow.owner_actor_id) == str(actor_id)
            for workflow in process.workflows.values()):
+        return
+    terminal_count = sum(workflow.kind == "autopilot"
+                         and workflow.status.value in {"completed", "failed"}
+                         and str(workflow.owner_actor_id) == str(actor_id)
+                         for workflow in process.workflows.values())
+    if terminal_count >= invocation_count:
         return
     raise TaskError("autopilot-phase-required",
                     "call phase_start for the explicit autopilot request before task mutation")

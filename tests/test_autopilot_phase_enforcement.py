@@ -90,6 +90,25 @@ def test_autopilot_followup_still_requires_missing_phase_start(monkeypatch):
             SimpleNamespace(workflows={}), "root")
 
 
+def test_new_autopilot_followup_is_not_covered_by_old_completed_run(monkeypatch):
+    from types import SimpleNamespace
+    from neurath.runtime import task_ledger_tasks, user_choices
+    from neurath.runtime.task_schema import TaskError
+    monkeypatch.setattr(user_choices, "native_messages", lambda *_: [
+        ("user", "$autopilot #10"),
+        ("assistant", "Completed"),
+        ("user", "$autopilot #90, #91"),
+        ("assistant", "Working"),
+        ("user", "Continue the issues"),
+    ])
+    old = SimpleNamespace(kind="autopilot", status=SimpleNamespace(value="completed"),
+                          owner_actor_id="root")
+    with pytest.raises(TaskError, match="phase_start"):
+        task_ledger_tasks._require_autopilot_phase(
+            "/project", SimpleNamespace(host="codex", session="native"),
+            SimpleNamespace(workflows={"old": old}), "root")
+
+
 def test_inflight_seven_phase_autopilot_keeps_its_original_phase_ids():
     from scripts.skill_harness.phase_runner import PhaseRecord
     state, runner, _, _, _ = _components()
