@@ -143,13 +143,13 @@ def _question(name, args):
     return questions[0].get("question") or questions[0].get("title")
 
 
-def native_messages(root, identity):
+def native_messages(root, identity, *, record_limit=2000):
     from neurath.hosts.identity import snapshot, _reverse_native_records
     path=snapshot(root,identity.session).get("transcript")
     if not path:
         raise ValueError("registered native transcript is unavailable")
     records=list(itertools.islice(_reverse_native_records(path,
-        {"response_item","event_msg","assistant","user"}),2000))
+        {"response_item","event_msg","assistant","user"}),record_limit))
     messages=[]
     for event in reversed(records):
         role=text=None

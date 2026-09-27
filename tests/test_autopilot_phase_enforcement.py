@@ -68,7 +68,7 @@ def test_explicit_autopilot_invocation_requires_phase_start_before_task_mutation
     from neurath.runtime.task_schema import TaskError
     from neurath.runtime import user_choices
 
-    monkeypatch.setattr(user_choices, "native_messages", lambda *_: [("user", invocation)])
+    monkeypatch.setattr(user_choices, "native_messages", lambda *_, **__: [("user", invocation)])
     identity = SimpleNamespace(host="codex", session="native")
     process = SimpleNamespace(workflows={})
     with pytest.raises(TaskError, match="phase_start"):
@@ -79,7 +79,7 @@ def test_autopilot_followup_still_requires_missing_phase_start(monkeypatch):
     from types import SimpleNamespace
     from neurath.runtime import task_ledger_tasks, user_choices
     from neurath.runtime.task_schema import TaskError
-    monkeypatch.setattr(user_choices, "native_messages", lambda *_: [
+    monkeypatch.setattr(user_choices, "native_messages", lambda *_, **__: [
         ("user", "$autopilot #90, #91"),
         ("assistant", "Working"),
         ("user", "Continue the issues"),
@@ -94,13 +94,37 @@ def test_new_autopilot_followup_is_not_covered_by_old_completed_run(monkeypatch)
     from types import SimpleNamespace
     from neurath.runtime import task_ledger_tasks, user_choices
     from neurath.runtime.task_schema import TaskError
-    monkeypatch.setattr(user_choices, "native_messages", lambda *_: [
+    monkeypatch.setattr(user_choices, "native_messages", lambda *_, **__: [
         ("user", "$autopilot #10"),
         ("assistant", "Completed"),
         ("user", "$autopilot #90, #91"),
         ("assistant", "Working"),
         ("user", "Continue the issues"),
     ])
+    old = SimpleNamespace(kind="autopilot", status=SimpleNamespace(value="completed"),
+                          owner_actor_id="root")
+    with pytest.raises(TaskError, match="phase_start"):
+        task_ledger_tasks._require_autopilot_phase(
+            "/project", SimpleNamespace(host="codex", session="native"),
+            SimpleNamespace(workflows={"old": old}), "root")
+
+
+def test_old_completed_run_cannot_cover_invocation_beyond_transcript_window(monkeypatch):
+    from types import SimpleNamespace
+    from neurath.hosts import identity as host_identity
+    from neurath.runtime import task_ledger_tasks
+    from neurath.runtime.task_schema import TaskError
+
+    def user(text):
+        return {"type": "event_msg", "payload": {"type": "user_message", "message": text}}
+
+    def assistant():
+        return {"type": "event_msg", "payload": {"type": "agent_message", "message": "Working"}}
+
+    records = [user("$autopilot #90"), *(assistant() for _ in range(2000)),
+               user("$autopilot #10")]
+    monkeypatch.setattr(host_identity, "snapshot", lambda *_: {"transcript": "/transcript"})
+    monkeypatch.setattr(host_identity, "_reverse_native_records", lambda *_: iter(records))
     old = SimpleNamespace(kind="autopilot", status=SimpleNamespace(value="completed"),
                           owner_actor_id="root")
     with pytest.raises(TaskError, match="phase_start"):

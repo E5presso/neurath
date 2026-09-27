@@ -8,7 +8,9 @@ def _require_autopilot_phase(root, identity, process, actor_id):
     from neurath.runtime.task_schema import TaskError
     from neurath.runtime.user_choices import native_messages
     try:
-        messages = native_messages(root, identity)
+        # Terminal workflows span the whole native session; count invocations over
+        # that same history, not the choice reader's bounded recent window.
+        messages = native_messages(root, identity, record_limit=None)
     except ValueError:
         return
     user_messages = [text for role, text in messages if role == "user"]
