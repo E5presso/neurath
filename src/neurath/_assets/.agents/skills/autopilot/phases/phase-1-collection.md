@@ -22,6 +22,9 @@ target을 normalized GitHub issue set으로 해석합니다.
    단순히 구현된 것 같다는 추정이나 중복 후보 표시로 수집을 끝내지 않습니다.
 5. `source_of_truth`, `normalized_items`, `total_issue_count`를 기록합니다. 중복 종료는 전체
    처리 티켓 수에 포함하되 새 구현·수정 수와 별도로 집계합니다.
+   `normalized_items`의 phase 근거는 `{"issues":[89,90,91]}`처럼 구현 wave에서
+   처리할 이슈 번호를 중복 없이 담은 JSON이어야 합니다. 이미 완료된 항목은 별도
+   종료 근거에 기록하고 이 배열에 넣지 않습니다.
 6. 남은 작업과 새로 발견한 필수 수정을 명명 MCP task_define으로 측정 가능한 태스크에
    보존합니다. task_list의 안정된 ID로 추적하고 완료 조건과 출처를 연결합니다. 중복 무효
    처리에는 이미 충족한 결과 참조와 무효 사유를 사용합니다. 별도 태스크 검토는

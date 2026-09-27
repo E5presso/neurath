@@ -6,7 +6,6 @@
       "terminal_states": [
         "merged",
         "failed",
-        "skipped",
         "blocked"
       ],
       "phase_contracts": [
@@ -69,16 +68,24 @@
         },
         {
           "id": 6,
-          "name": "intent_audit_and_docs",
-          "min_evidence_count": 2,
+          "name": "intent_audit",
+          "min_evidence_count": 1,
           "required_evidence": [
-            "audit_spec_result",
-            "sync_docs_result"
+            "audit_spec_result"
           ],
           "phase_file": "phases/phase-4-intent-audit.md"
         },
         {
           "id": 7,
+          "name": "sync_docs",
+          "min_evidence_count": 1,
+          "required_evidence": [
+            "sync_docs_result"
+          ],
+          "phase_file": "phases/phase-5-sync-docs.md"
+        },
+        {
+          "id": 8,
           "name": "terminal_report",
           "min_evidence_count": 1,
           "required_evidence": [
@@ -98,7 +105,9 @@
         "6 | 병합된 PR 보고"
       ],
       "required_fragments": [
-        "uv run python -m scripts.skill_harness.phase_runner",
+        "`phase_start`",
+        "`phase_current`",
+        "`phase_complete`",
         ".agents/rules/tool-runtime-map.md",
         "`mergeable-clean`과 `merged`를 구분",
         "[autopilot N/M (P%) ETA Xh Ym] message",

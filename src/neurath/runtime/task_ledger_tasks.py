@@ -1,5 +1,27 @@
 """Named measurable task operations bound to the current native session."""
 
+import re
+
+
+def _require_autopilot_phase(root, identity, process, actor_id):
+    """Fence task mutation after an explicit native autopilot skill invocation."""
+    from neurath.runtime.task_schema import TaskError
+    from neurath.runtime.user_choices import native_messages
+    try:
+        messages = native_messages(root, identity)
+    except ValueError:
+        return
+    last_user = next((text for role, text in reversed(messages) if role == "user"), "")
+    if not re.match(r"^\s*(?:\[\$autopilot\]\(|/autopilot\b)", last_user):
+        return
+    if any(workflow.kind == "autopilot"
+           and workflow.status.value == "active"
+           and str(workflow.owner_actor_id) == str(actor_id)
+           for workflow in process.workflows.values()):
+        return
+    raise TaskError("autopilot-phase-required",
+                    "call phase_start for the explicit autopilot request before task mutation")
+
 
 def definitions():
     from neurath.runtime.task_schema import choice, text_field
@@ -30,7 +52,8 @@ def definitions():
             for name, (description, fields, readonly) in entries.items()}
 
 
-def service_for(root, *, identity, expected_turn, verified_policy_evidence=None):
+def service_for(root, *, identity, expected_turn, verified_policy_evidence=None,
+                operation_name=None):
     from neurath.runtime.state_tasks import _handle
     from neurath.runtime.task_schema import TaskError
     handle = _handle(root, identity, expected_turn, verified_policy_evidence)
@@ -42,6 +65,8 @@ def service_for(root, *, identity, expected_turn, verified_policy_evidence=None)
 
     def admission(process):
         actor = process.actors.get(handle.actor_id)
+        if operation_name != "task_list":
+            _require_autopilot_phase(root, identity, process, handle.actor_id)
         if (actor is None or participation(process, actor) != (True, expected_turn)
                 or canonical(_prompt_receipt(process, actor)) !=
                    canonical(verified_policy_evidence["user_prompt_receipt"])
@@ -54,7 +79,8 @@ def service_for(root, *, identity, expected_turn, verified_policy_evidence=None)
 def execute(root, name, fields, *, identity, expected_turn, verified_policy_evidence=None):
     from neurath.runtime.task_schema import TaskError
     service = service_for(root, identity=identity, expected_turn=expected_turn,
-                          verified_policy_evidence=verified_policy_evidence)
+                          verified_policy_evidence=verified_policy_evidence,
+                          operation_name=name)
     from scripts.agent_harness.task_ledger import TaskLedgerError, TaskRevisionConflict
     operation = {"task_define": service.define, "task_list": service.list,
                  "task_start": service.start, "task_resolve": service.resolve}[name]

@@ -223,7 +223,10 @@ Stop 거부를 통과하려고 미완료 항목을 failed·invalidated로 바꾸
 개별 검사·위임·복구 시도의 실패를 그 시도가 속한 태스크의 실패로 승격하지 않는다.
 같은 접근을 중단해도 원래 태스크는 유지하고, 승인 범위 안의 다른 접근이나 남은 독립 작업을 수행한다.
 파일 편집에 material 배치를 만들지 않는다. 완료한 검사를 후속 질문 때문에 다시 실행하지 않는다.
-task 목록이 있는 세션에는 별도 phase·workflow 완료나 acceptance JSON을 요구하지 않는다.
+일반 작업에서 task 목록이 있으면 별도 phase·workflow 완료나 acceptance JSON을 요구하지 않는다.
+명시적으로 호출된 autopilot은 예외다. phase_start로 시작한 계약의 모든 phase를
+phase_current, phase_evidence_prepare, phase_complete, phase_finalize로 실행하며
+task 목록이 있어도 단계를 생략하지 않는다.
 기존 workflow의 이력·복구 도구는 그 기록을 다룰 때만 사용한다.
 검사 실패의 진단·출력 해시·소스 기준을 보존한다. 수정이나 새 근거 없이 같은 검사를 반복하지 않는다.
 완료된 실패는 같은 key로 조회하고, 원인을 수정한 새 실행에만 새 key를 사용한다.
@@ -555,6 +558,8 @@ def asset_files(profile, hosts, skill_prefix=""):
                     split = content.split("---", 2)
                     if len(split) == 3:
                         contract_guidance = (
+                            "내장 계약: `autopilot`. 구현·task mutation 전에 `phase_start`를 호출하고 모든 phase를 `phase_current`, `phase_evidence_prepare`, `phase_complete`, `phase_finalize`로 완료합니다. task 목록은 phase를 대체하지 않습니다.\n"
+                            if skill == "autopilot" else
                             f"내장 계약: `{skill}`. 기존 workflow를 실행·복구할 때 `phase_current`와 `phase_evidence_prepare`를 사용합니다. task 목록이 있으면 task 도구로 결과를 한 번 기록하며 별도 phase 완료를 요구하지 않습니다.\n"
                             if skill in contracted_skills else ""
                         )

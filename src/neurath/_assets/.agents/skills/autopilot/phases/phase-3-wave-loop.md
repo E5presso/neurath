@@ -11,7 +11,8 @@ Root orchestrator가 모든 티켓의 task/workflow, 통합, 검토와 monitor �
 권한이 없는 자식은 patch artifact를 반환하고 root가 자신의 claim 아래 통합합니다.
 Root는 구현 자식과 별도의 `role=review` 직접 자식을 새 컨텍스트로 배정합니다.
 
-1. `delegation_wave_prepare`에 현재 in-progress task ID/revision, 고유 wave ID,
+1. 구현 대상 이슈마다 `issue-<번호>`를 고유 delegation ID로 사용합니다.
+   `delegation_wave_prepare`에 현재 in-progress task ID/revision, 고유 wave ID,
    entries(delegation_id, depends_on), max_parallel, capacity_basis를 기록합니다.
    기존 phase workflow에서는 workflow_id도 결속하고 완료 시 native_wave_receipt의 wave_id를
    제출합니다. phase gate가 같은 workflow의 실제 consumed 성공 결과를 다시 읽습니다.
@@ -26,6 +27,8 @@ Root는 구현 자식과 별도의 `role=review` 직접 자식을 새 컨텍스�
    새 이벤트 후 `delegation_wave_read`로 상태를 확인하며 주기적으로 조회하지 않습니다.
    실제 실패한 attempt는 `delegation_wave_retry`로 새 delegation ID에 연결하고 실패 이력은
    보존합니다. 불확실한 실행을 중복 dispatch하지 않습니다. 미완료 wave를 남긴 task 성공은 거부합니다.
+   phase 3은 phase 2의 모든 구현 대상 ID가 같은 workflow에 묶인 native wave에서
+   성공으로 소비됐을 때만 완료됩니다.
 
    - 동일 세션 위임은 native subagent가 기본입니다. 별도 worktree나 장시간 실행은
      사용자용 독립 세션을 만드는 사유가 아닙니다.

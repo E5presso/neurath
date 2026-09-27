@@ -1060,6 +1060,12 @@ class PhaseRunner:
                 "INCOMPLETE_PHASES",
                 f"{terminal_state} finalization requires every phase to be completed or skipped",
             )
+        if (state.skill == "autopilot" and terminal_state == "merged"
+                and any(phase.status != "completed" for phase in state.phases)):
+            raise PhaseRunnerError(
+                "AUTOPILOT_PHASE_REQUIRED",
+                "merged autopilot requires every phase to be completed",
+            )
         if state.skill == "process-ticket" and terminal_state == "merged":
             merge_cleanup = next(
                 (phase for phase in state.phases if phase.name == "merge_cleanup"),
@@ -1135,6 +1141,11 @@ class PhaseRunner:
             )
         if status not in VALID_PHASE_STATUSES:
             raise PhaseRunnerError("STATUS_INVALID", f"{status} is not a valid phase status")
+        if state.skill == "autopilot" and status == "skipped":
+            raise PhaseRunnerError(
+                "AUTOPILOT_SKIP_FORBIDDEN",
+                "autopilot phases cannot be skipped; record a verified no-op as completed",
+            )
         if not summary:
             raise PhaseRunnerError("SUMMARY_REQUIRED", "phase completion requires a summary")
         if status in TERMINAL_PHASE_STATUSES and not reason:
@@ -1218,6 +1229,35 @@ class PhaseRunner:
                 failures.append(evidence_key)
         return failures
 
+    def _autopilot_issue_set(
+        self, evidence: tuple[str, ...], label: str,
+    ) -> frozenset[int] | None:
+        item = self._evidence_item(evidence, label)
+        if item is None or ": " not in item:
+            return None
+        try:
+            value = json.loads(item.split(": ", 1)[1])
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(value, dict) or set(value) != (
+            {"issues", "edges"} if label == "dependency_dag" else {"issues"}
+        ):
+            return None
+        issues = value["issues"]
+        if (not isinstance(issues, list) or not issues
+                or any(type(number) is not int or number < 1 for number in issues)
+                or len(set(issues)) != len(issues)):
+            return None
+        if label == "dependency_dag":
+            edges = value["edges"]
+            if (not isinstance(edges, list)
+                    or any(not isinstance(edge, list) or len(edge) != 2
+                           or any(type(number) is not int or number not in issues
+                                  for number in edge) or edge[0] == edge[1]
+                           for edge in edges)):
+                return None
+        return frozenset(issues)
+
     def _semantic_failures(
         self,
         state: PhaseRunState,
@@ -1279,11 +1319,26 @@ class PhaseRunner:
         if (state.skill == "finish-session" and phase.name == "commit" and status == "completed"
                 and state.phase(2).status != "completed"):
             failures.append("finish_session.stage_scope_not_completed")
+        if state.skill == "autopilot" and phase.name == "collect_issues":
+            if self._autopilot_issue_set(evidence, "normalized_items") is None:
+                failures.append("autopilot.normalized_items")
+        if state.skill == "autopilot" and phase.name == "dependency_dag":
+            collected = self._autopilot_issue_set(state.phase(1).evidence, "normalized_items")
+            planned = self._autopilot_issue_set(evidence, "dependency_dag")
+            if collected is None or planned is None or collected != planned:
+                failures.append("autopilot.dependency_dag_scope")
         if state.skill == "autopilot" and phase.name == "execute_waves":
             wave_id = self._evidence_value(self._evidence_item(evidence, "native_wave_receipt"), "wave_id")
             try:
-                if not wave_id or store.read_native_wave(wave_id).get("all_succeeded") is not True:
+                wave = store.read_native_wave(wave_id) if wave_id else None
+                if wave is None or wave.get("all_succeeded") is not True:
                     failures.append("native_wave_receipt")
+                planned = (self._autopilot_issue_set(state.phase(2).evidence, "dependency_dag")
+                           if hasattr(state, "phase") else None)
+                actual = wave.get("states") if wave else None
+                if (planned is None or not isinstance(actual, Mapping)
+                        or set(actual) != {f"issue-{number}" for number in planned}):
+                    failures.append("autopilot.wave_scope")
             except (ValueError, KeyError):
                 failures.append("native_wave_receipt")
         if state.skill == "evaluate-harness":
