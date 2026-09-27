@@ -33,11 +33,12 @@ def executable_receipt(executable, expected_sha256):
 def assignments(worktrees):
     return {name: {"provider": "codex", "worktree": str(path), "mode": "inherit",
         "assignment": (
-            f"Authorized provider batch regression entry {name}. Inspect the existing README "
-            "and report its first heading. Do not edit repository files or start children. "
+            f"Authorized provider batch regression entry {name}. Read README.md and report "
+            "the exact first source line that starts with the literal ASCII character #. "
+            "Ignore HTML tags and all other lines. Do not edit files or start children. "
             "Record and resolve only this assignment's task with the observed fact, display "
             "native TODO, and release your exact owned worktree claim. "
-            f"Finish with NEURATH_PROVIDER_ENTRY_{name.upper()}_OK and the heading.")}
+            f"Finish with NEURATH_PROVIDER_ENTRY_{name.upper()}_OK and that exact line.")}
         for name, path in zip(("a", "b", "c"), worktrees, strict=True)}
 
 
@@ -64,16 +65,19 @@ def controller_prompt(expected):
         "not a polling loop. After each completion event read provider_wave_read, inspect "
         "the actual result and verify implementation_dispatched, original generation 1, "
         "a terminal completion_link joining native session, submitted turn and completed "
-        "turn (an owned inbox followup can differ), and the entry's marker/README fact. Consume "
+        "turn (an owned inbox followup can differ), and the entry's marker plus the exact "
+        "first README source line beginning with #; ignore HTML headings. Consume "
         "each exact run/generation/result_digest with verdict accepted only after success. "
         "Read the wave after both are consumed: c must now have a distinct run. Wait for "
         "c's native completion, inspect and consume it the same way, then read the wave "
         "to prove all_succeeded. Resolve the root task from these observations; display "
         "native TODO; release the exact observed lease/token and finish "
         "NEURATH_STOCK_PROVIDER_WAVE_OK. Do not recover or retry inside this regression. "
-        "On a concrete failure retain unfinished task evidence, cancel only this owned "
+        "On a concrete failure retain observed evidence, cancel only this owned "
         "wave through its named tool if it exists, report the exact prerequisite, and "
-        "release only your own claim when the lifecycle permits. Never invent receipts."
+        "resolve only this bounded regression attempt as failed with the actual failed "
+        "condition and parent's next repair step, then release your exact claim. The "
+        "parent's broader restoration requirement remains active. Never invent receipts."
     )
 
 
