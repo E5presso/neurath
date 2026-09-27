@@ -1,4 +1,4 @@
-<!-- date: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
+<!-- last_updated: 2026-09-27; synced_from: 7e7386b68b7f2ef26f33ba98cd76493a99c817c9 -->
 
 # 보고할 결과에 맞는 근거 선택하기
 
