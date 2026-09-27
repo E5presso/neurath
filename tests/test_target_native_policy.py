@@ -97,7 +97,7 @@ def test_fresh_native_owner_can_observe_plan_and_admit_target_native(roots,monke
     report['stages']['policy']['evidence']=({'permission_mode':'auto'} if source_host=='claude-code' else {
         'approval_policy':'never','approvals_reviewer':'user','sandbox_policy':{'type':'danger-full-access'}})
     monkeypatch.setattr('neurath.providers.readiness.inspect_bound_readiness',lambda *a,**k:report)
-    monkeypatch.setattr('neurath.runtime.tasks._verification_owner',lambda *a:(1,'turn'))
+    monkeypatch.setattr('neurath.runtime.admission._verification_owner',lambda *a:(1,'turn'))
     monkeypatch.setattr('neurath.runtime.provider_policy.target_native_settings',lambda *a:
         {'permission_mode':'auto'} if target_host=='claude-code' else {
         'approval_policy':'never','collaboration_mode':'default','sandbox_policy':{'type':'danger-full-access'}})

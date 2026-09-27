@@ -49,12 +49,12 @@ def test_mcp_policy_checked_before_reconciliation_write(accepted, monkeypatch, a
     root, identity, fields, _ = accepted
     order = []
     monkeypatch.setattr(provider_execution, 'arguments', lambda _name, values: values)
-    monkeypatch.setattr('neurath.runtime.tasks._verification_owner', lambda *_: (1, 'turn'))
+    monkeypatch.setattr('neurath.runtime.admission._verification_owner', lambda *_: (1, 'turn'))
     def policy(*_args, **_kwargs):
         order.append('policy')
         if not allow:
             raise ValueError('current MCP execution denied')
-    monkeypatch.setattr('neurath.runtime.tasks._mcp_execution_policy', policy)
+    monkeypatch.setattr('neurath.runtime.admission._mcp_execution_policy', policy)
     monkeypatch.setattr(model_tasks, 'admitted_request', lambda *a: pytest.fail('accepted plan re-admitted'))
     monkeypatch.setattr(jobs, '_launch', lambda *a, **k: order.append('launch'))
     if allow:
@@ -72,8 +72,8 @@ def test_terminal_replay_is_read_only_even_if_current_execution_is_denied(accept
     root, identity, fields, run_id = accepted
     saved = jobs._finish(jobs._store(root), run_id, {'status': terminal, 'answer': 'saved'})
     monkeypatch.setattr(provider_execution, 'arguments', lambda _name, values: values)
-    monkeypatch.setattr('neurath.runtime.tasks._verification_owner', lambda *_: (1, 'turn'))
-    monkeypatch.setattr('neurath.runtime.tasks._mcp_execution_policy', lambda *a, **k: pytest.fail('read required execution'))
+    monkeypatch.setattr('neurath.runtime.admission._verification_owner', lambda *_: (1, 'turn'))
+    monkeypatch.setattr('neurath.runtime.admission._mcp_execution_policy', lambda *a, **k: pytest.fail('read required execution'))
     monkeypatch.setattr(jobs, 'validate_target', lambda *a: pytest.fail('terminal replay revalidated target'))
     monkeypatch.setattr(jobs, '_launch', lambda *a, **k: pytest.fail('terminal replay launched'))
     assert jobs.start(root, identity, fields, key='key')['status'] == terminal
@@ -184,8 +184,8 @@ def test_current_owner_change_blocks_reconciliation_before_launch(accepted, monk
     root, identity, fields, _ = accepted
     owners = iter([(1, 'turn'), (2, 'different-turn')])
     monkeypatch.setattr(provider_execution, 'arguments', lambda _name, values: values)
-    monkeypatch.setattr('neurath.runtime.tasks._verification_owner', lambda *_: next(owners))
-    monkeypatch.setattr('neurath.runtime.tasks._mcp_execution_policy', lambda *a, **k: None)
+    monkeypatch.setattr('neurath.runtime.admission._verification_owner', lambda *_: next(owners))
+    monkeypatch.setattr('neurath.runtime.admission._mcp_execution_policy', lambda *a, **k: None)
     monkeypatch.setattr(jobs, '_launch', lambda *a, **k: pytest.fail('owner changed before launch'))
     with pytest.raises(ValueError, match='caller changed'):
         provider_execution.run(root, {**fields, 'key': 'key'}, identity=identity, expected_turn='bound')

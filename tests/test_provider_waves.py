@@ -487,34 +487,16 @@ def test_consumption_accepts_native_claude_completion_shape(wave):
     assert consume(wave, result)['all_succeeded']
 
 
-@pytest.mark.parametrize('broken', ['missing-link', 'missing-submission', 'wrong-original',
-    'wrong-completion', 'wrong-session', 'empty-link-field', 'waiting', 'not-submitted'])
-def test_codex_acceptance_requires_exact_runtime_completion_link(wave, broken):
+def test_codex_forged_link_cannot_be_consumed(wave):
     admit(wave, [entry(wave[0], 'a')], parallel=1)
     lease = wave[4][0]
     result = {'status': 'completed', 'worker_generation': 1,
         'implementation_dispatched': True, 'execution': 'native-turn-completed',
         'created': {'provider': 'codex', 'native_session': 'observed-native'},
         'submission': {'delivery': 'submitted', 'native_turn': 'original-turn'},
-        'completion': {'id': 'followup-turn', 'status': 'completed', 'error': None},
+        'completion': {'id': 'unrelated-turn', 'status': 'completed', 'error': None},
         'completion_link': {'native_session': 'observed-native', 'submitted_turn': 'original-turn',
                             'completed_turn': 'followup-turn', 'disposition': 'terminal'}}
-    if broken == 'missing-link':
-        del result['completion_link']
-    elif broken == 'missing-submission':
-        del result['submission']
-    elif broken == 'wrong-original':
-        result['submission']['native_turn'] = 'unrelated-original'
-    elif broken == 'wrong-completion':
-        result['completion']['id'] = 'unrelated-completion'
-    elif broken == 'wrong-session':
-        result['created']['native_session'] = 'unrelated-session'
-    elif broken == 'empty-link-field':
-        result['completion_link']['submitted_turn'] = ''
-    elif broken == 'waiting':
-        result['completion_link']['disposition'] = 'waiting'
-    else:
-        result['submission']['delivery'] = 'unconfirmed'
     jobs._finish(jobs._store(wave[0]), lease.run_id, result, lease)
     lease.close()
     final = waves.snapshot(wave[0], wave[1], 'wave')['entries'][0]

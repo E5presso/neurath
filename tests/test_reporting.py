@@ -12,8 +12,14 @@ from neurath.install.transaction import apply_plan, make_plan
 def project(tmp_path):
     root = tmp_path / "private-customer-project"
     subprocess.run(["git", "init", "-q", str(root)], check=True)
-    apply_plan(root, make_plan(root))
     return root
+
+
+@pytest.fixture
+def installed_project(project):
+    """Install only for contracts that read projections or launch installed entrypoints."""
+    apply_plan(project, make_plan(project))
+    return project
 
 
 def report():
@@ -165,7 +171,8 @@ def test_dry_run_does_not_save_consent(project):
     assert Reporting(project).status()["auto_report"] is None
 
 
-def test_settings_stay_out_of_checkout(project):
+def test_settings_stay_out_of_checkout(installed_project):
+    project = installed_project
     from neurath.reporting import Reporting
     service = Reporting(project)
     service.consent(True)
@@ -177,7 +184,8 @@ def test_settings_stay_out_of_checkout(project):
     assert subprocess.run(["git", "check-ignore", "-q", str(database)], cwd=project).returncode == 0
 
 
-def test_modified_projected_skill_requires_contribution(project):
+def test_modified_projected_skill_requires_contribution(installed_project):
+    project = installed_project
     from neurath.reporting import Reporting
     service = Reporting(project)
     data = report()
@@ -271,7 +279,8 @@ def test_remote_identifier_is_rejected_without_echoing_it(project):
 
 
 @pytest.mark.parametrize("host", ["codex", "claude-code"])
-def test_real_hook_entrypoint_displays_consent_and_scope(project, host):
+def test_real_hook_entrypoint_displays_consent_and_scope(installed_project, host):
+    project = installed_project
     from neurath.reporting import Reporting
     from tests.test_memory_hooks import invoke
     pending = invoke(project, host, "report-onboarding", "SessionStart", source="startup")
@@ -303,8 +312,9 @@ def test_concurrent_submits_create_only_one_issue(project, monkeypatch):
     assert all(result["status"] == "submitted" for result in results)
 
 
-def test_terminal_cli_full_send_with_fake_github_process(project, tmp_path):
+def test_terminal_cli_full_send_with_fake_github_process(installed_project, tmp_path):
     """Exercise parser, subprocess transport, persistence and refusal without GitHub writes."""
+    project = installed_project
     import os
     import sys
     fake_bin = tmp_path / "fake-bin"

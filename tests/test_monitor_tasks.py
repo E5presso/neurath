@@ -110,7 +110,7 @@ def test_owned_monitor_callback_starts_from_grant_and_returns_real_observation(s
     def policy(root, identity, *args, **kwargs):
         return {"implementation_ready": True, "is_root": True, "actor": identity.actor,
             "native_session": identity.session, "provider": identity.host, "worktree": str(root)}
-    monkeypatch.setattr("neurath.runtime.tasks._mcp_execution_policy", policy)
+    monkeypatch.setattr("neurath.runtime.admission._mcp_execution_policy", policy)
     # Handoff OS retirement has separate domain regressions. Here the native-hook
     # fixture exercises the actual process/grant/lease/readback callback path.
     monkeypatch.setattr(service("monitor_handoff").MonitorRuntimeHandoffService, "prepare", lambda *a, **k: {"state":"completed"})

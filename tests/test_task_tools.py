@@ -299,7 +299,7 @@ def test_verification_requires_owner_and_pins_approved_config(sessions, monkeypa
 
     root, _ = sessions
     # Protocol fixtures have no host process policy; test that observer separately.
-    monkeypatch.setattr("neurath.runtime.tasks._mcp_execution_policy", lambda *args: None)
+    monkeypatch.setattr("neurath.runtime.admission._mcp_execution_policy", lambda *args: None)
     path = root / ".neurath/project.json"
     path.write_text(json.dumps({"verification": {"probe": {"argv": [sys.executable, "-c", "print('checked')"]}}}))
     with pytest.raises((ValueError, RuntimeError)):
@@ -319,7 +319,7 @@ def test_cli_and_mcp_verification_use_same_result_contract(sessions, monkeypatch
     from neurath.runtime import verification
 
     root, _ = sessions
-    monkeypatch.setattr("neurath.runtime.tasks._mcp_execution_policy", lambda *args: None)
+    monkeypatch.setattr("neurath.runtime.admission._mcp_execution_policy", lambda *args: None)
     claim_fixture(root)
     (root / ".neurath/project.json").write_text(json.dumps({"verification": {"probe": {"argv": ["true"]}}}))
     native = mcp.AgentIdentity("codex", "api", "codex:session:api")
@@ -593,8 +593,8 @@ def test_verification_admits_once_and_returns_completed_result_unchanged(tmp_pat
         calls.append("verify")
         return dict(receipt)
 
-    monkeypatch.setattr(tasks, "_verification_owner", owner)
-    monkeypatch.setattr(tasks, "_mcp_execution_policy", policy)
+    monkeypatch.setattr("neurath.runtime.admission._verification_owner", owner)
+    monkeypatch.setattr("neurath.runtime.admission._mcp_execution_policy", policy)
     monkeypatch.setattr("neurath.runtime.verification.verify", verify)
     result = tasks.verification(tmp_path, "check", require_owner=True,
         expected_turn='[1,"turn"]', identity=mcp.AgentIdentity(

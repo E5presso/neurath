@@ -345,7 +345,7 @@ def main(arguments=None):
         elif args.command == "profile-check":
             import subprocess
 
-            from neurath.install.transaction import read_state
+            from neurath.install.records import read_state
 
             state = read_state(root)
             if not state:

@@ -36,7 +36,7 @@ class CodexSessions:
 
     def project(self, worktree, project_id=None):
         """Resolve an existing native project; never manufacture a temporary one."""
-        from neurath.memory.store import control_root
+        from neurath.project_paths import control_root
 
         root = Path(worktree).resolve()
         roots = {root}
@@ -142,7 +142,7 @@ class CodexSessions:
 
     @staticmethod
     def _state_roots(root):
-        from neurath.memory.store import control_root
+        from neurath.project_paths import control_root
 
         shared = control_root(root).resolve()
         if shared == root:

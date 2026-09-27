@@ -242,7 +242,7 @@ def verify_wave_events(events, thread, turn, expected, expected_lines):
 
 
 def probe(project, output, executable, model, worktrees, expected_sha256):
-    from native_steering_probe import Host
+    from native_host import Host
 
     assert len(worktrees) == len(set(worktrees)) == 3 and project not in worktrees
     output.mkdir(parents=True, exist_ok=False)

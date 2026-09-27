@@ -3,11 +3,13 @@
 import hashlib
 import json
 import re
-import subprocess
 import time
 from contextlib import nullcontext
 from pathlib import Path
 
+from neurath.serialization import canonical as canonical
+from neurath.redaction import clean as clean
+from neurath.project_paths import control_root as control_root
 from neurath.runtime.database import RuntimeDatabase
 NEWSROOM_NOTICE = "Newsroom operation; article content requires explicit newsroom read."
 NEWSROOM_METADATA = {"tool", "tool_name", "exit_code", "status", "authority"}
@@ -15,34 +17,6 @@ NEWSROOM_METADATA = {"tool", "tool_name", "exit_code", "status", "authority"}
 
 class MemoryConflict(ValueError):
     """An existing source event cannot be silently rewritten."""
-
-
-def clean(value):
-    """Redact common credential forms before they reach SQLite or its journal."""
-    text = str(value)
-    text = re.sub(
-        r"(?i)(\b(?:[\w-]*(?:api[_-]?key|password|secret|access[_-]?token)|authorization)\s*[=:]\s*)[^\s,;]+",
-        r"\1[REDACTED]",
-        text,
-    )
-    text = re.sub(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+", "Bearer [REDACTED]", text)
-    text = re.sub(r"\b(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,})\b", "[REDACTED]", text)
-    return text
-
-
-def canonical(value):
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-
-
-def control_root(root):
-    result = subprocess.run(
-        ["git", "-C", str(root), "rev-parse", "--path-format=absolute", "--git-common-dir"],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    common = Path(result.stdout.strip()).resolve()
-    return common.parent if common.name == ".git" else common
 
 
 class ProjectMemory:

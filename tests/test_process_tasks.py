@@ -61,9 +61,9 @@ def test_cleanup_keeps_guard_and_result_store_after_actual_worktree_removal(monk
         # Isolate wrapper persistence from native activation. Git deletion,
         # kernel transitions and cleanup ownership fences remain real.
         monkeypatch.setattr("neurath.runtime.state_tasks._handle",lambda *a:handle)
-        monkeypatch.setattr("neurath.runtime.tasks._mcp_execution_policy",lambda *a,**k:None)
-        monkeypatch.setattr("neurath.agents.hooks.participation",lambda *a:(True,"fixture-turn"))
-        monkeypatch.setattr("neurath.agents.mcp._prompt_receipt",lambda *a:None)
+        monkeypatch.setattr("neurath.runtime.admission._mcp_execution_policy",lambda *a,**k:None)
+        monkeypatch.setattr("neurath.hosts.context.participation",lambda *a:(True,"fixture-turn"))
+        monkeypatch.setattr("neurath.hosts.context.prompt_receipt",lambda *a:None)
         monkeypatch.setattr("neurath.hosts.identity.active_connection",lambda root,session:
             SessionLocator.from_worktree(root).control_root==fixture.repo.resolve())
         result=process_tasks.execute(fixture.worktree,"worktree_cleanup",{

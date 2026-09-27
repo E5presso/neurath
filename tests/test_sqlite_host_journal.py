@@ -9,7 +9,7 @@ def host_root(tmp_path, monkeypatch):
     from neurath.runtime.engine import activate
     activate()
     from scripts.agent_harness import session_kernel as sk
-    from neurath.hosts import identity
+    from neurath.hosts import journal as identity
     locator = sk.SessionLocator(tmp_path)
     monkeypatch.setattr(identity, "_locator", lambda root: locator)
     sk.SessionKernel(locator).apply(sk.SessionStarted(session_id=sk.SessionId("one"),

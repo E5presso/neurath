@@ -3,33 +3,47 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from scripts.agent_harness.session_kernel import (
-        ActorId,
-        ActorRecord,
-        DelegationId,
-        DelegationRecord,
-        DelegationResult,
-        EffectId,
-        ForegroundPromptAuthorityContext,
-        ForegroundTurnReceipt,
-        ForegroundTurnRecord,
-        ForegroundUserPromptReceipt,
-        HarnessIncidentEvidenceArchive,
-        HarnessIncidentRecord,
-        HarnessRegressionReceipt,
-        IncidentId,
-        MaterialActionBatch,
-        OutboxEffect,
-        ProcessState,
-        ResumeId,
-        SessionId,
-        SessionRecord,
-        WorkflowId,
-        WorkflowRecord,
-    )
+from scripts.agent_harness.material_action import MaterialActionBatch
+from scripts.agent_harness.session_model import (
+    MAX_PENDING_OUTBOX_EFFECTS,
+    PROCESS_STATE_SCHEMA,
+    ActorId,
+    ActorKind,
+    ActorLineageAssurance,
+    ActorRecord,
+    ActorStatus,
+    DelegationId,
+    DelegationRecord,
+    DelegationResult,
+    DelegationStatus,
+    DelegationTopologyPolicy,
+    EffectId,
+    EffectKind,
+    ForegroundPromptAuthorityContext,
+    ForegroundTurnOutcome,
+    ForegroundTurnReceipt,
+    ForegroundTurnRecord,
+    ForegroundTurnStatus,
+    ForegroundUserPromptReceipt,
+    HarnessIncidentEvidenceArchive,
+    HarnessIncidentRecord,
+    HarnessIncidentStatus,
+    HarnessRegressionReceipt,
+    IncidentId,
+    InvalidSessionState,
+    OutboxEffect,
+    ProcessState,
+    ResumeId,
+    SessionId,
+    SessionRecord,
+    SessionRuntime,
+    SessionStatus,
+    TransitionRejected,
+    WorkflowId,
+    WorkflowRecord,
+    WorkflowStatus,
+)
 
 
 class SessionStateCodec:
@@ -49,11 +63,6 @@ class SessionStateCodec:
             InvalidSessionState: Payload shape, schema, identity, record invariant가 틀리면
                 발생합니다.
         """
-        from scripts.agent_harness.session_kernel import (  # noqa: PLC0415 - codec/model cycle
-            PROCESS_STATE_SCHEMA,
-            InvalidSessionState,
-            ProcessState,
-        )
 
         if not isinstance(payload, dict):
             raise InvalidSessionState("process state root must be an object")
@@ -114,15 +123,6 @@ class SessionStateCodec:
         ).encode("utf-8")
 
     def _decode_session(self, payload: dict[object, object]) -> SessionRecord:
-        from scripts.agent_harness.session_kernel import (  # noqa: PLC0415 - codec/model cycle
-            ActorId,
-            InvalidSessionState,
-            ResumeId,
-            SessionId,
-            SessionRecord,
-            SessionRuntime,
-            SessionStatus,
-        )
 
         session_id = SessionId(self._string(payload.get("id"), "id"))
         resume_value = payload.get("resume_id")
@@ -167,14 +167,6 @@ class SessionStateCodec:
         )
 
     def _decode_actors(self, payload: object) -> dict[ActorId, ActorRecord]:
-        from scripts.agent_harness.session_kernel import (  # noqa: PLC0415 - codec/model cycle
-            ActorId,
-            ActorKind,
-            ActorLineageAssurance,
-            ActorRecord,
-            ActorStatus,
-            InvalidSessionState,
-        )
 
         if not isinstance(payload, dict):
             raise InvalidSessionState("actors must be an object")
@@ -213,13 +205,6 @@ class SessionStateCodec:
         return actors
 
     def _decode_workflows(self, payload: object) -> dict[WorkflowId, WorkflowRecord]:
-        from scripts.agent_harness.session_kernel import (  # noqa: PLC0415 - codec/model cycle
-            ActorId,
-            InvalidSessionState,
-            WorkflowId,
-            WorkflowRecord,
-            WorkflowStatus,
-        )
 
         if not isinstance(payload, dict):
             raise InvalidSessionState("workflows must be an object")
@@ -270,15 +255,6 @@ class SessionStateCodec:
         self,
         payload: object,
     ) -> dict[ActorId, ForegroundTurnRecord]:
-        from scripts.agent_harness.session_kernel import (  # noqa: PLC0415 - codec/model cycle
-            ActorId,
-            ForegroundTurnOutcome,
-            ForegroundTurnReceipt,
-            ForegroundTurnRecord,
-            ForegroundTurnStatus,
-            InvalidSessionState,
-            TransitionRejected,
-        )
 
         if not isinstance(payload, dict):
             raise InvalidSessionState("foreground_turns must be an object")
@@ -331,15 +307,16 @@ class SessionStateCodec:
         return turns
 
     def _decode_replacement_question(self, payload: object) -> ForegroundTurnReceipt | None:
-        from scripts.agent_harness.session_kernel import (
-            ForegroundTurnOutcome, ForegroundTurnReceipt, InvalidSessionState, TransitionRejected,
-        )
         if payload is None:
             return None  # Snapshots preceding host replacement remain valid.
-        if (not isinstance(payload, dict)
-                or set(payload) != {"outcome", "summary", "question", "reason"}
-                or payload["outcome"] != ForegroundTurnOutcome.AWAITING_INPUT.value):
-            raise InvalidSessionState("replacement question must be an exact awaiting-input receipt")
+        if (
+            not isinstance(payload, dict)
+            or set(payload) != {"outcome", "summary", "question", "reason"}
+            or payload["outcome"] != ForegroundTurnOutcome.AWAITING_INPUT.value
+        ):
+            raise InvalidSessionState(
+                "replacement question must be an exact awaiting-input receipt"
+            )
         try:
             return ForegroundTurnReceipt(
                 ForegroundTurnOutcome.AWAITING_INPUT,
@@ -354,10 +331,6 @@ class SessionStateCodec:
         self,
         payload: object,
     ) -> ForegroundUserPromptReceipt | None:
-        from scripts.agent_harness.session_kernel import (  # noqa: PLC0415 - codec/model cycle
-            ForegroundUserPromptReceipt,
-            InvalidSessionState,
-        )
 
         if payload is None:
             return None
@@ -386,11 +359,6 @@ class SessionStateCodec:
         self,
         payload: object,
     ) -> dict[ActorId, MaterialActionBatch]:
-        from scripts.agent_harness.session_kernel import (  # noqa: PLC0415 - codec/model cycle
-            ActorId,
-            InvalidSessionState,
-            MaterialActionBatch,
-        )
 
         if not isinstance(payload, dict):
             raise InvalidSessionState("material_actions must be an object")
@@ -409,11 +377,6 @@ class SessionStateCodec:
         self,
         payload: object,
     ) -> ForegroundPromptAuthorityContext | None:
-        from scripts.agent_harness.session_kernel import (  # noqa: PLC0415 - codec/model cycle
-            ForegroundPromptAuthorityContext,
-            InvalidSessionState,
-            WorkflowId,
-        )
 
         if payload is None:
             return None
@@ -459,14 +422,6 @@ class SessionStateCodec:
         )
 
     def _decode_delegations(self, payload: object) -> dict[DelegationId, DelegationRecord]:
-        from scripts.agent_harness.session_kernel import (  # noqa: PLC0415 - codec/model cycle
-            ActorId,
-            DelegationId,
-            DelegationRecord,
-            DelegationStatus,
-            DelegationTopologyPolicy,
-            InvalidSessionState,
-        )
 
         if not isinstance(payload, dict):
             raise InvalidSessionState("delegations must be an object")
@@ -510,10 +465,6 @@ class SessionStateCodec:
         payload: object,
         delegation_id: str,
     ) -> DelegationResult | None:
-        from scripts.agent_harness.session_kernel import (  # noqa: PLC0415 - codec/model cycle
-            DelegationResult,
-            InvalidSessionState,
-        )
 
         if payload is None:
             return None
@@ -537,13 +488,6 @@ class SessionStateCodec:
         )
 
     def _decode_incidents(self, payload: object) -> dict[IncidentId, HarnessIncidentRecord]:
-        from scripts.agent_harness.session_kernel import (  # noqa: PLC0415 - codec/model cycle
-            ActorId,
-            HarnessIncidentRecord,
-            HarnessIncidentStatus,
-            IncidentId,
-            InvalidSessionState,
-        )
 
         if not isinstance(payload, dict):
             raise InvalidSessionState("incidents must be an object")
@@ -607,13 +551,6 @@ class SessionStateCodec:
         return incidents
 
     def _decode_outbox(self, payload: object) -> dict[EffectId, OutboxEffect]:
-        from scripts.agent_harness.session_kernel import (  # noqa: PLC0415 - codec/model cycle
-            ActorId,
-            EffectId,
-            EffectKind,
-            InvalidSessionState,
-            OutboxEffect,
-        )
 
         if not isinstance(payload, dict):
             raise InvalidSessionState("outbox must be an object")
@@ -647,10 +584,6 @@ class SessionStateCodec:
         self,
         payload: object,
     ) -> tuple[HarnessRegressionReceipt, ...]:
-        from scripts.agent_harness.session_kernel import (  # noqa: PLC0415 - codec/model cycle
-            HarnessRegressionReceipt,
-            InvalidSessionState,
-        )
 
         if payload is None:
             return ()
@@ -681,10 +614,6 @@ class SessionStateCodec:
         self,
         payload: object,
     ) -> tuple[HarnessIncidentEvidenceArchive, ...]:
-        from scripts.agent_harness.session_kernel import (  # noqa: PLC0415 - codec/model cycle
-            HarnessIncidentEvidenceArchive,
-            InvalidSessionState,
-        )
 
         if payload is None:
             return ()
@@ -714,9 +643,6 @@ class SessionStateCodec:
         return self._string(value, key)
 
     def _string_tuple(self, value: object, key: str) -> tuple[str, ...]:
-        from scripts.agent_harness.session_kernel import (  # noqa: PLC0415 - codec/model cycle
-            InvalidSessionState,
-        )
 
         if not isinstance(value, list) or not value:
             raise InvalidSessionState(f"{key} must be a non-empty string array")
@@ -730,9 +656,6 @@ class SessionStateCodec:
         return self._string_tuple(value, key)
 
     def _object_mapping(self, payload: dict[object, object], key: str) -> dict[str, object]:
-        from scripts.agent_harness.session_kernel import (  # noqa: PLC0415 - codec/model cycle
-            InvalidSessionState,
-        )
 
         value = payload.get(key)
         if not isinstance(value, dict) or any(not isinstance(item, str) for item in value):
@@ -740,9 +663,6 @@ class SessionStateCodec:
         return {str(item): entry for item, entry in value.items()}
 
     def _string(self, value: object, key: str) -> str:
-        from scripts.agent_harness.session_kernel import (  # noqa: PLC0415 - codec/model cycle
-            InvalidSessionState,
-        )
 
         if not isinstance(value, str) or not value.strip():
             raise InvalidSessionState(f"{key} must be a non-empty string")
@@ -762,19 +682,6 @@ class SessionStateValidator:
             InvalidSessionState: Root topology, subagent parent, delegation reference가
                 서로 일치하지 않으면 발생합니다.
         """
-        from scripts.agent_harness.session_kernel import (  # noqa: PLC0415 - codec/model cycle
-            MAX_PENDING_OUTBOX_EFFECTS,
-            ActorKind,
-            ActorLineageAssurance,
-            ActorStatus,
-            DelegationStatus,
-            DelegationTopologyPolicy,
-            ForegroundTurnStatus,
-            InvalidSessionState,
-            MaterialActionStatus,
-            SessionStatus,
-            WorkflowId,
-        )
 
         root = state.actors.get(state.session.root_actor_id)
         if root is None:

@@ -7,13 +7,10 @@ accepted from tool input. The external session is an independent peer root.
 
 import hashlib
 import math
-import subprocess
 import time
 from dataclasses import asdict
-from pathlib import Path
 
 from neurath.agents.delivery import DeliveryServiceError
-from neurath.memory.store import clean, control_root
 from neurath.providers.codex import CodexSessions
 from neurath.providers.contracts import (
     CreationRejected,
@@ -22,27 +19,16 @@ from neurath.providers.contracts import (
     codex_completion_link,
     text,
 )
+from neurath.providers.execution_target import target_worktree as _target
 from neurath.providers.readiness import inspect_owned_session
 from neurath.providers.stdio import CodexStdio
+from neurath.redaction import clean
 
 
 def _start_inbox(adapter, session):
     from neurath.providers.supervision import SessionInbox
 
     return SessionInbox(adapter, session).start()
-
-
-def _target(root, worktree, mode):
-    root, target = Path(root).resolve(), Path(worktree).resolve()
-    if control_root(root) != control_root(target):
-        raise ValueError("provider worktree belongs to another project")
-    top = subprocess.run(["git", "-C", str(target), "rev-parse", "--show-toplevel"],
-                         capture_output=True, text=True, check=True).stdout.strip()
-    if Path(top).resolve() != target or not (target / ".neurath/run").is_file():
-        raise ValueError("provider requires an installed Git worktree root")
-    if mode != "read-only" and target == root:
-        raise ValueError("write provider requires a separate installed worktree")
-    return target
 
 
 def _prepared(report, mode):

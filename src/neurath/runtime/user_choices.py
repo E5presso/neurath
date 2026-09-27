@@ -9,7 +9,8 @@ import itertools
 import json
 import secrets
 
-from neurath.memory.store import canonical, control_root
+from neurath.serialization import canonical
+from neurath.project_paths import control_root
 
 ANSWERS = {"yes":"yes", "ye":"yes", "ne":"yes", "예":"yes", "네":"yes",
            "승인합니다":"yes", "동의합니다":"yes", "동의":"yes", "ok":"yes", "okay":"yes",

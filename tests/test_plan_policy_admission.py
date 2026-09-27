@@ -15,7 +15,7 @@ def planning(tmp_path, monkeypatch):
     saved = []
     policy = evidence(tmp_path)
     policy["target_configuration_observation"] = observation(tmp_path, "claude-code")
-    monkeypatch.setattr("neurath.runtime.tasks._verification_owner", lambda *a: (1, "turn"))
+    monkeypatch.setattr("neurath.runtime.admission._verification_owner", lambda *a: (1, "turn"))
     monkeypatch.setattr(model_tasks, "observed_policy", lambda *a: policy)
     monkeypatch.setattr(model_tasks, "store_for", lambda *a: object())
     monkeypatch.setattr(model_tasks, "refresh_inventory", lambda *a, **k: pytest.fail("plan launched a model observation"))

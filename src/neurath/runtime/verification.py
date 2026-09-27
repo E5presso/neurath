@@ -108,7 +108,7 @@ def verify(root, config, *, environment=None):
         "error": error,
     }
     if receipt["status"] != "passed":
-        from neurath.memory.store import clean
+        from neurath.redaction import clean
         receipt["diagnostic_tail"] = clean(output[-32768:].replace(b"\0", b"\n").decode(
             "utf-8", errors="replace"))[-8192:]
     return receipt

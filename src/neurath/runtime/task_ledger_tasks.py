@@ -132,10 +132,10 @@ def service_for(root, *, identity, expected_turn, verified_policy_evidence=None,
     from neurath.runtime.task_schema import TaskError
     handle = _handle(root, identity, expected_turn, verified_policy_evidence)
     from scripts.agent_harness.task_service import TaskService
-    from neurath.agents.hooks import participation
-    from neurath.agents.mcp import _prompt_receipt
+    from neurath.hosts.context import participation
+    from neurath.hosts.context import prompt_receipt as _prompt_receipt
     from neurath.hosts.identity import active_connection
-    from neurath.memory.store import canonical
+    from neurath.serialization import canonical
 
     def admission(process):
         actor = process.actors.get(handle.actor_id)

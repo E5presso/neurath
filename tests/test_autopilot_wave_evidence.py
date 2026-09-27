@@ -1,4 +1,5 @@
 """Legacy autopilot phases must read the native dispatch record, not accept prose."""
+from pathlib import Path
 from types import SimpleNamespace
 import pytest
 from neurath.runtime.engine import activate
@@ -6,8 +7,9 @@ from neurath.runtime.engine import activate
 
 def test_wave_phase_does_not_accept_labels_without_native_readback(tmp_path):
     activate(tmp_path)
-    from scripts.skill_harness.phase_runner import PhaseRunner, PhaseContract
-    runner = PhaseRunner(None)
+    from scripts.skill_harness.phase_evidence_validation import PhaseEvidenceValidator
+    from scripts.skill_harness.phase_runner import PhaseContract
+    runner = PhaseEvidenceValidator(Path("."))
     state = SimpleNamespace(skill='autopilot', adaptive_control_required=False)
     phase = PhaseContract(3, 'execute_waves', 3,
                           ('wave_plan', 'process_ticket_terminal_states', 'native_wave_receipt'))
@@ -22,8 +24,9 @@ def test_wave_phase_does_not_accept_labels_without_native_readback(tmp_path):
 
 def test_wave_phase_requires_every_collected_issue_in_native_dispatch(tmp_path):
     activate(tmp_path)
-    from scripts.skill_harness.phase_runner import PhaseRunner, PhaseContract
-    runner = PhaseRunner(None)
+    from scripts.skill_harness.phase_evidence_validation import PhaseEvidenceValidator
+    from scripts.skill_harness.phase_runner import PhaseContract
+    runner = PhaseEvidenceValidator(Path("."))
     prior = {
         1: SimpleNamespace(evidence=('normalized_items: {"issues":[90,91]}',)),
         2: SimpleNamespace(evidence=('dependency_dag: {"issues":[90,91],"edges":[]}',)),
@@ -43,8 +46,9 @@ def test_wave_phase_requires_every_collected_issue_in_native_dispatch(tmp_path):
 
 def test_successful_retry_preserves_original_issue_coverage(tmp_path):
     activate(tmp_path)
-    from scripts.skill_harness.phase_runner import PhaseRunner, PhaseContract
-    runner = PhaseRunner(None)
+    from scripts.skill_harness.phase_evidence_validation import PhaseEvidenceValidator
+    from scripts.skill_harness.phase_runner import PhaseContract
+    runner = PhaseEvidenceValidator(Path("."))
     prior = {2: SimpleNamespace(evidence=(
         'dependency_dag: {"issues":[90],"edges":[]}',))}
     state = SimpleNamespace(skill='autopilot', adaptive_control_required=False,
@@ -63,8 +67,9 @@ def test_successful_retry_preserves_original_issue_coverage(tmp_path):
 
 def test_all_satisfied_scope_has_explicit_native_wave_no_op(tmp_path):
     activate(tmp_path)
-    from scripts.skill_harness.phase_runner import PhaseRunner, PhaseContract
-    runner = PhaseRunner(None)
+    from scripts.skill_harness.phase_evidence_validation import PhaseEvidenceValidator
+    from scripts.skill_harness.phase_runner import PhaseContract
+    runner = PhaseEvidenceValidator(Path("."))
     prior = {2: SimpleNamespace(evidence=(
         'dependency_dag: {"issues":[],"edges":[]}',))}
     state = SimpleNamespace(skill='autopilot', adaptive_control_required=False,
@@ -83,8 +88,9 @@ def test_all_satisfied_scope_has_explicit_native_wave_no_op(tmp_path):
 
 def test_wave_dependencies_match_frozen_dag(tmp_path):
     activate(tmp_path)
-    from scripts.skill_harness.phase_runner import PhaseRunner, PhaseContract
-    runner = PhaseRunner(None)
+    from scripts.skill_harness.phase_evidence_validation import PhaseEvidenceValidator
+    from scripts.skill_harness.phase_runner import PhaseContract
+    runner = PhaseEvidenceValidator(Path("."))
     prior = {2: SimpleNamespace(evidence=(
         'dependency_dag: {"issues":[90,91],"edges":[[90,91]]}',))}
     state = SimpleNamespace(skill='autopilot', adaptive_control_required=False,
@@ -110,7 +116,8 @@ def test_wave_dependencies_match_frozen_dag(tmp_path):
 ])
 def test_provider_wave_uses_its_own_reader_and_retains_exact_scope(tmp_path, change, expected):
     activate(tmp_path)
-    from scripts.skill_harness.phase_runner import PhaseRunner, PhaseContract
+    from scripts.skill_harness.phase_evidence_validation import PhaseEvidenceValidator
+    from scripts.skill_harness.phase_runner import PhaseContract
     prior = SimpleNamespace(evidence=('dependency_dag: {"issues":[90,91],"edges":[[90,91]]}',))
     state = SimpleNamespace(skill='autopilot', adaptive_control_required=False, phase=lambda _: prior)
     phase = PhaseContract(3, 'execute_waves', 3,
@@ -128,7 +135,7 @@ def test_provider_wave_uses_its_own_reader_and_retains_exact_scope(tmp_path, cha
     receipt = 'native_wave_receipt: provider_wave_id=provider-wave'
     if change == 'ambiguous-backend':
         receipt += ' wave_id=native-wave'
-    failures = PhaseRunner(None)._semantic_failures(state, phase, 'completed',
+    failures = PhaseEvidenceValidator(Path("."))._semantic_failures(state, phase, 'completed',
         ('wave_plan: runtime-owned DAG', 'process_ticket_terminal_states: merged', receipt), {}, Store())
     if expected is None:
         assert failures == []

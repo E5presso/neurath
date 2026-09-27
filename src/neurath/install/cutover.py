@@ -10,7 +10,7 @@ import tempfile
 from contextlib import closing, ExitStack
 from pathlib import Path
 
-from neurath.memory.store import control_root
+from neurath.project_paths import control_root
 from neurath.runtime.engine import activate
 
 activate()

@@ -14,10 +14,12 @@ import sys
 import time
 from pathlib import Path
 
-from neurath.agents.hooks import native_peer, participation
+from neurath.agents.hooks import native_peer
+from neurath.hosts.context import participation, prompt_receipt as _prompt_receipt
 from neurath.agents.newsroom import Newsroom
-from neurath.agents.store import AgentIdentity, MessageStore
-from neurath.memory.store import canonical
+from neurath.agents.contracts import AgentIdentity
+from neurath.agents.store import MessageStore
+from neurath.serialization import canonical
 
 from neurath.runtime.task_schema import TASKS, SERVER_INSTRUCTIONS, TaskError, arguments, definitions
 
@@ -69,13 +71,6 @@ def _request(inputs, name="agent", root=None):
     return hashlib.sha256(request.encode()).hexdigest()
 
 
-def _prompt_receipt(state, actor):
-    turn = state.foreground_turns.get(actor.id)
-    receipt = turn.user_prompt_receipt if turn else None
-    return None if receipt is None else {
-        "turn_revision": receipt.turn_revision, "prompt_digest": receipt.prompt_digest}
-
-
 def bind_call(root, host, payload):
     from neurath.hosts.identity import active_connection
 
@@ -95,7 +90,7 @@ def bind_call(root, host, payload):
     name = tool.removeprefix("mcp__neurath_collaboration__")
     request = _request(inputs, name, root)
     if name in {"verification_run", "provider_run", "provider_wave_run", "provider_wave_retry"}:
-        from neurath.runtime.tasks import _verification_owner
+        from neurath.runtime.admission import _verification_owner
 
         _verification_owner(root, identity)
     invocation = canonical([host, identity.session, identity.actor, payload["tool_use_id"]])
@@ -261,6 +256,22 @@ TOOL = {
 }
 
 
+def project_tool_result(name, value):
+    """Return the established MCP wire projection, which may omit domain detail.
+
+    Task mutation replies expose per-task revisions/status plus native TODO.
+    Consumers needing definitions or success accounting must use task_list; the
+    mutation projection is deliberately not the full task ledger response.
+    """
+    if name in {"task_define", "task_start", "task_resolve"}:
+        return {"revision": value["revision"], "all_terminal": value["all_terminal"],
+                "tasks": [{field: task[field] for field in ("id", "revision", "status")}
+                          for task in value["tasks"]], "native_todo": value["native_todo"]}
+    if name in {"material_prepare", "material_resolve", "material_abandon"}:
+        return {field: value[field] for field in ("batch_id", "revision", "status", "resolution")}
+    return value
+
+
 def response(root, request):
     if not isinstance(request, dict) or request.get("jsonrpc") != "2.0":
         return {"jsonrpc": "2.0", "id": None, "error": {"code": -32600, "message": "Invalid request"}}
@@ -282,13 +293,7 @@ def response(root, request):
         try:
             name = params["name"]
             value = call_tool(root, params.get("arguments"), name=name)
-            if name in {"task_define", "task_start", "task_resolve"}:
-                value = {"revision": value["revision"], "all_terminal": value["all_terminal"],
-                    "tasks": [{field: task[field] for field in ("id", "revision", "status")}
-                              for task in value["tasks"]], "native_todo": value["native_todo"]}
-            elif name in {"material_prepare", "material_resolve", "material_abandon"}:
-                value = {field: value[field] for field in
-                         ("batch_id", "revision", "status", "resolution")}
+            value = project_tool_result(name, value)
             failed = ((name in {"verification_run", "verification_builtin", "verification_nodes"}
                        and value.get("status") != "passed")
                       or (name == "provider_run" and value.get("status") not in
@@ -320,7 +325,7 @@ def response(root, request):
             result = {"content": [{"type": "text", "text": summary}],
                       "structuredContent": value, "isError": failed}
         except Exception as error:
-            from neurath.memory.store import clean
+            from neurath.redaction import clean
 
             details = (error.details if isinstance(error, TaskError) else
                        {"code": "binding-or-operation-error", "message": str(error), "state": "not-started",

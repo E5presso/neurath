@@ -1,0 +1,98 @@
+{
+  "actors": {
+    "codex:child": {
+      "id": "codex:child",
+      "kind": "subagent",
+      "parent_actor_id": "codex:root",
+      "status": "active"
+    },
+    "codex:root": {
+      "id": "codex:root",
+      "kind": "root",
+      "parent_actor_id": null,
+      "status": "active"
+    }
+  },
+  "delegations": {
+    "review": {
+      "assignment": "Inspect accepted changes",
+      "id": "review",
+      "owner_actor_id": "codex:root",
+      "result": null,
+      "status": "pending",
+      "target_actor_id": "codex:child"
+    }
+  },
+  "foreground_turns": {
+    "codex:root": {
+      "generation": 1,
+      "owner_actor_id": "codex:root",
+      "receipt": null,
+      "replacement_question": null,
+      "revision": 1,
+      "status": "active",
+      "user_prompt_receipt": {
+        "authority_context": null,
+        "authority_reference": "user-prompt:dc515ccf2998d9440df5f67fc0f975877a43e90e9b2d090c583cae9f6b79b4f3",
+        "generation": 1,
+        "prompt_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "turn_revision": 1,
+        "vendor_turn_id": "turn-one"
+      },
+      "vendor_turn_id": "turn-one"
+    }
+  },
+  "incidents": {
+    "observed": {
+      "actor_id": "codex:root",
+      "id": "observed",
+      "occurrence_id": "observed",
+      "recorded_at": "2026-01-01T00:00:00Z",
+      "rule_id": "snapshot-contract",
+      "status": "open",
+      "symptom": "Observed recoverable failure"
+    }
+  },
+  "mailboxes": {},
+  "material_actions": {},
+  "outbox": {
+    "startup": {
+      "actor_id": "codex:root",
+      "delivery_key": "startup-context",
+      "id": "startup",
+      "kind": "context-injection",
+      "payload": {
+        "summary": "Restore active work"
+      }
+    }
+  },
+  "resources": {
+    "worktrees": {}
+  },
+  "revision": 6,
+  "schema": "neurath.coding-agent-process-state.v1",
+  "session": {
+    "id": "snapshot-compat",
+    "last_lifecycle_idempotency_key": "start",
+    "lifecycle_provenance_id": null,
+    "parent_session_id": null,
+    "resume_id": "resume-snapshot",
+    "root_actor_id": "codex:root",
+    "runtime": "codex",
+    "status": "active"
+  },
+  "workflows": {
+    "work": {
+      "goal": "Preserve accepted changes",
+      "id": "work",
+      "kind": "commit",
+      "last_transition_idempotency_key": "work-start",
+      "owner_actor_id": "codex:root",
+      "payload": {
+        "step": "ready"
+      },
+      "revision": 0,
+      "status": "active"
+    }
+  }
+}

@@ -10,6 +10,14 @@ import time
 from neurath.agents.newsroom import Newsroom
 from neurath.agents.store import MessageStore
 from neurath.memory.store import ProjectMemory
+from neurath.runtime import admission
+from neurath.runtime.admission import (
+    _installation_recovery as _installation_recovery,
+    _execution_ready as _execution_ready,
+    _direct_mcp_execution as _direct_mcp_execution,
+    _mcp_execution_policy as _mcp_execution_policy,
+    _verification_owner as _verification_owner,
+)
 from neurath.runtime.task_schema import TASKS, TaskError, arguments
 
 
@@ -90,8 +98,8 @@ def execute(root, name, inputs, *, identity, expected_turn=None, verified_policy
             if identity is None:
                 raise TaskError("native-binding-required", "provider control requires its native owner")
             if action == "recover":
-                _verification_owner(root, identity)
-                _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence)
+                admission._verification_owner(root, identity)
+                admission._mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence)
                 return jobs.recover(root, identity, **fields)
             return getattr(jobs, action)(root, identity, fields["run_id"])
         from neurath.runtime.provider_execution import run
@@ -160,17 +168,6 @@ def provider_task(name, inputs, *, source_provider=None):
     return planned_route(result, planning)
 
 
-def _installation_recovery(report):
-    installation = report.get("stages", {}).get("installation", {}).get("evidence", {})
-    placement = installation.get("placement", {})
-    errors = placement.get("errors", []) if isinstance(placement, dict) else []
-    if any("running package differs from recorded distribution" in str(error)
-           for error in errors):
-        return ("Reconnect the MCP host to load the installed distribution; do not repeatedly reinstall "
-                "or change permissions to repair a stale connection.")
-    return "Run the approved installation/update workflow and inspect its result."
-
-
 def session_status(root, *, identity=None, expected_turn=None, verified_policy_evidence=None,
                    detail="full"):
     from neurath.providers.readiness import inspect_bound_readiness, inspect_readiness
@@ -193,7 +190,7 @@ def session_status(root, *, identity=None, expected_turn=None, verified_policy_e
     if detail == "full":
         report["capabilities"] = [{"transport": "task-mcp", "authority": "diagnostic",
         "operations": {name: {"implemented": True,
-            "available": _direct_mcp_execution(report)
+            "available": admission._direct_mcp_execution(report)
                 if name in {"verification_run", "provider_run"} else native_active and
                 (name != "memory_checkpoint" or root_actor)}
             for name in TASKS}}]
@@ -201,7 +198,7 @@ def session_status(root, *, identity=None, expected_turn=None, verified_policy_e
             report["capabilities"].append(provider_task("provider_capabilities", {"provider": report["provider"]}))
     actions = []
     for stage, instruction in (
-        ("installation", _installation_recovery(report)),
+        ("installation", admission._installation_recovery(report)),
         ("activation", "Use the host's supported new-session or resume operation, then inspect native activation in that session."),
         ("policy", "Inspect the actual native mode and approvals. A missing observation is not permission to change them."),
         ("ownership", "Resolve the current worktree claim through the native state/worktree workflow before implementation."),
@@ -302,102 +299,12 @@ def verification(root, check, *, identity=None, require_owner=False, expected_tu
     if binding is None:
         raise VerificationError(f"unbound verifier: {check}; configure project.json verification")
     if require_owner:
-        _verification_owner(root, identity)
+        admission._verification_owner(root, identity)
     environment = None
     if expected_turn is not None:
-        _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence)
+        admission._mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence)
         import os
         environment = {key: value for key, value in os.environ.items() if not (
             key.startswith(("CODEX_", "CLAUDE_", "NEURATH_")) or key == "PYTHONPATH")}
     # Execution is admitted once. Later conversation does not rewrite its result.
     return verify(root, binding, environment=environment)
-
-
-def _execution_ready(report, ownership_required=True, placement_required=True):
-    if ownership_required and placement_required:
-        return report["implementation_ready"]
-    # Only a domain with its own persisted ownership-recovery gate may use this.
-    return report.get("is_root", False) and all(
-        report["stages"][stage]["status"] == "verified"
-        for stage in ("activation", "policy", *(("ownership",) if ownership_required else ()),
-                      *(("installation",) if placement_required else ())))
-
-
-def _direct_mcp_execution(report, ownership_required=True, placement_required=True):
-    evidence = report["stages"]["policy"]["evidence"]
-    # Asking for approval is not evidence that the approval completed.
-    return (_execution_ready(report, ownership_required, placement_required)
-            and evidence.get("sandbox_policy", {}).get("type") == "danger-full-access"
-            and evidence.get("approval_policy") == "never"
-            and evidence.get("approvals_reviewer") in (None, "user"))
-
-
-def _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence=None, *, ownership_required=True, placement_required=True, require_current_prompt=True, controlled_provider_operation=False):
-    try:
-        from neurath.providers.readiness import inspect_bound_readiness
-    except ImportError as error:
-        raise TaskError("execution-policy-unavailable", "native execution policy observer is unavailable",
-                        next_action="Inspect session_status and diagnostics_project. Restore the native policy observer before retrying this named tool; preserve the current permissions.") from error
-    report = inspect_bound_readiness(root, identity, expected_turn=expected_turn,
-                                     verified_policy_evidence=verified_policy_evidence,
-                                     **({} if require_current_prompt else {"require_current_prompt": False}))
-    if not placement_required:
-        from neurath.doctor import integrity
-        if integrity()["status"] != "passed":
-            raise TaskError("distribution-integrity-failed", "Recovery requires an intact running harness package")
-    direct = _direct_mcp_execution(report, ownership_required, placement_required)
-    if identity is not None and identity.host == "claude-code" and _execution_ready(report, ownership_required, placement_required):
-        from neurath.runtime.provider_policy import controls
-        evidence = report["stages"]["policy"]["evidence"]
-        confinement = controls(root, identity.host, evidence)
-        direct = (evidence.get("permission_mode") == "bypassPermissions"
-                  and confinement["filesystem"] in {"unrestricted", "unobserved"}
-                  and confinement["network"] in {"unrestricted", "unobserved"}
-                  and not confinement["tool_denylist"])
-        if controlled_provider_operation:
-            # Only fixed model observation or exact-plan target-native delegation
-            # uses this path. Neither executes arbitrary project commands under
-            # MCP or translates away the caller's native rules.
-            direct = (evidence.get("permission_mode") in {
-                "default", "dontAsk", "acceptEdits", "auto", "bypassPermissions"}
-                and confinement["filesystem"] in {"unrestricted", "unobserved"}
-                and confinement["network"] in {"unrestricted", "unobserved"})
-    if not direct:
-        required = ("activation", "policy", *(("ownership",) if ownership_required else ()),
-                    *(("installation",) if placement_required else ()))
-        failed = [name for name in required
-                  if report.get("stages", {}).get(name, {}).get("status") in {"failed", "unverified", "unobserved"}]
-        if failed:
-            action = (_installation_recovery(report) if "installation" in failed else
-                      "Inspect session_status and recover the failed readiness stages through their supported "
-                      "native workflows. Preserve permissions and ownership; do not replay through another transport.")
-            raise TaskError("execution-readiness-required",
-                            "MCP execution readiness failed: " + ", ".join(failed), next_action=action)
-        raise TaskError("native-execution-required", "MCP cannot enforce the caller's observed execution policy",
-                        next_action="Inspect session_status for the observed policy and report this operation as unsupported in that mode. Preserve permissions and the worktree claim; do not change settings or replay through another transport.")
-    return report
-
-
-def _verification_owner(root, identity):
-    from scripts.agent_harness.session_kernel import SessionLocator
-    from scripts.agent_harness.worktree_registry import WorktreeIdentityResolver, WorktreeRegistry
-
-    from neurath.hosts.identity import _state, active_connection
-
-    if identity is None or not identity.is_root:
-        raise TaskError("authority-denied", "verification requires a native root and worktree claim")
-    state = _state(root, identity.session)
-    actor = state.actors.get(identity.actor)
-    turn = state.foreground_turns.get(identity.actor)
-    if (state.session.status.value != "active" or actor is None or actor.status.value != "active"
-            or turn is None or turn.status.value != "active" or not active_connection(root, identity.session)):
-        raise TaskError("authority-denied", "verification requires the current active native turn")
-    canonical = WorktreeIdentityResolver().resolve(root)
-    claim = WorktreeRegistry(SessionLocator.from_worktree(root)).get(canonical.worktree_id)
-    if (state.session.root_actor_id != identity.actor or claim.path != canonical.path
-            or str(claim.session_id) != identity.session or str(claim.actor_id) != identity.actor
-            or claim.status.value != "active"):
-        raise TaskError("authority-denied", "verification requires the current worktree owner")
-    receipt = turn.user_prompt_receipt
-    return (turn.generation, turn.vendor_turn_id, (claim.lease_epoch, claim.fencing_token),
-            None if receipt is None else (receipt.turn_revision, receipt.prompt_digest))

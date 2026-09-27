@@ -36,7 +36,7 @@ def test_installation_plan_can_be_loaded_and_applied_by_its_owner(sessions, monk
     root, _ = sessions
     call(sessions, "worktree_claim", {})
     result = call(sessions, "installation_plan", {"action": "uninstall", "key": "prepare"})
-    monkeypatch.setattr("neurath.runtime.tasks._mcp_execution_policy", lambda *a, **k: None)
+    monkeypatch.setattr("neurath.runtime.admission._mcp_execution_policy", lambda *a, **k: None)
     applied = call(sessions, "installation_apply", {"plan_ref": result["plan_ref"], "key": "apply"})
     assert applied["id"] == result["plan_id"]
     assert applied["changed"] > 0

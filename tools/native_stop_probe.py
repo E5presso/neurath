@@ -7,7 +7,7 @@ import argparse
 import json
 from pathlib import Path
 
-from native_steering_probe import Host
+from native_host import Host
 
 
 def verify_stop_events(events, thread, turn):

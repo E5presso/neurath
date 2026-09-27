@@ -44,12 +44,12 @@ def execute(root, name, fields, *, identity, expected_turn, verified_policy_evid
     """Keep foreground authorization separate from durable worker scheduling."""
     from neurath.providers import waves
     from neurath.runtime.task_schema import TaskError, arguments
-    from neurath.runtime.tasks import _verification_owner, _mcp_execution_policy
+    from neurath.runtime.admission import _verification_owner, _mcp_execution_policy
     from neurath.runtime.state_tasks import _handle
     from neurath.runtime.provider_execution import admit_wave_entry
     from neurath.runtime.model_tasks import observed_policy
     from neurath.hosts.task_scope import instruction_scope
-    from neurath.memory.store import canonical
+    from neurath.serialization import canonical
 
     if identity is None or not identity.is_root:
         raise TaskError("native-binding-required", "provider waves require their native root owner")
@@ -102,12 +102,12 @@ def _retry_entry(root, fields, identity, expected_turn, evidence, before):
     """Re-admit a failed implementation without confusing inbox recovery with work."""
     from neurath.providers import waves
     from neurath.runtime.task_schema import TaskError, arguments
-    from neurath.runtime.tasks import _verification_owner, _mcp_execution_policy
+    from neurath.runtime.admission import _verification_owner, _mcp_execution_policy
     from neurath.runtime.state_tasks import _handle
     from neurath.runtime.provider_execution import admit_wave_entry
     from neurath.runtime.model_tasks import observed_policy
     from neurath.hosts.task_scope import instruction_scope
-    from neurath.memory.store import canonical
+    from neurath.serialization import canonical
 
     current = waves.snapshot(root, identity, fields["wave_id"])
     scope = current["task_scope"]

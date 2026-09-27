@@ -26,7 +26,7 @@ def test_explicit_created_model_does_not_become_target_default(tmp_path,monkeypa
 def test_owned_native_alias_resolves_plan_before_assignment(tmp_path,monkeypatch):
     import pytest
     from neurath.providers.contracts import Session
-    from neurath.runtime import model_tasks
+    from neurath.providers import model_bindings as model_tasks
     store=InventoryStore(tmp_path/'plans.sqlite3')
     monkeypatch.setattr(execution_plan,'store_for',lambda root:store)
     monkeypatch.setattr(model_tasks,'store_for',lambda root:store)

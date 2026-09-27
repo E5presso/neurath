@@ -2,7 +2,7 @@
 
 import os
 
-from neurath.agents.store import AgentIdentity
+from neurath.agents.contracts import AgentIdentity
 from neurath.runtime.engine import activate
 
 

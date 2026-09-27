@@ -52,13 +52,13 @@ def _worktree_worker_preflight(root, fields):
 
 
 def run(root, inputs, *, identity=None, expected_turn=None, verified_policy_evidence=None):
-    from neurath.runtime.tasks import _mcp_execution_policy, _verification_owner
+    from neurath.runtime.admission import _mcp_execution_policy, _verification_owner
 
     fields = arguments("provider_run", inputs)
     if identity is None:
         raise TaskError("native-binding-required", "asynchronous work requires a native issuing session")
     before = _verification_owner(root, identity) if identity is not None else None
-    from neurath.memory.store import canonical
+    from neurath.serialization import canonical
     from neurath.runtime.model_tasks import (
         admitted_request,
         observed_policy,

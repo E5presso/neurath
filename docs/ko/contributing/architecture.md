@@ -1,9 +1,9 @@
-<!-- last_updated: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
+<!-- last_updated: 2026-09-27; synced_from: 7e7386b68b7f2ef26f33ba98cd76493a99c817c9 -->
 # 에이전트의 작업을 하나의 목표에 연결하는 구조
 
 [English](../../en/contributing/architecture.md)
 
-Neurath는 Claude Code와 Codex에 설치하는 하네스입니다. 코딩 에이전트 주변에 프로젝트 지침, 스킬, 호스트 훅, 이름이 정해진 MCP 도구를 더합니다. 모델과 기본 편집 도구는 호스트가 실행합니다. Neurath는 작업이 어떤 요청을 위한 것인지, 누가 맡고 있는지, 보고된 결과에 어떤 근거가 있는지를 기록합니다.
+Neurath는 Claude Code와 Codex의 에이전트 작업을 연결하는 애플리케이션입니다. 설치형 하네스를 통해 프로젝트 지침, 스킬, 호스트 훅, 이름이 정해진 MCP 도구를 제공합니다. 모델과 기본 편집 도구는 호스트가 실행합니다. Neurath는 작업이 어떤 요청을 위한 것인지, 누가 맡고 있는지, 보고된 결과에 어떤 근거가 있는지를 기록합니다.
 
 사용자가 “페이지를 새로고침하면 저장한 필터가 사라져요. 고쳐 주세요”라고 요청했다고 가정하겠습니다. 필요한 결과는 저장하고 다시 불러와도 필터가 유지되는 것입니다. 실패 재현, 저장 코드 수정, API 계약 리뷰, 회귀 검증은 그 결과에 도달하는 방법입니다. 여러 에이전트가 참여하거나 다른 세션에서 이어서 작업하더라도 이 방법들을 원래 요청에 연결하는 것이 Neurath 구조의 역할입니다. 필터는 예시 웹앱의 기능입니다.
 
@@ -34,14 +34,41 @@ flowchart TD
 
 그림은 요소 간 관계를 보여 줍니다. 모든 요청이 리뷰어를 실행하거나 세션을 이전한다는 뜻은 아닙니다. 사용자 요청과 적용한 스킬에 따라 필요한 작업을 선택합니다.
 
-## 네 가지 구현 계층
+## 책임과 의존성의 경계
 
-| 계층 | 역할 | 소스 위치 |
+애플리케이션 서비스는 명시적인 도메인 판단, 영속 기록, 외부 효과를 조정합니다. 도메인 모델과 순수 정책은 MCP 전송이나 worker 프로세스에 의존하지 않습니다. 호환 진입점은 기준 타입을 다시 노출하며, 별도의 모델이나 상태 저장소를 만들지 않습니다.
+
+아래 경로는 `src/neurath/` 기준입니다.
+
+| 책임 | 기준 소스 | 경계 |
 | --- | --- | --- |
-| 설치와 자산 | 독립 실행 자산과 프로젝트 설치 결과를 구성하고 기존 설정 보존 | `src/neurath/install/`, `src/neurath/_assets/` |
-| 호스트 어댑터 | 실제 이벤트 검증, 정확한 도구 호출 연결, 결과 관찰, 정상 Stop 검사 | `src/neurath/hosts/`, `src/neurath/agents/hooks.py` |
-| 태스크와 서비스 어댑터 | 이름이 정해진 도구의 입력을 검증하고 도메인 작업으로 전달 | `src/neurath/runtime/`, `src/neurath/agents/mcp.py` |
-| 영속 도메인 상태 | 태스크·에이전트·워크플로·소유권·artifact·전송 기록의 일관성 유지 | `src/neurath/_assets/scripts/agent_harness/`, `src/neurath/runtime/database.py` |
+| 공통 값 | `serialization.py`, `redaction.py`, `project_paths.py`, `agents/contracts.py` | 인코딩·민감정보 제거·저장소 탐색·불변 에이전트 계약은 메모리나 메시지 저장 계층에 의존하지 않습니다. |
+| 네이티브 관측과 접근 허용 | `hosts/context.py`, `hosts/transcript.py`, `hosts/journal.py`, `runtime/admission.py` | 호스트 사실을 관측하고 트랜잭션으로 저장하며, 서비스 실행 전에 정책과 소유권을 다시 확인합니다. |
+| 세션·적응 제어 도메인 | `_assets/scripts/agent_harness/session_model.py`, `session_events.py`, `session_reducer.py`, `adaptive_state.py`, `adaptive_transition.py` | 불변 기록·검증된 명령·전이는 호스트 전송과 독립적으로 동작합니다. |
+| 세션 영속성 | `_assets/scripts/agent_harness/session_store.py`, `session_state_codec.py`, `adaptive_state_codec.py`, `adaptive_control_store.py` | 버전별 인코딩·기록 간 검증·SQLite CAS·원자적 태스크/Stop 허용 검사를 소유합니다. `session_kernel.py`가 이들을 조정합니다. |
+| Phase 실행 | `_assets/scripts/skill_harness/phase_models.py`, `phase_contracts.py`, `phase_store.py`, `phase_evidence_validation.py`, `phase_repository_evidence.py` | 계약 해석·상태 포트·의미 검증·저장소/프로세스 관측을 분리합니다. `phase_runner.py`는 커밋 순서를 조정합니다. |
+| Provider 배치·작업 | `providers/wave_policy.py`, `wave_store.py`, `wave_dispatch.py`, `job_journal.py` | 준비·의존성의 순수 판단을 저장 상태 표시·OS lease·실행·원자적 결과 이벤트와 분리합니다. |
+| Provider 연동 | `providers/model_bindings.py`, `execution_target.py`, `claude_inbox.py`, 각 provider 전송 모듈 | 모델 계획 저장·검증, 공통 대상 검사, inbox 관리는 MCP 디스패처나 다른 provider의 실행기에 의존하지 않습니다. |
+| 설치 | `install/file_values.py`, `configuration.py`, `records.py`, `desired.py`, `transaction.py` | 정확한 파일 관측·보수적 설정 보존·상태 조회·설치 결과 구성이 lock/journal/apply/rollback 경계에 입력을 제공합니다. 계획은 배포본 식별자를 한 번 관측합니다. |
+| 모니터링·정리 | 패키지의 monitor event/mailbox, process receipt/transport, handoff-state, merge-cleanup-state 모듈 | 순수 이벤트/의도 판단과 CAS 기록을 소유한 프로세스·파일 시스템 효과에서 분리합니다. |
+| 전송·진입점 | `agents/mcp.py`, `agents/stdio.py`, CLI 어댑터, `runtime/tasks.py` | 닫힌 입력·네이티브 결속·전송 응답·서비스 라우팅을 담당합니다. 도메인 서비스는 디스패처의 내부 헬퍼 대신 접근 허용 모듈에 직접 의존합니다. |
+
+```mermaid
+flowchart TD
+    A[호스트·MCP 어댑터] --> B[네이티브 관측과 접근 허용]
+    B --> C[애플리케이션 서비스]
+    C --> D[모델과 순수 전이 정책]
+    C --> E[트랜잭션 저장소와 코덱]
+    C --> F[소유한 provider·파일 시스템 효과]
+    D --> G[공통 값 계약]
+    E --> G
+```
+
+구현의 책임을 나누면서 기존 상태 스키마와 공개 진입점은 유지합니다. 코덱을 바꾸면 기존 인코딩을 보존하거나 명시적인 이전 절차를 제공해야 합니다. 데이터베이스 쓰기가 실패했을 때 커밋되지 않은 효과를 실행하지 않도록 callback과 outbox의 트랜잭션 경계를 유지합니다.
+
+저장소 경로 탐색은 하나의 동기식 훅 안에서만 재사용할 수 있습니다. 캐시는 `finally`에서 종료하며, 심볼릭 링크 대상을 포함한 Git 디렉터리·`commondir` 변경을 관측합니다. Git 배치·설정 환경변수가 지정되면 재사용하지 않습니다. 커널 상태·네이티브 신원·claim·정책·리비전·권한 판단은 캐시하지 않습니다.
+
+MCP 응답 구성도 명시적인 경계입니다. 태스크 변경은 ID·리비전·상태와 네이티브 TODO를 간결하게 반환하고, `task_list`는 전체 정의와 근거를 반환합니다. 호출자는 정확한 태스크의 결과를 확인해야 하며, `all_terminal`을 성공으로 취급하거나 변경 응답에 전체 정의가 있다고 가정하면 안 됩니다.
 
 `src/neurath/_assets`는 패키지가 직접 소유한 실행 자산 원본입니다. 설치된 `.agents/skills`와 `.neurath/rules`는 이 원본을 반영한 결과입니다. 구현은 소스에서 바꾸고 자산 manifest와 해당 검증을 갱신합니다. 설치된 스킬만 수정하면 패키지는 바뀌지 않습니다.
 

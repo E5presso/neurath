@@ -10,9 +10,9 @@ import zipfile
 from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
 
-from neurath.install.transaction import (
-    STATE, canonical, git_dir, installation_state_matches, read_state, snapshot,
-)
+from neurath.serialization import canonical
+from neurath.install.file_values import git_dir, snapshot
+from neurath.install.records import STATE, installation_state_matches, read_state
 from neurath.reporting import Reporting
 from neurath.updates import MAX_WHEEL, download_asset
 

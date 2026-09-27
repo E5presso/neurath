@@ -8,11 +8,12 @@ from neurath.providers.job_recovery import ClosedTransportEvidence, JobRecovery,
 
 
 class Store:
-    def __init__(self, directory):
+    def __init__(self, directory, *, create=True):
         self.directory = directory
         self.path = directory / 'state.sqlite3'
-        with self.connection() as db:
-            db.execute('CREATE TABLE provider_jobs (id TEXT PRIMARY KEY,owner TEXT,request TEXT,status TEXT,result TEXT,cancel_requested INTEGER)')
+        if create:
+            with self.connection() as db:
+                db.execute('CREATE TABLE provider_jobs (id TEXT PRIMARY KEY,owner TEXT,request TEXT,status TEXT,result TEXT,cancel_requested INTEGER)')
 
     @contextmanager
     def connection(self):
@@ -131,26 +132,23 @@ def test_completed_turn_can_recover_for_late_messages(tmp_path):
 
 
 def test_actual_worker_exit_releases_os_lease(tmp_path):
-    import os
+    import subprocess
+    import sys
 
     _, recovery, evidence = setup_job(tmp_path)
-    read_fd, write_fd = os.pipe()
-    pid = os.fork()
-    if pid == 0:
-        os.close(read_fd)
-        try:
-            lease = recovery.claim_worker('issuer', 'run-1')
-            os.write(write_fd, str(lease.generation).encode())
-            os._exit(0)  # Abrupt native worker exit: no context cleanup or heartbeat.
-        except BaseException:  # noqa: BLE001 - forked fixture must not run parent tests
-            os._exit(1)
-    os.close(write_fd)
-    try:
-        assert os.read(read_fd, 16) == b'1'
-    finally:
-        os.close(read_fd)
-        _, status = os.waitpid(pid, 0)
-    assert os.waitstatus_to_exitcode(status) == 0
+    # A fresh interpreter avoids forking the test runner's existing threads.
+    # os._exit still proves OS lease release without Python/context cleanup.
+    code = """import os, runpy, sys
+from pathlib import Path
+from neurath.providers.job_recovery import JobRecovery
+Store = runpy.run_path(sys.argv[1])['Store']
+lease = JobRecovery(Store(Path(sys.argv[2]), create=False)).claim_worker('issuer', 'run-1')
+print(lease.generation, flush=True)
+os._exit(0)
+"""
+    child = subprocess.run([sys.executable, '-I', '-c', code, __file__, str(tmp_path)],
+                           capture_output=True, text=True, check=True, timeout=10)
+    assert child.stdout.strip() == '1'
     assert recovery.recover('issuer', 'run-1', 'recover', evidence)['admission']['generation'] == 2
 
 

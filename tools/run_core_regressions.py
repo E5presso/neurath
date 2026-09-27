@@ -15,15 +15,21 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--target", type=Path)
+    parser.add_argument("--workers", type=int, default=min(8, os.cpu_count() or 1),
+                        help="pytest workers; zero runs selected contracts serially")
     parser.add_argument("tests", nargs="*")
     args = parser.parse_args()
+    if args.workers < 0:
+        parser.error("workers must be zero (serial) or positive")
     if args.target is not None:
-        return run_fixture(args.target, args.tests)
+        return run_fixture(args.target, args.tests, workers=args.workers)
     with tempfile.TemporaryDirectory(prefix="neurath-runtime-") as temporary:
-        return run_fixture(Path(temporary) / "kit", args.tests)
+        return run_fixture(Path(temporary) / "kit", args.tests, workers=args.workers)
 
 
-def run_fixture(target, selected_tests):
+def run_fixture(target, selected_tests, *, workers=None):
+    if workers is None:
+        workers = min(8, os.cpu_count() or 1)
     shutil.copytree(
         ROOT / "src/neurath/_assets", target, ignore=shutil.ignore_patterns("__pycache__", "*.pyc")
     )
@@ -79,7 +85,7 @@ def run_fixture(target, selected_tests):
     env["PYTHONPATH"] = str(target.resolve())
     print(f"Independent runtime fixture: {target}", flush=True)
     result = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "-n", str(min(8, os.cpu_count() or 1)), "--dist", "load",
+        [sys.executable, "-m", "pytest", "-q", "-n", str(workers), "--dist", "load", "--durations=10",
          *selected_tests], cwd=target, env=env,
         capture_output=True, text=True, check=False,
     )

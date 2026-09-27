@@ -12,7 +12,8 @@ import shlex
 from contextlib import nullcontext
 from pathlib import Path
 
-from neurath.memory.store import canonical, clean
+from neurath.serialization import canonical
+from neurath.redaction import clean
 
 
 def family(command):

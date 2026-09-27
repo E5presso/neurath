@@ -128,7 +128,7 @@ def _host_hook(root, host, raw, environment=None, stop_guard=None, *, identity_o
         # Fence a migrated source even when an older MCP server is still loaded.
         # The installed native hook runs before issuing another tool capability.
         from neurath.runtime.database import RuntimeDatabase
-        from neurath.memory.store import control_root
+        from neurath.project_paths import control_root
         from neurath.runtime.task_schema import TASKS
         migrated = None
         if payload.get("session_id"):
@@ -229,7 +229,7 @@ def _host_hook(root, host, raw, environment=None, stop_guard=None, *, identity_o
 
 
 def _bookkeeping_failure(output, event, component, error):
-    from neurath.memory.store import clean
+    from neurath.redaction import clean
 
     diagnostic = f"Neurath {component} bookkeeping deferred: {type(error).__name__}: " + clean(str(error))[:2000]
     result = dict(output)
@@ -361,6 +361,14 @@ def _readonly_root_stop(root, host, request, environment):
 
 
 def hook(root, host, raw, environment=None):
+    """Handle one native event with a fresh repository-discovery scope."""
+    from neurath.project_paths import discovery_scope
+
+    with discovery_scope():
+        return _hook(root, host, raw, environment)
+
+
+def _hook(root, host, raw, environment=None):
     """Human input delivery is independent of successful harness bookkeeping.
 
     Only root UserPromptSubmit has this boundary. A failed reconciliation never
@@ -455,7 +463,7 @@ def hook(root, host, raw, environment=None):
         # This delivery boundary also covers unavailable optional stores/plugins.
         # SystemExit/interrupts are intentionally not swallowed.
         diagnostic = f"{type(error).__name__}: {error}"
-    from neurath.memory.store import clean
+    from neurath.redaction import clean
 
     diagnostic = "Neurath prompt bookkeeping deferred: " + clean(diagnostic)[:2000]
     context = (

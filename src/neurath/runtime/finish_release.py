@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from dataclasses import asdict
 from pathlib import Path
 
-from neurath.memory.store import canonical
+from neurath.serialization import canonical
 
 
 def _digest(value):

@@ -1,4 +1,4 @@
-<!-- date: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
+<!-- last_updated: 2026-09-27; synced_from: 7e7386b68b7f2ef26f33ba98cd76493a99c817c9 -->
 
 # Installation and diagnostic command reference
 
@@ -38,6 +38,8 @@ Apply that returned reference with `installation_apply`:
 These capitalized values are placeholders, not usable references. Preserve a stable key for retries of the same logical operation and the identical input. Use a new key for a new request; reusing a key with changed content fails. The native binding is supplied by the host integration and must not be invented or copied.
 
 `installation_recover` takes `{"key":"installation-recover-1"}`. It reaches the conservative journal recovery service even when ordinary placement is degraded. `installation-recovery-required` directs the agent there; afterward inspect `diagnostics_project` and prepare anew. `plan-unavailable` indicates a reference not prepared for this actor/worktree; `plan-changed` indicates private plan content no longer matches its retained identity.
+
+The source checkout launcher bootstraps a missing installation only. Editing source or regenerating the manifest does not replace the running harness. After the source checks and build pass, run `./setup --self` explicitly and verify the updated host activation separately. Bootstrap failures return their original error without a polling delay.
 
 ## Native terminal forms for bootstrap and maintenance
 

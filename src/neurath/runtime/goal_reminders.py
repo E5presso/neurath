@@ -2,7 +2,9 @@
 import json
 import time
 
-from neurath.memory.store import canonical, clean, control_root
+from neurath.serialization import canonical
+from neurath.redaction import clean
+from neurath.project_paths import control_root
 from neurath.runtime.database import RuntimeDatabase
 
 TOOL_INTERVAL = 12

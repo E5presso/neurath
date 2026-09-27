@@ -7,12 +7,9 @@ import json
 import time
 from pathlib import Path
 
-from neurath.memory.store import control_root
+from neurath.serialization import canonical
+from neurath.project_paths import control_root
 from neurath.runtime.database import RuntimeDatabase
-
-
-def canonical(value):
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
 def digest(value):

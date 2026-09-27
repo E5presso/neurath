@@ -5,8 +5,9 @@ import json
 import time
 import unicodedata
 
-from neurath.agents.store import bounded
-from neurath.memory.store import canonical, clean
+from neurath.agents.contracts import bounded
+from neurath.serialization import canonical
+from neurath.redaction import clean
 
 
 def article_text(title, body):

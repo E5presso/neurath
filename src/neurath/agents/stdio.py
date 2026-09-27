@@ -8,7 +8,7 @@ from contextlib import redirect_stdout
 from dataclasses import dataclass
 from pathlib import Path
 
-from neurath.memory.store import canonical
+from neurath.serialization import canonical
 
 MAX_HEAVY_CALLS = 4
 MAX_CONTROL_CALLS = 8

@@ -3,8 +3,10 @@
 from pathlib import Path
 
 from neurath.agents.newsroom import Newsroom
-from neurath.agents.store import AgentIdentity, MessageStore
-from neurath.memory.store import canonical
+from neurath.agents.contracts import AgentIdentity
+from neurath.agents.store import MessageStore
+from neurath.serialization import canonical
+from neurath.hosts.context import participation as participation
 
 
 def native_turn(root, identity):
@@ -87,14 +89,6 @@ def native_peer(root, host, payload):
         return None
     identity = AgentIdentity(host, session, str(actor_id), not bool(payload.get("agent_id")))
     return identity, state, actor
-
-
-def participation(state, actor):
-    turn = state.foreground_turns.get(actor.id)
-    active = (state.session.status.value == "active" and actor.status.value == "active"
-              and turn is not None and turn.status.value == "active")
-    key = canonical([turn.generation, turn.vendor_turn_id]) if turn else "no-native-turn"
-    return active, key
 
 
 def peer_event(root, host, payload, output):

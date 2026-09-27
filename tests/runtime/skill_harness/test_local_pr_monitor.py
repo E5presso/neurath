@@ -258,6 +258,43 @@ class MonitorFixture:
             ))
 
 
+class MonitorRuntimeSourceReloadTest(TestCase):
+    """Extracted session owners retain the monitor's source-reload coverage."""
+
+    def test_session_owner_changes_trigger_reload(self) -> None:
+        owner_names = (
+            "session_kernel.py", "session_model.py", "session_events.py",
+            "session_reducer.py", "session_store.py", "session_paths.py",
+        )
+        owner_paths = tuple(ROOT / "scripts/agent_harness" / name for name in owner_names)
+        with TemporaryDirectory() as temporary:
+            copied_root = Path(temporary)
+            for source in set(local_pr_monitor.RUNTIME_SOURCE_PATHS) | set(owner_paths):
+                destination = copied_root / source.relative_to(ROOT)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(source.read_bytes())
+            watched = tuple(
+                copied_root / source.relative_to(ROOT)
+                for source in local_pr_monitor.RUNTIME_SOURCE_PATHS
+            )
+            monitor = object.__new__(local_pr_monitor.LocalPrMonitor)
+            with patch.object(local_pr_monitor, "RUNTIME_SOURCE_PATHS", watched):
+                monitor._runtime_signature = monitor._runtime_source_signature()
+                self.assertFalse(monitor._runtime_source_changed())
+                (copied_root / "unrelated.txt").write_text("not runtime code")
+                self.assertFalse(monitor._runtime_source_changed())
+                for source in owner_paths:
+                    with self.subTest(module=source.name):
+                        copied = copied_root / source.relative_to(ROOT)
+                        original = copied.read_bytes()
+                        try:
+                            copied.write_bytes(original + b"\n# Runtime source changed.\n")
+                            self.assertTrue(monitor._runtime_source_changed())
+                        finally:
+                            copied.write_bytes(original)
+                        self.assertFalse(monitor._runtime_source_changed())
+
+
 class LocalPrMonitorTest(TestCase):
     """실제 GitHub delta만 exact workflow owner turn으로 전달되는지 검증합니다."""
 

@@ -3,7 +3,7 @@
 from dataclasses import replace
 
 from neurath.providers.model_planning import ModelInfo
-from neurath.runtime.model_tasks import (
+from neurath.providers.model_bindings import (
     digest, resolve_created_plan, store_for, typed_inventory, verify_created_selection,
 )
 

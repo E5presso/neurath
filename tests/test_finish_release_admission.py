@@ -71,7 +71,7 @@ def test_released_finish_workflow_completes_through_named_mcp(sessions, monkeypa
         session_id=state.session.id, workflow_id=sk.WorkflowId("finish"),
         owner_actor_id=state.session.root_actor_id, kind="finish-session", goal=phase.north_star,
         payload={"phase_run": phase.as_payload(), "skill_state": {}}, idempotency_key="finish-fixture"))
-    monkeypatch.setattr("neurath.runtime.tasks._mcp_execution_policy", lambda *a, **k: None)
+    monkeypatch.setattr("neurath.runtime.admission._mcp_execution_policy", lambda *a, **k: None)
     released = call(sessions, "worktree_release", {"expected_lease_epoch": claim["lease_epoch"],
                                                   "fencing_token": claim["fencing_token"]})
     assert released["released"]

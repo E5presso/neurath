@@ -25,7 +25,6 @@ TITLE_ISSUE_PREFIX_PATTERN = re.compile(r"^[^:]+:\s+\[#(?P<issue_number>\d+)\]\s
 
 @dataclass(frozen=True, slots=True)
 class GitHubMetadataLanguageAudit:
-    """git hub metadata language audit 관련 설정과 검증 조건을 함께 표현합니다."""
 
     title_korean: bool
     """title korean 값을 보관합니다."""
@@ -48,17 +47,9 @@ class GitHubMetadataLanguageAudit:
 
     @property
     def korean(self) -> bool:
-        """요청을 처리해 호출자가 사용할 값을 반환합니다.
-
-        Returns:
-            korean 처리 결과입니다."""
         return self.title_korean and self.body_korean and self.forbidden_english_headings == 0
 
     def evidence(self) -> str:
-        """요청을 처리해 호출자가 사용할 값을 반환합니다.
-
-        Returns:
-            evidence 처리 결과입니다."""
         return (
             "github_metadata_language: "
             "validator=scripts.skill_harness.github_metadata_language "
@@ -99,7 +90,6 @@ class GitHubMetadataLanguageAudit:
 
 
 class GitHubMetadataLanguageAuditor:
-    """git hub metadata language auditor 관련 설정과 검증 조건을 함께 표현합니다."""
 
     def audit(
         self,
@@ -169,16 +159,8 @@ class GitHubMetadataLanguageAuditor:
 
 
 class GitHubMetadataLanguageCommand:
-    """git hub metadata language command 관련 설정과 검증 조건을 함께 표현합니다."""
 
     def run(self, raw_args: list[str] | None = None) -> int:
-        """입력값을 해석해 해당 경계의 처리 결과를 만듭니다.
-
-        Args:
-            raw_args: 호출자가 넘긴 raw args 값입니다.
-
-        Returns:
-            run 처리 결과입니다."""
         parser = self._parser()
         args = parser.parse_args(raw_args)
         payload = self._payload(args.input_json)

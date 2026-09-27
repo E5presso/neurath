@@ -136,7 +136,7 @@ class CodexStdio:
 
     @property
     def diagnostic(self):
-        from neurath.memory.store import clean
+        from neurath.redaction import clean
         return clean(self._diagnostic_tail)
 
     def _send(self, message, *, deadline=None):

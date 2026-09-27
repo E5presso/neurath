@@ -8,7 +8,7 @@ binding. No public tool accepts identity or cached readiness as authority.
 import os
 from pathlib import Path
 
-from neurath.memory.store import canonical
+from neurath.serialization import canonical
 from neurath.providers.contracts import ExecutionPolicy
 from neurath.runtime.engine import activate
 

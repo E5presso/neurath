@@ -14,7 +14,7 @@ def test_builtin_verifier_and_continuation_have_closed_named_faces():
 def test_completed_verifier_failure_keeps_diagnostics_but_replay_does_not_rerun(
         sessions, monkeypatch, changed):
     from neurath.agents.store import MessageStore
-    from neurath.runtime import tasks
+    from neurath.runtime import admission as tasks
     from scripts.agent_harness import verification_runner as runner
     root, _ = sessions
     call(sessions, "worktree_claim", {})
