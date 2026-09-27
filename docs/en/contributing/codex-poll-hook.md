@@ -1,3 +1,4 @@
+<!-- last_updated: 2026-09-27; synced_from: 5ddfa1392b9cf4cbceb3e9112858e0988ce2cc69 -->
 # Codex polling hook compatibility
 
 [한국어](../../ko/contributing/codex-poll-hook.md)
