@@ -1,12 +1,12 @@
-<!-- last_updated: 2026-09-27; synced_from: 147087edd4729ee5b8ae713f3eee87da14899337; status: stock provider-wave changes are unmerged -->
+<!-- last_updated: 2026-09-27; synced_from: f35185774aa9f18d1f4f7f13c74b4287a0fac751 -->
 # Stock Codex batch orchestration
 
 [한국어](../../ko/contributing/codex-poll-hook.md)
 
 Neurath uses the ordinary Codex installation and launch path. It does not require
 a patched Codex binary, a custom launcher or a replacement code-mode host.
-The batch contract below describes unmerged source changes; it is not a claim
-that a stock desktop or standalone host has completed live verification.
+Verify the installed distribution and the host actually running using the checks
+below. Source tests, standalone execution and desktop activation are distinct evidence.
 
 ## Host observation boundary
 

@@ -1,4 +1,4 @@
-<!-- updated: 2026-09-27; synced_from: 147087edd4729ee5b8ae713f3eee87da14899337; status: stock provider-wave changes are unmerged -->
+<!-- updated: 2026-09-27; synced_from: f35185774aa9f18d1f4f7f13c74b4287a0fac751 -->
 
 # 발견을 공유하고 범위가 분명한 일을 맡기기
 
@@ -284,7 +284,7 @@ Root는 task, ticket workflow, 통합, 리뷰, monitor 결과와 최종 수락�
 
 미제출 실행 복구는 인증된 owner의 조회, 동일 요청 replay, 정확한 결과 소비와 worker 종료 callback에서 수행합니다. 영속 실행 신원과 lease 검사를 사용하며 시작 시 scanner나 주기적 polling은 없습니다. 같은 미제출 실행의 replay는 구현을 대체할 새 attempt를 만들지 않습니다.
 
-스케줄링은 에이전트 대기의 가로채기에 의존하지 않습니다. 관측한 스톡 code-mode 경로는 텍스트만 출력하는 `functions.exec` 호출에도 바깥 `PreToolUse` 이벤트를 보내지 않았습니다. 바깥 wrapper 차단이나 JavaScript 소스 검사로 대기 가로채기를 증명할 수 없습니다. 배치 실행이 임의의 모든 호스트 대기를 차단한다고 보장하지 않습니다. 이 미병합 변경은 별도의 실제 스톡 호스트 검증이 필요하며 소스 테스트가 데스크톱 활성화를 증명하지 않습니다. [스톡 Codex 배치 실행](codex-poll-hook.md)을 참고하세요.
+스케줄링은 에이전트 대기의 가로채기에 의존하지 않습니다. 관측한 스톡 code-mode 경로는 텍스트만 출력하는 `functions.exec` 호출에도 바깥 `PreToolUse` 이벤트를 보내지 않았습니다. 바깥 wrapper 차단이나 JavaScript 소스 검사로 대기 가로채기를 증명할 수 없습니다. 배치 실행이 임의의 모든 호스트 대기를 차단한다고 보장하지 않습니다. 실제 스톡 호스트 동작은 별도로 검증하며, 소스 테스트나 독립 실행 결과로 데스크톱 활성화를 증명하지 않습니다. [스톡 Codex 배치 실행](codex-poll-hook.md)을 참고하세요.
 
 ### 네이티브 자식 wave
 

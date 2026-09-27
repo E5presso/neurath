@@ -1,12 +1,12 @@
-<!-- last_updated: 2026-09-27; synced_from: 147087edd4729ee5b8ae713f3eee87da14899337; status: stock provider-wave changes are unmerged -->
+<!-- last_updated: 2026-09-27; synced_from: f35185774aa9f18d1f4f7f13c74b4287a0fac751 -->
 # 스톡 Codex 배치 실행
 
 [English](../../en/contributing/codex-poll-hook.md)
 
 Neurath는 일반 Codex 설치와 실행 경로를 사용합니다. 패치한 Codex 실행 파일,
 커스텀 launcher, 교체한 code-mode host를 요구하지 않습니다.
-아래 배치 계약은 아직 병합되지 않은 소스 변경을 설명하며, 스톡 데스크톱이나
-독립 호스트의 실제 검증을 완료했다는 뜻이 아닙니다.
+아래 검사로 설치된 배포본과 실제 실행 중인 호스트를 확인합니다.
+소스 테스트, 독립 실행, 데스크톱 활성화는 각각의 근거로 확인해야 합니다.
 
 ## 호스트 관측 경계
 

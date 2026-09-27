@@ -10,15 +10,16 @@ spec = importlib.util.spec_from_file_location(
 probe = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(probe)
 assignments, digest, verify_wave_events = probe.assignments, probe.digest, probe.verify_wave_events
+EXPECTED_LINES = {name: f"# Fixture {name}" for name in ("a", "b", "c")}
 
 
-def trace():
+def trace(include_task_list=True):
     expected = assignments([Path("/fixture/a"), Path("/fixture/b"), Path("/fixture/c")])
     claim = {"session_id": "root", "actor_id": "codex:session:root", "lease_epoch": 1,
              "fencing_token": "fixture"}
-    task = {"id": "task", "status": "in_progress", "revision": 2, "definition_digest": "definition"}
+    task = {"id": "task", "status": "in_progress", "revision": 2, "definition_digest": "d" * 64}
     scope = {"session_id": "root", "actor_id": claim["actor_id"], "task_id": "task",
-             "task_revision": 2, "definition_digest": "definition"}
+             "task_revision": 2, "definition_digest": "d" * 64}
     dependencies = {"a": [], "b": [], "c": ["a", "b"]}
     entries = [{"entry_id": name, "depends_on": dependencies[name], "run_id": "run-" + name
                 if name != "c" else None, "status": "accepted" if name != "c" else "queued",
@@ -35,7 +36,10 @@ def trace():
                      "result": {"structuredContent": {"ok": True, "result": data}}}}}
         events.append(copy.deepcopy(event))
     emit("worktree_claim", claim)
-    emit("task_start", {"tasks": [task]}, task_id="task")
+    compact_task = {key: task[key] for key in ("id", "status", "revision")}
+    emit("task_start", {"all_terminal": False, "tasks": [compact_task]}, task_id="task")
+    if include_task_list:
+        emit("task_list", {"all_succeeded": False, "tasks": [task]})
     requests = []
     for name, request in expected.items():
         emit("provider_models", {"inventory_id": "inventory-" + name}, worktree=request["worktree"])
@@ -57,7 +61,7 @@ def trace():
                   "completion_link": {"native_session": "native-" + name,
                                       "submitted_turn": "turn-" + name,
                                       "completed_turn": "turn-" + name, "disposition": "terminal"},
-                  "text": f"NEURATH_PROVIDER_ENTRY_{name.upper()}_OK: README"}
+                  "text": f"NEURATH_PROVIDER_ENTRY_{name.upper()}_OK\n{EXPECTED_LINES[name]}"}
         entry.update(result=result, generation=1, result_digest=digest(result))
         emit("provider_wave_read", wave, wave_id="wave")
         proof = {"run_id": entry["run_id"], "generation": 1,
@@ -69,7 +73,7 @@ def trace():
         emit("provider_wave_consume", wave, wave_id="wave", entry_id=name, **proof)
     wave["all_succeeded"] = True
     emit("provider_wave_read", wave, wave_id="wave")
-    emit("task_resolve", {"all_succeeded": True, "tasks": [{**task, "status": "succeeded"}]}, task_id="task")
+    emit("task_resolve", {"all_terminal": True, "tasks": [{**compact_task, "revision": 3, "status": "succeeded"}]}, task_id="task")
     emit("worktree_release", {"released": True, "claim": claim}, expected_lease_epoch=1, fencing_token="fixture")
     return events, expected
 
@@ -98,7 +102,7 @@ def test_stock_provider_batch_requires_consumed_dag_and_original_native_completi
                     entry["consumption"]["result_digest"] = entry["result_digest"]
                 if item(event)["tool"] == "provider_wave_consume" and item(event)["arguments"]["entry_id"] == "a":
                     item(event)["arguments"]["result_digest"] = entry["result_digest"]
-    report = verify_wave_events(events, "root", "turn", expected)
+    report = verify_wave_events(events, "root", "turn", expected, EXPECTED_LINES)
     assert report["status"] == "passed"
     assert report["run_ids"] == {name: "run-" + name for name in expected}
 
@@ -110,6 +114,7 @@ def test_stock_provider_batch_requires_consumed_dag_and_original_native_completi
     "wrong-owner", "wrong-task", "wrong-definition", "wrong-wave", "foreign-root", "foreign-turn",
     "claim-token", "missing-release", "missing-model-plan", "unresolved-task", "false-success",
     "missing-link", "link-native-session", "link-submitted-turn", "link-waiting",
+    "missing-fact", "wrong-fact",
 ])
 def test_incomplete_or_substituted_provider_evidence_is_rejected(change):
     events, expected = trace()
@@ -158,6 +163,11 @@ def test_incomplete_or_substituted_provider_evidence_is_rejected(change):
         else:
             entry["generation"] = result["worker_generation"] = 2
         entry["result_digest"] = digest(result)
+    elif change in {"missing-fact", "wrong-fact"}:
+        entry["result"]["text"] = "NEURATH_PROVIDER_ENTRY_A_OK"
+        if change == "wrong-fact":
+            entry["result"]["text"] += "\n# Incorrect source line"
+        entry["result_digest"] = digest(entry["result"])
     elif change == "wrong-assignment":
         entry["original_request"]["assignment"] = "Different assignment"
     elif change == "wrong-owner":
@@ -165,7 +175,7 @@ def test_incomplete_or_substituted_provider_evidence_is_rejected(change):
     elif change == "wrong-task":
         data(run)["task_scope"]["task_id"] = "other"
     elif change == "wrong-definition":
-        data(run)["task_scope"]["definition_digest"] = "other"
+        data(run)["task_scope"]["definition_digest"] = "e" * 64
     elif change == "wrong-wave":
         data(reads[0])["wave_id"] = "other"
     elif change == "foreign-root":
@@ -183,4 +193,49 @@ def test_incomplete_or_substituted_provider_evidence_is_rejected(change):
     else:
         data(reads[-1])["states"]["c"] = "failed"
     with pytest.raises((AssertionError, KeyError)):
-        verify_wave_events(events, "root", "turn", expected)
+        verify_wave_events(events, "root", "turn", expected, EXPECTED_LINES)
+
+
+def test_expected_source_line_ignores_html_and_preserves_source(tmp_path):
+    (tmp_path / "README.md").write_text("<h1>HTML heading</h1>\nplain text\n# Exact source  \n## Later\n")
+    assert probe.expected_source_lines({"a": {"worktree": str(tmp_path)}}) == {"a": "# Exact source  "}
+
+
+@pytest.mark.parametrize("rendered", ["# Fixture a", "`# Fixture a`",
+                                       "NEURATH_PROVIDER_ENTRY_A_OK — `# Fixture a`"])
+def test_requested_source_fact_accepts_plain_or_inline_code_line(rendered):
+    events, expected = trace()
+    entry = data(next(e for e in events if item(e)["tool"] == "provider_wave_read"))["entries"][0]
+    entry["result"]["text"] = "NEURATH_PROVIDER_ENTRY_A_OK\n" + rendered
+    entry["result_digest"] = digest(entry["result"])
+    probe._completion(entry, expected["a"], {"root": "root"}, EXPECTED_LINES["a"])
+
+
+def test_compact_task_mutations_preserve_exact_task_and_wave_scope():
+    events, expected = trace(include_task_list=False)
+    result = verify_wave_events(events, "root", "turn", expected, EXPECTED_LINES)
+    assert result["definition_observation"] == "wave-admission"
+    assert result["definition_digest"] == "d" * 64
+
+
+def test_full_task_list_independently_binds_definition():
+    events, expected = trace()
+    result = verify_wave_events(events, "root", "turn", expected, EXPECTED_LINES)
+    assert result["definition_observation"] == "task-ledger"
+
+
+def test_all_terminal_does_not_substitute_for_task_success():
+    events, expected = trace(include_task_list=False)
+    data(events[-2])["tasks"][0]["status"] = "failed"
+    with pytest.raises(AssertionError):
+        verify_wave_events(events, "root", "turn", expected, EXPECTED_LINES)
+
+
+@pytest.mark.parametrize("rendered", ["# Fixture a extra", "`# Fixture a extra`", "prefix # Fixture a suffix"])
+def test_source_fact_rejects_only_substring_match(rendered):
+    events, expected = trace()
+    entry = data(next(e for e in events if item(e)["tool"] == "provider_wave_read"))["entries"][0]
+    entry["result"]["text"] = "NEURATH_PROVIDER_ENTRY_A_OK\n" + rendered
+    entry["result_digest"] = digest(entry["result"])
+    with pytest.raises(AssertionError):
+        probe._completion(entry, expected["a"], {"root": "root"}, EXPECTED_LINES["a"])

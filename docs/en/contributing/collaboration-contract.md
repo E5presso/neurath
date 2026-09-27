@@ -1,4 +1,4 @@
-<!-- updated: 2026-09-27; synced_from: 147087edd4729ee5b8ae713f3eee87da14899337; status: stock provider-wave changes are unmerged -->
+<!-- updated: 2026-09-27; synced_from: f35185774aa9f18d1f4f7f13c74b4287a0fac751 -->
 
 # Share findings and delegate bounded work
 
@@ -284,7 +284,7 @@ The runtime atomically reserves ready entries within capacity and stores pending
 
 Pending launch recovery is driven by authenticated owner read, identical-request replay, exact result consumption and worker terminal callbacks. It uses durable launch identities and lease checks; there is no startup scanner or periodic polling. Replaying the same pending launch does not create a replacement implementation attempt.
 
-Scheduling does not depend on intercepting an agent's wait. The observed stock code-mode path did not emit an outer `PreToolUse` event for a text-only `functions.exec` call. Neither an outer-wrapper fence nor JavaScript source inspection proves wait interception. Batch execution does not promise to block every arbitrary host wait. These unmerged changes require separate live stock-host verification; source tests do not prove desktop activation. See [stock Codex batch orchestration](codex-poll-hook.md).
+Scheduling does not depend on intercepting an agent's wait. The observed stock code-mode path did not emit an outer `PreToolUse` event for a text-only `functions.exec` call. Neither an outer-wrapper fence nor JavaScript source inspection proves wait interception. Batch execution does not promise to block every arbitrary host wait. Verify live stock-host behavior separately; source tests and standalone results do not prove desktop activation. See [stock Codex batch orchestration](codex-poll-hook.md).
 
 ### Native child waves
 
