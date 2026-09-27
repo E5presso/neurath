@@ -1,4 +1,4 @@
-<!-- last_updated: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
+<!-- last_updated: 2026-09-27; synced_from: 5ddfa1392b9cf4cbceb3e9112858e0988ce2cc69 -->
 # 사용자 요청에서 호스트 턴 종료까지
 
 [English](../../en/contributing/runtime-lifecycle.md)
