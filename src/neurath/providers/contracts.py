@@ -8,6 +8,10 @@ class UnsupportedOperation(ValueError):
     """The selected transport cannot perform the requested operation."""
 
 
+class ProviderCancelled(Exception):
+    """An explicit owner cancellation delivered to a running provider worker."""
+
+
 class CreationRejected(ValueError):
     """The host created a session, but its observed settings did not match."""
 

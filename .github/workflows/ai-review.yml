@@ -28,10 +28,14 @@ jobs:
               return;
             }
 
-            const { data: combined } = await github.rest.repos.getCombinedStatusForRef({
-              owner, repo, ref: sha,
-            });
-            const latest = combined.statuses.find(status => status.context === 'ai-review');
+            // The combined-status response can omit creator for a user-created
+            // status. The individual statuses endpoint preserves that identity
+            // and returns newest statuses first.
+            const statuses = await github.paginate(
+              github.rest.repos.listCommitStatusesForRef,
+              { owner, repo, ref: sha, per_page: 100 },
+            );
+            const latest = statuses.find(status => status.context === 'ai-review');
             if (latest?.state !== 'success' || latest.creator?.login !== owner) {
               core.setFailed('Latest ai-review status is not an owner-created success');
               return;

@@ -1,6 +1,7 @@
 """A created transport handle cannot grant activation, permissions or ownership."""
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -10,6 +11,35 @@ from tests.test_identity import runtime, start, native_turn_started  # noqa: F40
 
 def stage(status="verified", reason=None):
     return {"status": status, "reason": reason, "evidence": {}}
+
+
+def test_owned_provider_reads_installation_from_target_runtime(tmp_path, monkeypatch):
+    launcher = tmp_path / ".neurath/run"
+    launcher.parent.mkdir()
+    launcher.write_text("target launcher")
+    launcher.chmod(0o700)
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append((argv, kwargs))
+        return SimpleNamespace(returncode=0, stdout=json.dumps({
+            "distribution": {"status": "passed", "files": 363},
+            "placement": {"status": "passed", "errors": []},
+        }), stderr="")
+
+    monkeypatch.setattr("subprocess.run", run)
+    monkeypatch.setattr("neurath.install.records.read_state",
+                        lambda root: {"distribution": "target-distribution"})
+
+    result = readiness._installed_runtime_installation(tmp_path)
+
+    assert result == stage() | {"evidence": {
+        "distribution": "target-distribution", "placement": "passed",
+        "source": "target-installed-runtime",
+    }}
+    assert calls[0][0] == [str(launcher), "--root", str(tmp_path), "doctor"]
+    assert calls[0][1]["cwd"] == tmp_path
+    assert calls[0][1]["timeout"] <= 120
 
 
 def test_each_missing_stage_prevents_implementation_even_when_other_stages_pass():

@@ -179,6 +179,55 @@ def test_inbox_cleanup_failure_still_closes_host_and_cannot_return_completed(mon
         ["inbox", "host"] if host_error else ["inbox"])
 
 
+def test_live_owner_cancellation_retains_exact_native_closure(monkeypatch):
+    from neurath.providers.jobs import Cancelled
+
+    class Host:
+        diagnostic = ""
+
+        def __init__(self, *args, **kwargs):
+            self.process = SimpleNamespace(returncode=None)
+
+        def event(self, *args, **kwargs):
+            raise Cancelled("explicit owner cancellation")
+
+        def close(self):
+            self.process.returncode = 0
+
+    class Adapter:
+        def __init__(self, host):
+            pass
+
+        def create(self, *args):
+            return Session("codex", "codex-app-server", "cancelled-native", "/work",
+                           None, "model", {})
+
+        def bootstrap(self, session):
+            return {"native_turn": "bootstrap"}
+
+        def cancel(self, session):
+            return {"status": "interrupt-requested"}
+
+    monkeypatch.setattr(execution, "_target", lambda *args: Path("/work"))
+    monkeypatch.setattr(execution, "CodexStdio", Host)
+    monkeypatch.setattr(execution, "CodexSessions", Adapter)
+
+    result = execution.run("/parent", worktree="/work", assignment="Work",
+                           mode="workspace-write", approval_policy="never",
+                           collaboration_mode="default")
+
+    assert result["status"] == "cancelled"
+    assert result["created"]["native_session"] == "cancelled-native"
+    assert result["closure"] == {
+        "native_session": "cancelled-native",
+        "transport": "codex-app-server",
+        "connection_closed": True,
+        "native_process_exited": True,
+        "source": "owned-app-server-close",
+        "reason": "transport-closed",
+    }
+
+
 def test_execution_ignores_stale_completion_after_inbox_started_a_report_turn(monkeypatch):
     completed = []
     def decide(turn_id, original, **kwargs):

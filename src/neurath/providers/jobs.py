@@ -23,6 +23,7 @@ from subprocess import Popen
 from neurath.agents.lifecycle import TERMINAL, TaskLifecycle
 from neurath.agents.runner import child_environment
 from neurath.agents.store import bounded
+from neurath.providers.contracts import ProviderCancelled as Cancelled
 from neurath.providers.execution import run as execute_session
 from neurath.providers.job_journal import JobEvents
 from neurath.providers.job_journal import finish as journal_finish
@@ -169,10 +170,6 @@ def _finish(store, run_id, result, lease=None, *, _db=None, _tasks=None):
 
     return journal_finish(store, run_id, result, lease, bind_executor=bind_executor,
                           on_terminal=on_terminal, db=_db, tasks=_tasks)
-
-
-class Cancelled(Exception):
-    pass
 
 
 def recover(root, identity, run_id, *, key):
