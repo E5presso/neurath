@@ -351,6 +351,12 @@ def spawn_hook(root, host, payload, environment):
     call = payload.get("tool_use_id")
     if not isinstance(call, str) or not call:
         raise ValueError("spawn requires a native tool call id")
+    if host == "codex" and payload["hook_event_name"] == "PreToolUse":
+        name = (payload.get("tool_input") or {}).get("task_name")
+        if name is not None and (
+            not isinstance(name, str) or re.fullmatch(r"[a-z0-9_]+", name) is None
+        ):
+            raise ValueError("Codex spawn task_name must use lowercase letters, digits, or underscores")
     with journal(root, session) as data:
         if data.get("host") != host or str(
             _transcript(host, payload["transcript_path"], environment)

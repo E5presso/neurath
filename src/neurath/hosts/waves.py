@@ -9,7 +9,6 @@ from scripts.agent_harness.delegation_wave import projection, require_dispatch_b
 WAIT_TOOLS = {'wait_agent', 'collaborationwait_agent', 'collaboration.wait_agent',
               'TaskOutput', 'functions.wait', 'clock.sleep', 'sleep',
               'write_stdin', 'functions.write_stdin'}
-EXEC_TOOLS = {'functions.exec', 'exec'}
 
 
 def _dispatch_prepare_code(wave, entry):
@@ -47,32 +46,6 @@ def _dispatch_read_code(wave_id):
                          sort_keys=True, separators=(',', ':'))
     return ('const r=await tools.mcp__neurath_collaboration__delegation_wave_read('
             + literal + ');text(r.structuredContent??r)')
-
-
-def _legacy_prepare_code_is_exact(code, wave, ready_ids):
-    """Accept one canonical prepare call, never interpret arbitrary wrapper code."""
-    prefix = 'const r=await tools.mcp__neurath_collaboration__delegation_prepare('
-    suffix = ');text(r.structuredContent??r)'
-    if not isinstance(code, str) or not code.startswith(prefix) or not code.endswith(suffix):
-        return False
-    try:
-        arguments = json.loads(code[len(prefix):-len(suffix)])
-    except (TypeError, ValueError):
-        return False
-    required = {'assignment', 'delegation_id', 'expected_task_revision', 'key', 'task_id'}
-    if (not isinstance(arguments, dict) or
-            set(arguments) not in (required, required | {'role'}) or
-            arguments.get('delegation_id') not in ready_ids or
-            not isinstance(arguments.get('assignment'), str) or
-            not arguments['assignment'].strip() or
-            len(arguments['assignment'].encode()) > 8192 or
-            arguments.get('role', 'worker') not in {'worker', 'review'}):
-        return False
-    entry = {'delegation_id': arguments['delegation_id'],
-             'assignment': arguments['assignment']}
-    if 'role' in arguments:
-        entry['role'] = arguments['role']
-    return code == _dispatch_prepare_code(wave, entry)
 
 
 def prepare(root, handle, *, wave_id, task_id, expected_task_revision, entries,
@@ -133,7 +106,9 @@ def admit(root, state, data, delegation_id, *, host=None, inputs=None,
 def before_wait(root, payload):
     from neurath.hosts.hooks import SHELL_TOOLS
     tool = payload.get('tool_name')
-    if payload.get('agent_id') or tool not in WAIT_TOOLS | EXEC_TOOLS | SHELL_TOOLS:
+    # A wrapper's source text does not prove which nested tool it will invoke.
+    # Gate only tool calls that the host exposes as their own events.
+    if payload.get('agent_id') or tool not in WAIT_TOOLS | SHELL_TOOLS:
         return
     state = _state(root, payload['session_id'])
     data = snapshot(root, payload['session_id'])
@@ -153,19 +128,6 @@ def before_wait(root, payload):
             instruction_scope(root, state, wave['task_id'], wave['task_revision'])
             if result['dispatch_required']:
                 ready.append((wave, result))
-    if tool in EXEC_TOOLS:
-        if not ready:
-            return
-        code = (payload.get('tool_input') or {}).get('code')
-        if any(code == _dispatch_read_code(wave['wave_id']) for wave, _ in ready):
-            return
-        if any((code == _dispatch_prepare_code(wave, entry)
-                if wave.get('strict_wrapper_fence') else
-                _legacy_prepare_code_is_exact(code, wave, result['dispatch_required']))
-               for wave, result in ready for entry in wave['entries']
-               if entry['delegation_id'] in result['dispatch_required']):
-            return
-        raise ValueError('dispatch ready wave work before using the host tool wrapper')
     if tool in SHELL_TOOLS and ready:
         raise ValueError('dispatch ready wave work before a blocking-capable shell command')
     for wave, _ in ready:
