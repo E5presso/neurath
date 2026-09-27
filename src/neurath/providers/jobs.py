@@ -17,30 +17,24 @@ import tempfile
 import threading
 import time
 import uuid
-from contextlib import nullcontext
 from pathlib import Path
 from subprocess import Popen
 
 from neurath.agents.lifecycle import TERMINAL, TaskLifecycle
 from neurath.agents.runner import child_environment
-from neurath.agents.store import MessageStore, bounded
-from neurath.memory.store import canonical, clean
+from neurath.agents.store import bounded
 from neurath.providers.execution import run as execute_session
+from neurath.providers.job_journal import JobEvents
+from neurath.providers.job_journal import finish as journal_finish
+from neurath.providers.job_store import open_store as _store
+from neurath.providers.job_store import owned_job as _owned
 from neurath.providers.report_routing import RECOVERY_ASSIGNMENT, bind_executor, observe_created
-
-
-def _store(root):
-    store = MessageStore(root)
-    with store.connection() as db:
-        db.execute("""CREATE TABLE IF NOT EXISTS provider_jobs (
-            id TEXT PRIMARY KEY, owner TEXT NOT NULL, request TEXT NOT NULL,
-            status TEXT NOT NULL, result TEXT, control TEXT NOT NULL,
-            cancel_requested INTEGER NOT NULL DEFAULT 0, updated REAL NOT NULL)""")
-    return store
+from neurath.redaction import clean
+from neurath.serialization import canonical
 
 
 def validate_target(root, fields):
-    from neurath.providers.execution import _target
+    from neurath.providers.execution_target import target_worktree
 
     provider, mode = fields.get("provider", "codex"), fields.get("mode", "read-only")
     if provider == "claude-code":
@@ -49,7 +43,7 @@ def validate_target(root, fields):
         mode = "read-only" if fields["permission_mode"] == "plan" else "workspace-write"
     elif provider != "codex":
         raise ValueError("unsupported provider")
-    return _target(root, fields["worktree"], mode)
+    return target_worktree(root, fields["worktree"], mode)
 
 
 def _launch(*args, **kwargs):
@@ -57,13 +51,6 @@ def _launch(*args, **kwargs):
     # Reap this exact child asynchronously; the long-lived MCP must not retain
     # zombies. Waiting here happens only in a daemon thread, never in start().
     threading.Thread(target=process.wait, daemon=True).start()
-
-
-def _owned(db, owner, run_id):
-    row = db.execute("SELECT * FROM provider_jobs WHERE id=?", (run_id,)).fetchone()
-    if row is None or row["owner"] != owner:
-        raise ValueError("provider job requires its owner")
-    return row
 
 
 def status(root, identity, run_id):
@@ -178,39 +165,10 @@ def cancel(root, identity, run_id):
 
 
 def _finish(store, run_id, result, lease=None, *, _db=None, _tasks=None):
-    if result["status"] not in TERMINAL:
-        result = {**result, "provider_status": result["status"], "status": "failed"}
-    from neurath.providers.job_recovery import archive_result
-    tasks = _tasks if _tasks is not None else TaskLifecycle(store)
-    with store.connection() if _db is None else nullcontext(_db) as db:
-        if lease is not None:
-            lease.assert_current(db)
-        row = db.execute("SELECT * FROM provider_jobs WHERE id=?", (run_id,)).fetchone()
-        owner = row["owner"]
-        if row["status"] in TERMINAL and lease is None:
-            return json.loads(row["result"])
-        previous = json.loads(row["result"]) if row["result"] else {}
-        if lease is not None and lease.generation > 1:
-            previous = {k: v for k, v in previous.items() if k in {"created", "closure", "model_plan", "policy_inheritance"}}
-        result = {**previous, **result}
-        reply_recipient = bind_executor(store, row, result, lease, db)
-        result["reply_route"] = {"status": "bound" if reply_recipient else "unavailable", "recipient": reply_recipient}
-        db.execute("UPDATE provider_jobs SET status=?,result=?,updated=? WHERE id=?",
-                   (result["status"], canonical(result), time.time(), run_id))
-        task_key = "provider:" + run_id + (":recovery:" + str(lease.generation) if lease is not None and lease.generation > 1 else "")
-        task_id = hashlib.sha256(canonical([owner, task_key]).encode()).hexdigest()
-        if lease is not None and lease.generation > 1:
-            tasks.bind(owner, owner, key=task_key, transport="provider-recovery", _db=db)
-        archive_result(db, run_id, lease.generation if lease is not None else 0, result)
-        tasks.emit(owner, task_id, result["status"], key="terminal",
-                   detail=canonical(result).encode()[:15000].decode("utf-8", errors="ignore"),
-                   reply_recipient=reply_recipient, _db=db)
-        if lease is not None:
-            db.execute("UPDATE provider_worker_leases SET state='finished' WHERE run_id=? AND generation=? AND token=?",
-                       (run_id, lease.generation, lease.token))
-        from neurath.providers.waves import on_terminal
-        on_terminal(store, db, run_id, result)
-    return result
+    from neurath.providers.waves import on_terminal
+
+    return journal_finish(store, run_id, result, lease, bind_executor=bind_executor,
+                          on_terminal=on_terminal, db=_db, tasks=_tasks)
 
 
 class Cancelled(Exception):
@@ -299,32 +257,8 @@ def _worker(root, run_id, store, lease, *, recovery=False):
     endpoint = control / "control.sock"
     connection = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
     receiver = None
-    sequence = 0
-    def observed(state, detail):
-        nonlocal sequence
-        sequence += 1
-        with store.connection() as db:
-            lease.assert_current(db)
-            if state == "native-created":
-                observe_created(store, lease, detail["created"], db)
-                previous = db.execute("SELECT result FROM provider_jobs WHERE id=?", (run_id,)).fetchone()[0]
-                partial = json.loads(previous) if previous else {}
-                partial.update(detail)
-                partial["worker_generation"] = lease.generation
-                db.execute("UPDATE provider_jobs SET result=?,updated=? WHERE id=?", (canonical(partial), time.time(), run_id))
-                return
-            current = db.execute("SELECT * FROM provider_jobs WHERE id=?", (run_id,)).fetchone()
-            partial = json.loads(current["result"]) if current["result"] else {}
-            reply_recipient = bind_executor(store, current, partial, lease, db)
-            if state == 'assignment-ready':
-                if (reply_recipient is None or detail.get('assignment_digest') !=
-                        hashlib.sha256(fields['assignment'].encode()).hexdigest()):
-                    raise ValueError('prepared assignment lacks its owned native recipient or exact request')
-                return  # A readback route, not another task, message or completion event.
-            tasks.emit(owner, task_id, state, key=f"event:{sequence}",
-                       detail=canonical(detail).encode()[:15000].decode("utf-8", errors="ignore"),
-                       reply_recipient=reply_recipient, _db=db)
-            db.execute("UPDATE provider_jobs SET status=?,updated=? WHERE id=?", (state, time.time(), run_id))
+    observed = JobEvents(store, lease, owner, task_id, fields['assignment'],
+                         bind_executor=bind_executor, observe_created=observe_created)
     try:
         connection.bind(str(endpoint))
         endpoint.chmod(0o600)

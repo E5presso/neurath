@@ -47,7 +47,7 @@ def definitions():
 
 
 def _handle(root, identity, expected_turn, context):
-    from neurath.memory.store import canonical
+    from neurath.serialization import canonical
     from neurath.runtime.engine import activate
     from neurath.runtime.task_schema import TaskError
 
@@ -60,8 +60,8 @@ def _handle(root, identity, expected_turn, context):
     )
     from scripts.agent_harness.state_handle import RuntimeIdentityBinding, StateHandle
 
-    from neurath.agents.hooks import participation
-    from neurath.agents.mcp import _prompt_receipt
+    from neurath.hosts.context import participation
+    from neurath.hosts.context import prompt_receipt as _prompt_receipt
     from neurath.hosts.identity import _state, active_connection
 
     if identity is None or expected_turn is None:
@@ -245,7 +245,7 @@ def _expectations(root, worktree, fields, original=None):
 def _reserve_key(root, identity, name, fields):
     """A key fixes the input; interruption leaves the typed engine operation replayable."""
     from neurath.agents.store import MessageStore
-    from neurath.memory.store import canonical
+    from neurath.serialization import canonical
     from neurath.runtime.task_schema import TaskError
 
     request = canonical({"worktree": str(root), "input": fields})

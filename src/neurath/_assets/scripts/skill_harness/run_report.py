@@ -13,13 +13,8 @@ VALID_PHASE_STATUSES = {"completed", "skipped", "blocked", "failed"}
 
 
 class SkillRunReportValidator:
-    """skill run report validator 관련 설정과 검증 조건을 함께 표현합니다."""
 
     def __init__(self, root: Path) -> None:
-        """SkillRunReportValidator 인스턴스가 skill contract와 phase runner enforcement 처리에 사용할 collaborator와 초기 상태를 보관합니다.
-
-        Args:
-            root: 호출자가 넘긴 root 값입니다."""
         self._root = root.resolve()
 
     def validate(self, report_path: Path) -> list[Violation]:
@@ -184,16 +179,8 @@ class SkillRunReportValidator:
 
 
 class SkillRunReportApplication:
-    """skill run report application 관련 설정과 검증 조건을 함께 표현합니다."""
 
     def run(self, raw_args: list[str] | None = None) -> int:
-        """입력값을 해석해 해당 경계의 처리 결과를 만듭니다.
-
-        Args:
-            raw_args: 호출자가 넘긴 raw args 값입니다.
-
-        Returns:
-            run 처리 결과입니다."""
         parser = argparse.ArgumentParser(
             description="Validate an Neurath deterministic skill run report."
         )

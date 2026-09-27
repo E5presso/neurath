@@ -2,8 +2,8 @@
 
 import json
 
-from neurath.agents.store import bounded
-from neurath.memory.store import canonical
+from neurath.agents.contracts import bounded
+from neurath.serialization import canonical
 
 
 def schema(db):

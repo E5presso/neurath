@@ -27,7 +27,7 @@ def execute(root, name, fields, *, identity, expected_turn, verified_policy_evid
     from scripts.agent_harness.session_kernel import SessionLocator
     from neurath.runtime.state_tasks import _handle
     from neurath.runtime.workflow_tasks import _guarded_handle, _request, _save
-    from neurath.runtime.tasks import _mcp_execution_policy
+    from neurath.runtime.admission import _mcp_execution_policy
     bound = _handle(root, identity, expected_turn, verified_policy_evidence)
     control_root = SessionLocator.from_worktree(root).control_root if name == "worktree_cleanup" else None
     result_store = MessageStore(root)

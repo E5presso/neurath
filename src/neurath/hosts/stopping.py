@@ -71,7 +71,7 @@ def _admission(root, host, request, environment):
 
 def dispatch_stop(root, host, request, run, environment=None):
     """Preserve a current turn's blocking denial; acknowledge superseded events."""
-    from neurath.memory.store import clean
+    from neurath.redaction import clean
 
     current = None
     try:

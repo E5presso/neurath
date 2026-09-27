@@ -78,7 +78,7 @@ EXECUTION = {"verification_nodes", "verification_builtin", "incident_resolve", "
 def execute(root, name, fields, *, identity, expected_turn, verified_policy_evidence):
     from neurath.runtime.state_tasks import _handle
     from neurath.runtime.workflow_tasks import _guarded_handle, _request, _save
-    from neurath.runtime.tasks import _mcp_execution_policy, _verification_owner
+    from neurath.runtime.admission import _mcp_execution_policy, _verification_owner
     handle = _guarded_handle(root, _handle(root, identity, expected_turn, verified_policy_evidence),
                              identity, expected_turn, verified_policy_evidence)
     if name in EXECUTION:
@@ -148,7 +148,7 @@ def _dispatch(root, name, fields, handle):
         try:
             return dict(VerificationRunner(root).run(request).to_payload())
         except (VerificationExecutionFailed, VerificationWorktreeChanged) as error:
-            from neurath.memory.store import clean
+            from neurath.redaction import clean
             result = dict(error.to_payload())
             if "diagnostic_tail" in result:
                 result["diagnostic_tail"] = clean(result["diagnostic_tail"])[-8192:]

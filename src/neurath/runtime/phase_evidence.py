@@ -9,7 +9,7 @@ import subprocess
 from pathlib import Path
 
 from neurath.agents.store import MessageStore
-from neurath.memory.store import canonical
+from neurath.serialization import canonical
 from neurath.resources import distribution_id
 
 GIT_LABELS = ("git_status", "staged_files", "clean_tree", "commit_sha", "branch_name", "worktree_absolute_path",

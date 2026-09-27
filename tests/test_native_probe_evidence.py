@@ -5,6 +5,8 @@ import importlib.util
 
 import pytest
 
+pytestmark = pytest.mark.fast
+
 spec = importlib.util.spec_from_file_location(
     "stock_provider_probe", Path(__file__).parents[1] / "tools/native_wave_probe.py")
 probe = importlib.util.module_from_spec(spec)

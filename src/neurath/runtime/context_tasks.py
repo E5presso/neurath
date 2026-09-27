@@ -45,7 +45,7 @@ def execute(root, name, fields, *, identity, expected_turn, verified_policy_evid
     handle = _guarded_handle(root, _handle(root, identity, expected_turn, verified_policy_evidence),
                              identity, expected_turn, verified_policy_evidence)
     if name == "diagnostics_project" and fields["protocol"]:
-        from neurath.runtime.tasks import _mcp_execution_policy, _verification_owner
+        from neurath.runtime.admission import _mcp_execution_policy, _verification_owner
         _verification_owner(root, identity)
         _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence)
     if "key" in fields:

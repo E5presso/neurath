@@ -33,6 +33,32 @@ The current package requires Python `>=3.14,<3.15` and declares `claude-agent-sd
 
 The check runs distribution integrity, Ruff's `E4,E7,E9,F` diagnostics, all package tests distributed across up to eight `pytest-xdist` workers by case, and standalone runtime regressions with the same worker limit. It stops at the first failure and prints `NEURATH_CHECK_OK` only after every stage passes. Tests that repeat the same guard through independent parameter combinations have been reduced; distinct security and lifecycle boundaries remain covered. Record the candidate and real command result; an old marker or historical test count is not evidence for a changed candidate.
 
+### Select the smallest relevant test layer during development
+
+The default command above always runs both complete test corpora. These explicit subsets shorten local feedback and print `NEURATH_PARTIAL_CHECK_OK`, never the full-check marker:
+
+```sh
+uv run --locked python tools/check.py --suite fast
+uv run --locked python tools/check.py --suite package
+uv run --locked python tools/check.py --suite runtime
+uv run --locked python tools/run_core_regressions.py --workers 0 scripts/agent_harness/tests/test_tool_action_parser.py
+```
+
+The `fast` marker selects deterministic contract cases that need no installation, host process, or model startup. It is an intentionally bounded subset, not a claim that every remaining case is slow. Initially it covers schema array bounds, native evidence rejection, stock provider batch evidence, and the check runner's failure/partial-result contract. New domain tests may use the marker when they meet the same boundary. Fast runs default to serial execution so worker startup does not dominate; other suites keep up to eight workers. `--workers 0` makes either runner serial for reproducible focused measurements.
+
+| Contract area | Package tests and fixture boundary | Additional evidence |
+| --- | --- | --- |
+| Installation, setup, projection, updates | Real disposable Git repositories, managed files, conflicts, rollback, and bootstrap subprocesses. | Built-wheel and source-bootstrap validators. |
+| Host identity, policy, ownership, task/workflow admission | Simulated host records and real local persistence; cross-host, stale-turn, foreign-owner, and denied-input cases stay distinct. | Actual supported host events for activation claims. |
+| Providers, delivery, jobs, models, and recovery | Injected transport boundaries plus targeted real subprocess/death/lease cases; preserve send, acknowledgement, consumption, and cancellation differences. | Bounded native provider scenario for the changed behavior. |
+| Memory, reporting, newsroom, and local state | Real Git/SQLite state where isolation or durability matters; installation only when a case reads projected assets or invokes an installed entrypoint. | Native delivery or recovery observation when claimed. |
+| Packaged agent and skill runtime | Standalone disposable checkout containing owned assets and both runtime test corpora. | Package independence and the affected host integration. |
+| Public documentation, schemas, names, and evidence parsers | File/structure checks and pure accepted/rejected payload cases. | Locale/link checks and exact native evidence input when publishing a claim. |
+
+Choose a fixture for the behavior under test. For example, reporting privacy, immutable approval, revocation, deduplication, concurrent send, and corruption tests need a Git repository and real state store, but not an installation before each assertion. Reporting tests that inspect projected skills or launch the installed hook/CLI retain a full installation. The repeated setup consent test also retains its actual setup transitions. This removes duplicate preparation, not distinct failure cases or security assertions. Never share mutable consent, claims, sessions, or databases across tests to save setup time.
+
+Both runners print slow-case durations. Compare the same selectors, interpreter, worker count, and candidate before and after a change; profiled timing has instrumentation overhead and should not be compared directly with ordinary pytest time. A full run remains required after the integrated source is stable. Actual-host probes run separately and must not be inferred from a fast or full source-check marker.
+
 When executable assets changed, regenerate the manifest before the check:
 
 ```sh

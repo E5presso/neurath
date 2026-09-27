@@ -6,7 +6,7 @@ import tempfile
 import uuid
 from pathlib import Path
 
-from neurath.install.transaction import InstallError, git_dir
+from neurath.install.file_values import InstallError, git_dir
 
 
 def write_plan(root, value, output=None):

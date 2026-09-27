@@ -3,7 +3,8 @@ import hashlib
 import json
 from pathlib import Path
 
-from neurath.memory.store import ProjectMemory, canonical
+from neurath.memory.store import ProjectMemory
+from neurath.serialization import canonical
 
 RESPONSE_BYTES = 8000
 READ_CHARACTERS = 3000

@@ -73,7 +73,7 @@ def test_native_batch_is_atomic_and_unfinished_runs_block_task_success(sessions,
     task_id = defined["tasks"][0]["id"]
     call(sessions, "task_start", {"task_id": task_id, "expected_revision": 1,
         "expected_task_revision": 1, "key": "start"})
-    monkeypatch.setattr("neurath.runtime.tasks._mcp_execution_policy", lambda *a: None)
+    monkeypatch.setattr("neurath.runtime.admission._mcp_execution_policy", lambda *a: None)
     monkeypatch.setattr("neurath.runtime.model_tasks.observed_policy", lambda *a: {})
     monkeypatch.setattr(jobs, "validate_target", lambda *a: root)
     launches = []

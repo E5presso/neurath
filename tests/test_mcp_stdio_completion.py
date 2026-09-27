@@ -43,7 +43,7 @@ def test_stdio_reserves_stdout_for_protocol_frames(monkeypatch, tmp_path):
 
 def test_adaptive_reference_uses_the_real_phase_parser_delimiter(monkeypatch):
     from neurath.runtime import workflow_tasks
-    from scripts.skill_harness.phase_runner import PhaseRunner
+    from scripts.skill_harness.phase_evidence_validation import PhaseEvidenceValidator
 
     receipt = {"kind": "adaptive-control-decision", "workflow_revision": 3}
     snapshot = SimpleNamespace(receipt=lambda: SimpleNamespace(to_evidence=lambda: receipt))
@@ -55,7 +55,7 @@ def test_adaptive_reference_uses_the_real_phase_parser_delimiter(monkeypatch):
     observed = []
     readback = SimpleNamespace(contract_goal="scope")
     store = SimpleNamespace(verify_adaptive_control_evidence=lambda value: observed.append(value) or readback)
-    assert PhaseRunner(None)._adaptive_control_readback(
+    assert PhaseEvidenceValidator(Path("."))._adaptive_control_readback(
         "adaptive_control_initialized", actual, store, "scope"
     ) is readback
     assert observed == [receipt]

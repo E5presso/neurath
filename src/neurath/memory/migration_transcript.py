@@ -6,7 +6,10 @@ import os
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from neurath.memory.store import ProjectMemory, canonical, clean, control_root
+from neurath.memory.store import ProjectMemory
+from neurath.serialization import canonical
+from neurath.redaction import clean
+from neurath.project_paths import control_root
 
 
 def registered_path(value, host):

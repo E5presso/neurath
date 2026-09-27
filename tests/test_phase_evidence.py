@@ -34,9 +34,9 @@ def test_prepared_report_trailer_preserves_structured_phase_values(sessions, mon
     evidence = tuple(document['phase_evidence'])
     assert evidence[0].endswith(' [authority=agent-report]')
     runner = PhaseRunner(SkillContractRepository(root))
-    assert runner._evidence_item(evidence, label) == label + ': ' + value
+    assert runner._evidence._evidence_item(evidence, label) == label + ': ' + value
     if label != 'native_wave_receipt':
-        assert runner._autopilot_issue_set(evidence, label) == frozenset({96})
+        assert runner._evidence._autopilot_issue_set(evidence, label) == frozenset({96})
 
 
 def publication_fixture(sessions, monkeypatch):
@@ -68,7 +68,7 @@ def publication_fixture(sessions, monkeypatch):
     monkeypatch.setattr(SkillContractRepository, "get", get_contract)
     call(sessions, "worktree_claim", {})
     start(sessions, skill=contract.name)
-    monkeypatch.setattr("neurath.runtime.tasks._mcp_execution_policy", lambda *a, **k: None)
+    monkeypatch.setattr("neurath.runtime.admission._mcp_execution_policy", lambda *a, **k: None)
     head = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=root, check=True, capture_output=True, text=True
     ).stdout.strip()
@@ -154,7 +154,7 @@ def finish_session_committed_fixture(sessions, monkeypatch):
 
     call(sessions, "worktree_claim", {})
     start(sessions, skill="finish-session")
-    monkeypatch.setattr("neurath.runtime.tasks._mcp_execution_policy", lambda *a, **k: None)
+    monkeypatch.setattr("neurath.runtime.admission._mcp_execution_policy", lambda *a, **k: None)
     ready = prepare(sessions, ["git_status"], [
         {"label":"session_finish_approval", "text":
             "approved_by=user commit=true push=true graphify=true worktree_release=true"},
@@ -199,7 +199,7 @@ def finish_session_clean_fixture(sessions, monkeypatch):
 
     call(sessions, "worktree_claim", {})
     start(sessions, skill="finish-session")
-    monkeypatch.setattr("neurath.runtime.tasks._mcp_execution_policy", lambda *a, **k: None)
+    monkeypatch.setattr("neurath.runtime.admission._mcp_execution_policy", lambda *a, **k: None)
     ready = prepare(sessions, ["git_status"], [
         {"label":"session_finish_approval", "text":
             "approved_by=user commit=true push=true graphify=true worktree_release=true"},
@@ -384,7 +384,7 @@ def test_commit_phases_use_registered_git_evidence_without_cli(sessions, monkeyp
     call(sessions, "worktree_claim", {})
     task_id = define_task(sessions)
     start(sessions)
-    monkeypatch.setattr("neurath.runtime.tasks._mcp_execution_policy", lambda *a, **k: None)
+    monkeypatch.setattr("neurath.runtime.admission._mcp_execution_policy", lambda *a, **k: None)
     (root / "change.txt").write_text("approved change\n")
     evidence = prepare(sessions, ["git_status"], [{"label":"diff_review", "text":"Reviewed the intended change"}])
     first = call(sessions, "phase_complete", {"workflow_id":"phase", "expected_revision":0,
@@ -419,7 +419,7 @@ def test_notes_cannot_impersonate_reserved_evidence_or_smuggle_labels(sessions):
 def test_arbitrary_artifact_is_not_a_registered_phase_evidence_producer(sessions, monkeypatch):
     call(sessions,"worktree_claim",{})
     start(sessions)
-    monkeypatch.setattr("neurath.runtime.tasks._mcp_execution_policy",lambda *a,**k:None)
+    monkeypatch.setattr("neurath.runtime.admission._mcp_execution_policy",lambda *a,**k:None)
     artifact=call(sessions,"artifact_put",{"document":{"phase_evidence":["git_status: clean","diff_review: passed"]},"key":"forged"})
     with pytest.raises(ValueError, match="registered|evidence"):
         call(sessions,"phase_complete",{"workflow_id":"phase","expected_revision":0,"phase_id":1,
@@ -430,7 +430,7 @@ def test_registered_evidence_key_is_stable_and_source_change_is_rejected(session
     root,_=sessions
     call(sessions,"worktree_claim",{})
     start(sessions)
-    monkeypatch.setattr("neurath.runtime.tasks._mcp_execution_policy",lambda *a,**k:None)
+    monkeypatch.setattr("neurath.runtime.admission._mcp_execution_policy",lambda *a,**k:None)
     notes=[{"label":"diff_review","text":"Reviewed current files"}]
     original=prepare(sessions,["git_status"],notes)
     replay=call(sessions,"phase_evidence_prepare",{"workflow_id":"phase","expected_revision":0,
@@ -448,7 +448,7 @@ def test_registered_evidence_key_is_stable_and_source_change_is_rejected(session
 def test_pr_preparation_observes_an_unpublished_branch(sessions, monkeypatch):
     call(sessions,"worktree_claim",{})
     start(sessions,skill="create-pr")
-    monkeypatch.setattr("neurath.runtime.tasks._mcp_execution_policy",lambda *a,**k:None)
+    monkeypatch.setattr("neurath.runtime.admission._mcp_execution_policy",lambda *a,**k:None)
     evidence=prepare(sessions,["git_status","remote_branch"])
     result=call(sessions,"phase_complete",{"workflow_id":"phase","expected_revision":0,"phase_id":1,
         "status":"completed","summary":"Branch ready for publication","evidence_refs":[evidence["reference"]],"key":"prepared"})
@@ -458,7 +458,7 @@ def test_pr_preparation_observes_an_unpublished_branch(sessions, monkeypatch):
 def test_supplemental_label_does_not_replace_a_required_source(sessions, monkeypatch):
     call(sessions,"worktree_claim",{})
     start(sessions)
-    monkeypatch.setattr("neurath.runtime.tasks._mcp_execution_policy",lambda *a,**k:None)
+    monkeypatch.setattr("neurath.runtime.admission._mcp_execution_policy",lambda *a,**k:None)
     evidence=prepare(sessions,[],[{"label":"supplemental_git_status","text":"clean"},
         {"label":"diff_review","text":"reviewed"}])
     with pytest.raises(ValueError,match="exact structured entry"):

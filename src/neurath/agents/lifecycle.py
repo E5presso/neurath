@@ -9,11 +9,11 @@ import json
 import time
 from contextlib import nullcontext
 
-from neurath.agents.store import bounded
-from neurath.memory.store import canonical, clean
+from neurath.agents.contracts import bounded, STATES as STATES, TERMINAL as TERMINAL
+from neurath.serialization import canonical
+from neurath.redaction import clean
 
-TERMINAL = frozenset({"completed", "failed", "cancelled"})
-STATES = TERMINAL | {"assigned", "starting", "started", "waiting", "error", "disconnected"}
+
 
 
 class TaskLifecycle:

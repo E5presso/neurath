@@ -136,10 +136,10 @@ def test_launcher_reaps_its_exact_process_without_blocking_request(monkeypatch):
 
 
 def test_claude_native_writes_require_separate_worktree_target(monkeypatch):
-    from neurath.providers import execution
+    from neurath.providers import execution_target
 
     modes = []
-    monkeypatch.setattr(execution, "_target", lambda root, worktree, mode: modes.append(mode))
+    monkeypatch.setattr(execution_target, "target_worktree", lambda root, worktree, mode: modes.append(mode))
     fields = {"provider": "claude-code", "worktree": "/work", "mode": "native", "permission_mode": "dontAsk"}
     jobs.validate_target("/root", fields)
     jobs.validate_target("/root", {**fields, "permission_mode": "plan"})

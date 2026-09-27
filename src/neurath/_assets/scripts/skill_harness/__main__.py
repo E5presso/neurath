@@ -10,13 +10,8 @@ ROOT = __import__("scripts._neurath_paths", fromlist=["target_root"]).target_roo
 
 
 class SkillHarnessApplication:
-    """skill harness application 관련 설정과 검증 조건을 함께 표현합니다."""
 
     def run(self) -> int:
-        """입력값을 해석해 해당 경계의 처리 결과를 만듭니다.
-
-        Returns:
-            run 처리 결과입니다."""
         violations = SkillHarnessChecker(ROOT).check()
         if violations:
             for violation in violations:

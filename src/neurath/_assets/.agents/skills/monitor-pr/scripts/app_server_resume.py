@@ -1,19 +1,14 @@
 """PR monitor가 Codex app-server와 GitHub 상태를 연결하는 실행 흐름입니다."""
 
 import argparse
-import fcntl
-from contextlib import contextmanager
-import base64
 import ctypes
 import ctypes.util
-import hashlib
 import json
 import os
 import shlex
 import shutil
 import signal
 import socket
-import struct
 import subprocess
 from subprocess import Popen
 from time import time as _wall_time
@@ -21,17 +16,32 @@ import sys
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, Self
+from typing import Any
 
 from monitor_runtime_resources import MonitorRuntimeResources
-from scripts.agent_harness.runtime_database import RuntimeDatabase, StoredRecord
-from scripts.agent_harness.session_kernel import SessionLocator
 
-APP_SERVER_NAMESPACE = "managed-app-server"
+from managed_app_server_store import APP_SERVER_NAMESPACE as APP_SERVER_NAMESPACE
 
-GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+from app_server_transport import GUID as GUID
 TURN_LIST_READ_ERRORS = (RuntimeError, TimeoutError, TypeError, IndexError)
 
+
+from managed_app_server_store import (
+    managed_app_server_pid_path as managed_app_server_pid_path,
+    _canonical as _canonical,
+    _decode_managed_record as _decode_managed_record,
+    _legacy_managed_record as _legacy_managed_record,
+    _managed_app_server_lifecycle as _managed_app_server_lifecycle,
+    _managed_record_locked as _managed_record_locked,
+    _write_managed_record_locked as _write_managed_record_locked,
+    _read_managed_identity_locked as _read_managed_identity_locked,
+    write_managed_app_server_receipt as write_managed_app_server_receipt,
+    read_managed_app_server_identity as read_managed_app_server_identity,
+    managed_app_server_receipt_exists as managed_app_server_receipt_exists,
+)
+from app_server_transport import (
+    AppServerClient as AppServerClient,
+)
 
 class AppServerResumeApplication:
     """Runtime-owned session과 Git-derived worktree를 app-server options에 결속합니다."""
@@ -98,163 +108,6 @@ def monitor_delivery_marker(claim_id: str, event_id: str) -> str:
     if not claim_id or not event_id:
         raise ValueError("monitor delivery marker requires claim and event identity")
     return f'<!-- neurath-monitor-delivery claim_id="{claim_id}" event_id="{event_id}" -->'
-
-
-class AppServerClient:
-    """PR monitor가 GitHub comment, check, review snapshot을 Codex resume 요청으로 변환하는 흐름을 캡슐화합니다."""
-
-    def __init__(self, socket_path: Path) -> None:
-        """PR monitor resume 요청과 app-server 응답을 실제 Codex turn 상태로 변환합니다.
-
-        Args:
-            socket_path: socket_path 입력을 monitor resume 요청을 만들거나 monitor state를 갱신할 때 사용합니다."""
-        self._socket_path = socket_path
-        self._socket: socket.socket | None = None
-        self._next_id = 1
-
-    def __enter__(self) -> Self:
-        """PR monitor resume 요청과 app-server 응답을 실제 Codex turn 상태로 변환합니다.
-
-        Returns:
-            monitor가 저장하거나 read-back할 resume 결과를 반환합니다."""
-        self._socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self._socket.settimeout(30)
-        self._socket.connect(str(self._socket_path))
-        self._handshake()
-        return self
-
-    def __exit__(self, *_exc: object) -> None:
-        """PR monitor resume 요청과 app-server 응답을 실제 Codex turn 상태로 변환합니다."""
-        if self._socket is not None:
-            self._socket.close()
-
-    def request(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
-        """PR monitor resume 요청과 app-server 응답을 실제 Codex turn 상태로 변환합니다.
-
-        Args:
-            method: method 입력을 monitor resume 요청을 만들거나 monitor state를 갱신할 때 사용합니다.
-            params: params 입력을 monitor resume 요청을 만들거나 monitor state를 갱신할 때 사용합니다.
-
-        Returns:
-            monitor가 저장하거나 read-back할 resume 결과를 반환합니다.
-
-        Raises:
-            선언된 실패 조건에서 예외를 발생시킵니다."""
-        request_id = self._next_id
-        self._next_id += 1
-        self._send_json({"id": request_id, "method": method, "params": params})
-        while True:
-            message = self._receive_json()
-            if message.get("id") == request_id:
-                if "error" in message:
-                    raise RuntimeError(json.dumps(message["error"], ensure_ascii=False))
-                result = message.get("result", {})
-                return result if isinstance(result, dict) else {"result": result}
-
-    def notify(self, method: str, params: dict[str, Any]) -> None:
-        """PR monitor resume 요청과 app-server 응답을 실제 Codex turn 상태로 변환합니다.
-
-        Args:
-            method: method 입력을 monitor resume 요청을 만들거나 monitor state를 갱신할 때 사용합니다.
-            params: params 입력을 monitor resume 요청을 만들거나 monitor state를 갱신할 때 사용합니다."""
-        self._send_json({"method": method, "params": params})
-
-    def receive_message(self, timeout_seconds: float) -> dict[str, Any]:
-        """PR monitor resume 요청과 app-server 응답을 실제 Codex turn 상태로 변환합니다.
-
-        Args:
-            timeout_seconds: timeout_seconds 입력을 monitor resume 요청을 만들거나 monitor state를 갱신할 때 사용합니다.
-
-        Returns:
-            monitor가 저장하거나 read-back할 resume 결과를 반환합니다.
-
-        Raises:
-            선언된 실패 조건에서 예외를 발생시킵니다."""
-        if self._socket is None:
-            raise RuntimeError("socket is not connected")
-        previous_timeout = self._socket.gettimeout()
-        self._socket.settimeout(timeout_seconds)
-        try:
-            return self._receive_json()
-        finally:
-            self._socket.settimeout(previous_timeout)
-
-    def _handshake(self) -> None:
-        key = base64.b64encode(os.urandom(16)).decode("ascii")
-        request = (
-            "GET / HTTP/1.1\r\n"
-            "Host: localhost\r\n"
-            "Upgrade: websocket\r\n"
-            "Connection: Upgrade\r\n"
-            f"Sec-WebSocket-Key: {key}\r\n"
-            "Sec-WebSocket-Version: 13\r\n"
-            "\r\n"
-        ).encode("ascii")
-        self._raw_send(request)
-        response = self._raw_recv_until(b"\r\n\r\n")
-        accept = base64.b64encode(hashlib.sha1((key + GUID).encode("ascii")).digest())
-        if b"101 Switching Protocols" not in response or accept not in response:
-            raise RuntimeError(response.decode("utf-8", errors="replace"))
-
-    def _send_json(self, payload: dict[str, Any]) -> None:
-        data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
-        mask = os.urandom(4)
-        header = bytearray([0x81])
-        length = len(data)
-        if length < 126:
-            header.append(0x80 | length)
-        elif length < 65536:
-            header.extend((0x80 | 126, *struct.pack("!H", length)))
-        else:
-            header.extend((0x80 | 127, *struct.pack("!Q", length)))
-        header.extend(mask)
-        masked = bytes(byte ^ mask[index % 4] for index, byte in enumerate(data))
-        self._raw_send(bytes(header) + masked)
-
-    def _receive_json(self) -> dict[str, Any]:
-        while True:
-            first, second = self._raw_recv_exact(2)
-            opcode = first & 0x0F
-            length = second & 0x7F
-            if length == 126:
-                length = struct.unpack("!H", self._raw_recv_exact(2))[0]
-            elif length == 127:
-                length = struct.unpack("!Q", self._raw_recv_exact(8))[0]
-            data = self._raw_recv_exact(length)
-            if opcode == 0x8:
-                raise RuntimeError("app-server websocket closed")
-            if opcode == 0x1:
-                decoded = json.loads(data.decode("utf-8"))
-                return decoded if isinstance(decoded, dict) else {"result": decoded}
-
-    def _raw_send(self, data: bytes) -> None:
-        if self._socket is None:
-            raise RuntimeError("socket is not connected")
-        self._socket.sendall(data)
-
-    def _raw_recv_exact(self, length: int) -> bytes:
-        chunks: list[bytes] = []
-        remaining = length
-        while remaining:
-            if self._socket is None:
-                raise RuntimeError("socket is not connected")
-            chunk = self._socket.recv(remaining)
-            if not chunk:
-                raise RuntimeError("app-server socket closed")
-            chunks.append(chunk)
-            remaining -= len(chunk)
-        return b"".join(chunks)
-
-    def _raw_recv_until(self, marker: bytes) -> bytes:
-        data = bytearray()
-        while marker not in data:
-            if self._socket is None:
-                raise RuntimeError("socket is not connected")
-            chunk = self._socket.recv(4096)
-            if not chunk:
-                raise RuntimeError("app-server socket closed")
-            data.extend(chunk)
-        return bytes(data)
 
 
 def default_socket_path(cwd: str) -> Path:
@@ -432,237 +285,6 @@ def _cleanup_managed_app_server_locked(
         )
 
 
-
-def managed_app_server_pid_path(socket_path: Path) -> Path:
-    """Worktree-local app-server process-group receipt 경로를 반환합니다.
-
-    Args:
-        socket_path: Managed app-server의 UNIX socket 경로입니다.
-
-    Returns:
-        같은 basename의 pid receipt 경로입니다.
-    """
-    return socket_path.with_suffix(".pid")
-
-
-def _canonical(value):
-    return json.dumps(
-        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    ).encode()
-
-
-def _decode_managed_record(record, socket_path):
-    try:
-        value = json.loads(record.payload)
-    except (TypeError, ValueError, UnicodeError) as error:
-        raise RuntimeError("managed app-server receipt is invalid in SQLite") from error
-    if not isinstance(value, dict):
-        raise RuntimeError("managed app-server receipt is invalid in SQLite")
-    status = value.get("status")
-    required = (
-        {"schema", "status", "socket_path"}
-        if status == "absent"
-        else {"schema", "status", "pid", "socket_path", "executable_path"}
-    )
-    allowed = required | {"legacy_digest"}
-    if (
-        not required <= set(value) <= allowed
-        or value.get("schema") != 1
-        or status not in {"active", "absent"}
-        or value.get("socket_path") != str(socket_path)
-        or ("legacy_digest" in value and (
-            not isinstance(value["legacy_digest"], str)
-            or len(value["legacy_digest"]) != 64
-            or any(character not in "0123456789abcdef"
-                   for character in value["legacy_digest"])
-        ))
-    ):
-        raise RuntimeError("managed app-server receipt identity mismatch")
-    if status == "active" and (
-        not isinstance(value.get("pid"), int)
-        or isinstance(value.get("pid"), bool)
-        or value["pid"] <= 1
-        or not isinstance(value.get("executable_path"), str)
-        or not value["executable_path"].strip()
-    ):
-        raise RuntimeError("managed app-server receipt identity mismatch")
-    return value
-
-
-def _legacy_managed_record(data, socket_path):
-    try:
-        value = json.loads(data)
-    except (TypeError, ValueError, UnicodeError) as error:
-        raise RuntimeError("legacy managed app-server receipt is invalid") from error
-    if (
-        not isinstance(value, dict)
-        or set(value) != {"pid", "socket_path", "executable_path"}
-        or not isinstance(value.get("pid"), int)
-        or isinstance(value.get("pid"), bool)
-        or value["pid"] <= 1
-        or value.get("socket_path") != str(socket_path)
-        or not isinstance(value.get("executable_path"), str)
-        or not value["executable_path"].strip()
-    ):
-        raise RuntimeError("legacy managed app-server receipt identity mismatch")
-    return {
-        "schema": 1,
-        "status": "active",
-        "pid": value["pid"],
-        "socket_path": str(socket_path),
-        "executable_path": str(Path(value["executable_path"]).resolve()),
-        "legacy_digest": hashlib.sha256(data).hexdigest(),
-    }
-
-
-@contextmanager
-def _managed_app_server_lifecycle(socket_path):
-    supplied = Path(socket_path).absolute()
-    worktree = supplied.parent.parent.resolve()
-    canonical_socket = worktree / ".monitor-pr/app-server.sock"
-    if (
-        supplied != canonical_socket
-        or supplied.parent.is_symlink()
-        or not worktree.is_dir()
-    ):
-        raise RuntimeError("managed app-server socket path is not canonical")
-    locator = SessionLocator.from_worktree(worktree)
-    supplied.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = supplied.parent / ".app-server.lifecycle.lock"
-    if lock_path.is_symlink():
-        raise RuntimeError("managed app-server lifecycle lock must not be a symlink")
-    descriptor = os.open(
-        lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(descriptor, "a+") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        yield RuntimeDatabase(locator.control_root), str(worktree), canonical_socket
-
-
-def _managed_record_locked(database, key, socket_path):
-    legacy_path = managed_app_server_pid_path(socket_path)
-    if legacy_path.is_symlink():
-        raise RuntimeError(
-            "legacy managed app-server receipt must not be a symlink")
-    with database.transaction() as tx:
-        record = tx.get(APP_SERVER_NAMESPACE, key)
-    if record is None:
-        if legacy_path.exists() and not legacy_path.is_file():
-            raise RuntimeError(
-                "legacy managed app-server receipt must be a regular file")
-        data = legacy_path.read_bytes() if legacy_path.is_file() else None
-        value = (
-            {
-                "schema": 1,
-                "status": "absent",
-                "socket_path": str(socket_path),
-            }
-            if data is None
-            else _legacy_managed_record(data, socket_path)
-        )
-        with database.transaction() as tx:
-            record = tx.put(
-                APP_SERVER_NAMESPACE, key, _canonical(value),
-                expected_revision=None)
-    value = _decode_managed_record(record, socket_path)
-    legacy_digest = value.get("legacy_digest")
-    if legacy_digest is None:
-        if legacy_path.exists():
-            raise RuntimeError(
-                "legacy managed app-server receipt reappeared after cutover")
-        return record, value
-    if legacy_path.exists():
-        if (
-            not legacy_path.is_file()
-            or hashlib.sha256(legacy_path.read_bytes()).hexdigest()
-            != legacy_digest
-        ):
-            raise RuntimeError(
-                "legacy managed app-server receipt changed before removal")
-        legacy_path.unlink()
-    completed = dict(value)
-    del completed["legacy_digest"]
-    with database.transaction() as tx:
-        current = tx.get(APP_SERVER_NAMESPACE, key)
-        if current is None or current.revision != record.revision:
-            raise RuntimeError(
-                "managed app-server receipt changed during legacy cutover")
-        record = tx.put(
-            APP_SERVER_NAMESPACE, key, _canonical(completed),
-            expected_revision=current.revision)
-    return record, completed
-
-
-def _write_managed_record_locked(
-    database, key, socket_path, pid, codex_binary
-):
-    record, current = _managed_record_locked(database, key, socket_path)
-    if current["status"] != "absent":
-        raise RuntimeError("an active managed app-server receipt already exists")
-    value = {
-        "schema": 1,
-        "status": "active",
-        "pid": pid,
-        "socket_path": str(socket_path),
-        "executable_path": str(codex_binary.resolve()),
-    }
-    _decode_managed_record(
-        StoredRecord(record.revision, _canonical(value)), socket_path)
-    with database.transaction() as tx:
-        return tx.put(
-            APP_SERVER_NAMESPACE, key, _canonical(value),
-            expected_revision=record.revision)
-
-
-def _read_managed_identity_locked(database, key, socket_path):
-    record, value = _managed_record_locked(database, key, socket_path)
-    if value["status"] != "active":
-        raise RuntimeError("managed app-server receipt is absent")
-    return (
-        int(value["pid"]),
-        Path(str(value["executable_path"])).resolve(),
-        record,
-    )
-
-
-def write_managed_app_server_receipt(socket_path, pid, codex_binary):
-    with _managed_app_server_lifecycle(socket_path) as (
-        database, key, canonical_socket
-    ):
-        _write_managed_record_locked(
-            database, key, canonical_socket, pid, codex_binary)
-
-
-def read_managed_app_server_identity(socket_path):
-    with _managed_app_server_lifecycle(socket_path) as (
-        database, key, canonical_socket
-    ):
-        pid, executable, _record = _read_managed_identity_locked(
-            database, key, canonical_socket)
-        return pid, executable
-
-
-def managed_app_server_receipt_exists(socket_path):
-    with _managed_app_server_lifecycle(socket_path) as (
-        database, key, canonical_socket
-    ):
-        _record, value = _managed_record_locked(
-            database, key, canonical_socket)
-        return value["status"] == "active"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def managed_app_server_command_matches(
     pid: int,
     socket_path: Path,
@@ -793,9 +415,6 @@ def process_group_is_alive(process_group_id: int) -> bool:
     except PermissionError:
         return True
     return True
-
-
-
 
 
 def socket_accepts_connections(socket_path: Path) -> bool:

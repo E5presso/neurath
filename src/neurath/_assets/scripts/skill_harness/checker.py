@@ -1,28 +1,12 @@
 """Validate kit skill routing and phase/evidence contracts without target policies."""
-import json
 import re
 from pathlib import Path
 from scripts._neurath_paths import asset_path
 from scripts.harness_frontmatter import parse_markdown_frontmatter
 from scripts.skill_harness.violation import Violation
 
-CONTRACTS_PATH = Path(".agents/skills/contracts.json")
-REVIEW_CODE_ROWS = (
-    ("C01", "architecture-boundary", "critical"),
-    ("C02", "type-discipline", "warning"),
-    ("C03", "yagni", "warning"),
-    ("C04", "domain-boundary", "critical"),
-    ("C05", "naming", "warning"),
-    ("C06", "test-gate", "critical"),
-    ("C07", "readability", "warning"),
-    ("C08", "api-contract", "warning"),
-    ("C09", "persistence", "warning"),
-    ("C10", "transaction-integrity", "critical"),
-    ("C11", "pattern-consistency", "warning"),
-    ("C12", "defensive-helper", "warning"),
-    ("C13", "operations-consistency", "warning"),
-    ("C14", "spec-completeness", "critical"),
-)
+from scripts.skill_harness.phase_contracts import CONTRACTS_PATH as CONTRACTS_PATH, read_skill_contracts
+from scripts.skill_harness.review_contract import REVIEW_CODE_ROWS as REVIEW_CODE_ROWS
 
 RESOURCE_REFERENCE_PATTERN = re.compile(r"[\w./-]+\.md")
 STATEFUL_CONTROL_COMMAND_PATTERN = re.compile(
@@ -46,13 +30,7 @@ class SkillHarnessChecker:
         self._root = root.resolve()
 
     def _contracts(self, path):
-        parsed = json.loads(path.read_text())
-        if not isinstance(parsed, dict) or not isinstance(parsed.get("skills"), dict):
-            raise ValueError("contracts must define a skills object")
-        contracts = parsed["skills"]
-        if any(not isinstance(k, str) or not isinstance(v, dict) for k, v in contracts.items()):
-            raise ValueError("every skill contract must be a named object")
-        return contracts
+        return read_skill_contracts(path)
 
     def check(self):
         from scripts.agent_harness.checker import AgentHarnessChecker

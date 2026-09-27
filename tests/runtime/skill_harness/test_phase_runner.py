@@ -952,7 +952,7 @@ class PhaseRunnerApplicationTest(TestCase):
 
         failures = PhaseRunner(
             SkillContractRepository(Path.cwd())
-        )._adaptive_terminal_transition_failures("failed", store)
+        )._evidence._adaptive_terminal_transition_failures("failed", store)
 
         self.assertIn("adaptive_control_terminal.failure", failures)
 
@@ -2188,7 +2188,7 @@ class PhaseRunnerApplicationTest(TestCase):
 
         runner = PhaseRunner(SkillContractRepository(Path.cwd()))
 
-        failures = runner._monitoring_semantic_failures(evidence, {})
+        failures = runner._evidence._monitoring_semantic_failures(evidence, {})
 
         self.assertIn("live_terminal_readback.head_sha_mismatch", failures)
 
@@ -2197,7 +2197,7 @@ class PhaseRunnerApplicationTest(TestCase):
         evidence = self._monitoring_semantic_evidence(local_review_head="b" * 40)
 
         runner = PhaseRunner(SkillContractRepository(Path.cwd()))
-        failures = runner._monitoring_semantic_failures(evidence, {})
+        failures = runner._evidence._monitoring_semantic_failures(evidence, {})
 
         self.assertIn("local_review_head_sha.remote_head_mismatch", failures)
 
@@ -2215,7 +2215,7 @@ class PhaseRunnerApplicationTest(TestCase):
         )
 
         runner = PhaseRunner(SkillContractRepository(Path.cwd()))
-        failures = runner._publication_semantic_failures(evidence)
+        failures = runner._evidence._publication_semantic_failures(evidence)
 
         self.assertIn("commit_sha.local_review_mismatch", failures)
 
@@ -2233,7 +2233,7 @@ class PhaseRunnerApplicationTest(TestCase):
         )
 
         runner = PhaseRunner(SkillContractRepository(Path.cwd()))
-        failures = runner._publication_semantic_failures(evidence)
+        failures = runner._evidence._publication_semantic_failures(evidence)
 
         self.assertIn("local_review_matrix_receipt.missing", failures)
 
@@ -2259,7 +2259,7 @@ class PhaseRunnerApplicationTest(TestCase):
 
         with TemporaryDirectory() as temporary_directory:
             runner = PhaseRunner(SkillContractRepository(Path(temporary_directory)))
-            failures = runner._publication_semantic_failures(evidence)
+            failures = runner._evidence._publication_semantic_failures(evidence)
 
         self.assertEqual([], failures)
 
@@ -2275,7 +2275,7 @@ class PhaseRunnerApplicationTest(TestCase):
         )
 
         runner = PhaseRunner(SkillContractRepository(Path.cwd()))
-        failures = runner._publication_semantic_failures(evidence)
+        failures = runner._evidence._publication_semantic_failures(evidence)
 
         self.assertIn("push_head_match.local_sha_mismatch", failures)
         self.assertIn("push_head_match.remote_sha_mismatch", failures)
@@ -2289,7 +2289,7 @@ class PhaseRunnerApplicationTest(TestCase):
             evidence = self._publication_evidence(fabricated_head)
 
             runner = PhaseRunner(SkillContractRepository(repository))
-            failures = runner._publication_semantic_failures(evidence)
+            failures = runner._evidence._publication_semantic_failures(evidence)
 
         self.assertIn("commit_sha.current_head", failures)
 
@@ -2301,7 +2301,7 @@ class PhaseRunnerApplicationTest(TestCase):
             evidence = self._publication_evidence(head)
 
             runner = PhaseRunner(SkillContractRepository(repository))
-            failures = runner._publication_semantic_failures(evidence)
+            failures = runner._evidence._publication_semantic_failures(evidence)
 
         self.assertIn("push_head_match.upstream_readback", failures)
 
@@ -2315,7 +2315,7 @@ class PhaseRunnerApplicationTest(TestCase):
             evidence = self._publication_evidence(head)
 
             runner = PhaseRunner(SkillContractRepository(repository))
-            failures = runner._publication_semantic_failures(evidence)
+            failures = runner._evidence._publication_semantic_failures(evidence)
 
         self.assertEqual([], failures)
 
@@ -2337,7 +2337,7 @@ class PhaseRunnerApplicationTest(TestCase):
             self._git(peer, "push", "origin", "develop")
 
             runner = PhaseRunner(SkillContractRepository(repository))
-            failures = runner._publication_semantic_failures(evidence)
+            failures = runner._evidence._publication_semantic_failures(evidence)
 
         self.assertIn("push_head_match.upstream_mismatch", failures)
 
@@ -2355,7 +2355,7 @@ class PhaseRunnerApplicationTest(TestCase):
             evidence = self._publication_evidence(head)
 
             runner = PhaseRunner(SkillContractRepository(repository))
-            failures = runner._publication_semantic_failures(evidence)
+            failures = runner._evidence._publication_semantic_failures(evidence)
 
         self.assertIn("push_head_match.upstream_mismatch", failures)
 
@@ -2366,7 +2366,7 @@ class PhaseRunnerApplicationTest(TestCase):
             evidence = self._monitoring_semantic_evidence()
 
             runner = PhaseRunner(SkillContractRepository(root))
-            failures = runner._monitoring_semantic_failures(evidence, {})
+            failures = runner._evidence._monitoring_semantic_failures(evidence, {})
 
         self.assertIn("monitor_event_source.subscription_readback", failures)
 
@@ -2378,7 +2378,7 @@ class PhaseRunnerApplicationTest(TestCase):
             evidence = self._monitoring_semantic_evidence()
 
             runner = PhaseRunner(SkillContractRepository(root))
-            failures = runner._monitoring_semantic_failures(evidence, skill_state)
+            failures = runner._evidence._monitoring_semantic_failures(evidence, skill_state)
 
         self.assertIn("monitor_event_source.runtime_id_mismatch", failures)
         self.assertIn("route_resume_contract.runtime_id_mismatch", failures)
@@ -2391,7 +2391,7 @@ class PhaseRunnerApplicationTest(TestCase):
             evidence = self._monitoring_semantic_evidence()
 
             runner = PhaseRunner(SkillContractRepository(root))
-            failures = runner._monitoring_semantic_failures(evidence, skill_state)
+            failures = runner._evidence._monitoring_semantic_failures(evidence, skill_state)
 
         self.assertEqual(
             [],
@@ -2405,7 +2405,7 @@ class PhaseRunnerApplicationTest(TestCase):
         )
 
         runner = PhaseRunner(SkillContractRepository(Path.cwd()))
-        failures = runner._completed_merge_cleanup_failures(evidence)
+        failures = runner._evidence._completed_merge_cleanup_failures(evidence)
 
         self.assertIn("process_state_merged.receipt", failures)
 
@@ -2419,7 +2419,7 @@ class PhaseRunnerApplicationTest(TestCase):
             )
 
             runner = PhaseRunner(SkillContractRepository(repository))
-            failures = runner._completed_merge_cleanup_failures(evidence)
+            failures = runner._evidence._completed_merge_cleanup_failures(evidence)
 
         self.assertIn("process_state_merged.merge_commit_readback", failures)
 
@@ -2433,7 +2433,7 @@ class PhaseRunnerApplicationTest(TestCase):
             )
 
             runner = PhaseRunner(SkillContractRepository(repository))
-            failures = runner._completed_merge_cleanup_failures(evidence)
+            failures = runner._evidence._completed_merge_cleanup_failures(evidence)
 
         self.assertEqual([], failures)
 
@@ -2548,7 +2548,7 @@ class PhaseRunnerApplicationTest(TestCase):
 
         runner = PhaseRunner(SkillContractRepository(Path.cwd()))
 
-        failures = runner._monitoring_semantic_failures(evidence, {})
+        failures = runner._evidence._monitoring_semantic_failures(evidence, {})
 
         self.assertIn("ai_review_head_sha.current_head", failures)
 
@@ -2564,7 +2564,7 @@ class PhaseRunnerApplicationTest(TestCase):
                     live_state=live_state,
                 )
 
-                failures = runner._monitoring_semantic_failures(evidence, {})
+                failures = runner._evidence._monitoring_semantic_failures(evidence, {})
 
                 self.assertNotIn("live_terminal_readback.reason", failures)
                 self.assertNotIn("live_terminal_readback.state", failures)
@@ -2581,7 +2581,7 @@ class PhaseRunnerApplicationTest(TestCase):
                     live_state=live_state,
                 )
 
-                failures = runner._monitoring_semantic_failures(evidence, {})
+                failures = runner._evidence._monitoring_semantic_failures(evidence, {})
 
                 self.assertIn("live_terminal_readback.state", failures)
 
@@ -2590,7 +2590,7 @@ class PhaseRunnerApplicationTest(TestCase):
             live_reason="closed-without-merge",
             live_state="MERGED",
         )
-        failures = runner._monitoring_semantic_failures(reason_mismatch, {})
+        failures = runner._evidence._monitoring_semantic_failures(reason_mismatch, {})
         self.assertIn("live_terminal_readback.reason", failures)
 
     @staticmethod
@@ -3938,12 +3938,12 @@ class PhaseRunnerApplicationTest(TestCase):
         with PhaseRunnerFixture() as fixture:
             fixture.write(".gitignore", ".agents/runs/\ngenerated/\n")
             runner = PhaseRunner(SkillContractRepository(fixture.root))
-            baseline = runner._repository_worktree_sha()
+            baseline = runner._evidence._repository.worktree_sha()
 
             fixture.write("generated/cache.json", '{"ephemeral": true}\n')
-            ignored_artifact = runner._repository_worktree_sha()
+            ignored_artifact = runner._evidence._repository.worktree_sha()
             fixture.write("scripts/relevant_untracked.py", "VALUE = 1\n")
-            relevant_source = runner._repository_worktree_sha()
+            relevant_source = runner._evidence._repository.worktree_sha()
 
         self.assertRegex(baseline, r"^[0-9a-f]{64}$")
         self.assertEqual(baseline, ignored_artifact)
@@ -3959,13 +3959,13 @@ class PhaseRunnerApplicationTest(TestCase):
                 "def test_regression():\n    assert True\n",
             )
             runner = PhaseRunner(SkillContractRepository(fixture.root))
-            before = runner._repository_worktree_sha()
+            before = runner._evidence._repository.worktree_sha()
 
             with patch.dict(os.environ, {"PYTHONDONTWRITEBYTECODE": ""}):
-                returncode = runner._run_python_regression_node(
+                returncode = runner._evidence._repository.run_regression_node(
                     "scripts/tests/test_regression.py::test_regression"
                 )
-            after = runner._repository_worktree_sha()
+            after = runner._evidence._repository.worktree_sha()
 
         self.assertEqual(0, returncode)
         self.assertEqual(before, after)
@@ -6152,12 +6152,12 @@ class HarnessEvidenceIntegrityTest(TestCase):
                         "rows=A|B row_specs=A:owner:owned:write|B:child:owned:read "
                         f"row_count=2 decisions=A:deny|B:allow row_nodes={mapping}"
                     )
-                    failures = runner._acceptance_matrix_failures(matrix)
+                    failures = runner._evidence._acceptance_matrix_failures(matrix)
                     if mapping == valid:
                         self.assertEqual([], failures)
                         self.assertIn(
                             "acceptance_matrix.matrix_id",
-                            runner._acceptance_matrix_failures(
+                            runner._evidence._acceptance_matrix_failures(
                                 matrix.replace("::test_b", "::test_a")
                             ),
                         )
@@ -6182,7 +6182,7 @@ class HarnessEvidenceIntegrityTest(TestCase):
         for token, value in replacements.items():
             template = template.replace(token, value)
         repository = SkillContractRepository(root)
-        failures = PhaseRunner(repository)._pattern_failures(
+        failures = PhaseRunner(repository)._evidence._pattern_failures(
             repository.get("evaluate-harness").phases[0],
             ("source_capability_inventory: " + " ".join(template.split()),),
         )
@@ -6366,7 +6366,7 @@ class HarnessEvidenceIntegrityTest(TestCase):
                         )
                     failures = PhaseRunner(
                         SkillContractRepository(fixture.root)
-                    )._source_capability_inventory_failures(evidence)
+                    )._evidence._source_capability_inventory_failures(evidence)
                 if case in {"valid", "valid-gate"}:
                     self.assertEqual([], failures)
                 else:

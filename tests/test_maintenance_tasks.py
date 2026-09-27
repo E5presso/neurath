@@ -25,8 +25,8 @@ def test_user_decision_is_never_manufactured_by_mcp_boolean():
 def test_missing_identity_and_foreign_owner_reject_before_service(monkeypatch):
     with pytest.raises(ValueError, match="native"):
         m.run(".", "learning_pending", {}, identity=None)
-    from neurath.runtime import tasks
-    monkeypatch.setattr(tasks, "_verification_owner", lambda *a: (_ for _ in ()).throw(ValueError("owner")))
+    from neurath.runtime import admission
+    monkeypatch.setattr(admission, "_verification_owner", lambda *a: (_ for _ in ()).throw(ValueError("owner")))
     monkeypatch.setattr(m, "Updates", lambda *a: pytest.fail("service entered before ownership"))
     identity = SimpleNamespace(host="codex", session="native", address="codex:native", is_root=True)
     with pytest.raises(ValueError, match="owner"):

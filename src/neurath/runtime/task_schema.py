@@ -316,7 +316,7 @@ def arguments(name, inputs):
         if "messages" in inputs:
             if any(key in inputs for key in ("to", "message", "key", "kind")):
                 raise TaskError("invalid-input", "supply messages or legacy send fields, not both")
-            from neurath.agents.store import bulk_messages
+            from neurath.agents.contracts import bulk_messages
             try:
                 bulk_messages(result["messages"])
             except ValueError as error:

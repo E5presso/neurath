@@ -75,7 +75,7 @@ def test_provider_run_cli_and_mcp_share_results(sessions, monkeypatch, status):
     claim_fixture(root)
     native = mcp.AgentIdentity("codex", "api", "codex:session:api")
     monkeypatch.setattr("neurath.agents.identity.current_agent", lambda root: native)
-    monkeypatch.setattr("neurath.runtime.tasks._mcp_execution_policy", lambda *a: None)
+    monkeypatch.setattr("neurath.runtime.admission._mcp_execution_policy", lambda *a: None)
     # This adapter-parity fixture substitutes the separately tested admission
     # boundary, not the native-policy failure test above.
     monkeypatch.setattr("neurath.runtime.model_tasks.observed_policy", lambda *a: {})

@@ -4,6 +4,8 @@ import importlib.util
 from pathlib import Path
 import pytest
 
+pytestmark = pytest.mark.fast
+
 spec = importlib.util.spec_from_file_location(
     "native_evidence", Path(__file__).resolve().parents[1] / "tools/native_evidence.py"
 )

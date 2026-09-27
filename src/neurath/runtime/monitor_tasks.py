@@ -32,7 +32,7 @@ def definitions():
 def execute(root, name, fields, *, identity, expected_turn, verified_policy_evidence):
     from neurath.runtime.state_tasks import _handle
     from neurath.runtime.workflow_tasks import _guarded_handle, _request, _save
-    from neurath.runtime.tasks import _mcp_execution_policy, _verification_owner
+    from neurath.runtime.admission import _mcp_execution_policy, _verification_owner
     from neurath.runtime import monitor_runtime
     handle = _guarded_handle(root, _handle(root, identity, expected_turn, verified_policy_evidence),
                              identity, expected_turn, verified_policy_evidence)

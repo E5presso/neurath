@@ -76,3 +76,29 @@ def codex_completion_link(native_session: str, submission: dict, completed_turn:
             'submitted_turn': text(submission.get('native_turn'), 'submitted native turn', 1024),
             'completed_turn': text(completed_turn, 'completed native turn', 1024),
             'disposition': disposition}
+
+
+def implementation_completed(request: dict, result: dict, generation: int) -> bool:
+    """Require the first assignment generation and its provider-native completion proof."""
+    if generation != 1 or result.get('implementation_dispatched') is not True:
+        return False
+    created, completion = result.get('created'), result.get('completion')
+    if not isinstance(created, dict) or not isinstance(completion, dict) or not created.get('native_session'):
+        return False
+    provider = request.get('provider', 'codex')
+    if created.get('provider') != provider:
+        return False
+    if provider == 'codex':
+        try:
+            link = codex_completion_link(created['native_session'], result.get('submission'),
+                                         completion.get('id'), 'terminal')
+        except ValueError:
+            return False
+        return (result.get('completion_link') == link and result.get('execution') == 'native-turn-completed' and bool(completion.get('id'))
+                and completion.get('status') == 'completed' and completion.get('error') is None)
+    if provider == 'claude-code':
+        return (result.get('execution') == 'native-response-completed' and completion.get('subtype') == 'success'
+                and completion.get('is_error') is False and not completion.get('permission_denial_count')
+                and not completion.get('approval_pending')
+                and completion.get('native_session') == created['native_session'])
+    return False

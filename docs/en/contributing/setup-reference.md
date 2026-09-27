@@ -39,6 +39,8 @@ These capitalized values are placeholders, not usable references. Preserve a sta
 
 `installation_recover` takes `{"key":"installation-recover-1"}`. It reaches the conservative journal recovery service even when ordinary placement is degraded. `installation-recovery-required` directs the agent there; afterward inspect `diagnostics_project` and prepare anew. `plan-unavailable` indicates a reference not prepared for this actor/worktree; `plan-changed` indicates private plan content no longer matches its retained identity.
 
+The source checkout launcher bootstraps a missing installation only. Editing source or regenerating the manifest does not replace the running harness. After the source checks and build pass, run `./setup --self` explicitly and verify the updated host activation separately. Bootstrap failures return their original error without a polling delay.
+
 ## Native terminal forms for bootstrap and maintenance
 
 All four lifecycle actions share the same planning engine:

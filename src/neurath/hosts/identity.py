@@ -5,8 +5,6 @@ Native hook input, host transcript identity, foreground provenance and kernel CA
 are required together. Prompt text and caller-supplied actor IDs grant no authority.
 """
 
-import contextlib
-import fcntl
 import hashlib
 import json
 import os
@@ -17,135 +15,29 @@ import sys
 import time
 from pathlib import Path
 
+from neurath.hosts.journal import (
+    _database as _database,
+    _locator as _locator,
+    _state as _state,
+    _path as _path,
+    snapshot as snapshot,
+    _journal_exists as _journal_exists,
+    journal as journal,
+    _all_journals as _all_journals,
+)
+from neurath.hosts.transcript import (
+    _first_record as _first_record,
+    _independent_root_source as _independent_root_source,
+    _latest_codex_turn as _latest_codex_turn,
+    _reverse_native_lifecycle as _reverse_native_lifecycle,
+    _reverse_native_records as _reverse_native_records,
+    native_root_turn as native_root_turn,
+    _native_user_prompt as _native_user_prompt,
+    _native_context_refresh as _native_context_refresh,
+)
+
 SPAWN_TOOLS = {"Agent", "Task", "collaborationspawn_agent", "spawn_agent"}
 MARKER = re.compile(r"<neurath-spawn-ref>([a-f0-9]{48})</neurath-spawn-ref>")
-
-
-def _locator(root):
-    from scripts.agent_harness.session_kernel import SessionLocator
-
-    return SessionLocator.from_worktree(Path(root))
-
-
-def _state(root, session):
-    from scripts.agent_harness.session_kernel import SessionId, SessionKernel, SessionStatus
-
-    state = SessionKernel(_locator(root)).inspect(SessionId(session))
-    if state.session.status is not SessionStatus.ACTIVE:
-        raise ValueError("host identity requires an active session")
-    return state
-
-
-def _path(root, session):
-    from scripts.agent_harness.session_kernel import SessionId
-
-    return _locator(root).locate(SessionId(session)).directory / ".neurath-host.json"
-
-
-def _database(root):
-    from scripts.agent_harness.runtime_database import RuntimeDatabase
-    return RuntimeDatabase(_locator(root).control_root)
-
-
-def _host_data(record, session):
-    data = ({"session": session, "spawns": {}, "tools": {}} if record is None
-            else json.loads(record.payload))
-    if not isinstance(data, dict) or data.get("session") != session:
-        raise ValueError("host record belongs to a different session")
-    return data
-
-
-@contextlib.contextmanager
-def _journal_lock(root, session):
-    path = _path(root, session)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(str(path) + ".lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, "a+") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        yield path
-
-
-def _host_record(tx, path, session):
-    """Import exact legacy metadata under its existing journal mutex."""
-    record = tx.get("host-journal", session)
-    if record is None and path.is_file():
-        if path.is_symlink():
-            raise ValueError("host journal must not be a symlink")
-        content = path.read_bytes()
-        data = json.loads(content)
-        if not isinstance(data, dict) or data.get("session") != session:
-            raise ValueError("host record belongs to a different session")
-        record = tx.put("host-journal", session, content, expected_revision=None)
-        tx.connection.execute(
-            "UPDATE runtime_records SET legacy_path=?,legacy_digest=? WHERE namespace='host-journal' AND key=?",
-            (str(path), hashlib.sha256(content).hexdigest(), session))
-    return record
-
-
-def snapshot(root, session):
-    database = _database(root)
-    with database.transaction() as tx:
-        record = tx.get("host-journal", session)
-    if record is None and _path(root, session).is_file():
-        with _journal_lock(root, session) as path, database.transaction() as tx:
-            record = _host_record(tx, path, session)
-    return _host_data(record, session)
-
-
-def _journal_exists(root, session):
-    with _database(root).transaction() as tx:
-        if tx.get("host-journal", session) is not None:
-            return True
-    return _path(root, session).is_file()
-
-
-@contextlib.contextmanager
-def journal(root, session):
-    _state(root, session)
-    database = _database(root)
-    with _journal_lock(root, session) as path:
-        with database.transaction() as tx:
-            record = _host_record(tx, path, session)
-            data = _host_data(record, session)
-        yield data
-        if data.get("session") != session:
-            raise ValueError("host journal mutation changed session identity")
-        with database.transaction() as tx:
-            old = _host_data(record, session)
-            changed_scopes = [value["foreground"] for group in ("intents", "spawns")
-                for key, value in data.get(group, {}).items()
-                if value != old.get(group, {}).get(key)
-                and value.get("foreground", {}).get("task_scope") is not None]
-            changed_waves = [value for key, value in data.get("waves", {}).items()
-                             if value != old.get("waves", {}).get(key)]
-            if changed_scopes or changed_waves:
-                from scripts.agent_harness.session_kernel import SessionStateStore, SessionId
-                from scripts.agent_harness.task_service import validate_scoped_foreground
-                locator = _locator(root)
-                state = SessionStateStore(locator.locate(SessionId(session)).process_state).read_transaction(
-                    tx, SessionId(session))
-                for foreground in changed_scopes:
-                    validate_scoped_foreground(tx, state, foreground)
-                if changed_waves:
-                    from scripts.agent_harness.delegation_wave import validate_mutation
-                    for wave in changed_waves:
-                        validate_mutation(tx, state, wave)
-            tx.put("host-journal", session,
-                   json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(),
-                   expected_revision=None if record is None else record.revision)
-
-
-def _all_journals(root):
-    database = _database(root)
-    with database.transaction() as tx:
-        sessions = [row[0] for row in tx.connection.execute(
-            "SELECT key FROM runtime_records WHERE namespace='host-journal'")]
-        values = [_host_data(tx.get("host-journal", session), session) for session in sessions]
-    from scripts._neurath_paths import state_path
-    for path in state_path(_locator(root).control_root, "runs").glob("*/.neurath-host.json"):
-        if path.parent.name not in sessions:
-            values.append(snapshot(root, path.parent.name))
-    return values
 
 
 def host_storage(host, environment):
@@ -197,16 +89,6 @@ def _valid_record_foreground(root, state, record):
         return recorded == _foreground(state, root, task_scope=recorded.get("task_scope"))
     except (ValueError, KeyError, TypeError):
         return False
-
-
-def _independent_root_source(meta):
-    """App-created threads and forks are independent roots, not parent authority."""
-    if meta.get("thread_source") in (None, "user", "agent_created_thread"):
-        return True
-    return (meta.get("thread_source") == "agent_forked_thread"
-            and isinstance(meta.get("forked_from_id"), str)
-            and bool(meta["forked_from_id"].strip())
-            and meta["forked_from_id"] != meta.get("id"))
 
 
 def _validate_root_transcript(root, host, payload, path, data):
@@ -430,12 +312,6 @@ def spawn_hook(root, host, payload, environment):
                     "agent_id", response.get("agentId")
                 )
     return {}
-
-
-def _first_record(path):
-    with path.open() as stream:
-        line = stream.readline(1024 * 1024)
-    return json.loads(line)
 
 
 def attest_child(root, host, payload, environment):
@@ -869,80 +745,6 @@ def attach_delegation(root, host, payload):
     return intent["id"]
 
 
-def _latest_codex_turn(path):
-    """Find the current lifecycle beyond recall's tail budget, with bounded memory."""
-    ended = set()
-    for item in _reverse_native_lifecycle(path):
-        turn = item.get("turn_id")
-        if not isinstance(turn, str) or not turn:
-            continue
-        if item["type"] == "task_started":
-            return "" if turn in ended else turn
-        ended.add(turn)
-    return "" if ended else None
-
-
-def _reverse_native_lifecycle(path):
-    kinds = {"task_started", "task_complete", "task_completed", "turn_aborted"}
-    for event in _reverse_native_records(path, kinds):
-        item = event.get("payload")
-        if (event.get("type") == "event_msg" and isinstance(item, dict)
-                and item.get("type") in kinds):
-            yield item
-
-
-def _reverse_native_records(path, needles):
-    """Scan complete lines backwards; huge message records cannot hide lifecycle.
-
-    Lifecycle envelopes are small. Oversized non-lifecycle lines are skipped as
-    whole records, never parsed from a fragment. No transcript tail limit applies.
-    """
-    needles = tuple(('"' + kind + '"').encode() for kind in needles)
-
-    def parse(line):
-        if len(line) > 1024 * 1024:
-            return {"type": "oversized_native_record"}
-        if not any(word in line for word in needles):
-            return None
-        try:
-            event = json.loads(line)
-        except (ValueError, UnicodeDecodeError):
-            return None
-        return event if isinstance(event, dict) else None
-
-    with Path(path).open("rb") as stream:
-        position = stream.seek(0, 2)
-        tail, skipping = b"", False
-        while position:
-            size = min(position, 65536)
-            position -= size
-            stream.seek(position)
-            parts = stream.read(size).split(b"\n")
-            if len(parts) == 1:
-                if skipping or len(parts[0]) + len(tail) > 1024 * 1024:
-                    tail, skipping = b"", True
-                else:
-                    tail = parts[0] + tail
-                continue
-            if skipping:
-                yield {"type": "oversized_native_record"}
-            else:
-                item = parse(parts[-1] + tail)
-                if item is not None:
-                    yield item
-            for line in reversed(parts[1:-1]):
-                item = parse(line)
-                if item is not None:
-                    yield item
-            tail, skipping = parts[0], False
-        if skipping:
-            yield {"type": "oversized_native_record"}
-        else:
-            item = parse(tail)
-            if item is not None:
-                yield item
-
-
 def resume_child(root, host, payload, environment):
     """Reopen only an existing child whose host transcript proves a fresh live turn."""
     if host != "codex":
@@ -1082,56 +884,6 @@ def validate_tool_foreground(root, host, payload, environment):
             raise ValueError("native peer turn is no longer active")
 
 
-def native_root_turn(root, path, session, turn_id):
-    """Read-only proof of the exact live Codex root turn."""
-    try:
-        record = _first_record(path)
-        meta = record["payload"]
-        if (record["type"] != "session_meta" or meta["id"] != session
-                or meta.get("session_id", session) != session
-                or meta.get("source") not in ("vscode", "cli", "exec")
-                or not _independent_root_source(meta)
-                or any(meta.get(k) for k in (
-                    "parent_thread_id", "parent_session_id", "agent_id"))
-                or meta.get("agent_path") not in (None, "/root")
-                or Path(meta["cwd"]).resolve() != Path(root).resolve()
-                or _latest_codex_turn(path) != turn_id):
-            return False
-    except (OSError, ValueError, KeyError, TypeError, AttributeError):
-        return False
-    return True
-
-
-def _native_user_prompt(path, turn_id):
-    """Read the latest host-classified user text in the current Codex turn."""
-    for event in _reverse_native_records(path, {"message", "task_started"}):
-        item = event.get("payload")
-        if not isinstance(item, dict):
-            continue
-        if (event.get("type") == "event_msg" and item.get("type") == "task_started"
-                and item.get("turn_id") == turn_id):
-            break
-        if (event.get("type") != "response_item" or item.get("type") != "message"
-                or item.get("role") != "user"):
-            continue
-        metadata = item.get("internal_chat_message_metadata_passthrough")
-        if not isinstance(metadata, dict) or metadata.get("turn_id") != turn_id:
-            return None
-        if metadata.get("content_item_kinds") != ["user.text"]:
-            if (metadata.get("content_item_kinds") == ["skills.selected_skill_instructions"]
-                    or _native_context_refresh(item, turn_id)):
-                continue
-            return None
-        blocks = item.get("content")
-        if (not isinstance(blocks, list) or len(blocks) != 1
-                or not isinstance(blocks[0], dict)
-                or blocks[0].get("type") != "input_text"
-                or not isinstance(blocks[0].get("text"), str)):
-            return None
-        return blocks[0]["text"]
-    return None
-
-
 def recover_missing_codex_start(root, host, payload, environment):
     """Replay startup only for a missing exact native root with a live user turn.
 
@@ -1216,18 +968,6 @@ def recover_missing_codex_prompt(root, host, payload, environment):
     if data.get("connected") is False or not native_root_turn(root, path, session, payload["turn_id"]):
         return None
     return _native_user_prompt(path, payload["turn_id"])
-
-
-def _native_context_refresh(item, turn_id):
-    """Only host-classified context is not a human prompt; never inspect its text."""
-    metadata = item.get("internal_chat_message_metadata_passthrough")
-    if not isinstance(metadata, dict) or metadata.get("turn_id") != turn_id:
-        return False
-    kinds = metadata.get("content_item_kinds")
-    return (isinstance(kinds, list) and bool(kinds)
-            and all(isinstance(kind, str) and kind in {
-                "agents_md.instructions", "environments.environment_context", "plugins.recommendations",
-            } for kind in kinds))
 
 
 def _native_peer_turn(root, path, session, turn_id):

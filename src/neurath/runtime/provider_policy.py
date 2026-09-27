@@ -14,7 +14,7 @@ import os
 import tomllib
 from pathlib import Path
 
-from neurath.memory.store import canonical
+from neurath.serialization import canonical
 from neurath.providers.permission_inheritance import (
     MAPPING_REVISION, METADATA, inherit_policy, snapshot_from_evidence,
 )

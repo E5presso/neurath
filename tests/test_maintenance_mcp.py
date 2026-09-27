@@ -13,7 +13,7 @@ def test_explicit_refresh_uses_native_policy_without_second_consent(sessions, mo
     root, _ = sessions
     claim_fixture(root)
     gates = []
-    monkeypatch.setattr("neurath.runtime.tasks._mcp_execution_policy", lambda *args: gates.append(args))
+    monkeypatch.setattr("neurath.runtime.admission._mcp_execution_policy", lambda *args: gates.append(args))
     monkeypatch.setattr(user_choices, "validate", lambda *a, **kw: pytest.fail("unrequested second consent"))
     monkeypatch.setattr(Updates, "check", lambda self, force=False: {"checked": True, "force": force})
     fields = {"force": True, "key": "explicit-refresh"}

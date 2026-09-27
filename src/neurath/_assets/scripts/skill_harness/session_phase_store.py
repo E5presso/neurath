@@ -33,13 +33,11 @@ from scripts.agent_harness.session_kernel import (
 from scripts.agent_harness.skill_state_store import SkillStateStore
 from scripts.agent_harness.state_handle import StateHandle
 from scripts.agent_harness.workflow_terminal import WorkflowTerminalPolicy
-from scripts.skill_harness.phase_runner import (
-    TERMINAL_PHASE_STATUSES,
-    AdaptiveControlPhaseReadback,
-    AdaptiveControlTransitionReadback,
-    PhaseRunnerError,
-    PhaseRunState,
-    PhaseRunStore,
+from scripts.skill_harness.phase_models import (
+    TERMINAL_PHASE_STATUSES, PhaseRunnerError, PhaseRunState,
+)
+from scripts.skill_harness.phase_store import (
+    AdaptiveControlPhaseReadback, AdaptiveControlTransitionReadback, PhaseRunStore,
 )
 
 

@@ -1,6 +1,8 @@
 """Array diagnostics identify which bound was violated."""
 import pytest
 
+pytestmark = pytest.mark.fast
+
 from neurath.runtime.task_schema import TaskError, _validate
 
 

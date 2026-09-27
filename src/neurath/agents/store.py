@@ -6,80 +6,23 @@ import sqlite3
 import time
 import uuid
 from contextlib import contextmanager
-from dataclasses import dataclass
 from pathlib import Path
 
-from neurath.memory.store import canonical, control_root
+from neurath.agents.contracts import (
+    bounded as bounded,
+    bulk_messages as bulk_messages,
+    AgentIdentity as AgentIdentity,
+    MAX_BULK_ITEMS as MAX_BULK_ITEMS,
+    MAX_BULK_RECIPIENTS as MAX_BULK_RECIPIENTS,
+    MAX_BULK_DELIVERIES as MAX_BULK_DELIVERIES,
+    MAX_MESSAGE_BYTES as MAX_MESSAGE_BYTES,
+    MAX_BULK_BODY_BYTES as MAX_BULK_BODY_BYTES,
+)
+from neurath.serialization import canonical
+from neurath.project_paths import control_root
 from neurath.runtime.database import RuntimeDatabase
 
-MAX_BULK_ITEMS = 32
-MAX_BULK_RECIPIENTS = 32
-MAX_BULK_DELIVERIES = 100
-MAX_MESSAGE_BYTES = 32768
-MAX_BULK_BODY_BYTES = 262144
 
-
-def bounded(value, label, limit=512):
-    if (
-        not isinstance(value, str)
-        or not value.strip()
-        or "\0" in value
-        or len(value.encode()) > limit
-    ):
-        raise ValueError(f"{label} must be nonempty text within {limit} bytes")
-    return value
-
-
-def bulk_messages(messages):
-    """Validate the entire bounded batch before opening a delivery transaction."""
-    if not isinstance(messages, list) or not 1 <= len(messages) <= MAX_BULK_ITEMS:
-        raise ValueError("messages must contain one to 32 items")
-    normalized, keys = [], set()
-    deliveries = body_bytes = 0
-    for item in messages:
-        if (not isinstance(item, dict) or set(item) - {"to", "message", "key", "kind"}
-                or not {"to", "message", "key"}.issubset(item)):
-            raise ValueError("bulk item requires to, message and key only, with optional kind")
-        key = bounded(item["key"], "idempotency key")
-        body = bounded(item["message"], "message", MAX_MESSAGE_BYTES)
-        kind = item.get("kind", "question")
-        if kind not in {"question", "proposal", "update", "result"}:
-            raise ValueError("invalid message kind")
-        recipients = item["to"]
-        if (not isinstance(recipients, list) or not 1 <= len(recipients) <= MAX_BULK_RECIPIENTS
-                or any(not isinstance(recipient, str) for recipient in recipients)
-                or len(set(recipients)) != len(recipients)):
-            raise ValueError("bulk recipients must be one to 32 distinct addresses")
-        for recipient in recipients:
-            bounded(recipient, "recipient")
-        if key in keys:
-            raise ValueError("bulk item keys must be unique")
-        keys.add(key)
-        deliveries += len(recipients)
-        body_bytes += len(body.encode()) * len(recipients)
-        normalized.append((key, body, kind, tuple(recipients)))
-    if deliveries > MAX_BULK_DELIVERIES or body_bytes > MAX_BULK_BODY_BYTES:
-        raise ValueError("bulk recipient or durable body byte limit exceeded")
-    return normalized
-
-
-@dataclass(frozen=True)
-class AgentIdentity:
-    host: str
-    session: str
-    actor: str
-    is_root: bool = True
-
-    def __post_init__(self):
-        if self.host not in ("codex", "claude-code"):
-            raise ValueError("unsupported agent host")
-        bounded(self.session, "session")
-        bounded(self.actor, "actor")
-
-    @property
-    def address(self):
-        suffix = "" if self.is_root else ":" + hashlib.sha256(self.actor.encode()).hexdigest()[:24]
-        return f"{self.host}:{self.session}{suffix}"
 
 
 class MessageStore:

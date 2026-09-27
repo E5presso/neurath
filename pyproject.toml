@@ -33,6 +33,7 @@ artifacts = ["src/neurath/_assets/**", "src/neurath/manifest.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["fast: deterministic contract tests without installer, host process, or model startup"]
 norecursedirs = ["runtime"]
 addopts = "--import-mode=importlib --tb=short"
 

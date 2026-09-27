@@ -3,7 +3,7 @@
 
 [한국어](../../ko/contributing/architecture.md)
 
-Neurath is an installable harness for Claude Code and Codex. It adds project instructions, skills, host hooks, and named MCP tools around the coding agent. The host still runs the model and its native editing tools. Neurath records which request the work serves, who owns it, and what evidence supports the reported outcome.
+Neurath is an application that coordinates agent work across Claude Code and Codex. Its installable harness exposes project instructions, skills, host hooks, and named MCP tools. The host still runs the model and its native editing tools. Neurath records which request the work serves, who owns it, and what evidence supports the reported outcome.
 
 Consider a user request: “The saved filter disappears after refreshing the page. Fix it.” A useful result is a filter that survives save and reload. Reproducing the failure, changing persistence code, reviewing the API contract, and running a regression check are ways to reach that result. The architecture keeps these methods connected to the request even when several agents participate or the work continues in another session.
 
@@ -34,14 +34,41 @@ flowchart TD
 
 The diagram describes relationships, not a promise that every request launches a reviewer or migrates sessions. The user request and applicable skill determine which work is necessary.
 
-## Four implementation layers
+## Responsibility and dependency boundaries
 
-| Layer | Responsibility | Source location |
+Application services coordinate explicit domain decisions, durable records and external effects. Domain models and pure policies do not depend on MCP transport or worker processes. Compatibility entrypoints re-export the canonical types; they do not create a second model or state store.
+
+Paths below are relative to `src/neurath/`.
+
+| Responsibility | Canonical owner | Boundary |
 | --- | --- | --- |
-| Installation and assets | Package independent runtime assets and project projections; preserve existing project configuration | `src/neurath/install/`, `src/neurath/_assets/` |
-| Host adapters | Validate native events, bind exact tool calls, observe tool results and evaluate normal Stop | `src/neurath/hosts/`, `src/neurath/agents/hooks.py` |
-| Task and service adapters | Validate named tool inputs and route them to a domain operation | `src/neurath/runtime/`, `src/neurath/agents/mcp.py` |
-| Durable domain state | Keep task, actor, workflow, ownership, artifact, and delivery records consistent | `src/neurath/_assets/scripts/agent_harness/`, `src/neurath/runtime/database.py` |
+| Shared values | `serialization.py`, `redaction.py`, `project_paths.py`, `agents/contracts.py` | Encoding, secret filtering, repository discovery and immutable agent contracts have no dependency on memory or message persistence. |
+| Native observations and admission | `hosts/context.py`, `hosts/transcript.py`, `hosts/journal.py`, `runtime/admission.py` | Observe native facts, persist them transactionally, and revalidate policy and ownership before service execution. |
+| Session and adaptive domain | `_assets/scripts/agent_harness/session_model.py`, `session_events.py`, `session_reducer.py`, `adaptive_state.py`, `adaptive_transition.py` | Immutable records, validated commands and transitions operate independently of host transport. |
+| Session persistence | `_assets/scripts/agent_harness/session_store.py`, `session_state_codec.py`, `adaptive_state_codec.py`, `adaptive_control_store.py` | Versioned encoding, cross-record checks, SQLite CAS and atomic task/Stop admission. `session_kernel.py` coordinates these owners. |
+| Phase execution | `_assets/scripts/skill_harness/phase_models.py`, `phase_contracts.py`, `phase_store.py`, `phase_evidence_validation.py`, `phase_repository_evidence.py` | Contract decoding, state ports, semantic validation and repository/process observations are separate. `phase_runner.py` coordinates the commits. |
+| Provider batches and jobs | `providers/wave_policy.py`, `wave_store.py`, `wave_dispatch.py`, `job_journal.py` | Pure ready/dependency decisions are separate from stored projections, OS leases, launches and atomic result events. |
+| Provider integrations | `providers/model_bindings.py`, `execution_target.py`, `claude_inbox.py`, provider transports | Model-plan persistence and verification, shared target admission and inbox supervision do not import the MCP dispatcher or the other provider's executor. |
+| Installation | `install/file_values.py`, `configuration.py`, `records.py`, `desired.py`, `transaction.py` | Exact file observations, conservative configuration preservation, state reads and desired projections feed the lock/journal/apply/rollback boundary. A plan captures its distribution identity once. |
+| Monitoring and cleanup | Packaged monitor event/mailbox, process receipt/transport, handoff-state and merge-cleanup-state modules | Pure event/intent decisions and CAS records remain separate from owned process and filesystem effects. |
+| Transport and entrypoints | `agents/mcp.py`, `agents/stdio.py`, CLI adapters and `runtime/tasks.py` | Closed inputs, native binding, wire projections and service routing. Domain services import admission directly rather than importing the dispatcher for its private helpers. |
+
+```mermaid
+flowchart TD
+    A[Host and MCP adapters] --> B[Native observations and admission]
+    B --> C[Application services]
+    C --> D[Models and pure transition policies]
+    C --> E[Transactional stores and codecs]
+    C --> F[Owned provider and filesystem effects]
+    D --> G[Shared value contracts]
+    E --> G
+```
+
+The state schema and public entrypoints remain stable while their implementations gain explicit owners. A change to a codec must preserve existing encoded records or supply a deliberate migration. A failed database write must not dispatch an uncommitted effect; callbacks and outboxes retain their transaction boundary.
+
+Repository discovery may be reused inside one synchronous hook. The cache ends in `finally`, observes Git directory and `commondir` changes, including symlink targets, and bypasses reuse for Git layout/configuration overrides. It never caches kernel state, native identity, claims, policy, revisions or permission decisions.
+
+The MCP wire projection is also an explicit boundary. Task mutations return compact ID/revision/status rows and the native TODO; `task_list` returns full definitions and evidence. Consumers must inspect the exact task's outcome and must not interpret `all_terminal` as success or expect a full definition from a mutation response.
 
 `src/neurath/_assets` is the package's own executable asset source. Installed `.agents/skills` and `.neurath/rules` are projections. An implementation change belongs in source, followed by the asset manifest and applicable validation; editing a projected skill alone does not update the package.
 

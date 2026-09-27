@@ -1,7 +1,8 @@
 """Versioned local service records; file locks retain service-level I/O ordering."""
 from pathlib import Path
 
-from neurath.memory.store import canonical, control_root
+from neurath.serialization import canonical
+from neurath.project_paths import control_root
 from neurath.runtime.database import RuntimeDatabase, LegacyStateChanged
 
 

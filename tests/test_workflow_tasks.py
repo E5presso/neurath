@@ -133,7 +133,7 @@ def test_adaptive_phase_start_preserves_independent_evaluator_gate(sessions):
 def test_phase_cannot_certify_completion_with_raw_string_evidence(sessions, monkeypatch):
     call(sessions, "worktree_claim", {})
     start(sessions)
-    monkeypatch.setattr("neurath.runtime.tasks._mcp_execution_policy", lambda *a, **k: None)
+    monkeypatch.setattr("neurath.runtime.admission._mcp_execution_policy", lambda *a, **k: None)
     with pytest.raises(ValueError, match="evidence must reference"):
         call(sessions, "phase_complete", {"workflow_id": "phase", "expected_revision": 0,
             "phase_id": 1, "status": "completed", "summary": "claimed", "key": "complete",
@@ -155,7 +155,7 @@ def test_phase_failure_terminal_and_revision_are_enforced(sessions, monkeypatch)
     call(sessions, "worktree_claim", {})
     task_id = define_task(sessions)
     start(sessions)
-    monkeypatch.setattr("neurath.runtime.tasks._mcp_execution_policy", lambda *a, **k: None)
+    monkeypatch.setattr("neurath.runtime.admission._mcp_execution_policy", lambda *a, **k: None)
     with pytest.raises(ValueError, match="revision"):
         call(sessions, "phase_complete", {"workflow_id": "phase", "expected_revision": 77,
             "phase_id": 1, "status": "blocked", "summary": "not executed", "reason": "fixture blocker", "key": "stale"})

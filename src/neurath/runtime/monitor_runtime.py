@@ -22,7 +22,7 @@ from types import SimpleNamespace
 
 from neurath.agents.store import MessageStore
 from neurath.hosts.process import process_identity
-from neurath.memory.store import canonical
+from neurath.serialization import canonical
 from neurath.resources import BUNDLE, distribution_id
 
 ACTIVE = ("accepted", "starting", "started", "cancelling")

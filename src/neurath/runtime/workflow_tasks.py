@@ -202,7 +202,7 @@ def execute(root, name, fields, *, identity, expected_turn, verified_policy_evid
 def _execute_operation(root, name, fields, handle, identity, expected_turn, verified_policy_evidence,
                        *, ownership_required=True):
     if not ownership_required or name in {"phase_complete", "phase_finalize", "workflow_advance", "workflow_finalize", "evaluation_execute"}:
-        from neurath.runtime.tasks import _mcp_execution_policy
+        from neurath.runtime.admission import _mcp_execution_policy
         if ownership_required:
             _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence)
         else:
@@ -239,7 +239,7 @@ def _require_owner(root, handle):
 
 def _request(root, actor, name, fields, *, before_reserve=None):
     from neurath.agents.store import MessageStore
-    from neurath.memory.store import canonical
+    from neurath.serialization import canonical
     from neurath.runtime.task_schema import TaskError
     request = canonical({"root": str(Path(root).resolve()), "inputs": fields})
     with MessageStore(root).connection() as db:
@@ -272,7 +272,7 @@ def _request(root, actor, name, fields, *, before_reserve=None):
 
 def _save(root, actor, name, key, result, *, store=None):
     from neurath.agents.store import MessageStore
-    from neurath.memory.store import canonical
+    from neurath.serialization import canonical
     with (store if store is not None else MessageStore(root)).connection() as db:
         db.execute("UPDATE workflow_task_requests SET result=? WHERE actor=? AND operation=? AND key=?", (canonical(result), actor, name, key))
 
@@ -559,10 +559,10 @@ def _evaluation(name, fields, handle, workflow_id):
 
 def _guarded_handle(root, bound, identity, expected_turn, context, *, connection_root=None):
     """Recheck native prompt on domain reads and bind every state write to its CAS revision."""
-    from neurath.agents.hooks import participation
-    from neurath.agents.mcp import _prompt_receipt
+    from neurath.hosts.context import participation
+    from neurath.hosts.context import prompt_receipt as _prompt_receipt
     from neurath.hosts.identity import active_connection
-    from neurath.memory.store import canonical
+    from neurath.serialization import canonical
     from neurath.runtime.task_schema import TaskError
 
     class GuardedHandle:

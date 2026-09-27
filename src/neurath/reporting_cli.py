@@ -30,7 +30,7 @@ def add_commands(commands):
 def run(root, args):
     if args.report_command not in {"status", "read", "list"}:
         from neurath.cli import _native_or_terminal
-        from neurath.runtime.tasks import _verification_owner
+        from neurath.runtime.admission import _verification_owner
 
         identity = _native_or_terminal(root)
         if identity is not None:

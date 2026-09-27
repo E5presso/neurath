@@ -6,7 +6,9 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from neurath.memory.learning import Learning
-from neurath.memory.store import ProjectMemory, canonical, control_root
+from neurath.memory.store import ProjectMemory
+from neurath.serialization import canonical
+from neurath.project_paths import control_root
 from neurath.reporting import Reporting
 from neurath.updates import Updates
 
@@ -90,7 +92,7 @@ class MaintenanceCalls:
 
 def run(root, name, fields, *, identity, expected_turn=None, verified_policy_evidence=None):
     from neurath.runtime.task_schema import TaskError
-    from neurath.runtime.tasks import _mcp_execution_policy, _verification_owner
+    from neurath.runtime.admission import _mcp_execution_policy, _verification_owner
 
     if identity is None:
         raise TaskError("native-binding-required", "maintenance requires native identity")

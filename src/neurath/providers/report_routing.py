@@ -11,7 +11,9 @@ import os
 import sqlite3
 from pathlib import Path
 
-from neurath.memory.store import canonical, clean, control_root
+from neurath.serialization import canonical
+from neurath.redaction import clean
+from neurath.project_paths import control_root
 from neurath.providers.contracts import Session
 
 RECOVERY_ASSIGNMENT = (
