@@ -5,12 +5,14 @@ callers use only the identity/turn already verified by the core's invocation
 binding. No public tool accepts identity or cached readiness as authority.
 """
 
+import json
 import os
+import subprocess
 from pathlib import Path
 
-from neurath.serialization import canonical
 from neurath.providers.contracts import ExecutionPolicy
 from neurath.runtime.engine import activate
+from neurath.serialization import canonical
 
 
 class SessionNotReady(ValueError):
@@ -94,8 +96,45 @@ def _installation(root):
         return _stage("failed", "installation-not-ready", {"error": str(error)})
 
 
+def _installed_runtime_installation(root):
+    """Read an owned worker's installation with that worktree's installed runtime.
+
+    The supervisor can run a different Neurath distribution. Its in-process
+    doctor would compare its own package ID to the worker's install record.
+    This subprocess proves only target installation, not native activation.
+    """
+    from neurath.agents.runner import child_environment
+    from neurath.install.records import read_state
+
+    root = Path(root).resolve()
+    launcher = root / ".neurath/run"
+    try:
+        if launcher.is_symlink() or not launcher.is_file() or not os.access(launcher, os.X_OK):
+            raise ValueError("target installed runtime is unavailable")
+        completed = subprocess.run(
+            [str(launcher), "--root", str(root), "doctor"], cwd=root,
+            env=child_environment(), capture_output=True, text=True,
+            timeout=120, check=False,
+        )
+        if len(completed.stdout.encode()) > 1024 * 1024:
+            raise ValueError("target installation diagnostic exceeds limit")
+        report = json.loads(completed.stdout)
+        record = read_state(root)
+        if (completed.returncode != 0 or not isinstance(report, dict) or not record
+                or not isinstance(report.get("distribution"), dict)
+                or not isinstance(report.get("placement"), dict)
+                or report["distribution"].get("status") != "passed"
+                or report["placement"].get("status") != "passed"):
+            return _stage("failed", "installation-not-ready", report if isinstance(report, dict) else {})
+        return _stage("verified", evidence={"distribution": record["distribution"],
+                                            "placement": "passed", "source": "target-installed-runtime"})
+    except (OSError, ValueError, RuntimeError, KeyError, subprocess.TimeoutExpired) as error:
+        return _stage("failed", "installation-not-ready", {"error": str(error)})
+
+
 def inspect_bound_readiness(root, identity, *, expected_turn, requested_policy=None,
-                            verified_policy_evidence=None, require_current_prompt=True):
+                            verified_policy_evidence=None, require_current_prompt=True,
+                            installation_reader=None):
     """Internal core API. The core must verify the native invocation before calling.
 
     Re-read the kernel/host/claim even for a verified caller. This does not claim a
@@ -111,7 +150,7 @@ def inspect_bound_readiness(root, identity, *, expected_turn, requested_policy=N
     root = Path(root).resolve()
     if requested_policy is not None and not isinstance(requested_policy, ExecutionPolicy):
         raise ValueError("requested_policy must be an ExecutionPolicy")
-    stages = {"installation": _installation(root),
+    stages = {"installation": (installation_reader or _installation)(root),
               "activation": _stage("unobserved", "activation-unobserved"),
               "policy": _stage("unobserved", "policy-unobservable"),
               "ownership": _stage("unobserved", "claim-unobserved")}
@@ -246,7 +285,8 @@ def inspect_owned_session(session):
             AgentIdentity(session.provider, session.native_session, str(actor), True),
             expected_turn=canonical([turn.generation, turn.vendor_turn_id]),
             requested_policy=ExecutionPolicy(requested["mode"], requested["approval_policy"],
-                requested.get("approvals_reviewer"), requested.get("collaboration_mode")))
+                requested.get("approvals_reviewer"), requested.get("collaboration_mode")),
+            installation_reader=_installed_runtime_installation)
     except (OSError, ValueError, RuntimeError, KeyError) as error:
         report = _assess({"installation": _installation(root),
                         "activation": _stage("failed", "activation-failed", {"error": str(error)}),

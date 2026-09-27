@@ -15,6 +15,7 @@ from neurath.providers.codex import CodexSessions
 from neurath.providers.contracts import (
     CreationRejected,
     ExecutionPolicy,
+    ProviderCancelled,
     UnsupportedOperation,
     codex_completion_link,
     text,
@@ -267,6 +268,10 @@ def run(root, *, worktree, assignment, model=None, mode="read-only", approval_po
         result.update(status="failed", delivery_failure=detail, diagnostic=str(error))
         if event_callback:
             event_callback("error", detail)
+    except ProviderCancelled as error:
+        # Return the owned session result after _cleanup records exact transport
+        # closure. Letting this escape would discard that proof in jobs._worker.
+        result.update(status="cancelled", diagnostic=clean(str(error))[:4000])
     except CreationRejected as error:
         result.update(error.report)
     except UnsupportedOperation as error:
