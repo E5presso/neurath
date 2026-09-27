@@ -11,8 +11,16 @@ def _require_autopilot_phase(root, identity, process, actor_id):
         messages = native_messages(root, identity)
     except ValueError:
         return
-    last_user = next((text for role, text in reversed(messages) if role == "user"), "")
-    if not re.match(r"^\s*(?:\[\$autopilot\]\(|/autopilot\b)", last_user):
+    user_messages = [text for role, text in messages if role == "user"]
+    invocation = r"\[\$autopilot\]\(|(?<!\w)\$autopilot\b|(?<!\w)/autopilot\b"
+    if not any(re.search(invocation, text) for text in user_messages):
+        return
+    # A finished earlier run does not bind a fresh explicit invocation. A
+    # follow-up to the same unfinished run still requires its phase workflow.
+    if (user_messages and not re.search(invocation, user_messages[-1])
+            and any(workflow.kind == "autopilot"
+                    and workflow.status.value == "completed"
+                    for workflow in process.workflows.values())):
         return
     if any(workflow.kind == "autopilot"
            and workflow.status.value == "active"

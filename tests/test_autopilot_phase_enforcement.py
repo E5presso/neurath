@@ -55,19 +55,39 @@ def test_workflow_writer_rejects_successful_autopilot_finalization_with_skip():
         policy.validate_phase(before, after, completed=True)
 
 
-def test_explicit_autopilot_invocation_requires_phase_start_before_task_mutation(monkeypatch):
+@pytest.mark.parametrize("invocation", [
+    "[$autopilot](/project/.agents/skills/autopilot/SKILL.md) #90, #91",
+    "$autopilot #90, #91",
+    "Please use /autopilot #90, #91",
+])
+def test_explicit_autopilot_invocation_requires_phase_start_before_task_mutation(
+    monkeypatch, invocation,
+):
     from types import SimpleNamespace
     from neurath.runtime import task_ledger_tasks
     from neurath.runtime.task_schema import TaskError
     from neurath.runtime import user_choices
 
-    monkeypatch.setattr(user_choices, "native_messages", lambda *_: [
-        ("user", "[$autopilot](/project/.agents/skills/autopilot/SKILL.md) #90, #91")
-    ])
+    monkeypatch.setattr(user_choices, "native_messages", lambda *_: [("user", invocation)])
     identity = SimpleNamespace(host="codex", session="native")
     process = SimpleNamespace(workflows={})
     with pytest.raises(TaskError, match="phase_start"):
         task_ledger_tasks._require_autopilot_phase("/project", identity, process, "root")
+
+
+def test_autopilot_followup_still_requires_missing_phase_start(monkeypatch):
+    from types import SimpleNamespace
+    from neurath.runtime import task_ledger_tasks, user_choices
+    from neurath.runtime.task_schema import TaskError
+    monkeypatch.setattr(user_choices, "native_messages", lambda *_: [
+        ("user", "$autopilot #90, #91"),
+        ("assistant", "Working"),
+        ("user", "Continue the issues"),
+    ])
+    with pytest.raises(TaskError, match="phase_start"):
+        task_ledger_tasks._require_autopilot_phase(
+            "/project", SimpleNamespace(host="codex", session="native"),
+            SimpleNamespace(workflows={}), "root")
 
 
 def test_inflight_seven_phase_autopilot_keeps_its_original_phase_ids():
