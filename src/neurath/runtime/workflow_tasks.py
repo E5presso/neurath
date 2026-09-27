@@ -134,7 +134,8 @@ def definitions():
             "capacity_basis": text_field(2048), "serialization_reason": text_field(2048, default=""),
             "entries": {"type": "array", "minItems": 1, "maxItems": 128, "items": {
                 "type": "object", "additionalProperties": False,
-                "properties": {"delegation_id": text_field(128), "assignment": text_field(8192), "depends_on": {
+                "properties": {"delegation_id": text_field(128), "assignment": text_field(8192),
+                "role": choice("worker", "review"), "depends_on": {
                     "type": "array", "maxItems": 128, "uniqueItems": True, "items": text_field(128)}},
                 "required": ["delegation_id", "assignment", "depends_on"]}},
             **key}, False),

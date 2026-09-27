@@ -18,6 +18,8 @@ def _dispatch_prepare_code(wave, entry):
         'assignment': entry['assignment'], 'task_id': wave['task_id'],
         'expected_task_revision': wave['task_revision'],
         'key': _dispatch_prepare_key(wave, entry['delegation_id'])}
+    if 'role' in entry:
+        arguments['role'] = entry['role']
     literal = json.dumps(arguments, ensure_ascii=True, sort_keys=True, separators=(',', ':'))
     return ('const r=await tools.mcp__neurath_collaboration__delegation_prepare('
             + literal + ');text(r.structuredContent??r)')
@@ -57,16 +59,19 @@ def _legacy_prepare_code_is_exact(code, wave, ready_ids):
         arguments = json.loads(code[len(prefix):-len(suffix)])
     except (TypeError, ValueError):
         return False
+    required = {'assignment', 'delegation_id', 'expected_task_revision', 'key', 'task_id'}
     if (not isinstance(arguments, dict) or
-            set(arguments) != {'assignment', 'delegation_id', 'expected_task_revision',
-                               'key', 'task_id'} or
+            set(arguments) not in (required, required | {'role'}) or
             arguments.get('delegation_id') not in ready_ids or
             not isinstance(arguments.get('assignment'), str) or
             not arguments['assignment'].strip() or
-            len(arguments['assignment'].encode()) > 8192):
+            len(arguments['assignment'].encode()) > 8192 or
+            arguments.get('role', 'worker') not in {'worker', 'review'}):
         return False
     entry = {'delegation_id': arguments['delegation_id'],
              'assignment': arguments['assignment']}
+    if 'role' in arguments:
+        entry['role'] = arguments['role']
     return code == _dispatch_prepare_code(wave, entry)
 
 
@@ -102,12 +107,21 @@ def prepare(root, handle, *, wave_id, task_id, expected_task_revision, entries,
     return {'wave_id': wave_id, **_with_dispatch_codes(plan, result)}
 
 
-def admit(root, state, data, delegation_id, *, host=None, inputs=None):
+def admit(root, state, data, delegation_id, *, host=None, inputs=None,
+          assignment=None, role=None):
     matches = [wave for wave in data.get('waves', {}).values()
                if delegation_id in {entry['delegation_id'] for entry in wave['entries']}]
     if not matches:
         return
     wave = matches[0]
+    entry = next(entry for entry in wave['entries'] if entry['delegation_id'] == delegation_id)
+    intent = data.get('intents', {}).get(delegation_id, {})
+    observed_assignment = assignment if assignment is not None else intent.get('assignment')
+    observed_role = role if role is not None else intent.get('role', 'worker')
+    if ('assignment' in entry and observed_assignment != entry['assignment']):
+        raise ValueError('wave delegation assignment differs from the prepared entry')
+    if wave.get('strict_wrapper_fence') and observed_role != entry.get('role', 'worker'):
+        raise ValueError('wave delegation role differs from the prepared entry')
     instruction_scope(root, state, wave['task_id'], wave['task_revision'])
     result = projection(wave, state, data['spawns'])
     if delegation_id not in result['dispatch_required']:
@@ -117,8 +131,9 @@ def admit(root, state, data, delegation_id, *, host=None, inputs=None):
 
 
 def before_wait(root, payload):
+    from neurath.hosts.hooks import SHELL_TOOLS
     tool = payload.get('tool_name')
-    if payload.get('agent_id') or tool not in WAIT_TOOLS | EXEC_TOOLS:
+    if payload.get('agent_id') or tool not in WAIT_TOOLS | EXEC_TOOLS | SHELL_TOOLS:
         return
     state = _state(root, payload['session_id'])
     data = snapshot(root, payload['session_id'])
@@ -151,6 +166,8 @@ def before_wait(root, payload):
                if entry['delegation_id'] in result['dispatch_required']):
             return
         raise ValueError('dispatch ready wave work before using the host tool wrapper')
+    if tool in SHELL_TOOLS and ready:
+        raise ValueError('dispatch ready wave work before a blocking-capable shell command')
     for wave, _ in ready:
         require_dispatch_before_wait(wave, state, data['spawns'])
 

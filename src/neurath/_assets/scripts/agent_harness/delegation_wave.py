@@ -15,6 +15,8 @@ def validate_plan(value):
         deps = entry['depends_on']
         if len(set(deps)) != len(deps) or set(deps) - set(ids):
             raise ValueError('wave dependencies must name distinct entries')
+        if entry.get('role', 'worker') not in {'worker', 'review'}:
+            raise ValueError('wave entry role must be worker or review')
     assigned = ['assignment' in entry for entry in entries]
     if any(assigned) and (not all(assigned) or any(
             not isinstance(entry['assignment'], str) or not entry['assignment'].strip()

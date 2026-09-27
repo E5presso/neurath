@@ -13,7 +13,9 @@ Root는 구현 자식과 별도의 `role=review` 직접 자식을 새 컨텍스�
 
 1. 구현 대상 이슈마다 `issue-<번호>`를 고유 delegation ID로 사용합니다.
    `delegation_wave_prepare`에 현재 in-progress task ID/revision, 고유 wave ID,
-   entries(delegation_id, assignment, depends_on), max_parallel, capacity_basis를 기록합니다.
+   entries(delegation_id, assignment, depends_on, 선택적 role), max_parallel,
+   capacity_basis를 기록합니다. role은 `worker` 또는 `review`이며 선언한
+   assignment와 함께 실제 native 준비에서 다시 검증됩니다.
    기존 phase workflow에서는 workflow_id도 결속하고 완료 시 native_wave_receipt의 wave_id를
    제출합니다. phase gate가 같은 workflow의 실제 consumed 성공 결과를 다시 읽습니다.
    Cycle·누락 dependency는 실행 전에 거부합니다. capacity는 실제 도구 inventory에서 관측한
