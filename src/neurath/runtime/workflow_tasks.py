@@ -133,9 +133,10 @@ def definitions():
             "max_parallel": {"type": "integer", "minimum": 1, "maximum": 64},
             "capacity_basis": text_field(2048), "serialization_reason": text_field(2048, default=""),
             "entries": {"type": "array", "minItems": 1, "maxItems": 128, "items": {
-                "type": "object", "additionalProperties": False, "required": ["delegation_id", "depends_on"],
-                "properties": {"delegation_id": text_field(128), "depends_on": {
-                    "type": "array", "maxItems": 128, "uniqueItems": True, "items": text_field(128)}}}},
+                "type": "object", "additionalProperties": False,
+                "properties": {"delegation_id": text_field(128), "assignment": text_field(8192), "depends_on": {
+                    "type": "array", "maxItems": 128, "uniqueItems": True, "items": text_field(128)}},
+                "required": ["delegation_id", "assignment", "depends_on"]}},
             **key}, False),
         "delegation_prepare": ({"role": {**choice("worker", "review"), "default": "worker"}, "delegation_id": text_field(128), "assignment": text_field(8192),
             "task_id": {**_nullable(text_field(128)), "default": None},
