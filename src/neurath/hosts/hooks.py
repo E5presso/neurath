@@ -19,7 +19,19 @@ MUTATION_TOOLS = {
 SHELL_TOOLS = {"Bash", "bash", "shell", "exec_command", "functions.exec_command", "unified_exec"}
 
 
-def _host_hook(root, host, raw, environment=None, stop_guard=None):
+def _record_prompt_identity(root, host, payload, environment):
+    activate(root)
+    from neurath.hosts.identity import resume_foreground
+    from scripts.agent_harness.agent_continuation_hook import AgentContinuationHookApplication
+    from scripts.agent_harness.session_kernel import SessionRuntime
+
+    resume_foreground(root, host, payload, environment)
+    result = AgentContinuationHookApplication(runtime=SessionRuntime(host)).run(
+        json.dumps(payload), environment, Path(root), identity_only=True)
+    return result.exit_code, json.loads(result.stdout or '{}'), result.stderr
+
+
+def _host_hook(root, host, raw, environment=None, stop_guard=None, *, identity_only=False):
     if host not in HOSTS:
         return 2, {}, "unsupported host"
     try:
@@ -60,7 +72,8 @@ def _host_hook(root, host, raw, environment=None, stop_guard=None):
                 "hook_event_name": "UserPromptSubmit",
                 "prompt": recovered_prompt,
             }
-            code, _, diagnostic = _dispatch_hook(root, host, json.dumps(prompt_payload), env)
+            code, _, diagnostic = (_record_prompt_identity(root, host, prompt_payload, env)
+                if identity_only else _dispatch_hook(root, host, json.dumps(prompt_payload), env))
             if code:
                 return code, {}, diagnostic
     from neurath.hosts.identity import (
@@ -139,7 +152,9 @@ def _host_hook(root, host, raw, environment=None, stop_guard=None):
         from neurath.hosts.waves import before_wait
         try:
             before_wait(root, payload)
-        except ValueError as error:
+        except Exception as error:
+            # A failed admission readback/observation must not become a
+            # nonblocking hook crash that lets the waiting tool execute.
             return 2, {}, str(error)
     if event in {"PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied"} and payload.get("tool_name") in SPAWN_TOOLS:
         try:
@@ -360,6 +375,26 @@ def hook(root, host, raw, environment=None):
     if isinstance(switch, dict) and switch.get("tool_name") == "mcp__neurath_collaboration__harness_bypass":
         return 0, {}, ""
     if mode(root)["enabled"]:
+        from neurath.hosts.identity import SPAWN_TOOLS
+        event = switch.get('hook_event_name') if isinstance(switch, dict) else None
+        identified = (isinstance(switch, dict) and switch.get('session_id')
+                      and switch.get('cwd') and switch.get('transcript_path'))
+        if identified and event == 'UserPromptSubmit' and not switch.get('agent_id'):
+            try:
+                env = dict(os.environ if environment is None else environment)
+                _, _, diagnostic = _record_prompt_identity(root, host, switch, env)
+                return 0, {}, diagnostic
+            except (KeyError, OSError, TypeError, ValueError, RuntimeError) as error:
+                return 0, {}, f'Neurath bypass prompt recovery deferred: {error}'
+        if identified and (event in {'SessionStart', 'SessionEnd', 'SubagentStart', 'SubagentStop'}
+                or (event in {'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PermissionDenied'}
+                    and switch.get('tool_name') in SPAWN_TOOLS)):
+            # Native lineage remains necessary for prepared delegations during repair.
+            return _host_hook(root, host, raw, environment, identity_only=True)
+        if (isinstance(switch, dict) and switch.get('hook_event_name') == 'Stop'
+                and switch.get('session_id') and not switch.get('agent_id')):
+            from neurath.hosts.stopping import bypass_stop
+            return bypass_stop(root, host, switch, environment)
         # Bypass skips Neurath enforcement, but named MCP calls still need the
         # host-attested PreToolUse binding. No other hook work runs here.
         from neurath.agents.mcp import TOOL_NAMES, bind_call
@@ -376,7 +411,19 @@ def hook(root, host, raw, environment=None):
                 raise ValueError("hook cwd is outside installed repository")
             activate(root)
             env = dict(os.environ if environment is None else environment)
-            from neurath.hosts.identity import validate_tool_foreground
+            from neurath.hosts.identity import (
+                recover_missing_codex_start, recover_missing_codex_prompt,
+                validate_tool_foreground,
+            )
+
+            prompt = recover_missing_codex_start(root, host, switch, env)
+            if prompt is None:
+                prompt = recover_missing_codex_prompt(root, host, switch, env)
+            if prompt is not None:
+                recovered = {**switch, 'hook_event_name': 'UserPromptSubmit', 'prompt': prompt}
+                code, _, diagnostic = _record_prompt_identity(root, host, recovered, env)
+                if code:
+                    return code, {}, diagnostic
 
             validate_tool_foreground(root, host, switch, env)
             if switch.get("agent_id") is not None:

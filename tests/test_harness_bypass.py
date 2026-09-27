@@ -10,6 +10,8 @@ from neurath.agents import mcp
 from neurath.hosts import hooks
 from neurath.runtime.bypass import mode
 
+pytest_plugins = ['tests.test_identity']
+
 
 @pytest.fixture(autouse=True)
 def repository(tmp_path):
@@ -36,7 +38,7 @@ def test_switch_never_opens_the_runtime_database(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("event", ["SessionStart", "UserPromptSubmit", "PreToolUse",
     "PostToolUse", "PostToolUseFailure", "PermissionDenied", "Stop", "SubagentStop", "SessionEnd"])
-def test_bypass_returns_before_every_neurath_hook_constraint(tmp_path, monkeypatch, event):
+def test_bypass_unregistered_events_skip_neurath_hook_constraints(tmp_path, monkeypatch, event):
     monkeypatch.setattr(hooks, "_dispatch_hook", lambda *_: pytest.fail("hook constraint ran"))
     mode(tmp_path, True)
     assert hooks.hook(tmp_path, "codex", json.dumps({"hook_event_name": event})) == (0, {}, "")
@@ -131,3 +133,25 @@ def test_stdio_switch_works_when_worker_capacity_is_exhausted(tmp_path, monkeypa
     assert [reply["result"]["structuredContent"]["result"]["enabled"]
             for reply in replies] == [True, True, False]
     assert not mode(tmp_path)["enabled"]
+
+
+def test_bypass_preserves_verified_child_stop_lifecycle(runtime):
+    from tests.test_identity import start
+    from scripts.agent_harness.session_kernel import SessionKernel, SessionLocator, SessionId, ActorId
+
+    root, storage, _, send = runtime
+    start(send, 'claude-code')
+    code, output, diagnostic = send('claude-code', 'PreToolUse', tool_name='Agent',
+        tool_use_id='spawn-1', tool_input={'prompt': 'Inspect only', 'subagent_type': 'general-purpose'})
+    assert code == 0, diagnostic
+    child = storage / 'root/subagents/agent-child.jsonl'
+    child.parent.mkdir(parents=True, exist_ok=True)
+    child.write_text(json.dumps({'type': 'user', 'agentId': 'child', 'sessionId': 'root',
+        'isSidechain': True, 'message': {'content': output['hookSpecificOutput']['updatedInput']['prompt']}}) + '\n')
+    assert send('claude-code', 'SubagentStart', agent_id='child')[0] == 0
+    mode(root, True)
+    code, _, diagnostic = send('claude-code', 'SubagentStop', agent_id='child')
+    assert code == 0, diagnostic
+    state = SessionKernel(SessionLocator.from_worktree(root)).inspect(SessionId('root'))
+    assert state.actors[ActorId('claude-code:child')].status.value == 'stopped'
+    assert state.foreground_turns[ActorId('claude-code:child')].status.value == 'closed'

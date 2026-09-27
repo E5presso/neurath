@@ -43,7 +43,7 @@ A named MCP tool appears to the host with a name such as `mcp__neurath_collabora
 
 The agent supplies task arguments and lets the hook supply the binding. It must not manufacture `_neurath_binding`, reuse a closed binding, or add caller identity fields to a tool's arguments. The MCP process itself starts without inherited actor authority. Its dispatcher accepts only the operation's schema and the host-bound invocation.
 
-If bypass skipped a Codex user prompt, the first normal tool call checks the live native root transcript before restoring the missing foreground turn. Recovery accepts only host-classified user text for the exact current session, worktree, and turn, then uses ordinary prompt processing before issuing a binding. It does not trust tool arguments as prompt text, restart ended sessions, or convert peer messages into user authority. Existing tasks and workflows remain unfinished.
+Bypass retains native prompt and delegation identity. If a Codex prompt event was missed, the next named tool call checks the live root transcript and restores the current foreground turn even while bypass remains enabled. Recovery accepts only host-classified user text for the exact session, worktree, and turn; it records prompt identity without activating workflows or recovering monitors. It does not trust tool arguments as prompt text, restart ended sessions, or convert peer messages into user authority. Existing tasks and workflows remain unfinished.
 
 The current implementation limits a named task request to 64 KiB and the MCP frame to 128 KiB. Those transport limits are independent of smaller field and document limits in individual schemas.
 
@@ -96,7 +96,7 @@ For native maintenance choices, the prompt receipt remains the authority. A Code
 
 ## Stop validation and response delivery
 
-Neurath checks the current root, turn, transcript, and connection before attempting canonical completion. Unresolved task or workflow prerequisites still reject that state transition. They do not authorize another model invocation: the root Stop adapter returns exit code 1, an empty JSON object, and a diagnostic on stderr instead of a blocking decision or exit code 2. The host can return the response while unfinished work and its completion checks remain intact.
+Neurath checks the current root, turn, transcript, and connection before attempting canonical completion. Unresolved task or workflow prerequisites return a blocking Stop result (exit code 2), so the host continues the authorized work. Validation failure after a verified current ingress also remains blocking. Before returning a block, the adapter checks whether a new user prompt or session end has superseded the event. During harness bypass, the root still checks the task ledger without invoking unrelated workflow gates or closing the turn.
 
 This behavior applies from the first failed Stop. There is no retry counter, prompt keyword classifier, or special case for status questions. `stop_hook_active` supplies no completion evidence. A successful close still requires the existing domain checks. A stale or already terminal event uses the read-only route and cannot complete newer work. Explicit user interruption remains controlled by the host.
 

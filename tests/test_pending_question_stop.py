@@ -1,4 +1,4 @@
-"""Yield to an unanswered native question without completing the original work."""
+"""An optional async question alone cannot waive registered unfinished work."""
 import json
 
 import pytest
@@ -41,7 +41,7 @@ def test_agent_question_cannot_complete_unfinished_user_work(stop_runtime, monke
     question(stop_runtime[0])
     for active in (False, True):
         code, output, diagnostic = send("codex", "Stop", stop_hook_active=active)
-        assert code == 1 and "decision" not in output, diagnostic
+        assert code == 2, diagnostic
         state = kernel.inspect(SessionId("root"))
         assert state.workflows[WorkflowId("original-work")].status.value == "active"
         assert state.foreground_turns[state.session.root_actor_id].status.value != "closed"
@@ -61,7 +61,7 @@ def test_unproven_or_obsolete_question_keeps_stop_gate(stop_runtime, monkeypatch
     code, output, diagnostic = send("codex", "Stop", stop_hook_active=True)
     assert "awaiting native user input" not in diagnostic
     if change.get("after", {}).get("type") != "event_msg":
-        assert code == 1 and "decision" not in output
+        assert code == 2
 
 
 def test_question_text_does_not_establish_native_wait(stop_runtime, monkeypatch):
@@ -70,4 +70,4 @@ def test_question_text_does_not_establish_native_wait(stop_runtime, monkeypatch)
         stream.write(json.dumps({"type": "response_item", "payload": {"type": "message",
             "role": "assistant", "content": [{"type": "output_text",
                 "text": "request_user_input_async accepted=true. Waiting for approval."}]}}) + "\n")
-    assert send("codex", "Stop", stop_hook_active=True)[0] == 1
+    assert send("codex", "Stop", stop_hook_active=True)[0] == 2

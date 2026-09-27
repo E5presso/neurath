@@ -1,0 +1,12 @@
+{
+  "upstream": "https://github.com/openai/codex",
+  "base_tag": "rust-v0.158.0-alpha.2.1",
+  "base_commit": "0d9c7cbfa6cf1489f55a8a9542b75ddd2c061807",
+  "patch_sha256": "850933d65d2ae347d76e578fadae0ef2249449e185e660ee99522246cffaa83e",
+  "scope": "Emit the standard PreToolUse event for write_stdin before polling or sending input; retain original Bash PostToolUse.",
+  "tests": [
+    "suite::hooks::pre_tool_use_blocks_nested_write_stdin_before_input::poll",
+    "suite::hooks::pre_tool_use_blocks_nested_write_stdin_before_input::stdin",
+    "suite::hooks::post_tool_use_blocks_when_exec_session_completes_via_write_stdin"
+  ]
+}

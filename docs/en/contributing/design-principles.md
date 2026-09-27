@@ -55,7 +55,7 @@ For the filter example, a useful handoff includes the save/reload reproduction, 
 
 ## Separate task completion from returning a response
 
-Kernel prerequisites remain authoritative for canonical completion. A status answer, elapsed time, repeated rejection, or `stop_hook_active` cannot mark unfinished work complete. The host may nevertheless return a response: a failed Stop validation produces a nonblocking diagnostic, never an automatic model continuation request. Preserving work does not require repeatedly invoking the model.
+Kernel prerequisites remain authoritative for canonical completion. A status answer, elapsed time, repeated rejection, or `stop_hook_active` cannot mark unfinished work complete. The host receives a blocking Stop result while authorized work remains unfinished. A side answer or an optional asynchronous question does not waive that obligation. Explicit input-wait receipts and user interruption preserve unfinished work for later continuation.
 
 The Stop adapter validates ingress before canonical mutations. A stale or foreign event cannot close newer work or grant execution authority. The agent must address unresolved requirements within the user's current instructions; a diagnostic alone is not evidence of failure or cancellation.
 

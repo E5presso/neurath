@@ -11,7 +11,7 @@ from tests.test_identity import native_turn_started, native_user_text, peer_root
 pytest_plugins = ["tests.test_identity"]
 
 
-def skipped_prompt(runtime):
+def skipped_prompt(runtime, *, keep_bypass=False):
     from scripts.agent_harness import session_kernel as k
 
     root, _, transcript, send = runtime
@@ -28,24 +28,41 @@ def skipped_prompt(runtime):
     mode(root, True)
     native_turn_started(transcript, "current")
     native_user_text(transcript, "current", "Repair the harness")
-    assert send("codex", "UserPromptSubmit", turn_id="current", prompt="Repair the harness") == (0, {}, "")
+    # Reproduce an older bypass or a missed host delivery without synthesizing a prompt event.
     before = kernel.inspect(k.SessionId("root"))
     assert before.foreground_turns[before.session.root_actor_id].vendor_turn_id == "original"
-    mode(root, False)
+    if not keep_bypass:
+        mode(root, False)
     payload = {"hook_event_name": "PreToolUse", "session_id": "root", "cwd": str(root),
         "transcript_path": str(transcript), "turn_id": "current", "tool_use_id": "recover",
         "tool_name": "mcp__neurath_collaboration__session_status", "tool_input": {}}
     return kernel, before, payload
 
 
-def test_first_tool_after_bypass_recovers_current_native_user_turn(runtime):
+@pytest.mark.parametrize('keep_bypass', [False, True])
+@pytest.mark.parametrize('tool', ['mcp__neurath_collaboration__session_status', 'spawn_agent'])
+def test_first_tool_after_bypass_recovers_current_native_user_turn(runtime, keep_bypass, tool, monkeypatch):
     from scripts.agent_harness import session_kernel as k
 
     root, _, _, _ = runtime
-    kernel, before, payload = skipped_prompt(runtime)
+    kernel, before, payload = skipped_prompt(runtime, keep_bypass=keep_bypass)
+    payload['tool_name'] = tool
+    if tool == 'spawn_agent':
+        payload['tool_input'] = {'task_name': 'child', 'message': 'Inspect repair'}
+    if keep_bypass:
+        from scripts.agent_harness.agent_continuation_hook import AgentContinuationHookApplication
+        kernel.apply(k.WorkflowStarted(session_id=before.session.id,
+            workflow_id=k.WorkflowId('monitoring'), owner_actor_id=before.session.root_actor_id,
+            kind='autopilot', goal='Preserve original work',
+            payload={'skill_state': {'owner_lifecycle': {}}}, idempotency_key='monitoring'))
+        monkeypatch.setattr(AgentContinuationHookApplication, '_activate',
+                            lambda *_: pytest.fail('bypass ran workflow activation'))
+        monkeypatch.setattr(AgentContinuationHookApplication, '_ensure_registered_monitors',
+                            lambda *_: pytest.fail('bypass ran monitor recovery'))
     code, output, diagnostic = hook(root, "codex", json.dumps(payload), {"CODEX_THREAD_ID": "root"})
     assert code == 0, diagnostic
-    assert output["hookSpecificOutput"]["updatedInput"]["_neurath_binding"]
+    if tool != 'spawn_agent':
+        assert output["hookSpecificOutput"]["updatedInput"]["_neurath_binding"]
     state = kernel.inspect(before.session.id)
     turn = state.foreground_turns[state.session.root_actor_id]
     assert turn.vendor_turn_id == "current"
@@ -58,9 +75,10 @@ def test_first_tool_after_bypass_recovers_current_native_user_turn(runtime):
 
 
 @pytest.mark.parametrize("invalid", ["thread", "foreign-root", "child", "stale", "completed", "unclassified", "missing-text", "later-unclassified", "later-wrong-turn"])
-def test_bypass_recovery_rejects_unverified_current_user_turn(runtime, invalid):
+@pytest.mark.parametrize('keep_bypass', [False, True])
+def test_bypass_recovery_rejects_unverified_current_user_turn(runtime, invalid, keep_bypass):
     root, _, transcript, _ = runtime
-    kernel, before, payload = skipped_prompt(runtime)
+    kernel, before, payload = skipped_prompt(runtime, keep_bypass=keep_bypass)
     environment = {"CODEX_THREAD_ID": "foreign" if invalid == "thread" else "root"}
     if invalid in {"foreign-root", "child"}:
         rows = [json.loads(line) for line in transcript.read_text().splitlines()]
@@ -86,6 +104,22 @@ def test_bypass_recovery_rejects_unverified_current_user_turn(runtime, invalid):
         else:
             rows[-1]["payload"]["internal_chat_message_metadata_passthrough"]["content_item_kinds"] = ["agents_md.instructions"]
         transcript.write_text("".join(json.dumps(row) + "\n" for row in rows))
-    with pytest.raises(ValueError):
-        hook(root, "codex", json.dumps(payload), environment)
+    if keep_bypass:
+        assert hook(root, "codex", json.dumps(payload), environment)[0] == 2
+    else:
+        with pytest.raises(ValueError):
+            hook(root, "codex", json.dumps(payload), environment)
     assert kernel.inspect(before.session.id).to_payload() == before.to_payload()
+
+
+def test_bypass_records_new_prompt_without_waiting_for_a_tool(runtime):
+    root, _, _, _ = runtime
+    kernel, before, payload = skipped_prompt(runtime, keep_bypass=True)
+    code, _, diagnostic = hook(root, 'codex', json.dumps({**payload,
+        'hook_event_name': 'UserPromptSubmit', 'prompt': 'Repair the harness'}),
+        {'CODEX_THREAD_ID': 'root'})
+    assert code == 0, diagnostic
+    state = kernel.inspect(before.session.id)
+    assert state.foreground_turns[state.session.root_actor_id].vendor_turn_id == 'current'
+    assert {key: value.to_payload() for key, value in state.workflows.items()} == {
+        key: value.to_payload() for key, value in before.workflows.items()}
