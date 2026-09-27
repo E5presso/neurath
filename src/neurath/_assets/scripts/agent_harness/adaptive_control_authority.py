@@ -1350,7 +1350,7 @@ class AdaptiveControlAuthorityVerifier:
             "target_agent_id": lineage.issuer_id,
         }
         if self._canonical_json(
-            artifact,
+            self._report_comparison_view(artifact),
             "independent delegation artifact",
         ) != self._canonical_json(
             expected_artifact,
@@ -1367,6 +1367,22 @@ class AdaptiveControlAuthorityVerifier:
             raise AdaptiveControlAuthorityInvalid(
                 f"independent delegation typed result is not blocker-free: {delegation_id}"
             )
+
+    def _report_comparison_view(self, artifact: Mapping[str, object]) -> Mapping[str, object]:
+        """원본 digest를 보존하며 schema상 float score의 정수 JSON 표기만 맞춥니다."""
+        report = artifact.get("report")
+        if not isinstance(report, dict) or not isinstance(report.get("claims"), list):
+            return artifact
+        claims = []
+        for claim in report["claims"]:
+            if isinstance(claim, dict) and claim.get("claim_type") == "goal-coverage":
+                claim = dict(claim)
+                for field in ("goal_alignment", "semantic_drift", "uncertainty", "reward_hacking_risk"):
+                    value = claim.get(field)
+                    if type(value) is int and value in (0, 1):
+                        claim[field] = float(value)
+            claims.append(claim)
+        return {**artifact, "report": {**report, "claims": claims}}
 
     def _result_summary(self, candidate_ref: str, trajectory_digest: str) -> str:
         """Typed result를 report digest와 독립적인 exact candidate identity에 결속합니다."""

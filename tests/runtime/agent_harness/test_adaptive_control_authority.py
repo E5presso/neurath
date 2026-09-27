@@ -1093,6 +1093,45 @@ class AdaptiveControlAuthorityVerifierTest(TestCase):
         self.assertEqual(("evaluation-complete",), verification.verified_delegation_ids)
         self.assertEqual((), verification.pending_claims)
 
+    def test_integral_json_coverage_scores_roundtrip_without_rewriting_artifact(self) -> None:
+        """JavaScript 정수 표기의 score도 같은 typed float 판정으로 검증합니다."""
+        with AdaptiveAuthorityFixture() as fixture:
+            evidence, coverage = fixture.independent_claims()
+            for field in ("goal_alignment", "semantic_drift", "uncertainty", "reward_hacking_risk"):
+                coverage[field] = int(coverage[field])
+            receipt = fixture.write_artifact("integer-scores", (evidence, coverage))
+            lineage = fixture.independent_lineage("integer-scores", receipt)
+            snapshot = fixture.persist_snapshot(fixture.independent_snapshot(
+                evidence_lineage=lineage, coverage_lineage=lineage))
+            fixture.transition_delegation("integer-scores", receipt, lifecycle="consumed")
+
+            verified = fixture.verifier.verify_completion(snapshot.workflow_revision)
+            artifact = SessionArtifactStore(fixture.owner).read_json(receipt)
+
+        self.assertTrue(verified.external_authority.complete)
+        stored = next(claim for claim in artifact["report"]["claims"]
+                      if claim["claim_type"] == "goal-coverage")
+        self.assertIs(type(stored["goal_alignment"]), int)
+        self.assertEqual(coverage, stored)
+
+    def test_coverage_score_normalization_preserves_type_value_and_revision_checks(self) -> None:
+        """Score의 bool·문자열·변경값과 score 밖 revision 표현은 허용하지 않습니다."""
+        cases = [(field, value) for field in
+                 ("goal_alignment", "semantic_drift", "uncertainty", "reward_hacking_risk")
+                 for value in (True, False, "0", None, 0.5, 2)]
+        cases.append(("evaluation_revision", 1.0))
+        for field, value in cases:
+            with self.subTest(field=field, value=value), AdaptiveAuthorityFixture() as fixture:
+                evidence, coverage = fixture.independent_claims()
+                coverage[field] = value
+                receipt = fixture.write_artifact("invalid-score", (evidence, coverage))
+                lineage = fixture.independent_lineage("invalid-score", receipt)
+                fixture.persist_snapshot(fixture.independent_snapshot(
+                    evidence_lineage=lineage, coverage_lineage=lineage))
+                fixture.transition_delegation("invalid-score", receipt, lifecycle="consumed")
+                with self.assertRaises(AdaptiveControlAuthorityInvalid):
+                    fixture.verifier.verify()
+
     def test_independent_report_must_assess_the_exact_bounded_trajectory(self) -> None:
         """Goal claim만 재서명한 report는 exact trajectory를 판정한 증거가 아닙니다."""
         with AdaptiveAuthorityFixture() as fixture:
