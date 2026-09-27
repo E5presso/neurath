@@ -871,7 +871,7 @@ class PhaseRunner:
                 "skill": state.skill,
                 "run_id": state.run_id,
             }
-        contract = self._repository.get(state.skill)
+        contract = self._contract_for_state(state)
         current_phase = contract.phase(state.current_phase_id)
         phase_payload = self._phase_payload(state, current_phase)
         return {
@@ -914,7 +914,7 @@ class PhaseRunner:
             PhaseRunnerError: Phase, evidence, adaptive policy 또는 terminal 조건이
                 current state와 맞지 않으면 발생합니다."""
         state = store.read()
-        contract = self._repository.get(state.skill)
+        contract = self._contract_for_state(state)
         if terminal_state is not None and state.adaptive_control_required:
             raise PhaseRunnerError(
                 "ATOMIC_FINALIZE_UNSUPPORTED",
@@ -1019,7 +1019,7 @@ class PhaseRunner:
         Raises:
             입력 조합이나 외부 응답이 domain invariant와 맞지 않으면 예외를 발생시킵니다."""
         state = store.read()
-        contract = self._repository.get(state.skill)
+        contract = self._contract_for_state(state)
         next_state = self._finalize_state(store, state, contract, terminal_state)
         return self._finalized_payload(next_state)
 
@@ -1059,6 +1059,12 @@ class PhaseRunner:
             raise PhaseRunnerError(
                 "INCOMPLETE_PHASES",
                 f"{terminal_state} finalization requires every phase to be completed or skipped",
+            )
+        if (state.skill == "autopilot" and terminal_state == "merged"
+                and any(phase.status != "completed" for phase in state.phases)):
+            raise PhaseRunnerError(
+                "AUTOPILOT_PHASE_REQUIRED",
+                "merged autopilot requires every phase to be completed",
             )
         if state.skill == "process-ticket" and terminal_state == "merged":
             merge_cleanup = next(
@@ -1135,6 +1141,11 @@ class PhaseRunner:
             )
         if status not in VALID_PHASE_STATUSES:
             raise PhaseRunnerError("STATUS_INVALID", f"{status} is not a valid phase status")
+        if state.skill == "autopilot" and status == "skipped":
+            raise PhaseRunnerError(
+                "AUTOPILOT_SKIP_FORBIDDEN",
+                "autopilot phases cannot be skipped; record a verified no-op as completed",
+            )
         if not summary:
             raise PhaseRunnerError("SUMMARY_REQUIRED", "phase completion requires a summary")
         if status in TERMINAL_PHASE_STATUSES and not reason:
@@ -1218,6 +1229,50 @@ class PhaseRunner:
                 failures.append(evidence_key)
         return failures
 
+    def _contract_for_state(self, state: PhaseRunState) -> SkillContract:
+        contract = self._repository.get(state.skill)
+        if (state.skill == "autopilot" and len(state.phases) == 7
+                and state.phases[5].name == "intent_audit_and_docs"
+                and state.phases[6].name == "terminal_report"):
+            legacy_phases = (*contract.phases[:5],
+                PhaseContract(6, "intent_audit_and_docs", 2,
+                              ("audit_spec_result", "sync_docs_result"),
+                              "phases/phase-4-intent-audit.md"),
+                PhaseContract(7, "terminal_report", 1, ("terminal_report",),
+                              "phases/phase-6-final-report.md"))
+            return SkillContract(contract.name, contract.terminal_states,
+                                 legacy_phases, contract.adaptive_control_required)
+        return contract
+
+    def _autopilot_issue_set(
+        self, evidence: tuple[str, ...], label: str,
+    ) -> frozenset[int] | None:
+        item = self._evidence_item(evidence, label)
+        if item is None or ": " not in item:
+            return None
+        try:
+            value = json.loads(item.split(": ", 1)[1])
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(value, dict) or set(value) != (
+            {"issues", "edges"} if label == "dependency_dag" else {"issues"}
+        ):
+            return None
+        issues = value["issues"]
+        if (not isinstance(issues, list)
+                or any(type(number) is not int or number < 1 for number in issues)
+                or len(set(issues)) != len(issues)):
+            return None
+        if label == "dependency_dag":
+            edges = value["edges"]
+            if (not isinstance(edges, list)
+                    or any(not isinstance(edge, list) or len(edge) != 2
+                           or any(type(number) is not int or number not in issues
+                                  for number in edge) or edge[0] == edge[1]
+                           for edge in edges)):
+                return None
+        return frozenset(issues)
+
     def _semantic_failures(
         self,
         state: PhaseRunState,
@@ -1228,6 +1283,9 @@ class PhaseRunner:
         store: PhaseRunStore,
     ) -> list[str]:
         failures: list[str] = []
+        legacy_autopilot = (state.skill == "autopilot"
+            and hasattr(state, "phases") and len(state.phases) == 7
+            and state.phases[5].name == "intent_audit_and_docs")
         required_evidence = self._effective_required_evidence(state, phase, status)
         if state.adaptive_control_required and status not in TERMINAL_PHASE_STATUSES:
             failures.extend(self._adaptive_control_transition_failures(state, phase, store))
@@ -1279,11 +1337,62 @@ class PhaseRunner:
         if (state.skill == "finish-session" and phase.name == "commit" and status == "completed"
                 and state.phase(2).status != "completed"):
             failures.append("finish_session.stage_scope_not_completed")
+        if state.skill == "autopilot" and not legacy_autopilot and phase.name == "collect_issues":
+            if self._autopilot_issue_set(evidence, "normalized_items") is None:
+                failures.append("autopilot.normalized_items")
+        if state.skill == "autopilot" and not legacy_autopilot and phase.name == "dependency_dag":
+            collected = self._autopilot_issue_set(state.phase(1).evidence, "normalized_items")
+            planned = self._autopilot_issue_set(evidence, "dependency_dag")
+            if collected is None or planned is None or collected != planned:
+                failures.append("autopilot.dependency_dag_scope")
         if state.skill == "autopilot" and phase.name == "execute_waves":
             wave_id = self._evidence_value(self._evidence_item(evidence, "native_wave_receipt"), "wave_id")
+            planned = (self._autopilot_issue_set(state.phase(2).evidence, "dependency_dag")
+                       if not legacy_autopilot and hasattr(state, "phase") else None)
+            no_op = self._evidence_item(evidence, "native_wave_receipt") == (
+                "native_wave_receipt: no_op=all_satisfied")
             try:
-                if not wave_id or store.read_native_wave(wave_id).get("all_succeeded") is not True:
+                if no_op and planned == frozenset():
+                    wave = None
+                else:
+                    wave = store.read_native_wave(wave_id) if wave_id else None
+                if not (no_op and planned == frozenset()) and (
+                    wave is None or wave.get("all_succeeded") is not True
+                ):
                     failures.append("native_wave_receipt")
+                if not legacy_autopilot and not (no_op and planned == frozenset()):
+                    actual = wave.get("states") if wave else None
+                    attempts = wave.get("attempts", []) if wave else []
+                    predecessors = {item["replacement"]: item["failed"]
+                                    for item in attempts}
+                    def original(identifier):
+                        seen = set()
+                        while identifier in predecessors and identifier not in seen:
+                            seen.add(identifier)
+                            identifier = predecessors[identifier]
+                        return identifier
+                    if (planned is None or not isinstance(actual, Mapping)
+                            or {original(identifier) for identifier in actual}
+                            != {f"issue-{number}" for number in planned}):
+                        failures.append("autopilot.wave_scope")
+                    dag_item = self._evidence_item(state.phase(2).evidence, "dependency_dag")
+                    try:
+                        dag = json.loads(dag_item.split(": ", 1)[1])
+                        expected_dependencies = {
+                            (f"issue-{first}", f"issue-{second}")
+                            for first, second in dag["edges"]
+                        }
+                        entries = wave.get("entries") if wave else None
+                        if not isinstance(entries, list):
+                            raise ValueError("native wave entries unavailable")
+                        actual_dependencies = {
+                            (original(dependency), original(entry["delegation_id"]))
+                            for entry in entries for dependency in entry["depends_on"]
+                        }
+                        if actual_dependencies != expected_dependencies:
+                            failures.append("autopilot.wave_dependencies")
+                    except (AttributeError, IndexError, KeyError, TypeError, ValueError):
+                        failures.append("autopilot.wave_dependencies")
             except (ValueError, KeyError):
                 failures.append("native_wave_receipt")
         if state.skill == "evaluate-harness":

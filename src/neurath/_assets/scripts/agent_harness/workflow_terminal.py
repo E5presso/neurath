@@ -65,6 +65,8 @@ class WorkflowTerminalPolicy:
                 or new.get("status") not in {"completed", "skipped", "failed", "blocked"}
             ):
                 raise WorkflowTerminalError("only the current pending phase may change")
+            if phase.get("skill") == "autopilot" and new.get("status") == "skipped":
+                raise WorkflowTerminalError("autopilot phases cannot be skipped")
             expected_current = (
                 new_rows[index + 1].get("id")
                 if new.get("status") in {"completed", "skipped"} and index + 1 < len(new_rows)
@@ -122,6 +124,8 @@ class WorkflowTerminalPolicy:
             raise ValueError("terminal workflow requires a terminal phase projection")
         statuses = tuple(item.get("status") for item in phases)
         if completed:
+            if phase.get("skill") == "autopilot" and "skipped" in statuses:
+                raise ValueError("completed autopilot workflow cannot contain skipped phases")
             if terminal in {"failed", "blocked"} or any(
                 status not in {"completed", "skipped"} for status in statuses
             ):

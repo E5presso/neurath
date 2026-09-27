@@ -7,6 +7,8 @@ dependency graph와 execution wave를 구성합니다.
 1. GitHub `blocked-by` 관계를 graph edge로 변환합니다.
 2. parent/sub-issue ordering이 실제 dependency를 뜻할 때만 포함합니다.
 3. work를 spawn하기 전에 cycle을 탐지합니다.
+   `dependency_dag` phase 근거는 `{"issues":[90,91],"edges":[]}` 형식의
+   JSON으로 기록합니다. `issues`는 phase 1의 구현 대상과 정확히 일치해야 합니다.
 4. 독립 issue를 wave로 묶습니다.
 5. critical path와 parallelizable group을 식별합니다.
 

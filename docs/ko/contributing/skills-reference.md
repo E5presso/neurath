@@ -20,7 +20,7 @@
 | --- | --- | --- | --- | --- |
 | `review-spec` | 명세와 구현의 일치 여부 검토 | `audit-spec` | 1 | `completed`, `blocked`, `failed` |
 | `qa` | 사용자 동작·API·저장 결과 검증 | `automate-qa` | 3 | `qa-complete`, `blocked`, `failed` |
-| `autopilot` | 승인된 이슈 작업과 의존성 조정 | `autopilot` | 7 | `merged`, `failed`, `skipped`, `blocked` |
+| `autopilot` | 승인된 이슈 작업과 의존성 조정 | `autopilot` | 8 | `merged`, `failed`, `blocked` |
 | `checkpoint` | 현재 작업과 다음 행동 보존 | `checkpoint` | 1 | `completed`, `blocked`, `failed` |
 | `commit` | 승인된 파일 범위 검토·커밋 | `commit` | 3 | `committed`, `failed`, `blocked` |
 | `create-pr` | 승인된 PR 준비·생성 | `create-pr` | 3 | `pr-created`, `blocked`, `failed` |

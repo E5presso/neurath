@@ -1,5 +1,37 @@
 """Named measurable task operations bound to the current native session."""
 
+import re
+
+
+def _require_autopilot_phase(root, identity, process, actor_id):
+    """Fence task mutation after an explicit native autopilot skill invocation."""
+    from neurath.runtime.task_schema import TaskError
+    from neurath.runtime.user_choices import native_messages
+    try:
+        # Terminal workflows span the whole native session; count invocations over
+        # that same history, not the choice reader's bounded recent window.
+        messages = native_messages(root, identity, record_limit=None)
+    except ValueError:
+        return
+    user_messages = [text for role, text in messages if role == "user"]
+    invocation = r"\[\$autopilot\]\(|(?<!\w)\$autopilot\b|(?<!\w)/autopilot\b"
+    invocation_count = sum(bool(re.search(invocation, text)) for text in user_messages)
+    if not invocation_count:
+        return
+    if any(workflow.kind == "autopilot"
+           and workflow.status.value == "active"
+           and str(workflow.owner_actor_id) == str(actor_id)
+           for workflow in process.workflows.values()):
+        return
+    terminal_count = sum(workflow.kind == "autopilot"
+                         and workflow.status.value in {"completed", "failed"}
+                         and str(workflow.owner_actor_id) == str(actor_id)
+                         for workflow in process.workflows.values())
+    if terminal_count >= invocation_count:
+        return
+    raise TaskError("autopilot-phase-required",
+                    "call phase_start for the explicit autopilot request before task mutation")
+
 
 def definitions():
     from neurath.runtime.task_schema import choice, text_field
@@ -30,7 +62,8 @@ def definitions():
             for name, (description, fields, readonly) in entries.items()}
 
 
-def service_for(root, *, identity, expected_turn, verified_policy_evidence=None):
+def service_for(root, *, identity, expected_turn, verified_policy_evidence=None,
+                operation_name=None):
     from neurath.runtime.state_tasks import _handle
     from neurath.runtime.task_schema import TaskError
     handle = _handle(root, identity, expected_turn, verified_policy_evidence)
@@ -42,6 +75,8 @@ def service_for(root, *, identity, expected_turn, verified_policy_evidence=None)
 
     def admission(process):
         actor = process.actors.get(handle.actor_id)
+        if operation_name in {"task_start", "task_resolve"}:
+            _require_autopilot_phase(root, identity, process, handle.actor_id)
         if (actor is None or participation(process, actor) != (True, expected_turn)
                 or canonical(_prompt_receipt(process, actor)) !=
                    canonical(verified_policy_evidence["user_prompt_receipt"])
@@ -54,7 +89,8 @@ def service_for(root, *, identity, expected_turn, verified_policy_evidence=None)
 def execute(root, name, fields, *, identity, expected_turn, verified_policy_evidence=None):
     from neurath.runtime.task_schema import TaskError
     service = service_for(root, identity=identity, expected_turn=expected_turn,
-                          verified_policy_evidence=verified_policy_evidence)
+                          verified_policy_evidence=verified_policy_evidence,
+                          operation_name=name)
     from scripts.agent_harness.task_ledger import TaskLedgerError, TaskRevisionConflict
     operation = {"task_define": service.define, "task_list": service.list,
                  "task_start": service.start, "task_resolve": service.resolve}[name]

@@ -27,12 +27,14 @@ milestone, parent issue, issue set을 끝까지 처리하기 위해 존재하며
 
 ## 결정적 phase 실행
 
-계약이 있는 phase 작업은 다음 명령으로 initialize, inspect, complete,
-evaluate, finalize합니다.
-
-```bash
-uv run python -m scripts.skill_harness.phase_runner
-```
+Autopilot을 호출하면 `task_define`으로 사용자의 정확한 목표를 등록한 뒤
+구현이나 `task_start` 전에 명명 MCP `phase_start`로 워크플로를 시작합니다.
+각 단계에서 `phase_current`를 읽고
+`phase_evidence_prepare`와 `phase_complete`로 해당 단계의 근거를 확정합니다.
+마지막 단계 뒤 `phase_finalize`를 사용합니다. task 목록이 있어도 이 순서는
+생략되지 않습니다. Autopilot의 모든 phase는 `completed`가 필요합니다.
+실행할 항목이 없는 단계도 확인한 결과를 근거로 `completed`로 기록하며
+`skipped`로 우회하지 않습니다.
 
 phase runner가 evidence를 수락하고 다음 phase 또는 terminal output을 내기 전에는
 phase 결과나 다음 phase 진입을 주장하지 않습니다.

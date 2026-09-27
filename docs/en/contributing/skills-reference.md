@@ -20,7 +20,7 @@ The catalog below starts from the work the agent needs to do. Read the selected 
 | --- | --- | --- | --- | --- |
 | `review-spec` | Check the implementation against its specification. | `audit-spec` | 1 | `completed`, `blocked`, `failed` |
 | `qa` | Verify user-visible behavior, API evidence, and persistence. | `automate-qa` | 3 | `qa-complete`, `blocked`, `failed` |
-| `autopilot` | Coordinate authorized issue work and dependencies. | `autopilot` | 7 | `merged`, `failed`, `skipped`, `blocked` |
+| `autopilot` | Coordinate authorized issue work and dependencies. | `autopilot` | 8 | `merged`, `failed`, `blocked` |
 | `checkpoint` | Retain the current work and next steps. | `checkpoint` | 1 | `completed`, `blocked`, `failed` |
 | `commit` | Review and commit the authorized file scope. | `commit` | 3 | `committed`, `failed`, `blocked` |
 | `create-pr` | Prepare and create an authorized pull request. | `create-pr` | 3 | `pr-created`, `blocked`, `failed` |
