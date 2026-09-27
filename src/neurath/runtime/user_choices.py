@@ -101,7 +101,11 @@ def verify_answer(choice, receipt, messages):
     if len(messages)<2 or messages[-1][0]!="user" or messages[-2][0]!="assistant":
         raise ValueError("native question and user response are unobserved")
     text=messages[-1][1]
-    if digest(text)!=receipt["prompt_digest"]:
+    # Codex transcript frames can retain a terminal line break that its
+    # UserPromptReceipt omitted. Keep exact-byte matching first so receipts
+    # for replies that intentionally include a line break still work.
+    if (digest(text)!=receipt["prompt_digest"]
+            and digest(text.rstrip("\r\n"))!=receipt["prompt_digest"]):
         raise ValueError("native user input does not match the current prompt receipt")
     if messages[-2][1].strip()!=choice["question"].strip():
         raise ValueError("last assistant message must equal the prepared question verbatim; remove any preamble or trailing text")

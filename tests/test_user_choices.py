@@ -36,6 +36,17 @@ def test_choice_errors_identify_question_and_reply_failures(tmp_path):
         assert verify_answer(choice,receipt(answer),[("assistant",choice["question"]),("user",answer)])=="yes"
 
 
+def test_codex_visible_trailing_newline_matches_canonical_prompt_receipt(tmp_path):
+    store=ChoiceStore(tmp_path/"choices.sqlite3")
+    subject={"operation":"reporting_consent","target_id":"","snapshot":{},
+             "question":"Approve?","decisions":["yes","no"]}
+    choice=store.prepare("owner","ask",subject,receipt("prepare",1))
+    messages=[("assistant",choice["question"]),("user","예\n")]
+    assert verify_answer(choice,receipt("예"),messages)=="yes"
+    with pytest.raises(ValueError,match="does not match"):
+        verify_answer(choice,receipt("다른 답"),messages)
+
+
 def test_claude_ask_user_question_is_not_treated_as_a_verified_user_reply(tmp_path,monkeypatch):
     import json
     from types import SimpleNamespace
