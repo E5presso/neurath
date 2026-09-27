@@ -4,7 +4,8 @@ from neurath.hosts.task_scope import instruction_scope
 from scripts.agent_harness.delegation_wave import projection, require_dispatch_before_wait, validate_plan
 
 WAIT_TOOLS = {'wait_agent', 'collaborationwait_agent', 'collaboration.wait_agent',
-              'TaskOutput', 'functions.wait', 'clock.sleep', 'sleep'}
+              'TaskOutput', 'functions.wait', 'clock.sleep', 'sleep',
+              'write_stdin', 'functions.write_stdin'}
 
 
 def prepare(root, handle, *, wave_id, task_id, expected_task_revision, entries,

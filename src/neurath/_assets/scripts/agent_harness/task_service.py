@@ -124,9 +124,12 @@ def require_settled_tasks(tx, process):
 
 
 class TaskService:
-    def __init__(self, handle, *, worktree=None, admission=None):
+    def __init__(self, handle, *, worktree=None, admission=None,
+                 start_admission=None, resolve_admission=None):
         self.handle = handle
         self.admission = admission
+        self.start_admission = start_admission
+        self.resolve_admission = resolve_admission
         root = handle._repository_control_root()
         self.worktree = Path(root if worktree is None else worktree).resolve()
         self.database = RuntimeDatabase(root)
@@ -245,9 +248,13 @@ class TaskService:
         return self._mutate(key, request, transform)
 
     def start(self, task_id, *, expected_revision, expected_task_revision, key):
+        def transform(tx, process, ledger):
+            if self.start_admission is not None:
+                self.start_admission(process, ledger, task_id)
+            return ledger.start(task_id, expected_revision=expected_revision,
+                expected_task_revision=expected_task_revision, key=key)
         return self._mutate(key, ["start", task_id, expected_revision, expected_task_revision],
-            lambda tx, process, ledger: ledger.start(task_id, expected_revision=expected_revision,
-                expected_task_revision=expected_task_revision, key=key))
+            transform)
 
     def resolve(self, task_id, *, expected_revision, expected_task_revision, key, references,
                 status, summary):
@@ -259,6 +266,8 @@ class TaskService:
         _text(summary, 4096)
 
         def transform(tx, process, ledger):
+            if self.resolve_admission is not None:
+                self.resolve_admission(process, ledger, task_id)
             if requested is TaskStatus.SUCCEEDED:
                 from .delegation_wave import require_complete
                 record = tx.get("host-journal", str(process.session.id))

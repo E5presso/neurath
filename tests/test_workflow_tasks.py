@@ -100,6 +100,18 @@ def test_registered_phase_initializes_without_cli_and_replays(sessions, monkeypa
     assert "git_status" in current["required_evidence"]
 
 
+def test_autopilot_phase_start_binds_native_prompt_digest(sessions, monkeypatch):
+    from scripts.agent_harness.evaluation_admission import EvaluationAdmissionPolicy
+    monkeypatch.setattr(EvaluationAdmissionPolicy, "inspect", lambda *_, **__: {"status": "available"})
+    call(sessions, "worktree_claim", {})
+    define_task(sessions)
+    source = call(sessions, "task_list", {})["current_prompt_source"]
+    start(sessions, workflow="autopilot-prompt", skill="autopilot", key="autopilot-prompt")
+    workflow = call(sessions, "session_inspect", {})["workflows"]["autopilot-prompt"]
+    assert workflow["payload"]["invocation_prompt_digest"] == source["revision"]
+    assert workflow["payload"]["invocation_prompt_reference"] == source["reference"]
+
+
 def test_start_requires_registered_contract_and_owner(sessions):
     with pytest.raises(ValueError):
         start(sessions)

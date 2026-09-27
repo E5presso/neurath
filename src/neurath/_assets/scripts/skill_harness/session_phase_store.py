@@ -229,6 +229,15 @@ class SessionPhaseStateStore:
                     "no current host-attested direct child evaluator; retain a state-free review "
                     "and retry init after host registration; no workflow was created",
                 )
+        payload = {self._PHASE_NAMESPACE: phase_payload, "skill_state": {}}
+        if self._skill == "autopilot":
+            process = self._handle.inspect()
+            turn = process.foreground_turns.get(self._handle.actor_id)
+            prompt = None if turn is None else turn.user_prompt_receipt
+            if prompt is None:
+                raise PhaseStateIdentityError("autopilot phase start requires a native user prompt")
+            payload["invocation_prompt_digest"] = prompt.prompt_digest
+            payload["invocation_prompt_reference"] = prompt.authority_reference
         process_state = self._handle.apply(
             WorkflowStarted(
                 session_id=self._handle.session_id,
@@ -236,10 +245,7 @@ class SessionPhaseStateStore:
                 owner_actor_id=self._handle.actor_id,
                 kind=self._skill,
                 goal=state.north_star,
-                payload={
-                    self._PHASE_NAMESPACE: phase_payload,
-                    "skill_state": {},
-                },
+                payload=payload,
                 idempotency_key=f"phase-store:initialize:{self._workflow_id}",
             )
         )

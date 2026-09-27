@@ -68,7 +68,9 @@ from tests.test_identity import runtime  # noqa: F401, E402
 from tests.test_peer_task_scope import setup_peer  # noqa: E402
 
 
-def test_real_hook_blocks_early_wait_and_task_success(runtime):
+@pytest.mark.parametrize('wait_tool', ['collaborationwait_agent', 'write_stdin',
+                                       'functions.write_stdin'])
+def test_real_hook_blocks_early_wait_and_task_success(runtime, wait_tool):
     from neurath.hosts.waves import prepare
     from neurath.hosts.identity import prepare_bound_delegation
     store, _, task = setup_peer(runtime)
@@ -84,14 +86,14 @@ def test_real_hook_blocks_early_wait_and_task_success(runtime):
         assert send('codex', 'PostToolUse', tool_name='spawn_agent', tool_use_id=identifier,
                     turn_id='peer-turn', tool_response={'agent_id': 'child-' + identifier})[0] == 0
     dispatch('a')
-    code, _, diagnostic = send('codex', 'PreToolUse', tool_name='collaborationwait_agent',
+    code, _, diagnostic = send('codex', 'PreToolUse', tool_name=wait_tool,
                                tool_use_id='early-wait', turn_id='peer-turn', tool_input={})
     assert code != 0 and 'dispatch' in diagnostic
     with pytest.raises(ValueError, match='unfinished'):
         store.resolve(task['id'], expected_revision=4, expected_task_revision=2, key='early-success',
                       references=['test:incomplete'], status='succeeded', summary='Premature completion')
     dispatch('b')
-    assert send('codex', 'PreToolUse', tool_name='collaborationwait_agent',
+    assert send('codex', 'PreToolUse', tool_name=wait_tool,
                 tool_use_id='full-wait', turn_id='peer-turn', tool_input={})[0] == 0
 
 
