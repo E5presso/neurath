@@ -1,36 +1,100 @@
 """Named measurable task operations bound to the current native session."""
 
+import hashlib
 import re
+from collections import Counter, defaultdict
 
 
-def _require_autopilot_phase(root, identity, process, actor_id):
-    """Fence task mutation after an explicit native autopilot skill invocation."""
+def _explicit_autopilot_invocation(text):
+    command = re.compile(r"^(?:\[\$autopilot\]\(|[$/]autopilot\b|autopilot\s+#\d+|"
+                         r"(?:please\s+)?(?:use|run|invoke|execute)\s+(?:the\s+)?[$/]?autopilot\b|"
+                         r"(?:can|could|would|will)\s+you\s+(?:please\s+)?"
+                         r"(?:use|run|invoke|execute)\s+(?:the\s+)?[$/]?autopilot\b|"
+                         r"이제\s+[$/]?autopilot\b)", re.IGNORECASE)
+    return any(command.search(line.strip()) for line in text.splitlines())
+
+
+def _require_autopilot_phase(root, identity, process, actor_id, task, ledger=None):
+    """Fence work while a matching explicit autopilot request is unsettled."""
     from neurath.runtime.task_schema import TaskError
     from neurath.runtime.user_choices import native_messages
     try:
         # Terminal workflows span the whole native session; count invocations over
         # that same history, not the choice reader's bounded recent window.
         messages = native_messages(root, identity, record_limit=None)
-    except ValueError:
+    except ValueError as error:
+        raise TaskError("autopilot-transcript-unavailable",
+                        "registered native transcript is required for phase admission") from error
+    tasks = (task,) if ledger is None else ledger.tasks
+    known_digests = {source.revision for candidate in tasks
+                     for source in candidate.definition.sources if source.kind == "prompt"}
+    turn = getattr(process, "foreground_turns", {}).get(actor_id)
+    receipt = None if turn is None else turn.user_prompt_receipt
+    current_prompt_digest = None if receipt is None else receipt.prompt_digest
+    if receipt is not None:
+        known_digests.add(receipt.prompt_digest)
+    known_digests.update(workflow.payload.get("invocation_prompt_digest")
+        for workflow in process.workflows.values() if workflow.kind == "autopilot"
+        and isinstance(workflow.payload.get("invocation_prompt_digest"), str))
+
+    def prompt_digest(text):
+        # Codex's visible transcript can append a line ending to the exact
+        # foreground prompt used by the native receipt.
+        exact = hashlib.sha256(text.encode()).hexdigest()
+        visible = hashlib.sha256(text.rstrip("\r\n").encode()).hexdigest()
+        return exact if exact in known_digests else visible
+    invocations = Counter(prompt_digest(text) for role, text in messages
+                          if role == "user" and _explicit_autopilot_invocation(text))
+    if not invocations:
         return
-    user_messages = [text for role, text in messages if role == "user"]
-    invocation = r"\[\$autopilot\]\(|(?<!\w)\$autopilot\b|(?<!\w)/autopilot\b"
-    invocation_count = sum(bool(re.search(invocation, text)) for text in user_messages)
-    if not invocation_count:
-        return
-    if any(workflow.kind == "autopilot"
-           and workflow.status.value == "active"
-           and str(workflow.owner_actor_id) == str(actor_id)
-           for workflow in process.workflows.values()):
-        return
-    terminal_count = sum(workflow.kind == "autopilot"
-                         and workflow.status.value in {"completed", "failed"}
-                         and str(workflow.owner_actor_id) == str(actor_id)
-                         for workflow in process.workflows.values())
-    if terminal_count >= invocation_count:
+    groups = defaultdict(list)
+    source_goals = defaultdict(set)
+    for candidate in tasks:
+        for source in candidate.definition.sources:
+            if source.kind == "prompt" and source.revision in invocations:
+                groups[(source.reference, source.revision)].append(candidate.status.value)
+                if candidate.status.value in {"pending", "in_progress"}:
+                    source_goals[(source.reference, source.revision)].add(candidate.definition.goal)
+    covered = defaultdict(set)
+    for (reference, digest), statuses in groups.items():
+        if all(status in {"succeeded", "failed", "invalidated"} for status in statuses):
+            covered[digest].add(reference)
+    active = []
+    for workflow_id, workflow in process.workflows.items():
+        if workflow.kind != "autopilot" or str(workflow.owner_actor_id) != str(actor_id):
+            continue
+        digest = workflow.payload.get("invocation_prompt_digest")
+        reference = workflow.payload.get("invocation_prompt_reference")
+        if digest in invocations and isinstance(reference, str):
+            covered[digest].add(reference)
+        if workflow.status.value == "active":
+            active.append((workflow_id, workflow))
+    used_recovery = set()
+    for digest, count in invocations.items():
+        if count <= len(covered[digest]):
+            continue
+        for workflow_id, workflow in active:
+            if workflow_id in used_recovery or current_prompt_digest == digest:
+                continue
+            start_digest = workflow.payload.get("invocation_prompt_digest")
+            if start_digest is not None and start_digest != current_prompt_digest:
+                continue
+            reference = next((reference for reference, source_digest in groups
+                if source_digest == digest and workflow.goal in source_goals[(reference, digest)]
+                and reference not in covered[digest]), None)
+            if reference is None and sum(invocations.values()) - sum(map(len, covered.values())) == 1:
+                if workflow.goal == task.definition.goal:
+                    reference = "recovered-workflow:" + str(workflow_id)
+            if reference is not None:
+                covered[digest].add(reference)
+                used_recovery.add(workflow_id)
+                break
+        if count > len(covered[digest]):
+            break
+    else:
         return
     raise TaskError("autopilot-phase-required",
-                    "call phase_start for the explicit autopilot request before task mutation")
+                    "call phase_start for the explicit autopilot request before task_start")
 
 
 def definitions():
@@ -75,15 +139,25 @@ def service_for(root, *, identity, expected_turn, verified_policy_evidence=None,
 
     def admission(process):
         actor = process.actors.get(handle.actor_id)
-        if operation_name in {"task_start", "task_resolve"}:
-            _require_autopilot_phase(root, identity, process, handle.actor_id)
         if (actor is None or participation(process, actor) != (True, expected_turn)
                 or canonical(_prompt_receipt(process, actor)) !=
                    canonical(verified_policy_evidence["user_prompt_receipt"])
                 or not active_connection(root, identity.session)):
             raise TaskError("native-turn-changed", "task transaction lost its native prompt or connection")
 
-    return TaskService(handle, worktree=root, admission=admission)
+    def start_admission(process, ledger, task_id):
+        task = next((item for item in ledger.tasks if item.id == task_id), None)
+        if task is not None:
+            _require_autopilot_phase(root, identity, process, handle.actor_id, task, ledger)
+
+    def resolve_admission(process, ledger, task_id):
+        task = next((item for item in ledger.tasks if item.id == task_id), None)
+        if task is not None and task.status.value == "pending":
+            _require_autopilot_phase(root, identity, process, handle.actor_id, task, ledger)
+
+    return TaskService(handle, worktree=root, admission=admission,
+                       start_admission=start_admission if operation_name == "task_start" else None,
+                       resolve_admission=resolve_admission if operation_name == "task_resolve" else None)
 
 
 def execute(root, name, fields, *, identity, expected_turn, verified_policy_evidence=None):

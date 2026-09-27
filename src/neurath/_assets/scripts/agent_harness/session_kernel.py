@@ -4448,6 +4448,13 @@ class SessionStateReducer:
                 return state
             raise TransitionRejected(f"workflow identity already exists: {event.workflow_id}")
         self._require_available_actor(state, event.owner_actor_id, "workflow owner")
+        if event.kind == "autopilot" and isinstance(event.payload.get("phase_run"), dict):
+            turn = state.foreground_turns.get(event.owner_actor_id)
+            prompt = None if turn is None else turn.user_prompt_receipt
+            if (prompt is None or event.payload.get("invocation_prompt_digest") !=
+                    prompt.prompt_digest or event.payload.get("invocation_prompt_reference") !=
+                    prompt.authority_reference):
+                raise TransitionRejected("autopilot workflow prompt binding changed")
         self._require_adaptive_control_policy_transition(
             event.kind,
             None,

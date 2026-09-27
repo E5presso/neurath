@@ -71,6 +71,44 @@ def test_task_service_dynamic_append_preserves_running_task(service):
     assert not expanded["all_terminal"]
 
 
+def test_start_admission_rejects_inside_task_transaction(service):
+    from scripts.agent_harness.task_ledger import TaskLedgerError
+
+    store, _, _ = service
+    task = store.define([item()], expected_revision=0, key="define")["tasks"][0]
+    def reject(process, ledger, task_id):
+        assert task_id == task["id"]
+        assert ledger.revision == 1
+        raise TaskLedgerError("phase start required")
+    store.start_admission = reject
+    with pytest.raises(TaskLedgerError, match="phase start required"):
+        store.start(task["id"], expected_revision=1, expected_task_revision=1, key="start")
+    assert store.list()["tasks"][0]["status"] == "pending"
+    store.start_admission = None
+    assert store.start(task["id"], expected_revision=1, expected_task_revision=1,
+                       key="start")["tasks"][0]["status"] == "in_progress"
+    store.start_admission = reject
+    assert store.resolve(task["id"], expected_revision=2, expected_task_revision=2,
+                         key="resolve", references=("verified-result",), status="succeeded",
+                         summary="Verified legacy result")["tasks"][0]["status"] == "succeeded"
+
+
+def test_pending_resolution_admission_cannot_be_bypassed_by_skipping_start(service):
+    from scripts.agent_harness.task_ledger import TaskLedgerError
+
+    store, _, _ = service
+    task = store.define([item()], expected_revision=0, key="define")["tasks"][0]
+    def reject(process, ledger, task_id):
+        assert ledger.tasks[0].status.value == "pending"
+        raise TaskLedgerError("phase start required")
+    store.resolve_admission = reject
+    with pytest.raises(TaskLedgerError, match="phase start required"):
+        store.resolve(task["id"], expected_revision=1, expected_task_revision=1,
+                      key="resolve", references=("claimed-result",), status="succeeded",
+                      summary="Claimed result")
+    assert store.list()["tasks"][0]["status"] == "pending"
+
+
 def test_new_prompt_cannot_implicitly_authorize_scope_expansion(service):
     from scripts.agent_harness.task_ledger import TaskLedgerError
     store, kernel, sk = service
