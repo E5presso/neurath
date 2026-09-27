@@ -309,7 +309,9 @@ Autopilot root는 task와 workflow, 통합, review, monitor 결과 수락을 소
 DAG는 delegation_wave_prepare의 assignment가 포함된 entries로 현재 태스크에 결속한다.
 Codex는 모든 항목의 dispatch_prepare_code를 보존하고 ready 항목의 정확한 코드를
 functions.exec에 제출한 뒤 직접 spawn한다. 정확한 dispatch_read_code는 ready slot
-중에도 상태 조회에 사용할 수 있다. 가용 슬롯을 모두 dispatch한 뒤 기다린다. 실제 실패한 attempt만
+중에도 상태 조회에 사용할 수 있다. 비대기 wrapper 작업은 허용하되, wrapper 소스만으로
+중첩 도구를 판별하지 않는다. 실제 중첩 PreToolUse가 없는 호스트에서는 대기 차단을
+검증된 것으로 주장하지 않는다. 가용 슬롯을 모두 dispatch한 뒤 기다린다. 실제 실패한 attempt만
 wave_retry로 대체하며 원래 기록을 보존한다.
 독립 리뷰는 role=review로 준비하고 새 컨텍스트에서 생성한다. Codex는 fork_turns=none,
 Claude는 새 Agent 호출을 사용한다. 구현 자식을 리뷰어로 재사용하지 않는다. 호스트가 관측한

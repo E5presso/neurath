@@ -24,8 +24,9 @@ Root는 구현 자식과 별도의 `role=review` 직접 자식을 새 컨텍스�
    모든 entry의 `dispatch_prepare_code`를 wave 준비 결과로 보존하고, 각 ready entry에
    해당 `dispatch_prepare_code[delegation_id]`를
    Codex `functions.exec` 코드로 정확히 제출하여 `delegation_prepare`를 실행한 뒤
-   `tool:spawn_agent`를 직접 호출합니다. 준비된 slot이 남아 있는 동안 다른
-   `functions.exec` 호출은 중첩 대기 여부를 호스트가 증명할 수 없어 거부됩니다.
+   `tool:spawn_agent`를 직접 호출합니다. `functions.exec` 코드의 내용만으로
+   중첩 도구 실행 여부를 증명하지 않습니다. 실제 호스트가 중첩 대기 호출의
+   PreToolUse를 전달하지 않으면 wait hook의 차단을 완료 근거로 삼지 않습니다.
    준비 코드는 해당 entry의 assignment와 현재 task revision에 결속되므로
    수정하거나 다른 호출과 합치지 않습니다. Claude에서는 같은 명명
    `delegation_prepare`와 native Agent dispatch를 사용합니다.
@@ -33,8 +34,8 @@ Root는 구현 자식과 별도의 `role=review` 직접 자식을 새 컨텍스�
    `dispatch_prepare_keys`를 사용해 정확한 단일 `delegation_prepare` 호출만
    제출합니다. 코드가 없는 기존 wave는 `wave_id`만 담은 정확한 단일
    `delegation_wave_read` 호출로 key를 회수합니다. 반환된 `dispatch_read_code`는
-   이후 readback에도 사용합니다. 다른 `functions.exec` 코드는 준비된 slot이
-   남으면 거부됩니다.
+   이후 readback에도 사용합니다. 비대기 wrapper 작업은 ready slot 중에도
+   허용되지만, 대기 호출은 가용 slot을 채운 뒤 실행합니다.
    현재 wave의 가용 slot을 모두 채운 뒤 기다립니다. Claude의 병렬 Agent는
    run_in_background=true를 사용합니다. spawn hook이 실제 접수와 자식을 결속하며,
    준비된 항목과 빈 slot이 남았으면 wait hook이 대기를 거부합니다.
