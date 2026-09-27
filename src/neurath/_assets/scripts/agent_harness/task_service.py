@@ -125,11 +125,12 @@ def require_settled_tasks(tx, process):
 
 class TaskService:
     def __init__(self, handle, *, worktree=None, admission=None,
-                 start_admission=None, resolve_admission=None):
+                 start_admission=None, resolve_admission=None, completion_admission=None):
         self.handle = handle
         self.admission = admission
         self.start_admission = start_admission
         self.resolve_admission = resolve_admission
+        self.completion_admission = completion_admission
         root = handle._repository_control_root()
         self.worktree = Path(root if worktree is None else worktree).resolve()
         self.database = RuntimeDatabase(root)
@@ -269,6 +270,8 @@ class TaskService:
             if self.resolve_admission is not None:
                 self.resolve_admission(process, ledger, task_id)
             if requested is TaskStatus.SUCCEEDED:
+                if self.completion_admission is not None:
+                    self.completion_admission(tx, process, task_id)
                 from .delegation_wave import require_complete
                 record = tx.get("host-journal", str(process.session.id))
                 if record is not None:

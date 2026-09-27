@@ -184,26 +184,75 @@ class JobRecovery:
         finally:
             os.close(fd)
 
-    def finish_initial(self, owner, run_id, finalize):
-        """Close unconsumed initial admission, never overwrite an active worker.
+    def _pre_native_job(self, db, owner, run_id):
+        job = self._job(db, owner, run_id, allow_cancelled=True)
+        result = json.loads(job['result']) if job['result'] else {}
+        allowed = {'worker_generation', 'implementation_dispatched', 'execution', 'delivery', 'preparation'}
+        if (job['status'] not in {'accepted', 'starting'} or not isinstance(result, dict)
+                or set(result) - allowed or result.get('implementation_dispatched', False) is not False
+                or result.get('execution', 'unobserved') != 'unobserved'
+                or result.get('delivery', 'not-submitted') != 'not-submitted'
+                or result.get('preparation', 'not-started') != 'not-started'):
+            raise RecoveryUnavailable('pre-native reconciliation has native or assignment evidence')
+        for table in ('provider_executor_observations', 'provider_executor_routes'):
+            if (db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()
+                    and db.execute(f'SELECT 1 FROM {table} WHERE run_id=?', (run_id,)).fetchone()):
+                raise RecoveryUnavailable('pre-native reconciliation has observed native evidence')
+        return job
 
-        status=accepted precedes all native work in jobs._worker. An existing
-        generation-1 lease with a free OS lock here was consumed before start;
-        terminal failure is safe, but pretending to resume it is not.
+    def pre_native_state(self, owner, run_id):
+        """Inspect an initial reservation or a lost pre-native worker under its OS fence."""
+        fd = self._lock(run_id)
+        try:
+            with self.store.connection() as db:
+                job = self._pre_native_job(db, owner, run_id)
+                previous = db.execute('SELECT generation,state FROM provider_worker_leases WHERE run_id=?', (run_id,)).fetchone()
+                if previous is None:
+                    if job['status'] != 'accepted':
+                        raise RecoveryUnavailable('starting worker has no managed generation')
+                    return ('cancel' if job['cancel_requested'] else 'launch'), 1
+                if previous['state'] != 'active':
+                    raise RecoveryUnavailable('pre-native worker generation is not active')
+                return ('cancel' if job['cancel_requested'] else 'stranded'), previous['generation']
+        finally:
+            os.close(fd)
+
+    def finish_initial(self, owner, run_id, finalize):
+        """Retain the accepted-only admission contract for ordinary job launchers."""
+        return self._finish_pre_native(owner, run_id, 1, finalize, accepted_only=True)
+
+    def finish_pre_native(self, owner, run_id, generation, finalize):
+        """Close an exact, OS-unowned generation before durable native creation.
+
+        The absence of creation evidence never proves an empty native session was
+        not created. It proves only that assignment submission could not pass the
+        synchronous native-created callback. No native identity or closure is invented.
         """
+        return self._finish_pre_native(owner, run_id, generation, finalize, accepted_only=False)
+
+    def _finish_pre_native(self, owner, run_id, generation, finalize, *, accepted_only):
+        if type(generation) is not int or generation < 1:
+            raise ValueError('invalid pre-native generation')
         fd = self._lock(run_id)
         lease = None
         try:
             with self.store.connection() as db:
-                self._initial_job(db, owner, run_id)
+                job = self._pre_native_job(db, owner, run_id)
+                if accepted_only and job['status'] != 'accepted':
+                    raise RecoveryUnavailable('initial admission has advanced')
                 previous = db.execute('SELECT generation,state FROM provider_worker_leases WHERE run_id=?', (run_id,)).fetchone()
-                if previous is not None and tuple(previous) != (1, 'active'):
-                    raise RecoveryBlocked('initial worker lease has an inconsistent generation/state')
-                lease = WorkerLease(run_id, 1, uuid.uuid4().hex, fd)
+                if ((previous is not None and tuple(previous) != (generation, 'active'))
+                        or (previous is None and (generation != 1 or job['status'] != 'accepted'))):
+                    raise RecoveryUnavailable('pre-native worker generation/state changed')
+                result = json.loads(job['result']) if job['result'] else {}
+                if result.get('worker_generation', generation) != generation:
+                    raise RecoveryUnavailable('pre-native result generation changed')
+                lease = WorkerLease(run_id, generation, uuid.uuid4().hex, fd)
                 if previous is None:
-                    db.execute('INSERT INTO provider_worker_leases VALUES(?,?,?,?)', (run_id, 1, 'active', lease.token))
+                    db.execute('INSERT INTO provider_worker_leases VALUES(?,?,?,?)', (run_id, generation, 'active', lease.token))
                 else:
-                    db.execute("UPDATE provider_worker_leases SET token=? WHERE run_id=? AND generation=1 AND state='active'", (lease.token, run_id))
+                    db.execute("UPDATE provider_worker_leases SET token=? WHERE run_id=? AND generation=? AND state='active'",
+                               (lease.token, run_id, generation))
                 return finalize(db, lease)
         finally:
             if lease is not None:

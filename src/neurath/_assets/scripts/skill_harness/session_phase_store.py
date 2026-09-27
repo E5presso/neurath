@@ -369,6 +369,17 @@ class SessionPhaseStateStore:
                 "attempts": wave.get("attempts", []),
                 "entries": wave["entries"]}
 
+    def read_provider_wave(self, wave_id: str) -> Mapping[str, object]:
+        """Verify provider results against this already-bound workflow owner."""
+        from neurath.providers.waves import snapshot_for_scope
+        wave = snapshot_for_scope(self._handle._repository_control_root(),
+            session_id=str(self._handle.session_id), actor_id=str(self._handle.actor_id),
+            wave_id=wave_id)
+        if wave.get("workflow_id") != str(self._workflow_id):
+            raise ValueError("provider wave belongs to another workflow")
+        return {**wave, "entries": [{"delegation_id": entry["entry_id"],
+            "depends_on": entry["depends_on"]} for entry in wave["entries"]]}
+
     def read_review_evidence(
         self,
         expected_kind: str,
@@ -777,6 +788,9 @@ class SessionPhaseRunnerStore(PhaseRunStore):
 
     def read_native_wave(self, wave_id: str) -> Mapping[str, object]:
         return self._store.read_native_wave(wave_id)
+
+    def read_provider_wave(self, wave_id: str) -> Mapping[str, object]:
+        return self._store.read_provider_wave(wave_id)
 
     def read_review_evidence(
         self,

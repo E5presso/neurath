@@ -94,7 +94,7 @@ def bind_call(root, host, payload):
         raise TaskError("invalid-input", "unknown native task tool")
     name = tool.removeprefix("mcp__neurath_collaboration__")
     request = _request(inputs, name, root)
-    if name in {"verification_run", "provider_run"}:
+    if name in {"verification_run", "provider_run", "provider_wave_run", "provider_wave_retry"}:
         from neurath.runtime.tasks import _verification_owner
 
         _verification_owner(root, identity)

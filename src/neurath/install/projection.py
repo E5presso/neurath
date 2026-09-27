@@ -295,7 +295,8 @@ DECLARED hook은 AVAILABLE host 증명이 아니다. 원시 agent_id는 direct-c
 사소한 설명 요청에 stateful workflow를 강제하지 않는다.
 
 ## Provider 선택과 작업 간 대화
-현재 목표의 위임은 티켓 규모·실행 시간·worktree 수와 무관하게 네이티브 직접 자식이 기본이다.
+현재 대화 안의 bounded 작업은 네이티브 직접 자식이 기본이다. 스톡 Codex autopilot의
+병렬 worktree 구현은 provider_wave_run으로 runtime이 관리하는 배치를 사용한다.
 사용자가 해당 대화를 직접 방문하여 이어갈 가능성이 있을 때만 사용자용 독립 세션을 선택한다.
 다른 provider의 충분한 추론 능력과 새로운 관점·대안·반증이 유용하면 에이전트가 자율적으로
 provider worker를 선택하고 구체적인 이유를 남긴다. 별도 교차 검증 요청을 선행 조건으로 삼지 않는다.
@@ -304,15 +305,37 @@ task는 native child로 보내며 provider_run 직접 호출로 새 세션을 �
 worktree-worker는 루트 ticket을 별도로 설치한 issue worktree에 옮기는 같은 provider의 제한된 경로다.
 관점 다양화를 위한 기술적 worker는 사용자가 관리할 앱 대화와 다르다. 앱 생성 도구의 별도
 명시적 요청 조건은 유지한다. 단순 메시지 전달은 새 실행이 아니다.
-Autopilot root는 task와 workflow, 통합, review, monitor 결과 수락을 소유한다. 구현 자식과
-리뷰 자식은 root가 각각 배정하며 자식에게 재위임·root 쓰기 권한을 넘기지 않는다.
-DAG는 delegation_wave_prepare의 assignment가 포함된 entries로 현재 태스크에 결속한다.
-Codex는 모든 항목의 dispatch_prepare_code를 보존하고 ready 항목의 정확한 코드를
-functions.exec에 제출한 뒤 직접 spawn한다. 정확한 dispatch_read_code는 ready slot
-중에도 상태 조회에 사용할 수 있다. 비대기 wrapper 작업은 허용하되, wrapper 소스만으로
-중첩 도구를 판별하지 않는다. 실제 중첩 PreToolUse가 없는 호스트에서는 대기 차단을
-검증된 것으로 주장하지 않는다. 가용 슬롯을 모두 dispatch한 뒤 기다린다. 실제 실패한 attempt만
-wave_retry로 대체하며 원래 기록을 보존한다.
+Autopilot root는 task와 workflow, 통합, review, monitor 결과 수락을 소유한다.
+Provider wave의 worker는 독립 peer root이며 발행자의 직접 자식이나 독립 evaluator가 아니다.
+각 worker는 자신의 native 준비 상태와 claim을 확인한다. 발행자 workflow 권한은 넘기지 않는다.
+provider_wave_run에는 현재 task ID/revision, entries(entry_id, depends_on, request),
+관측한 capacity, 고유 wave ID와 key를 전달하고 해당하는 owned workflow_id를 결속한다.
+각 request는 distinct isolated installed worktree, assignment와 정확한 모델 plan ID/revision을
+담는다. 기존 worktree-worker·모델·실행 정책을 모든 항목에 검증한 뒤 runtime이 ready set을
+원자적으로 예약하고 실행할 항목을 영속 저장한다. 기본 mode=inherit를 유지한다.
+Worker 종료는 독립 ready 작업의 슬롯을 비우지만 dependency를 해제하지 않는다.
+Root가 provider_wave_read로 실제 결과를 읽고 provider_wave_consume에 정확한 entry/run ID,
+generation, digest와 판정을 전달한다. 수락한 성공만 dependency를 해제한다.
+이벤트 뒤 상태를 읽으며 주기적으로 조회하지 않는다. 불확실한 실행을 중복 dispatch하지 않는다.
+provider_wave_cancel은 새 예약을 막고 실제 run 취소를 요청하며 결과와 미완료 요구를 보존한다.
+
+provider_wave_retry는 정확히 종료된 failed/cancelled 구현 attempt만 다시 접수한다.
+원래 assignment·provider·worktree는 바꾸지 않고 모델 계획과 상속 정책을 새로 검증한다.
+이전 run의 generation 1 종료 결과, worker OS lease 해제와 생성된 native 세션의
+일치하는 연결·프로세스 종료를 확인한다. 수락한 작업·후속 작업 또는 취소된 wave는 재시도하지 않는다.
+이전 attempt의 요청·결과·지문·소비 기록은 변경 없이 보존한다. 모든 wave 연결 run과
+이전 attempt는 provider_recover를 거부한다. Inbox 복구 결과를 구현 완료로 소비하지 않는다.
+Crash 조정은 인증된 owner의 read·동일 요청 replay·정확한 consume과 worker terminal callback에서
+실행한다. 영속 실행 신원과 lease를 사용하며 startup scanner나 주기적 polling을 두지 않는다.
+Stock 배치 scheduling은 wait hook에 의존하지 않는다. 커스텀 Codex 빌드·launcher를 요구하거나
+wrapper 소스에서 실행을 추정하지 않는다. 바깥 또는 중첩 PreToolUse가 관측되지 않은 경로에서
+임의 대기의 차단을 보장하지 않는다. 소스 검증과 실제 stock host 검증을 구분한다.
+실제 native dispatch·wait hook 지원이 검증된 호스트에서는 delegation_wave_prepare의
+assignment가 포함된 DAG를 현재 태스크에 결속한다. 반환된 정확한 준비 코드/key를 사용해
+ready 항목을 준비하고 직접 spawn한다. 가용 슬롯을 채운 뒤 기다리며 이벤트 뒤
+delegation_wave_read로 확인한다. 실제 실패한 attempt만 delegation_wave_retry로 교체한다.
+Phase 근거 label native_wave_receipt는 유지하되 provider_wave_id 값은 provider 배치,
+wave_id 값은 native 자식 wave를 가리킨다. 같은 owner/workflow의 실제 결과를 검증한다.
 독립 리뷰는 role=review로 준비하고 새 컨텍스트에서 생성한다. Codex는 fork_turns=none,
 Claude는 새 Agent 호출을 사용한다. 구현 자식을 리뷰어로 재사용하지 않는다. 호스트가 관측한
 격리 출처가 없으면 정식 review 근거로 수락하지 않는다.

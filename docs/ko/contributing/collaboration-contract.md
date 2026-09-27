@@ -1,4 +1,4 @@
-<!-- updated: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
+<!-- updated: 2026-09-27; synced_from: 147087edd4729ee5b8ae713f3eee87da14899337; status: stock provider-wave changes are unmerged -->
 
 # 발견을 공유하고 범위가 분명한 일을 맡기기
 
@@ -268,15 +268,29 @@
 
 ## 병렬 wave와 협업 방식 선택
 
-현재 대화가 소유한 작업은 큰 티켓을 포함해 native subagent에 맡기는 것이 기본입니다. 실행 시간과 별도 worktree는 실행 환경의 속성이며 사용자용 독립 대화의 생성 사유가 아닙니다. 사용자가 그 대화를 직접 방문하여 작업을 이어갈 가능성이 있을 때만 사용자용 세션을 선택합니다. 충분한 추론 능력을 가진 다른 provider의 관점이 대안, 반복되는 가정, 놓친 반증을 찾는 데 유용하면 에이전트가 자율적으로 선택할 수 있습니다. 결과는 원래 orchestrator가 회수하며 기술적 provider worker가 새 사용자용 앱 작업을 의미하지는 않습니다. 호스트 도구의 명시적 생성 요청 조건은 유지합니다.
+현재 대화 안의 범위가 정해진 작업은 native subagent가 기본입니다. 스톡 Codex autopilot의 병렬 구현은 격리된 issue worktree에서 런타임이 관리하는 provider 배치를 사용합니다. 실행 시간이나 worktree 수만으로 사용자용 대화를 새로 만들지 않습니다. 사용자가 해당 대화를 직접 방문해 이어갈 가능성이 있을 때만 사용자용 세션을 선택합니다. 다른 관점이 대안이나 놓친 반증을 찾는 데 유용하면 다른 provider를 선택할 수 있습니다. 기술적 provider worker가 사용자용 앱 작업을 뜻하지 않으며 호스트 도구의 명시적 생성 요청 조건을 유지합니다.
 
-`provider_route`와 `provider_run`은 `purpose` (`task`, `perspective`, `worktree-worker`, `user-session`)와 `reason`을 받습니다. 기본 `task`는 native delegation으로 안내하고 provider 직접 실행에서는 거부합니다. `perspective`는 다른 provider와 구체적인 이유가 필요합니다. `worktree-worker`는 루트에서 시작한 ticket에 별도로 설치되고 깨끗하며 아직 claim되지 않은 issue worktree가 필요할 때 쓰는 같은 provider의 제한된 경로입니다. 루트가 task 소유권을 유지하고 worker가 대상 worktree에서 자신의 native 신원과 claim을 확인합니다. `user-session`은 사용자가 이어서 작업할 것으로 예상하는 이유가 필요합니다. 이 선택은 모델 계획, 권한 승계, 실제 호스트 준비 상태 검증을 대신하지 않습니다.
+`provider_route`와 `provider_run`은 `purpose` (`task`, `perspective`, `worktree-worker`, `user-session`)와 `reason`을 받습니다. 기본 `task` 경로는 native delegation으로 안내하며 provider 직접 실행에서는 거부합니다. `perspective`는 다른 provider와 구체적인 이유가 필요합니다. `worktree-worker`는 저장소 root에서 별도로 설치되고 깨끗하며 claim되지 않은 issue worktree로 보내는 같은 provider의 제한된 경로입니다. 각 worker는 자신의 native 신원과 claim을 확인합니다. `user-session`에는 사용자가 이어서 작업할 것으로 예상하는 이유가 필요합니다. 모든 경로에서 모델 계획·실행 정책·native 준비 상태 검사를 유지합니다.
 
-Root가 각 티켓 workflow, 통합, 리뷰를 소유합니다. 구현과 리뷰를 각각 직접 자식에게 배정하고 구현 자식에게 리뷰어 생성을 맡기지 않습니다. 쓰기 권한이 확인되지 않은 worker는 patch artifact를 반환하고 root가 자신의 claim 아래 통합합니다.
+Root는 task, ticket workflow, 통합, 리뷰, monitor 결과와 최종 수락을 소유합니다. Provider worker는 독립 peer root이며 발행자의 native 직접 자식이나 독립 검토자가 아닙니다. Assignment가 발행자 workflow의 소유권을 부여하지 않습니다. 쓰기 권한이 확인되지 않은 worker는 patch artifact를 반환합니다. 발행 root가 native 리뷰어를 별도로 준비하며 구현 결과를 독립 리뷰로 취급하지 않습니다.
 
-`delegation_wave_prepare`는 DAG를 정확한 in-progress 태스크 revision에 결속합니다. 입력은 `wave_id`, `task_id`, `expected_task_revision`, `entries` (각 `delegation_id`, `assignment`, `depends_on`, 선택적 `worker` 또는 `review` 역할), `max_parallel`, `capacity_basis`, 선택적 `serialization_reason`, 안정된 `key`입니다. 선언한 assignment와 역할은 native delegation 준비 때 다시 검증합니다. capacity는 소유자의 관측이며 숫자를 제출했다고 호스트 확인이 되는 것은 아닙니다. 순환과 누락 dependency를 거부하고 독립 작업을 한 슬롯으로 제한하면 직렬화 이유를 요구합니다.
+### 런타임이 관리하는 provider 배치
 
-준비된 항목을 가용 슬롯만큼 prepare·spawn한 뒤 기다립니다. Codex에서는 모든 항목의 `dispatch_prepare_code`를 보존하고 ready 항목의 정확한 코드를 `functions.exec`에 제출한 뒤 native spawn 도구를 직접 호출합니다. 반환된 `dispatch_read_code`로 의존 작업과 재시도 상태를 읽습니다. Assignment 없이 생성된 기존 wave는 알려진 `wave_id`로 `delegation_wave_read`를 호출해 `dispatch_prepare_keys`를 회수합니다. Native `delegation_prepare`는 key·assignment·role·task revision을 검증합니다. 준비된 슬롯이 남아 있어도 비대기 wrapper 작업은 허용합니다. Wrapper 소스 텍스트만으로 실제 중첩 도구를 증명할 수 없으므로 호스트가 중첩 도구의 PreToolUse 이벤트를 전달한 경우에만 대기를 차단합니다. 그 이벤트를 전달하지 않는 호스트에는 사전 대기 차단 보장이 없으며, 소스 수준 hook 테스트만으로 실제 적용을 증명할 수 없습니다. Native hook은 spawn 예약과 실제 dispatch를 집계합니다. Claude 병렬 Agent는 background 실행을 사용합니다. 소유자가 consume한 성공 결과만 후속 의존 작업을 해제하며 실패 또는 보고만 된 결과는 해제하지 않습니다. 이벤트 후 `delegation_wave_read(wave_id)`로 상태를 읽습니다. `delegation_wave_retry(wave_id, delegation_id, replacement_id, key)`는 실제 실패한 시도만 교체하고 원래 기록을 보존합니다. 미완료 또는 실패한 wave가 있으면 태스크 성공을 기록할 수 없습니다. 이 기록은 기존 태스크의 실행을 설명하며 별도 목표 목록이 아닙니다.
+`provider_wave_run`은 DAG를 정확한 active `task_id`와 `expected_task_revision`, 선택적으로 소유한 `workflow_id`에 결속합니다. Entries는 `entry_id`, `depends_on`, assignment·worktree·정확한 모델 plan ID/revision을 담은 provider `request`로 구성합니다. 안정된 `key`, `wave_id`, `max_parallel`, 관측한 `capacity_basis`를 전달합니다. 배치는 서로 다른 격리 대상의 `worktree-worker` 항목만 접수하며, 실행 전에 모든 항목에 기존 모델·정책·대상 검사를 적용합니다. 선언한 capacity는 소유자의 관측이며 호스트 확인이 아닙니다.
+
+런타임은 capacity 내 ready 항목을 원자적으로 예약하고 실행할 항목을 영속 저장합니다. Worker 종료 이벤트가 슬롯을 비우면 에이전트의 추가 dispatch를 기다리지 않고 독립 ready 작업을 실행합니다. 의존 작업은 root가 선행 작업의 정확한 성공 결과를 수락할 때까지 잠겨 있습니다. 이벤트 뒤 `provider_wave_read`로 실제 run 신원·결과 지문을 읽고 미제출 작업을 조정합니다. `provider_wave_consume`에는 `entry_id`, `run_id`, `generation`, `result_digest`, `accepted` 또는 `rejected` 판정과 안정된 key가 필요합니다. Worker 종료나 보고 수신만으로 dependency를 충족하지 않습니다. `provider_wave_cancel`은 새 예약을 막고 실제 run의 취소를 요청하되 결과와 원래 사용자 요구를 보존합니다.
+
+`provider_wave_retry(wave_id, entry_id, request, key)`는 모델 계획·상속 정책을 새로 검증하여 failed 또는 cancelled 구현을 다시 접수합니다. 원래 assignment·provider·worktree를 유지합니다. 정확한 이전 run에 generation 1의 종료 결과와 worker OS lease 해제가 필요하며, native 세션이 생성됐다면 그 세션과 일치하는 연결·프로세스 종료 근거도 필요합니다. 수락한 구현·수락한 후속 작업이 있거나 wave가 취소됐으면 재시도할 수 없습니다. 이전 attempt의 요청·결과·지문·소비 기록은 변경 없이 보존합니다. 보관된 이전 attempt를 포함한 모든 wave 연결 run은 `provider_recover`를 거부합니다. Inbox만 복구한 결과는 구현 완료가 될 수 없습니다.
+
+미제출 실행 복구는 인증된 owner의 조회, 동일 요청 replay, 정확한 결과 소비와 worker 종료 callback에서 수행합니다. 영속 실행 신원과 lease 검사를 사용하며 시작 시 scanner나 주기적 polling은 없습니다. 같은 미제출 실행의 replay는 구현을 대체할 새 attempt를 만들지 않습니다.
+
+스케줄링은 에이전트 대기의 가로채기에 의존하지 않습니다. 관측한 스톡 code-mode 경로는 텍스트만 출력하는 `functions.exec` 호출에도 바깥 `PreToolUse` 이벤트를 보내지 않았습니다. 바깥 wrapper 차단이나 JavaScript 소스 검사로 대기 가로채기를 증명할 수 없습니다. 배치 실행이 임의의 모든 호스트 대기를 차단한다고 보장하지 않습니다. 이 미병합 변경은 별도의 실제 스톡 호스트 검증이 필요하며 소스 테스트가 데스크톱 활성화를 증명하지 않습니다. [스톡 Codex 배치 실행](codex-poll-hook.md)을 참고하세요.
+
+### 네이티브 자식 wave
+
+`delegation_wave_prepare`는 native dispatch와 wait hook 지원이 검증된 호스트에서 계속 사용할 수 있습니다. `entries` (`delegation_id`, `assignment`, `depends_on`, 선택적 `role`), capacity, 선택적 workflow를 정확한 active task revision에 결속합니다. 반환된 준비 코드/key를 보존하고 선언한 assignment·role로 native spawn 도구를 호출합니다. Ready 슬롯을 채운 뒤 기다립니다. Claude 병렬 Agent는 background 실행을 사용합니다. 호스트가 관측한 spawn 예약과 실제 자식 계보가 필요하며 wrapper 소스만으로 증명할 수 없습니다.
+
+Owner가 consume한 native 성공 결과만 dependency를 해제합니다. 이벤트 뒤 `delegation_wave_read`를 읽으며, `delegation_wave_retry`는 실제 실패한 attempt에만 사용하고 이력을 보존합니다. 불확실한 dispatch를 중복 실행하지 않습니다. 미완료 또는 실패한 wave는 태스크 성공의 근거가 될 수 없습니다. 두 backend 모두 기존 태스크 원장 안의 실행을 설명하며 별도 목표 목록이 아닙니다.
 
 ## 독립 리뷰 컨텍스트
 
@@ -284,4 +298,4 @@ Root가 각 티켓 workflow, 통합, 리뷰를 소유합니다. 구현과 리뷰
 
 리뷰 배정, 결과 소비, 이전 리뷰 재사용, 게시 단계가 동일한 컨텍스트 증거와 함께 계보, exact head, artifact digest를 검증합니다. 컨텍스트 출처가 없거나 상속된 경우 거부하며 리뷰어가 제출한 플래그로 대신할 수 없습니다. exact diff, 요구사항, 수용 조건, 원문 근거를 제공하고 구현자의 결론을 정답처럼 주입하지 않습니다.
 
-기존 phase workflow는 wave 준비 시 `workflow_id`를 결속하고 완료 시 `native_wave_receipt: wave_id=...`를 제출합니다. phase gate는 해당 workflow에 결속된 실제 wave 결과를 읽습니다.
+Phase workflow는 wave 준비 시 `workflow_id`를 결속하며 호환성을 위해 근거 label `native_wave_receipt`를 유지합니다. 값으로 backend를 구분합니다. Provider 배치는 `provider_wave_id=<id>`, native 자식 wave는 `wave_id=<id>`입니다. Gate는 해당 workflow에 결속된 실제 소유 wave에서 issue ID·dependency edge·consume한 성공을 검증합니다. Provider receipt가 native 자식 계보를 주장하지는 않습니다.

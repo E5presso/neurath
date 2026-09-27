@@ -75,9 +75,10 @@ class StdioCalls:
     @staticmethod
     def _heavy(name):
         from neurath.runtime.task_schema import TASKS
-        if name in {"verification_run", "verification_builtin", "verification_nodes", "provider_run"}:
+        if name in {"verification_run", "verification_builtin", "verification_nodes", "provider_run",
+                    "provider_wave_run", "provider_wave_read", "provider_wave_consume", "provider_wave_retry"}:
             return True
-        if name in {"provider_cancel", "provider_status"}:
+        if name in {"provider_cancel", "provider_status", "provider_wave_cancel"}:
             return False
         task = TASKS.get(name)
         return bool(task and not task[4] and task[0] in {

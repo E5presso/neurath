@@ -3,6 +3,28 @@
 from neurath.runtime.task_schema import TaskError, arguments
 
 
+def admit_wave_entry(root, identity, fields, policy):
+    """Validate one worktree worker without creating any execution side effect."""
+    from neurath.runtime.model_tasks import admitted_request
+    from neurath.runtime.provider_policy import resolve_policy
+    from neurath.providers.collaboration_policy import select
+    from pathlib import Path
+
+    if fields.get("purpose") != "worktree-worker":
+        raise TaskError("invalid-input", "provider waves require worktree-worker entries")
+    if fields.get("mode") != "inherit":
+        raise TaskError("invalid-input", "provider waves require inherited execution policy")
+    fields = {**fields, "worktree": str(Path(fields["worktree"]).resolve())}
+    select(identity.host, fields["provider"], fields["purpose"], fields["reason"])
+    _worktree_worker_preflight(root, fields)
+    fields = admitted_request(root, identity, fields, policy)
+    fields = resolve_policy(root, identity, fields, policy)
+    fields = {key: value for key, value in fields.items() if key != "key"}
+    for key in ("model", "approval_policy", "approvals_reviewer", "collaboration_mode", "permission_mode", "project_id"):
+        fields[key] = fields[key] or None
+    return fields
+
+
 def _worktree_worker_preflight(root, fields):
     """Keep root ticket routing separate from an ordinary same-checkout child."""
     from pathlib import Path

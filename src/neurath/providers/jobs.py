@@ -208,6 +208,8 @@ def _finish(store, run_id, result, lease=None, *, _db=None, _tasks=None):
         if lease is not None:
             db.execute("UPDATE provider_worker_leases SET state='finished' WHERE run_id=? AND generation=? AND token=?",
                        (run_id, lease.generation, lease.token))
+        from neurath.providers.waves import on_terminal
+        on_terminal(store, db, run_id, result)
     return result
 
 
@@ -221,6 +223,8 @@ def recover(root, identity, run_id, *, key):
     store = _store(root)
     with store.connection() as db:
         row = _owned(db, identity.address, run_id)
+        from neurath.providers.waves import assert_recoverable
+        assert_recoverable(store, db, run_id)
         result = json.loads(row["result"]) if row["result"] else {}
         closure = result.get("closure")
         control = Path(row["control"])
@@ -229,6 +233,7 @@ def recover(root, identity, run_id, *, key):
     evidence = ClosedTransportEvidence(generation=result["worker_generation"], issuer_active=True, **closure)
     tasks = TaskLifecycle(store)
     def admitted(db, admission):
+        assert_recoverable(store, db, run_id)
         tasks.bind(identity.address, identity.address,
                    key="provider:" + run_id + ":recovery:" + str(admission["generation"]),
                    transport="provider-recovery", _db=db)

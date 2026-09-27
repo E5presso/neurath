@@ -5,8 +5,8 @@ policy before invoking this function. No actor, token or readiness report is
 accepted from tool input. The external session is an independent peer root.
 """
 
-import math
 import hashlib
+import math
 import subprocess
 import time
 from dataclasses import asdict
@@ -15,7 +15,13 @@ from pathlib import Path
 from neurath.agents.delivery import DeliveryServiceError
 from neurath.memory.store import clean, control_root
 from neurath.providers.codex import CodexSessions
-from neurath.providers.contracts import CreationRejected, ExecutionPolicy, UnsupportedOperation, text
+from neurath.providers.contracts import (
+    CreationRejected,
+    ExecutionPolicy,
+    UnsupportedOperation,
+    codex_completion_link,
+    text,
+)
 from neurath.providers.readiness import inspect_owned_session
 from neurath.providers.stdio import CodexStdio
 
@@ -250,6 +256,8 @@ def run(root, *, worktree, assignment, model=None, mode="read-only", approval_po
                     continue
                 result["completion"] = {key: turn.get(key) for key in ("id", "status", "error")}
                 if result["implementation_dispatched"]:
+                    result["completion_link"] = codex_completion_link(
+                        session.native_session, result["submission"], turn.get("id"), disposition)
                     result["execution"] = "native-turn-completed"
                 result["status"] = ("completed" if turn.get("status") == "completed"
                     and result["implementation_dispatched"] else "not-ready" if
