@@ -18,7 +18,7 @@ def _components():
     )
     contract = SkillContractRepository(BUNDLE).get("autopilot")
     state = PhaseRunState.initialize(contract, "required-phases", "Complete all issues")
-    return state, PhaseRunner(None), PhaseRunnerError, WorkflowTerminalPolicy(), WorkflowTerminalError
+    return state, PhaseRunner(SkillContractRepository(BUNDLE)), PhaseRunnerError, WorkflowTerminalPolicy(), WorkflowTerminalError
 
 
 def test_every_autopilot_phase_rejects_skipped_status():
@@ -68,3 +68,15 @@ def test_explicit_autopilot_invocation_requires_phase_start_before_task_mutation
     process = SimpleNamespace(workflows={})
     with pytest.raises(TaskError, match="phase_start"):
         task_ledger_tasks._require_autopilot_phase("/project", identity, process, "root")
+
+
+def test_inflight_seven_phase_autopilot_keeps_its_original_phase_ids():
+    from scripts.skill_harness.phase_runner import PhaseRecord
+    state, runner, _, _, _ = _components()
+    legacy = replace(state, phases=(*state.phases[:5],
+        PhaseRecord(6, "intent_audit_and_docs", "pending", (), None, None),
+        PhaseRecord(7, "terminal_report", "pending", (), None, None)),
+        current_phase_id=7)
+    contract = runner._contract_for_state(legacy)
+    assert contract.phase(7).name == "terminal_report"
+    assert contract.next_phase_after(7) is None

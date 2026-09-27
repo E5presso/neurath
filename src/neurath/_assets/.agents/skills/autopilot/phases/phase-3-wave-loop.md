@@ -28,7 +28,9 @@ Root는 구현 자식과 별도의 `role=review` 직접 자식을 새 컨텍스�
    실제 실패한 attempt는 `delegation_wave_retry`로 새 delegation ID에 연결하고 실패 이력은
    보존합니다. 불확실한 실행을 중복 dispatch하지 않습니다. 미완료 wave를 남긴 task 성공은 거부합니다.
    phase 3은 phase 2의 모든 구현 대상 ID가 같은 workflow에 묶인 native wave에서
-   성공으로 소비됐을 때만 완료됩니다.
+   성공으로 소비됐을 때만 완료됩니다. 실패한 attempt의 교체 ID는 native retry
+   기록으로 원래 이슈 ID에 연결합니다. 구현 대상이 하나도 없으면 수집 근거에
+   결속된 `native_wave_receipt: no_op=all_satisfied`를 사용합니다.
 
    - 동일 세션 위임은 native subagent가 기본입니다. 별도 worktree나 장시간 실행은
      사용자용 독립 세션을 만드는 사유가 아닙니다.
