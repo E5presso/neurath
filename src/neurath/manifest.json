@@ -157,7 +157,7 @@
     "_assets/scripts/agent_harness/acceptance_matrix.py": "e66436b7bf73d476c4cbb529bab16d9c50370021cc17071870c72e529a92a8f5",
     "_assets/scripts/agent_harness/adaptive_acceptance_matrix.py": "db428e513d21e24e16aa7c8ede25a2c93fe055862282412744a5f6dcf59e8114",
     "_assets/scripts/agent_harness/adaptive_control.py": "21e366814751fb30359299875b33ed89d0dd5257425a631b876fda71ea012351",
-    "_assets/scripts/agent_harness/adaptive_control_authority.py": "9fe0dc187dbfa704b28fec57f6179a7e7f25314fcdf937d8c12395b866403a8b",
+    "_assets/scripts/agent_harness/adaptive_control_authority.py": "855da5a5102f2c07de5a40c69e4ab4ca15c4ae2b3b92860e073c4b16363352c6",
     "_assets/scripts/agent_harness/adaptive_control_store.py": "265b64273094dc09091b19e83bc348ee69893fdfda09614312ce790fa8536670",
     "_assets/scripts/agent_harness/adaptive_evaluation_candidate.py": "3c611ecfc4dcda3a6718e90ff0d681af0b93b9e49eea6f5167f5d66d0d5028e3",
     "_assets/scripts/agent_harness/adaptive_execution_receipt.py": "1cba1a6f19ab8387cba187cdf23e54ab0dd5671b9fb6ab9e3f1078a9f5c16e3c",
