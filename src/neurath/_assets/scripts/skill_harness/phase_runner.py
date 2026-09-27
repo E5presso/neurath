@@ -801,6 +801,10 @@ class PhaseRunStore(ABC):
         """Read a workflow-bound native wave; legacy stores cannot certify it."""
         raise ValueError("native wave readback is unavailable")
 
+    def read_provider_wave(self, wave_id: str) -> Mapping[str, object]:
+        """Read actual consumed provider results, without granting child authority."""
+        raise ValueError("provider wave readback is unavailable")
+
     @abstractmethod
     def validate_harness_incidents(self, worktree: Path) -> None:
         """Runtime-bound process state의 typed incident lifecycle을 검증합니다.
@@ -1347,6 +1351,8 @@ class PhaseRunner:
                 failures.append("autopilot.dependency_dag_scope")
         if state.skill == "autopilot" and phase.name == "execute_waves":
             wave_id = self._evidence_value(self._evidence_item(evidence, "native_wave_receipt"), "wave_id")
+            provider_wave_id = self._evidence_value(
+                self._evidence_item(evidence, "native_wave_receipt"), "provider_wave_id")
             planned = (self._autopilot_issue_set(state.phase(2).evidence, "dependency_dag")
                        if not legacy_autopilot and hasattr(state, "phase") else None)
             no_op = self._evidence_item(evidence, "native_wave_receipt") == (
@@ -1354,6 +1360,10 @@ class PhaseRunner:
             try:
                 if no_op and planned == frozenset():
                     wave = None
+                elif provider_wave_id and not wave_id:
+                    wave = store.read_provider_wave(provider_wave_id)
+                elif provider_wave_id:
+                    raise ValueError("wave receipt must select exactly one execution backend")
                 else:
                     wave = store.read_native_wave(wave_id) if wave_id else None
                 if not (no_op and planned == frozenset()) and (

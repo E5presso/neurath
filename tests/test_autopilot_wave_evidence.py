@@ -101,3 +101,36 @@ def test_wave_dependencies_match_frozen_dag(tmp_path):
         ('wave_plan: linked issues', 'process_ticket_terminal_states: merged',
          'native_wave_receipt: wave_id=wave-1'), {}, Store())
     assert 'autopilot.wave_dependencies' in failures
+
+
+@pytest.mark.parametrize('change,expected', [
+    ('none', None), ('not-consumed', 'native_wave_receipt'),
+    ('missing-issue', 'autopilot.wave_scope'), ('missing-edge', 'autopilot.wave_dependencies'),
+    ('ambiguous-backend', 'native_wave_receipt'),
+])
+def test_provider_wave_uses_its_own_reader_and_retains_exact_scope(tmp_path, change, expected):
+    activate(tmp_path)
+    from scripts.skill_harness.phase_runner import PhaseRunner, PhaseContract
+    prior = SimpleNamespace(evidence=('dependency_dag: {"issues":[90,91],"edges":[[90,91]]}',))
+    state = SimpleNamespace(skill='autopilot', adaptive_control_required=False, phase=lambda _: prior)
+    phase = PhaseContract(3, 'execute_waves', 3,
+                          ('wave_plan', 'process_ticket_terminal_states', 'native_wave_receipt'))
+    class Store:
+        def read_native_wave(self, wave_id):
+            raise AssertionError('provider receipt must never fall back to native children')
+        def read_provider_wave(self, wave_id):
+            assert wave_id == 'provider-wave'
+            return {'all_succeeded': change != 'not-consumed',
+                'states': {'issue-90': 'succeeded'} if change == 'missing-issue' else
+                          {'issue-90': 'succeeded', 'issue-91': 'succeeded'},
+                'entries': [{'delegation_id': 'issue-90', 'depends_on': []},
+                            {'delegation_id': 'issue-91', 'depends_on': [] if change == 'missing-edge' else ['issue-90']}]}
+    receipt = 'native_wave_receipt: provider_wave_id=provider-wave'
+    if change == 'ambiguous-backend':
+        receipt += ' wave_id=native-wave'
+    failures = PhaseRunner(None)._semantic_failures(state, phase, 'completed',
+        ('wave_plan: runtime-owned DAG', 'process_ticket_terminal_states: merged', receipt), {}, Store())
+    if expected is None:
+        assert failures == []
+    else:
+        assert expected in failures

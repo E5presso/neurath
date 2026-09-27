@@ -79,6 +79,10 @@ def execute(root, name, inputs, *, identity, expected_turn=None, verified_policy
             raise TaskError("native-binding-required", "delivery control requires its native participant")
         operation = delivery_status if action == "status" else redrive
         return operation(MessageStore(root), identity.address, **fields)
+    if domain == "provider-wave":
+        from neurath.runtime.provider_wave_tasks import execute as wave_execute
+        return wave_execute(root, name, fields, identity=identity, expected_turn=expected_turn,
+                            verified_policy_evidence=verified_policy_evidence)
     if domain == "provider-execution":
         if action != "run":
             from neurath.providers import jobs

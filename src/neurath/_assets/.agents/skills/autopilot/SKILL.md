@@ -16,6 +16,14 @@ milestone, parent issue, issue set을 끝까지 처리하기 위해 존재하며
 
 실행 전체에서 `mergeable-clean`과 `merged`를 구분합니다.
 
+스톡 Codex의 병렬 worktree 구현은 `provider_wave_run`으로 root가 일괄 접수하고
+런타임이 ready 슬롯을 실행합니다. 커스텀 Codex 빌드나 launcher를 요구하지 않습니다.
+각 worker는 독립 provider peer이며 native 직접 자식·독립 evaluator 권한을 갖지 않습니다.
+Root는 정확한 결과를 `provider_wave_consume`으로 수락하고, fresh native child에
+독립 리뷰를 별도로 맡깁니다. 실제 hook 지원이 검증된 호스트의 native wave도 유지합니다.
+배치 scheduling, 소스 테스트와 실제 스톡 호스트 검증을 구분하며 임의 대기의 전면 차단을
+주장하지 않습니다. Phase 3의 절차와 backend별 근거를 따릅니다.
+
 ## 작업 중 인사이트 공유
 
 모든 worker는 프로젝트 공통 Newsroom에 active 동안 참여합니다. 작업 배정에는

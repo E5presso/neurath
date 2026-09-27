@@ -193,3 +193,27 @@ def test_execution_ignores_stale_completion_after_inbox_started_a_report_turn(mo
     assert result["completion"]["id"] == "report"
     assert result["status"] == "completed"
     assert calls == ["host-close"]
+
+
+def test_native_completion_link_preserves_original_and_effective_followup_turn(monkeypatch):
+    seen = []
+    def complete(turn, original, **kwargs):
+        seen.append((turn, original))
+        return 'stale' if turn == 'work' else 'terminal'
+    inbox = SimpleNamespace(expected_turn=lambda original: 'report', complete_turn=complete,
+                            close=lambda: None)
+    _terminal_fixture(monkeypatch, inbox)
+    result = execution.run('/parent', worktree='/work', assignment='Work', mode='workspace-write',
+                           approval_policy='never', collaboration_mode='default')
+    assert result['status'] == 'completed'
+    assert seen == [('work', 'work'), ('report', 'work')]
+    assert result['completion_link'] == {'native_session': 'native', 'submitted_turn': 'work',
+                                         'completed_turn': 'report', 'disposition': 'terminal'}
+
+
+def test_native_direct_completion_records_matching_link(monkeypatch):
+    _terminal_fixture(monkeypatch, None)
+    result = execution.run('/parent', worktree='/work', assignment='Work', mode='workspace-write',
+                           approval_policy='never', collaboration_mode='default')
+    assert result['completion_link'] == {'native_session': 'native', 'submitted_turn': 'work',
+                                         'completed_turn': 'work', 'disposition': 'terminal'}

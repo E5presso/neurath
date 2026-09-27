@@ -59,3 +59,20 @@ def text(value, field, limit=32768):
     if not isinstance(value, str) or not value.strip() or len(value.encode()) > limit:
         raise ValueError(f"invalid {field}")
     return value
+
+
+def codex_completion_link(native_session: str, submission: dict, completed_turn: str,
+                          disposition: str) -> dict[str, str]:
+    """Describe an event already correlated by the owned execution runtime.
+
+    Inbox supervision can complete a later turn on the same native session.
+    This record retains both turn IDs; it does not infer native event authority.
+    """
+    if not isinstance(submission, dict) or submission.get('delivery') != 'submitted':
+        raise ValueError('completion linkage requires a submitted assignment')
+    if disposition not in {'waiting', 'terminal'}:
+        raise ValueError('completion linkage requires a non-stale native event')
+    return {'native_session': text(native_session, 'native session', 1024),
+            'submitted_turn': text(submission.get('native_turn'), 'submitted native turn', 1024),
+            'completed_turn': text(completed_turn, 'completed native turn', 1024),
+            'disposition': disposition}

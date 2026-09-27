@@ -155,9 +155,17 @@ def service_for(root, *, identity, expected_turn, verified_policy_evidence=None,
         if task is not None and task.status.value == "pending":
             _require_autopilot_phase(root, identity, process, handle.actor_id, task, ledger)
 
+    def completion_admission(tx, process, task_id):
+        from neurath.providers.waves import pending
+        from scripts.agent_harness.task_ledger import TaskLedgerError
+        if pending(root, session_id=str(process.session.id), actor_id=str(handle.actor_id),
+                   task_id=task_id, db=tx.connection):
+            raise TaskLedgerError("task has unfinished or unsuccessful provider waves")
+
     return TaskService(handle, worktree=root, admission=admission,
                        start_admission=start_admission if operation_name == "task_start" else None,
-                       resolve_admission=resolve_admission if operation_name == "task_resolve" else None)
+                       resolve_admission=resolve_admission if operation_name == "task_resolve" else None,
+                       completion_admission=completion_admission if operation_name == "task_resolve" else None)
 
 
 def execute(root, name, fields, *, identity, expected_turn, verified_policy_evidence=None):

@@ -15,6 +15,7 @@ from neurath.runtime.installation_tasks import definitions as installation_defin
 from neurath.runtime.process_tasks import definitions as process_definitions
 from neurath.runtime.monitor_tasks import definitions as monitor_definitions
 from neurath.runtime.task_ledger_tasks import definitions as task_ledger_definitions
+from neurath.runtime.provider_wave_tasks import definitions as provider_wave_definitions
 
 
 class TaskError(ValueError):
@@ -214,6 +215,8 @@ OUTPUT_SCHEMA = {
 }
 
 
+TASKS.update(provider_wave_definitions(text_field, count, choice, TASKS["provider_run"][3]))
+
 SERVER_INSTRUCTIONS = (
     "Follow .neurath/policy.md. Native hooks supply _neurath_binding; never invent it. "
     "Record work with task tools; edit and check with native tools."
@@ -233,7 +236,7 @@ def definitions():
         if name in ADAPTIVE_STATE_TASKS:
             public_fields.pop("state")  # Retained in TASKS for saved legacy calls.
         result.append({"name": name, "description": description,
-            "annotations": {"readOnlyHint": readonly, "destructiveHint": name == "provider_run", "openWorldHint": False},
+            "annotations": {"readOnlyHint": readonly, "destructiveHint": name in {"provider_run", "provider_wave_run"}, "openWorldHint": False},
             "inputSchema": {"type": "object", "additionalProperties": False,
                 "required": [key for key, rule in public_fields.items() if "default" not in rule],
                 "properties": {**public_fields, "_neurath_binding": text_field(64)}},

@@ -280,12 +280,15 @@ def definitions():
     return {
         "provider_models":("model-plan","models",
             ("Read the native issuer's cached provider model catalog across turns and worktrees. "
+             "Call once for each target worktree to obtain its inventory_id; IDs are target-bound, "
+             "while catalog metadata is reused without another provider connection. "
              "The first request observes metadata without a model turn. Use refresh only for an explicit "
              "refresh request or a known availability change. Catalog recommendations are not configured defaults."),
             {"provider":choice("codex","claude-code"),"worktree":t(4096,default=""),
              "refresh":{"type":"boolean","default":False}},False),
         "provider_plan":("model-plan","plan",
             ("Validate and persist a difficulty-aware model proposal against an owned native inventory. "
+             "Use the inventory_id returned by provider_models for this exact worktree. "
              "Record task evidence, constraints and rationale. This typed operation owns its persistence; "
              "no separate material_prepare or adaptive workflow is required. Does not create a session or grant authority."),
             {"provider":choice("codex","claude-code"),"worktree":t(4096),

@@ -5,57 +5,74 @@
 ## 절차
 
 Root orchestrator가 모든 티켓의 task/workflow, 통합, 검토와 monitor 결과 수락을 소유합니다.
-구현 자식은 병렬로 bounded 분석·구현안·patch artifact·허용된 검증을 수행하고 root에 보고합니다.
-자식에게 `/process-ticket` 전체 owner 역할이나 중첩 리뷰 호출을 넘기지 않습니다.
-직접 쓰기는 실제 child policy와 해당 worktree claim이 확인될 때만 가능하며 이를 추정하지 않습니다.
-권한이 없는 자식은 patch artifact를 반환하고 root가 자신의 claim 아래 통합합니다.
-Root는 구현 자식과 별도의 `role=review` 직접 자식을 새 컨텍스트로 배정합니다.
+스톡 Codex에서는 격리된 issue worktree의 병렬 구현을 `provider_wave_run` 배치로 실행합니다.
+Runtime이 ready 항목 예약과 실행을 관리하며 에이전트의 wait hook에 의존하지 않습니다.
+Worker는 자신의 native 준비 상태와 worktree claim을 확인한 뒤 bounded 구현을 수행합니다.
+이 worker는 독립 provider peer root이며 발행자의 직접 자식이나 독립 검토자가 아닙니다.
+발행자의 workflow·최종 수락 권한을 넘기지 않습니다. 쓰기 권한이 없으면 patch artifact를 반환합니다.
+Root는 구현 worker와 별도의 `role=review` native 직접 자식을 새 컨텍스트로 배정합니다.
+Codex 리뷰는 `fork_turns="none"`이며 실제 호스트의 계보·컨텍스트 증명을 확인합니다.
 
-1. 구현 대상 이슈마다 `issue-<번호>`를 고유 delegation ID로 사용합니다.
-   `delegation_wave_prepare`에 현재 in-progress task ID/revision, 고유 wave ID,
-   entries(delegation_id, assignment, depends_on, 선택적 role), max_parallel,
-   capacity_basis를 기록합니다. role은 `worker` 또는 `review`이며 선언한
-   assignment와 함께 실제 native 준비에서 다시 검증됩니다.
-   기존 phase workflow에서는 workflow_id도 결속하고 완료 시 native_wave_receipt의 wave_id를
-   제출합니다. phase gate가 같은 workflow의 실제 consumed 성공 결과를 다시 읽습니다.
-   Cycle·누락 dependency는 실행 전에 거부합니다. capacity는 실제 도구 inventory에서 관측한
-   한도와 현재 사용량을 근거로 선택하며, 병렬 가능한 work를 1개로 제한하면
-   serialization_reason을 남깁니다. 선언된 숫자를 호스트 확인으로 표현하지 않습니다.
-   모든 entry의 `dispatch_prepare_code`를 wave 준비 결과로 보존하고, 각 ready entry에
-   해당 `dispatch_prepare_code[delegation_id]`를
-   Codex `functions.exec` 코드로 정확히 제출하여 `delegation_prepare`를 실행한 뒤
-   `tool:spawn_agent`를 직접 호출합니다. `functions.exec` 코드의 내용만으로
-   중첩 도구 실행 여부를 증명하지 않습니다. 실제 호스트가 중첩 대기 호출의
-   PreToolUse를 전달하지 않으면 wait hook의 차단을 완료 근거로 삼지 않습니다.
-   준비 코드는 해당 entry의 assignment와 현재 task revision에 결속되므로
-   수정하거나 다른 호출과 합치지 않습니다. Claude에서는 같은 명명
-   `delegation_prepare`와 native Agent dispatch를 사용합니다.
-   설치 전 생성된 wave에 assignment가 없으면 `delegation_wave_read`의
-   `dispatch_prepare_keys`를 사용해 정확한 단일 `delegation_prepare` 호출만
-   제출합니다. 코드가 없는 기존 wave는 `wave_id`만 담은 정확한 단일
-   `delegation_wave_read` 호출로 key를 회수합니다. 반환된 `dispatch_read_code`는
-   이후 readback에도 사용합니다. 비대기 wrapper 작업은 ready slot 중에도
-   허용되지만, 대기 호출은 가용 slot을 채운 뒤 실행합니다.
-   현재 wave의 가용 slot을 모두 채운 뒤 기다립니다. Claude의 병렬 Agent는
-   run_in_background=true를 사용합니다. spawn hook이 실제 접수와 자식을 결속하며,
-   준비된 항목과 빈 slot이 남았으면 wait hook이 대기를 거부합니다.
-   결과를 읽고 실제 owner가 consume한 성공만 후속 dependency를 해제합니다.
-   새 이벤트 후 `delegation_wave_read`로 상태를 확인하며 주기적으로 조회하지 않습니다.
-   실제 실패한 attempt는 `delegation_wave_retry`로 새 delegation ID에 연결하고 실패 이력은
-   보존합니다. 불확실한 실행을 중복 dispatch하지 않습니다. 미완료 wave를 남긴 task 성공은 거부합니다.
-   phase 3은 phase 2의 모든 구현 대상 ID가 같은 workflow에 묶인 native wave에서
-   성공으로 소비됐을 때만 완료됩니다. 실패한 attempt의 교체 ID는 native retry
-   기록으로 원래 이슈 ID에 연결합니다. 구현 대상이 하나도 없으면 수집 근거에
-   결속된 `native_wave_receipt: no_op=all_satisfied`를 사용합니다.
+1. Phase 2의 구현 대상 이슈마다 `issue-<번호>`를 고유 entry ID로 사용합니다.
+   Stock provider 배치의 절차는 다음과 같습니다.
 
-   - 동일 세션 위임은 native subagent가 기본입니다. 별도 worktree나 장시간 실행은
-     사용자용 독립 세션을 만드는 사유가 아닙니다.
-   - 사용자가 해당 대화를 직접 방문하여 이어갈 가능성이 있으면 user-session을 선택합니다.
-   - 새로운 시각·대안·반증이 필요하면 perspective 사유로 다른 provider를 자율 선택할 수
-     있습니다. 이 기술적 worker의 결과는 현재 orchestrator가 회수합니다.
-   - Native child가 없거나 권한이 없으면 실제 capability gap을 보고합니다. serial fallback은
-     capacity_basis와 serialization_reason을 기록하고 root가 실행 가능한 작업에만 적용합니다.
-     독립 review에는 serial fallback이 없습니다.
+   - 각 항목에 distinct isolated worktree와 bounded assignment, `provider_plan`의
+     정확한 ID/revision을 준비합니다. 대상은 설치되고 깨끗하며 claim되지 않은 issue
+     worktree여야 합니다. 기존 `worktree-worker` 경로, 모델 계획과 실행 정책을 유지합니다.
+     기본 `mode=inherit`를 실패한 권한 승계를 피하는 다른 모드로 바꾸지 않습니다.
+   - `provider_wave_run`에 현재 in-progress task ID/revision, 고유 wave ID,
+     entries(entry_id, depends_on, request), max_parallel, capacity_basis, 안정된 key를
+     전달합니다. 기존 phase workflow의 workflow_id도 결속합니다. 모든 항목을 검증한 뒤
+     runtime이 한 transaction에서 가용 슬롯의 ready set을 예약하고 실행할 항목을
+     영속 저장합니다. Capacity는 실제 관측에 근거하며 선언값을 호스트 확인으로 표현하지 않습니다.
+   - Worker 종료 이벤트가 슬롯을 비우면 runtime이 독립 ready 항목을 실행합니다.
+     선행 worker의 종료만으로 의존 작업을 실행하지 않습니다. Root가 결과를 읽고
+     `provider_wave_consume`에 정확한 entry_id, run_id, generation, result_digest,
+     accepted/rejected 판정과 key를 전달합니다. 수락한 성공 결과만 dependency를 해제합니다.
+   - 결과·복구 이벤트 뒤 `provider_wave_read`로 실제 상태와 미제출 실행의 조정을 확인합니다.
+     주기적으로 조회하지 않으며 불확실한 실행을 중복 dispatch하지 않습니다.
+     `provider_wave_cancel`은 새 예약을 막고 실제 run에 취소를 요청합니다.
+     취소·실패 결과와 원래 미완료 사용자 요구를 보존합니다.
+
+   - 재시도는 `provider_wave_retry(wave_id, entry_id, request, key)`로 명시합니다.
+     원래 assignment·provider·worktree를 유지하고 모델 계획·상속 정책을 새로 검증합니다.
+     정확한 이전 run의 failed/cancelled 결과, generation 1 종료와 worker OS lease 해제,
+     생성된 native 세션의 일치하는 연결·프로세스 종료를 확인해야 합니다.
+     수락한 작업·후속 작업이 있거나 wave가 취소됐으면 재시도하지 않습니다.
+     이전 attempt의 요청·결과·지문·소비 기록을 변경 없이 보존합니다.
+     모든 wave 연결 run과 이전 attempt에서 `provider_recover`를 사용하지 않습니다.
+     Inbox 연결 복구로 구현 assignment가 완료됐다고 처리하지 않습니다.
+   - Crash 조정은 인증된 owner의 read·동일 요청 replay·정확한 consume과 worker 종료
+     callback에서 수행합니다. 영속 실행 신원과 lease로 중복 실행을 막습니다.
+     Startup scanner나 주기적 polling은 없으며, 미제출 실행 replay와 새 구현 retry를 구분합니다.
+
+   Native dispatch와 wait hook 지원이 검증된 호스트에서는 `delegation_wave_prepare`의
+   native child wave를 사용할 수 있습니다. 현재 task revision에 entries(delegation_id,
+   assignment, depends_on, role), capacity, workflow_id를 결속하고 반환된 정확한 준비
+   코드/key로 각 ready 항목을 준비한 뒤 native spawn 도구를 호출합니다. Claude 병렬
+   Agent는 run_in_background=true를 사용합니다. 가용 슬롯을 모두 채운 뒤 기다립니다.
+   `delegation_wave_read`는 이벤트 뒤 읽으며 실제 실패한 attempt만
+   `delegation_wave_retry`로 교체합니다. 원래 이력과 실제 자식 계보를 보존합니다.
+   Wrapper 소스나 선언한 hook만으로 중첩 또는 바깥 PreToolUse 전달을 증명하지 않습니다.
+   Stock Codex의 임의 대기 전부를 차단한다고 주장하거나 커스텀 Codex 빌드를 요구하지 않습니다.
+
+   Phase 3 완료 근거 label은 호환성을 위해 `native_wave_receipt`를 유지합니다.
+   Provider 배치는 `native_wave_receipt: provider_wave_id=<id>`,
+   native 자식 wave는 `native_wave_receipt: wave_id=<id>`로 backend를 구분합니다.
+   Gate는 같은 root/workflow의 실제 wave에서 Phase 2의 모든 구현 대상 ID,
+   dependency edge와 root가 수락한 성공을 확인합니다. Provider 결과를 native 자식
+   계보로 변환하지 않습니다. Native retry의 교체 ID는 원래 issue ID에 연결합니다.
+   구현 대상이 없으면 수집 근거에 결속된
+   `native_wave_receipt: no_op=all_satisfied`를 사용합니다.
+   미완료·실패 wave를 성공으로 기록하지 않습니다.
+
+   - 같은 대화의 bounded 작업은 native subagent가 기본이며, stock 병렬 worktree 구현은
+     위 provider 배치를 사용합니다. 별도 worktree나 실행 시간만으로 사용자용 세션을 만들지 않습니다.
+   - 사용자가 직접 방문해 이어갈 작업은 user-session, 다른 관점이 필요한 작업은
+     구체적인 perspective 사유로 선택합니다. 결과 수락은 현재 root가 맡습니다.
+   - 배치 도구·격리 대상·권한이 없으면 정확한 capability gap을 보고합니다.
+     실행 가능한 root 작업의 serial fallback에는 관측 근거와 이유를 기록합니다.
+     이를 성공한 병렬 wave로 표시하지 않으며 독립 review에는 serial fallback이 없습니다.
 
 2. terminal state vocabulary를 정확히 보존합니다.
    - `merged`
@@ -69,8 +86,8 @@ Root는 구현 자식과 별도의 `role=review` 직접 자식을 새 컨텍스�
 
 ## Monitor event routing
 
-같은 세션 안의 구현·검토 단위는 native subagent에 맡깁니다. Provider 선택은 공통 정책의
-purpose와 reason을 따릅니다. 앱 create_thread는 사용자가 방문할 독립 작업을 위한 도구이며
+같은 세션 안의 bounded 작업과 독립 검토는 native subagent를 사용하고, 스톡 Codex의
+병렬 worktree 구현은 provider 배치를 사용합니다. Provider 선택은 공통 정책의 purpose와 reason을 따릅니다. 앱 create_thread는 사용자가 방문할 독립 작업을 위한 도구이며
 내부 티켓 위임을 대신하지 않습니다. Root가 각 티켓의 monitor route와 terminal sink를 소유합니다.
 
 진행 중 새 작업은 기존 태스크를 지우지 않고 task_define으로 추가합니다. task_start와

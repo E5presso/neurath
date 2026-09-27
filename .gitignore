@@ -46,6 +46,7 @@ graphify-out/
 .agents/skills/pr-feedback/
 .agents/skills/update-deps/
 .agents/skills/update-status/
+.agents/skills/update-neurath/
 .claude/skills/review-spec
 .claude/skills/qa
 .claude/skills/autopilot
@@ -77,6 +78,7 @@ graphify-out/
 .claude/skills/pr-feedback
 .claude/skills/update-deps
 .claude/skills/update-status
+.claude/skills/update-neurath
 CLAUDE.md
 .neurath/*
 !.neurath/project.json

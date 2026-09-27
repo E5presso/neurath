@@ -1,151 +1,307 @@
-"""Exercise the installed Neurath wave guard through a real Codex code-mode host.
+"""Verify an installed provider DAG through an explicitly selected stock Codex.
 
-Use an already trusted project and an explicitly selected host executable.
-The isolated test thread owns its tasks, children and stdin-waiting process.
+The caller supplies the distribution's verified executable SHA and three distinct,
+installed, clean worker worktrees. This probe records executable identity; it does
+not establish vendor provenance from a self-computed hash. Evidence stays local.
 """
 import argparse
+import hashlib
 import json
+import os
+import re
 from pathlib import Path
+import subprocess
 
-from native_steering_probe import Host
 
 
-def probe(project, output, executable, model):
-    output.mkdir(parents=True, exist_ok=True)
-    host = Host(project, output, executable)
+def digest(value):
+    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return "sha256:" + hashlib.sha256(encoded.encode()).hexdigest()
+
+
+def executable_receipt(executable, expected_sha256):
+    executable = Path(executable).resolve(strict=True)
+    assert executable.is_file() and executable.name == "codex"
+    actual = hashlib.sha256(executable.read_bytes()).hexdigest()
+    assert actual == expected_sha256, "Executable does not match caller-verified distribution SHA"
+    version = subprocess.run([str(executable), "--version"], check=True,
+                             capture_output=True, text=True).stdout.strip()
+    assert version
+    return {"path": str(executable), "sha256": actual, "version": version,
+            "provenance": "caller-verified distribution; not independently vendor-attested"}
+
+
+def assignments(worktrees):
+    return {name: {"provider": "codex", "worktree": str(path), "mode": "inherit",
+        "assignment": (
+            f"Authorized provider batch regression entry {name}. Read README.md and report "
+            "the exact first source line that starts with the literal ASCII character #. "
+            "Ignore HTML tags and all other lines. Do not edit files or start children. "
+            "Record and resolve only this assignment's task with the observed fact, display "
+            "native TODO, and release your exact owned worktree claim. "
+            f"Finish with NEURATH_PROVIDER_ENTRY_{name.upper()}_OK and that exact line.")}
+        for name, path in zip(("a", "b", "c"), worktrees, strict=True)}
+
+
+def controller_prompt(expected):
+    return (
+        "Run an authorized Neurath stock provider batch regression. The caller has released "
+        "its root claim. Check session_status and task_list, acquire the unclaimed root through "
+        "worktree_claim; never force takeover. Define/start one task whose goal is to verify "
+        "runtime-owned parallel provider dispatch and consumed-result DAG ordering. After "
+        "task_start, read task_list to observe the full active definition and digest. Use "
+        "current named MCP schemas and returned identifiers/revisions. Display returned native "
+        "TODO. Do not edit repository files, change trust/settings, create phase workflows, "
+        "spawn native children, or call provider_run directly. The already prepared worker "
+        "worktrees are distinct installed clean checkouts. Call provider_models with "
+        "refresh=false once for EACH target a, b and c, then provider_plan with the "
+        "inventory_id returned for that exact target. The catalog metadata is cached "
+        "across targets without another provider connection, but inventory_id is target-bound. "
+        "Choose the smallest available capable model and record the actual "
+        "plan; permission mode must remain inherit. Call provider_wave_run ONCE with "
+        "max_parallel=2 and entries a,b independent; c depends_on=[a,b]. capacity_basis is "
+        "two authorized isolated worker slots. Add real plan_id/plan_revision and matching "
+        "model/reasoning fields to these exact request scopes: " + json.dumps(expected) + ". "
+        "Retain wave_id, task_id/revision and the actual run IDs. The initial response must "
+        "reserve both a and b and leave c without a run. Wait for native result messages, "
+        "not a polling loop. After each completion event read provider_wave_read, inspect "
+        "the actual result and verify implementation_dispatched, original generation 1, "
+        "a terminal completion_link joining native session, submitted turn and completed "
+        "turn (an owned inbox followup can differ), and the entry's marker plus the exact "
+        "first README source line beginning with #; ignore HTML headings. Consume "
+        "each exact run/generation/result_digest with verdict accepted only after success. "
+        "Read the wave after both are consumed: c must now have a distinct run. Wait for "
+        "c's native completion, inspect and consume it the same way, then read the wave "
+        "to prove all_succeeded. Resolve the root task from these observations; display "
+        "native TODO; release the exact observed lease/token and finish "
+        "NEURATH_STOCK_PROVIDER_WAVE_OK. Do not recover or retry inside this regression. "
+        "On a concrete failure retain observed evidence, cancel only this owned "
+        "wave through its named tool if it exists, report the exact prerequisite, and "
+        "resolve only this bounded regression attempt as failed with the actual failed "
+        "condition and parent's next repair step, then release your exact claim. The "
+        "parent's broader restoration requirement remains active. Never invent receipts."
+    )
+
+
+def expected_source_lines(expected):
+    """Read the requested source fact independently of worker output."""
+    return {name: next(line for line in (Path(request["worktree"]) / "README.md").read_text().splitlines()
+                       if line.startswith("#")) for name, request in expected.items()}
+
+
+def _completion(entry, expected, native_sessions, expected_line):
+    result = entry["result"]
+    assert entry["status"] == result["status"] == "completed"
+    assert entry["generation"] == result["worker_generation"] == 1
+    assert result["run_id"] == entry["run_id"]
+    assert entry["result_digest"] == digest(result)
+    assert result["implementation_dispatched"] is True
+    assert result["execution"] == "native-turn-completed"
+    assert result["created"]["provider"] == "codex"
+    assert result["created"]["worktree"] == expected["worktree"]
+    native = result["created"]["native_session"]
+    assert native and native != native_sessions["root"]
+    previous = native_sessions.setdefault(entry["entry_id"], native)
+    assert previous == native and len(set(native_sessions.values())) == len(native_sessions)
+    assert result["submission"]["delivery"] == "submitted"
+    assert result["submission"]["native_turn"]
+    assert result["completion_link"] == {
+        "native_session": native,
+        "submitted_turn": result["submission"]["native_turn"],
+        "completed_turn": result["completion"]["id"],
+        "disposition": "terminal",
+    }
+    assert result["completion"]["id"] and result["completion"]["status"] == "completed"
+    assert result["completion"].get("error") is None
+    assert f"NEURATH_PROVIDER_ENTRY_{entry['entry_id'].upper()}_OK" in result["text"]
+    rendered_facts = set(result["text"].splitlines())
+    rendered_facts.update(re.findall(r"(?<!`)`([^`\n]+)`(?!`)", result["text"]))
+    assert expected_line in rendered_facts, "Requested README source line missing or incorrect"
+
+
+def verify_wave_events(events, thread, turn, expected, expected_lines):
+    """Verify actual named-tool results, never assistant prose or synthetic hook denials."""
+    claim = task = scope = wave_id = initial = resolved = released = success = None
+    runs, consumed, completions, plans = {}, {}, {}, set()
+    definition_digest = None
+    inventories = set()
+    native_sessions = {"root": thread}
+    dependencies = {"a": [], "b": [], "c": ["a", "b"]}
+    assert set(expected) == set(dependencies) == set(expected_lines)
+    assert all(line.startswith("#") for line in expected_lines.values())
+    assert len({value["worktree"] for value in expected.values()}) == 3
+    for index, event in enumerate(events):
+        params = event.get("params", {})
+        if params.get("threadId") != thread or params.get("turnId") != turn:
+            continue
+        item = params.get("item", {})
+        if event.get("method") != "item/completed" or item.get("type") != "mcpToolCall":
+            continue
+        envelope = (item.get("result") or {}).get("structuredContent", {})
+        if envelope.get("ok") is not True:
+            continue
+        data, args, tool = envelope.get("result", {}), item.get("arguments", {}), item.get("tool")
+        if tool == "worktree_claim":
+            assert claim is None and data["session_id"] == thread
+            assert data["actor_id"] and data["fencing_token"] and data["lease_epoch"] > 0
+            claim = data
+        elif tool == "task_start":
+            assert task is None
+            active = [value for value in data["tasks"] if value["status"] == "in_progress"]
+            assert len(active) == 1 and active[0]["id"] == args["task_id"]
+            task = active[0]
+            definition_digest = task.get("definition_digest")
+        elif tool == "task_list" and task:
+            matched = [value for value in data["tasks"] if value["id"] == task["id"]]
+            assert len(matched) == 1
+            observed = matched[0]["definition_digest"]
+            assert definition_digest is None or definition_digest == observed
+            definition_digest = observed
+            if scope is not None:
+                assert scope["definition_digest"] == definition_digest
+        elif tool == "provider_models":
+            inventories.add(args["worktree"])
+        elif tool == "provider_plan":
+            assert args["worktree"] in inventories
+            plans.add((data["plan_id"], data["revision"], args["worktree"], args["assignment"]))
+        if tool not in {"provider_wave_run", "provider_wave_read", "provider_wave_consume"}:
+            if tool == "task_resolve" and task and args.get("task_id") == task["id"]:
+                assert success is not None
+                matched = [value for value in data["tasks"] if value["id"] == task["id"]]
+                assert len(matched) == 1 and matched[0]["status"] == "succeeded"
+                resolved = index
+            if tool == "worktree_release":
+                assert resolved is not None and data["released"] is True and data["claim"] == claim
+                assert args["expected_lease_epoch"] == claim["lease_epoch"]
+                assert args["fencing_token"] == claim["fencing_token"]
+                released = index
+            continue
+        if tool == "provider_wave_run":
+            assert initial is None and claim and task
+            assert args["task_id"] == task["id"] and args["expected_task_revision"] == task["revision"]
+            assert args["max_parallel"] == 2
+            assert len(args["entries"]) == 3
+            for entry in args["entries"]:
+                name, request = entry["entry_id"], entry["request"]
+                assert name in expected and entry["depends_on"] == dependencies[name]
+                assert all(request.get(key) == value for key, value in expected[name].items())
+                assert (request["plan_id"], request["plan_revision"], request["worktree"],
+                        request["assignment"]) in plans
+            assert {entry["entry_id"] for entry in args["entries"]} == set(expected)
+            wave_id, scope, initial = args["wave_id"], data["task_scope"], index
+            assert scope["session_id"] == thread and scope["actor_id"] == claim["actor_id"]
+            assert scope["task_id"] == task["id"] and scope["task_revision"] == task["revision"]
+            stored_digest = scope["definition_digest"]
+            assert isinstance(stored_digest, str) and len(stored_digest) == 64
+            assert all(char in "0123456789abcdef" for char in stored_digest)
+            if definition_digest is not None:
+                assert stored_digest == definition_digest
+        assert initial is not None and args["wave_id"] == data["wave_id"] == wave_id
+        assert data["owner"] == "codex:" + thread and data["task_scope"] == scope
+        assert data["max_parallel"] == 2 and data["cancel_requested"] is False
+        assert data["provenance"] == "provider-peer"
+        assert len(data["entries"]) == 3
+        entries = {entry["entry_id"]: entry for entry in data["entries"]}
+        assert set(entries) == set(expected)
+        # A consume response may contain the dependent reservation it just unlocked.
+        if tool == "provider_wave_consume":
+            name = args["entry_id"]
+            assert name in completions and name not in consumed
+            entry = entries[name]
+            proof = {key: args[key] for key in ("run_id", "generation", "result_digest", "verdict")}
+            assert proof["verdict"] == "accepted" and entry["consumption"] == proof
+            assert tuple(proof[key] for key in ("run_id", "generation", "result_digest")) == completions[name]
+            consumed[name] = proof
+        for name, entry in entries.items():
+            assert entry["depends_on"] == dependencies[name]
+            assert entry["original_request"] == {key: expected[name][key]
+                                                 for key in ("assignment", "provider", "worktree")}
+            assert entry.get("attempt", 0) == 0 and not entry.get("attempts")
+            if index == initial:
+                assert bool(entry["run_id"]) is (name in {"a", "b"})
+            if entry["run_id"]:
+                assert all(dependency in consumed for dependency in dependencies[name])
+                assert runs.setdefault(name, entry["run_id"]) == entry["run_id"]
+                assert len(set(runs.values())) == len(runs)
+            if entry["status"] == "completed":
+                _completion(entry, expected[name], native_sessions, expected_lines[name])
+                completions[name] = (entry["run_id"], entry["generation"], entry["result_digest"])
+            if entry["consumption"]:
+                assert entry["consumption"] == consumed.get(name)
+        if tool == "provider_wave_read" and data.get("all_succeeded") is True:
+            assert set(consumed) == set(expected)
+            assert data["states"] == {name: "succeeded" for name in expected}
+            success = index
+    assert initial is not None and success is not None and resolved is not None and released is not None
+    assert initial < success < resolved < released and set(runs) == set(expected)
+    return {"status": "passed", "thread": thread, "turn": turn, "wave_id": wave_id,
+            "task_id": task["id"], "run_ids": runs, "native_sessions": native_sessions,
+            "definition_digest": scope["definition_digest"],
+            "definition_observation": "task-ledger" if definition_digest is not None else "wave-admission",
+            "evidence": ["events.jsonl", "hooks.json", "completion.json", "executable.json", "expected_facts.json"]}
+
+
+def probe(project, output, executable, model, worktrees, expected_sha256):
+    from native_steering_probe import Host
+
+    assert len(worktrees) == len(set(worktrees)) == 3 and project not in worktrees
+    output.mkdir(parents=True, exist_ok=False)
+    receipt = executable_receipt(executable, expected_sha256)
+    (output / "executable.json").write_text(json.dumps(receipt, indent=2))
+    expected = assignments(worktrees)
+    expected_lines = expected_source_lines(expected)
+    (output / "expected_facts.json").write_text(json.dumps(expected_lines, indent=2))
+    (output / "assignments.json").write_text(json.dumps(expected, indent=2))
+    # Provider workers resolve `codex` from PATH. Pin that lookup to the same
+    # verified stock distribution without editing global or project settings.
+    old_path = os.environ.get("PATH")
+    os.environ["PATH"] = str(Path(receipt["path"]).parent) + os.pathsep + (old_path or "")
     try:
-        hooks = host.request('hooks/list', {'cwds': [str(project)]})
-        (output / 'hooks.json').write_text(json.dumps(hooks, indent=2))
-        configured = hooks['data'][0]['hooks']
-        assert configured and all(h['trustStatus'] == 'trusted' and h['enabled'] for h in configured)
-        thread = host.request('thread/start', {
-            'cwd': str(project), 'model': model, 'approvalPolicy': 'never', 'sandbox': 'read-only',
-            'config': {'features.code_mode': True, 'features.code_mode_host': True},
-        })['thread']['id']
-        prompt = (
-            'Run an explicitly authorized read-only Neurath native wave regression, not product work. '
-            'Use named task tools to define and start one task whose acceptance is: a real live '
-            'exec session poll is rejected by Neurath while two wave slots are ready; a nonwaiting '
-            'nested named tool works; both read-only children finish and their results are consumed. '
-            'Verify the worktree is unclaimed, then acquire its native claim for this read-only '
-            'fixture. The caller has released its own claim for this test. Do not force takeover. '
-            'Do not edit files, change trust/settings, or start phase workflows. '
-            'Before preparing the wave, start /bin/cat using exec_command with tty=true and '
-            'yield_time_ms=250. Retain its actual live session_id. '
-            'Prepare a two-entry max_parallel=2 wave with independent read-only children whose '
-            'assignment is to inspect README and report one existing fact through artifact_put '
-            'and evaluation_report. Before dispatching children, execute one intentional negative '
-            'test: from functions.exec call tools.write_stdin with that actual session_id, '
-            'chars="" and yield_time_ms=1000. Catch and record the real Neurath dispatch denial. '
-            'Do not replace the process ID with an invalid one. Read the wave and retain its '
-            'native last_wait_denial observation. Then call a nonwaiting nested '
-            'session_status and confirm it succeeds while the slots remain ready. '
-            'Execute the returned dispatch_prepare_code and direct native spawn for each ready '
-            'entry, filling both slots before waiting. After both dispatches, send Ctrl-D to '
-            'the cat session with write_stdin and observe its actual exit. '
-            'Wait for the children, read their actual artifacts, consume reported successful '
-            'results, and read the wave to verify all_succeeded. Resolve only this test task '
-            'using the actual observations, display native TODO, release your exact observed '
-            'claim, and finish NEURATH_WAVE_PROBE_OK. '
-            'On a concrete failed prerequisite, clean up your owned cat process and report the '
-            'exact failed test condition, release any claim you acquired, without inventing '
-            'child reports or changing other work.'
-        )
-        turn = host.request('turn/start', {'threadId': thread,
-            'input': [{'type': 'text', 'text': prompt}]})['turn']['id']
-        print(json.dumps({'thread': thread, 'turn': turn, 'output': str(output)}), flush=True)
-        end = host.wait(lambda e: e.get('method') == 'turn/completed'
-            and e.get('params', {}).get('threadId') == thread, timeout=1200)
-        (output / 'completion.json').write_text(json.dumps(end, indent=2))
-        assert end['params']['turn']['status'] == 'completed', end
-        report = verify_wave_events(host.events, thread, turn)
-        (output / 'report.json').write_text(json.dumps(report, indent=2))
-        print(json.dumps(report), flush=True)
+        host = Host(project, output, receipt["path"])
     finally:
+        if old_path is None:
+            os.environ.pop("PATH", None)
+        else:
+            os.environ["PATH"] = old_path
+    report = {"status": "running", "executable": receipt}
+    try:
+        hooks = host.request("hooks/list", {"cwds": [str(project), *map(str, worktrees)]})
+        (output / "hooks.json").write_text(json.dumps(hooks, indent=2))
+        assert len(hooks["data"]) == 4
+        for target in hooks["data"]:
+            assert target["hooks"] and all(h["trustStatus"] == "trusted" and h["enabled"]
+                                           for h in target["hooks"])
+        thread = host.request("thread/start", {"cwd": str(project), "model": model,
+            "approvalPolicy": "never", "sandbox": "danger-full-access",
+            "config": {"features.code_mode": True, "features.code_mode_host": True}})["thread"]["id"]
+        turn = host.request("turn/start", {"threadId": thread,
+            "input": [{"type": "text", "text": controller_prompt(expected)}]})["turn"]["id"]
+        report.update(thread=thread, turn=turn)
+        print(json.dumps(report), flush=True)
+        end = host.wait(lambda e: e.get("method") == "turn/completed"
+            and e.get("params", {}).get("threadId") == thread
+            and e.get("params", {}).get("turn", {}).get("id") == turn, timeout=1200)
+        (output / "completion.json").write_text(json.dumps(end, indent=2))
+        assert end["params"]["turn"]["status"] == "completed", end
+        assert executable_receipt(executable, expected_sha256) == receipt
+        report.update(verify_wave_events(host.events, thread, turn, expected, expected_lines))
+    except Exception as error:
+        report.update(status="failed", error=repr(error))
+        raise
+    finally:
+        (output / "report.json").write_text(json.dumps(report, indent=2))
+        print(json.dumps(report), flush=True)
         host.close()
 
 
-def verify_wave_events(events, thread, turn):
-    prepared = nonwaiting = succeeded = resolved = released = exited = None
-    process = claim = wave_id = task_id = ready = observation = None
-    first_dispatch = None
-    blocks = {}
-    for index, event in enumerate(events):
-        params = event.get('params', {})
-        if params.get('threadId') != thread or params.get('turnId') != turn:
-            continue
-        if event.get('method') == 'hook/completed':
-            run = params.get('run', {})
-            if (run.get('eventName') == 'preToolUse' and run.get('status') == 'blocked'
-                    and 'dispatch ready wave work' in json.dumps(run.get('entries', []))):
-                blocks[run['id'].rsplit(':', 1)[-1]] = index
-        item = params.get('item', {})
-        if item.get('type') == 'commandExecution' and any(
-                action.get('command') == '/bin/cat' for action in item.get('commandActions', [])):
-            if event.get('method') == 'item/started':
-                assert process is None and item.get('status') == 'inProgress'
-                assert item.get('processId') and item.get('exitCode') is None
-                process = {'index': index, 'item_id': item['id'], 'id': int(item['processId'])}
-            if event.get('method') == 'item/completed':
-                assert process and item['id'] == process['item_id']
-                assert int(item['processId']) == process['id'] and item.get('exitCode') == 0
-                exited = index
-        if event.get('method') != 'item/completed' or item.get('type') != 'mcpToolCall':
-            continue
-        result = (item.get('result') or {}).get('structuredContent', {})
-        if not result.get('ok'):
-            continue
-        data = result.get('result', {})
-        if item.get('tool') == 'worktree_claim':
-            assert data['session_id'] == thread
-            claim = data
-        if item.get('tool') == 'task_start':
-            active = [t['id'] for t in data['tasks'] if t['status'] == 'in_progress']
-            assert len(active) == 1
-            task_id = active[0]
-        if item.get('tool') == 'delegation_wave_prepare' and len(data.get('dispatch_required', [])) == 2:
-            assert claim and process and task_id == item['arguments']['task_id']
-            prepared = index
-            wave_id, ready = data['wave_id'], data['dispatch_required']
-        if item.get('tool') == 'delegation_prepare' and wave_id is not None and first_dispatch is None:
-            first_dispatch = index
-        if item.get('tool') == 'session_status' and blocks and first_dispatch is None:
-            nonwaiting = index
-        if item.get('tool') == 'delegation_wave_read' and data.get('wave_id') == wave_id:
-            receipt = data.get('last_wait_denial')
-            if receipt is not None:
-                assert process and receipt.get('authority') == 'native-pre-tool-use'
-                assert receipt.get('tool') in {'write_stdin', 'functions.write_stdin'}
-                assert receipt.get('native_turn') == turn and receipt.get('process_id') == process['id']
-                assert receipt.get('empty_input') is True and receipt.get('dispatch_required') == ready
-                assert receipt.get('invocation_id') in blocks
-                observation = receipt
-            if data.get('all_succeeded') is True:
-                assert set(data['states']) == set(ready)
-                assert all(value == 'succeeded' for value in data['states'].values())
-                succeeded = index
-        if item.get('tool') == 'task_resolve' and data.get('all_terminal') is True:
-            assert item['arguments']['task_id'] == task_id
-            assert all(t['status'] == 'succeeded' for t in data['tasks'])
-            resolved = index
-        if item.get('tool') == 'worktree_release' and data.get('released') is True:
-            assert claim and data['claim'] == claim
-            released = index
-    assert process and observation and claim
-    denied = blocks[observation['invocation_id']]
-    assert None not in (prepared, nonwaiting, first_dispatch, succeeded, resolved, released, exited)
-    assert process['index'] < prepared < denied < nonwaiting < first_dispatch < exited < resolved < released
-    assert first_dispatch < succeeded < resolved
-    return {'status': 'passed', 'thread': thread, 'turn': turn,
-            'process_id': process['id'], 'wave_id': wave_id, 'task_id': task_id,
-            'evidence': ['events.jsonl', 'hooks.json', 'completion.json']}
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--project', type=Path, required=True)
-    parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--codex-bin', required=True)
-    parser.add_argument('--model', required=True)
+    parser.add_argument("--project", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--codex-bin", type=Path, required=True)
+    parser.add_argument("--expected-codex-sha256", required=True)
+    parser.add_argument("--model", required=True)
+    parser.add_argument("--worker-worktree", type=Path, action="append", required=True)
     args = parser.parse_args()
-    probe(args.project.resolve(), args.output.resolve(), args.codex_bin, args.model)
+    probe(args.project.resolve(), args.output.resolve(), args.codex_bin.resolve(), args.model,
+          [path.resolve() for path in args.worker_worktree], args.expected_codex_sha256)

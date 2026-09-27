@@ -1,48 +1,82 @@
-<!-- last_updated: 2026-09-27; synced_from: 5ddfa1392b9cf4cbceb3e9112858e0988ce2cc69 -->
-# Codex 폴링 훅 호환성
+<!-- last_updated: 2026-09-27; synced_from: f35185774aa9f18d1f4f7f13c74b4287a0fac751 -->
+# 스톡 Codex 배치 실행
 
 [English](../../en/contributing/codex-poll-hook.md)
 
-Neurath의 wave 가드는 차단형 대기 전에 호스트 이벤트를 받아야 합니다. Codex 코드
-모드는 일반적으로 중첩 도구에도 훅을 적용하지만, `write_stdin`의 `PreToolUse`를
-생략하는 릴리스에서는 폴링이 그 경계 밖에 있습니다. JavaScript wrapper를 전부
-거부하면 정상적인 비대기 작업까지 막으며 전송 경로의 결함도 해결하지 못합니다.
+Neurath는 일반 Codex 설치와 실행 경로를 사용합니다. 패치한 Codex 실행 파일,
+커스텀 launcher, 교체한 code-mode host를 요구하지 않습니다.
+아래 검사로 설치된 배포본과 실제 실행 중인 호스트를 확인합니다.
+소스 테스트, 독립 실행, 데스크톱 활성화는 각각의 근거로 확인해야 합니다.
 
-`tools/compat/codex-write-stdin-pretooluse.patch`의 개발자용 패치는 해당 예외를
-제거합니다. 공통 디스패처가 프로세스에 접근하기 전에 실제 `write_stdin` 이름과
-JSON 인자로 이벤트를 보냅니다. 기존 stdin 승인과 프로세스 신원 검사는 유지됩니다.
-원래 명령이 종료되면 대응하는 Bash `PostToolUse`도 기존대로 한 번 전달됩니다.
+## 호스트 관측 경계
 
-인접 JSON에는 정확한 upstream 태그·커밋·패치 지문·테스트가 기록되어 있습니다.
-그 소스 리비전에만 적용하고 다른 버전으로 옮길 때는 독립적으로 다시 검토합니다.
-이는 별도 호스트 빌드입니다. Neurath wheel은 Codex를 포함하지 않으며 다른
-저장소를 패키지 빌드 입력으로 사용하지 않습니다.
+훅은 호스트가 해당 이벤트를 전달할 때만 대기를 거부할 수 있습니다.
+관측한 스톡 code-mode 경로는 텍스트만 출력하는 `functions.exec` 호출에서도
+바깥쪽 `PreToolUse` 이벤트를 보내지 않았습니다. 따라서 바깥 wrapper를 막는
+방법으로 누락된 보장을 제공할 수 없습니다. 중첩 대기의 관측 가능성도 호스트에
+따라 다릅니다. Wrapper 소스, 선언한 훅 설정, 모의 훅 테스트만으로 실제 실행 중인
+호스트가 어떤 이벤트를 전달하는지 증명할 수 없습니다.
 
-## 에이전트 실행 참조
+배치 스케줄링은 준비된 작업의 실행 결정을 Neurath 런타임으로 옮깁니다.
+모든 에이전트 대기의 가로채기에 의존하지 않으며, 임의의 스톡 Codex 도구 호출에서
+모든 대기를 막는다고 주장하지 않습니다.
 
-Upstream 저장소의 개발 지침과 고정 도구 체인을 따릅니다. 격리된 Codex checkout에
-패치를 적용하고 다음을 실행합니다.
+## 런타임이 관리하는 worktree 배치
 
-```sh
-just fmt
-just test --cargo-profile dev-small -p codex-core --test all -E 'test(suite::hooks::pre_tool_use_blocks_nested_write_stdin_before_input) | test(suite::hooks::post_tool_use_blocks_when_exec_session_completes_via_write_stdin)'
-cargo build --profile dev-small -p codex-cli --bin codex
-```
+Root는 범위가 정해진 구현 assignment의 DAG를 `provider_wave_run`에 전달합니다.
+각 항목은 `entry_id`, `depends_on`, assignment·서로 다른 설치된 issue worktree·
+정확한 모델 plan ID/revision을 담은 provider `request`를 가집니다.
+Wave는 현재 task ID/revision, 관측한 capacity, 해당하는 경우 소유한 workflow에
+결속됩니다. 하나라도 실행하기 전에 모든 항목을 검증합니다. 대상은 격리되고
+깨끗하며 claim되지 않은 worktree여야 하고, 기존 `worktree-worker`·모델·실행
+정책 검사를 그대로 적용합니다.
 
-일치하는 `codex-code-mode-host`를 실행 파일 옆에 두고 기존 격리 설정을 유지합니다.
-회귀 테스트는 실제로 반환된 실행 중 프로세스 ID로 빈 입력 폴링과 입력 전송을
-검사하며, 정상 중첩 작업과 원래 명령의 종료 이벤트도 확인합니다.
+런타임은 `max_parallel` 한도 내의 ready 항목을 한 transaction에서 예약하고,
+제출 전에 실행할 항목을 영속 저장합니다. Worker의 종료 이벤트가 슬롯을 비우면
+독립된 ready 항목을 실행합니다. 의존 항목은 root가 선행 작업의 정확한 성공
+결과를 읽고 수락한 뒤에만 준비됩니다. 접수·실행·worker 완료·root 수락은
+서로 다른 상태입니다.
 
-`tools/native_stop_probe.py`와 `tools/native_wave_probe.py`에는 명시적인
-`--codex-bin`, `--model`, 이미 신뢰된 `--project`, 로컬 `--output`을 전달합니다.
-Stop probe는 같은 네이티브 턴에서 종료 시도·Stop 차단·태스크 해결·정상 Stop이
-순서대로 발생했는지 검사합니다. Wave probe는 기존 프로젝트 claim을 먼저 반환한
-뒤 자체 읽기 전용 진단 claim을 획득하며, 두 자식의 보고를 소비한 후 반환합니다.
-검사를 통과시키기 위해 다른 세션의 claim을 강제 회수하거나 신뢰를 바꾸지 않습니다.
+이 worker는 기존 `worktree-worker` 경로로 실행되는 독립 provider 세션입니다.
+네이티브 직접 자식이나 독립 검토자가 아닙니다. 각 worker는 쓰기 전에 자신의
+네이티브 준비 상태와 worktree claim을 확인해야 합니다. Root는 task/workflow
+소유권, 통합, 검토와 최종 수락을 유지합니다.
 
-SDK의 `codex_bin` 설정으로 독립 app-server 실행 파일을 선택할 수 있습니다.
-데스크톱 활성화는 별도 관찰입니다. 재연결 뒤 실제 실행 파일과 네이티브 이벤트를
-확인합니다. 로컬 호환 실행 파일이나 독립 probe 성공만으로 실행 중인 데스크톱
-프로세스가 교체되지는 않습니다.
+결과나 복구 이벤트 뒤에는 `provider_wave_read`로 실제 run 신원과 결과 지문을
+읽고 영속 저장된 미제출 작업을 조정합니다. `provider_wave_consume`에 정확한
+entry ID·run ID·generation·digest와 `accepted` 또는 `rejected` 판정을
+전달합니다. 종료 상태를 성공으로 간주하거나 불확실한 실행을 새 실행으로
+재시도하지 않습니다. `provider_wave_cancel`은 이후 예약을 막고 각 run의 제어
+채널로 취소를 요청합니다. 관측한 결과와 미완료 사용자 요구는 보존합니다.
+
+`provider_wave_retry`는 정확한 run의 종료가 확인된 failed 또는 cancelled 구현
+attempt에만 사용합니다. 원래 assignment·provider·worktree는 바꿀 수 없습니다.
+모델 계획과 상속 정책을 새로 검증하고, generation 1의 종료 결과와 worker OS
+lease 해제를 확인해야 합니다. Native 세션이 생성됐다면 해당 세션의 연결·프로세스
+종료도 확인해야 합니다. 수락한 작업·수락한 후속 작업이 있거나 wave 자체가
+취소됐다면 재시도할 수 없습니다. 이전 attempt의 요청·결과·지문·소비 기록은
+변경 없이 보존합니다.
+
+이전 attempt를 포함한 모든 wave 연결 run은 `provider_recover`를 거부합니다.
+이 도구의 inbox 연결 복구는 구현 assignment를 충족할 수 없습니다. 새로 검증한
+구현 attempt와 같은 신원으로 영속 저장된 미제출 실행을 재개하는 것은 구분합니다.
+
+Crash 이후 조정은 인증된 owner의 조회, 동일 요청 replay, 정확한 결과 소비와
+worker 종료 callback에서 수행합니다. 영속 실행 기록과 lease 검사를 사용합니다.
+시작 시 scanner나 주기적 polling은 없으며, 이런 계기 없이 관측하지 못한 crash가
+스스로 복구된다고 주장하지 않습니다.
+
+독립 리뷰는 별도로 준비한 `role="review"` 네이티브 자식을 계속 사용합니다.
+Codex는 `fork_turns="none"`을 사용하며 호스트가 새 컨텍스트와 계보를 확인해야
+합니다. Provider 결과는 이 증명을 대신할 수 없습니다.
+
+## 검증 경계
+
+접수와 스케줄링은 관련 테스트로 검사한 뒤, 설치된 배포본과 수정하지 않은 실제
+호스트를 별도로 검증합니다. 실제 배치 검사는 ready worker 실행, 비워진 슬롯의
+독립 작업 실행, 정확한 root 수락 전 의존 작업 보류, 취소와 실패 결과 보존을
+관측해야 합니다. 실제 사용한 실행 파일과 관측 이벤트를 기록합니다.
+패키지 설치나 독립 실행 성공만으로 현재 데스크톱의 동작을 증명할 수 없습니다.
+호스트 신뢰·권한·기존 claim을 보존합니다.
 
 [호스트 경계](hosts.md)와 [협업 계약](collaboration-contract.md)을 참고하세요.
