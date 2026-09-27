@@ -79,7 +79,7 @@ Skill entry 외 필수 reference, path rule, hook protocol, name/path wrapper는
 |---|---:|---:|---:|
 | `audit-spec` | 1588 | 112 | 39832 |
 | `automate-qa` | 4574 | 131 | 42818 |
-| `autopilot` | 4632 | 122 | 42876 |
+| `autopilot` | 4698 | 122 | 42942 |
 | `checkpoint` | 1191 | 67 | 39435 |
 | `commit` | 1266 | 86 | 39510 |
 | `create-pr` | 3005 | 70 | 41249 |

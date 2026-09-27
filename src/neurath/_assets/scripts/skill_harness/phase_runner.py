@@ -1375,6 +1375,24 @@ class PhaseRunner:
                             or {original(identifier) for identifier in actual}
                             != {f"issue-{number}" for number in planned}):
                         failures.append("autopilot.wave_scope")
+                    dag_item = self._evidence_item(state.phase(2).evidence, "dependency_dag")
+                    try:
+                        dag = json.loads(dag_item.split(": ", 1)[1])
+                        expected_dependencies = {
+                            (f"issue-{first}", f"issue-{second}")
+                            for first, second in dag["edges"]
+                        }
+                        entries = wave.get("entries") if wave else None
+                        if not isinstance(entries, list):
+                            raise ValueError("native wave entries unavailable")
+                        actual_dependencies = {
+                            (original(dependency), original(entry["delegation_id"]))
+                            for entry in entries for dependency in entry["depends_on"]
+                        }
+                        if actual_dependencies != expected_dependencies:
+                            failures.append("autopilot.wave_dependencies")
+                    except (AttributeError, IndexError, KeyError, TypeError, ValueError):
+                        failures.append("autopilot.wave_dependencies")
             except (ValueError, KeyError):
                 failures.append("native_wave_receipt")
         if state.skill == "evaluate-harness":

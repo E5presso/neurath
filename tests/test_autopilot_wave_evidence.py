@@ -79,3 +79,25 @@ def test_all_satisfied_scope_has_explicit_native_wave_no_op(tmp_path):
          'native_wave_receipt: no_op=all_satisfied'), {}, Store())
     assert 'native_wave_receipt' not in failures
     assert 'autopilot.wave_scope' not in failures
+
+
+def test_wave_dependencies_match_frozen_dag(tmp_path):
+    activate(tmp_path)
+    from scripts.skill_harness.phase_runner import PhaseRunner, PhaseContract
+    runner = PhaseRunner(None)
+    prior = {2: SimpleNamespace(evidence=(
+        'dependency_dag: {"issues":[90,91],"edges":[[90,91]]}',))}
+    state = SimpleNamespace(skill='autopilot', adaptive_control_required=False,
+                            phase=lambda phase_id: prior[phase_id])
+    phase = PhaseContract(3, 'execute_waves', 3,
+                          ('wave_plan', 'process_ticket_terminal_states', 'native_wave_receipt'))
+    class Store:
+        def read_native_wave(self, wave_id):
+            return {'all_succeeded': True,
+                    'states': {'issue-90': 'succeeded', 'issue-91': 'succeeded'},
+                    'entries': [{'delegation_id': 'issue-90', 'depends_on': []},
+                                {'delegation_id': 'issue-91', 'depends_on': []}]}
+    failures = runner._semantic_failures(state, phase, 'completed',
+        ('wave_plan: linked issues', 'process_ticket_terminal_states: merged',
+         'native_wave_receipt: wave_id=wave-1'), {}, Store())
+    assert 'autopilot.wave_dependencies' in failures

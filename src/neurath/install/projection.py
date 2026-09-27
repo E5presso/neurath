@@ -558,7 +558,7 @@ def asset_files(profile, hosts, skill_prefix=""):
                     split = content.split("---", 2)
                     if len(split) == 3:
                         contract_guidance = (
-                            "내장 계약: `autopilot`. 구현·task mutation 전에 `phase_start`를 호출하고 모든 phase를 `phase_current`, `phase_evidence_prepare`, `phase_complete`, `phase_finalize`로 완료합니다. task 목록은 phase를 대체하지 않습니다.\n"
+                            "내장 계약: `autopilot`. `task_define`으로 정확한 목표를 등록한 뒤 구현·`task_start` 전에 `phase_start`를 호출하고 모든 phase를 `phase_current`, `phase_evidence_prepare`, `phase_complete`, `phase_finalize`로 완료합니다. task 목록은 phase를 대체하지 않습니다.\n"
                             if skill == "autopilot" else
                             f"내장 계약: `{skill}`. 기존 workflow를 실행·복구할 때 `phase_current`와 `phase_evidence_prepare`를 사용합니다. task 목록이 있으면 task 도구로 결과를 한 번 기록하며 별도 phase 완료를 요구하지 않습니다.\n"
                             if skill in contracted_skills else ""

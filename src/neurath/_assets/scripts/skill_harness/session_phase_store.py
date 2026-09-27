@@ -360,7 +360,8 @@ class SessionPhaseStateStore:
                 or wave.get("workflow_id") != str(self._workflow_id)):
             raise ValueError("native wave belongs to another workflow or owner")
         return {**projection(wave, state, data.get("spawns", {})),
-                "attempts": wave.get("attempts", [])}
+                "attempts": wave.get("attempts", []),
+                "entries": wave["entries"]}
 
     def read_review_evidence(
         self,

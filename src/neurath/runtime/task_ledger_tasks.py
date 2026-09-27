@@ -65,7 +65,7 @@ def service_for(root, *, identity, expected_turn, verified_policy_evidence=None,
 
     def admission(process):
         actor = process.actors.get(handle.actor_id)
-        if operation_name != "task_list":
+        if operation_name in {"task_start", "task_resolve"}:
             _require_autopilot_phase(root, identity, process, handle.actor_id)
         if (actor is None or participation(process, actor) != (True, expected_turn)
                 or canonical(_prompt_receipt(process, actor)) !=
