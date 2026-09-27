@@ -973,6 +973,8 @@ class AgentContinuationHookApplication:
         raw_input: str,
         environment: Mapping[str, str],
         cwd: Path,
+        *,
+        identity_only: bool = False,
     ) -> HookResult:
         """Hook input을 current session의 canonical workflow state에 적용합니다.
 
@@ -989,6 +991,8 @@ class AgentContinuationHookApplication:
         """
         try:
             invocation = self._parse_invocation(raw_input)
+            if identity_only and invocation.event is not HookEvent.USER_PROMPT:
+                raise InvalidHookInput('identity-only recovery requires UserPromptSubmit')
             effective_environment = self._effective_environment(invocation, environment)
             binding = self._identity_resolver.resolve_hook_actor(
                 effective_environment,
@@ -1018,7 +1022,7 @@ class AgentContinuationHookApplication:
             if invocation.event is HookEvent.USER_PROMPT:
                 authority_context = (
                     None
-                    if invocation.prompt is None
+                    if invocation.prompt is None or identity_only
                     else self._prompt_authority_context(state, handle)
                 )
                 handle.apply(
@@ -1040,6 +1044,8 @@ class AgentContinuationHookApplication:
                     )
                 )
                 state = handle.inspect()
+                if identity_only:
+                    return HookResult(exit_code=0, stdout="{}")
             elif invocation.event is HookEvent.PRE_TOOL:
                 handle.apply(
                     ForegroundTurnToolObserved(

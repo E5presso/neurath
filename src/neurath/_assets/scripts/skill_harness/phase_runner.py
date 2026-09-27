@@ -3067,7 +3067,9 @@ class PhaseRunner:
     def _evidence_item(self, evidence: tuple[str, ...], evidence_key: str) -> str:
         for item in evidence:
             if evidence_key in item:
-                return item
+                # The named producer retains provenance in the artifact and
+                # appends this display trailer. It is not part of JSON/token values.
+                return item.removesuffix(" [authority=agent-report]")
         return ""
 
 

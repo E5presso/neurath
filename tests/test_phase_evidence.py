@@ -12,6 +12,33 @@ def prepare(sessions, labels, notes=None, revision=0, key="evidence"):
         "labels":labels, "notes":notes or [], "key":key}, invocation=key)
 
 
+@pytest.mark.parametrize('label,value', [
+    ('normalized_items', '{"issues":[96]}'),
+    ('dependency_dag', '{"issues":[96],"edges":[]}'),
+    ('native_wave_receipt', 'no_op=all_satisfied'),
+])
+def test_prepared_report_trailer_preserves_structured_phase_values(sessions, monkeypatch, label, value):
+    from scripts.skill_harness.phase_runner import PhaseContract, PhaseRunner, SkillContract, SkillContractRepository
+
+    root, _ = sessions
+    contract = SkillContract('report-roundtrip', ('completed',),
+        (PhaseContract(1, 'structured', 1, (label,), 'fixture.md'),))
+    original = SkillContractRepository.get
+    monkeypatch.setattr(SkillContractRepository, 'get',
+        lambda self, name: contract if name == contract.name else original(self, name))
+    call(sessions, 'worktree_claim', {})
+    start(sessions, skill=contract.name)
+    receipt = prepare(sessions, [], [{'label': label, 'text': value}])
+    document = call(sessions, 'artifact_read', {'reference': receipt['reference'].removeprefix('evidence:')})['document']
+    assert document['provenance'] == [{'label': label, 'authority': 'agent-report'}]
+    evidence = tuple(document['phase_evidence'])
+    assert evidence[0].endswith(' [authority=agent-report]')
+    runner = PhaseRunner(SkillContractRepository(root))
+    assert runner._evidence_item(evidence, label) == label + ': ' + value
+    if label != 'native_wave_receipt':
+        assert runner._autopilot_issue_set(evidence, label) == frozenset({96})
+
+
 def publication_fixture(sessions, monkeypatch):
     from scripts.skill_harness.phase_runner import SkillContract, SkillContractRepository
 

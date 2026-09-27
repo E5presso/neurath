@@ -54,12 +54,15 @@ def test_spawn_reservation_counts_and_failure_releases_it(tmp_path):
     assert project(wave, process, spawns)['failed'] == ['a']
 
 
-def test_invalid_codex_child_name_does_not_consume_prepared_intent(runtime):
+@pytest.mark.parametrize('bypass', [False, True])
+def test_invalid_codex_child_name_does_not_consume_prepared_intent(runtime, bypass):
     from neurath.hosts.identity import prepare_bound_delegation, snapshot
 
     store, _, task = setup_peer(runtime)
     prepare_bound_delegation(store.worktree, store.handle, 'name-check', 'Inspect wave',
                              task_id=task['id'], expected_task_revision=task['revision'])
+    from neurath.runtime.bypass import mode
+    mode(store.worktree, bypass)
     send = runtime[3]
     invalid = {'task_name': 'name-check', 'message': 'Inspect wave'}
     code, _, diagnostic = send('codex', 'PreToolUse', tool_name='spawn_agent',
@@ -117,8 +120,8 @@ from tests.test_peer_task_scope import setup_peer  # noqa: E402
 
 @pytest.mark.parametrize('wait_tool', ['collaborationwait_agent', 'write_stdin',
                                        'functions.write_stdin'])
-def test_real_hook_blocks_early_wait_and_task_success(runtime, wait_tool):
-    from neurath.hosts.waves import prepare
+def test_native_hook_adapter_blocks_early_wait_and_task_success(runtime, wait_tool):
+    from neurath.hosts.waves import prepare, read
     from neurath.hosts.identity import prepare_bound_delegation
     store, _, task = setup_peer(runtime)
     config = sample(); config['entries'] = config['entries'][:2]
@@ -134,8 +137,12 @@ def test_real_hook_blocks_early_wait_and_task_success(runtime, wait_tool):
                     turn_id='peer-turn', tool_response={'agent_id': 'child-' + identifier})[0] == 0
     dispatch('a')
     code, _, diagnostic = send('codex', 'PreToolUse', tool_name=wait_tool,
-                               tool_use_id='early-wait', turn_id='peer-turn', tool_input={})
+                               tool_use_id='early-wait', turn_id='peer-turn',
+                               tool_input={'session_id': 123, 'chars': ''})
     assert code != 0 and 'dispatch' in diagnostic
+    assert read(store.worktree, store.handle, wave_id='wave')['last_wait_denial'] == {
+        'authority': 'native-pre-tool-use', 'tool': wait_tool, 'invocation_id': 'early-wait',
+        'native_turn': 'peer-turn', 'process_id': 123, 'empty_input': True, 'dispatch_required': ['b']}
     with pytest.raises(ValueError, match='unfinished'):
         store.resolve(task['id'], expected_revision=4, expected_task_revision=2, key='early-success',
                       references=['test:incomplete'], status='succeeded', summary='Premature completion')
@@ -162,6 +169,7 @@ def test_outer_exec_allows_nonwaiting_work_while_direct_wait_is_denied(runtime):
     assert send('codex', 'PreToolUse', tool_name='functions.exec',
         tool_use_id='nonwaiting-work', turn_id='peer-turn',
         tool_input={'code': 'text("nonwaiting work")'})[0] == 0
+
     from neurath.hosts.hooks import SHELL_TOOLS
     for shell_tool in sorted(SHELL_TOOLS):
         shell_code, _, shell_diagnostic = send('codex', 'PreToolUse',
@@ -183,6 +191,20 @@ def test_outer_exec_allows_nonwaiting_work_while_direct_wait_is_denied(runtime):
     assert send('codex', 'PreToolUse', tool_name='functions.exec',
         tool_use_id='nonwait-after-dispatch', turn_id='peer-turn',
         tool_input={'code': 'text("nonwaiting work")'})[0] == 0
+
+
+def test_wait_observation_failure_remains_blocking(runtime, monkeypatch):
+    from neurath.hosts.waves import prepare
+
+    store, _, task = setup_peer(runtime)
+    prepare(store.worktree, store.handle, wave_id='fail-closed', task_id=task['id'],
+            expected_task_revision=task['revision'], **sample())
+    def unavailable(*args):
+        raise RuntimeError('observation store unavailable')
+    monkeypatch.setattr('neurath.hosts.waves.journal', unavailable)
+    code, _, diagnostic = runtime[3]('codex', 'PreToolUse', tool_name='write_stdin',
+        tool_use_id='failed-observation', turn_id='peer-turn', tool_input={'session_id': 123})
+    assert code == 2 and 'observation store unavailable' in diagnostic
 
 
 def test_strict_wave_returns_code_for_dependent_entry_before_it_becomes_ready(runtime):
@@ -312,6 +334,51 @@ def test_only_observed_failed_attempt_can_be_replaced(runtime):
     assert 'a2' in result['dispatch_prepare_code']
     assert 'Inspect a' in result['dispatch_prepare_code']['a2']
     assert read(store.worktree, store.handle, wave_id='wave')['attempts'] == [{'failed': 'a', 'replacement': 'a2'}]
+
+
+@pytest.mark.parametrize('invalid', [None, 'valid-name', 'wrong-turn', 'client-authored', 'successful-output', 'bound-child'])
+def test_retry_recovers_only_exact_native_rejected_name(runtime, invalid):
+    import json
+    from neurath.hosts.waves import prepare, retry
+    from neurath.hosts.identity import prepare_bound_delegation, journal, snapshot
+
+    store, _, task = setup_peer(runtime)
+    config = sample()
+    config['entries'] = [{**entry, 'assignment': 'Inspect ' + entry['delegation_id']}
+                         for entry in config['entries'][:2]]
+    prepare(store.worktree, store.handle, wave_id='recovery', task_id=task['id'],
+            expected_task_revision=task['revision'], **config)
+    prepare_bound_delegation(store.worktree, store.handle, 'a', 'Inspect a',
+        task_id=task['id'], expected_task_revision=task['revision'])
+    # Legacy versions reserved the intent before host task-name validation.
+    with journal(store.worktree, 'root') as data:
+        intent = data['intents']['a']
+        intent['call_id'] = 'rejected-spawn'
+        data['spawns']['rejected-spawn'] = {'foreground': intent['foreground'],
+            'delegation': {'id': 'a', 'assignment': 'Inspect a'}, 'host': 'codex',
+            'child': 'child' if invalid == 'bound-child' else None}
+    metadata = {'turn_id': 'wrong' if invalid == 'wrong-turn' else 'peer-turn'}
+    native = {'type': 'response_item', 'metadata': {'client_authored': invalid == 'client-authored'}}
+    call = {'type': 'function_call', 'name': 'spawn_agent', 'namespace': 'collaboration',
+        'call_id': 'rejected-spawn', 'internal_chat_message_metadata_passthrough': metadata,
+        'arguments': json.dumps({'task_name': 'valid_name' if invalid == 'valid-name' else 'invalid-name'})}
+    result = {'type': 'function_call_output', 'call_id': 'rejected-spawn',
+        'internal_chat_message_metadata_passthrough': metadata,
+        'output': 'success' if invalid == 'successful-output' else
+            'agent_name must use only lowercase letters, digits, and underscores'}
+    with runtime[2].open('a') as stream:
+        for item in (call, result):
+            stream.write(json.dumps({**native, 'payload': item}) + '\n')
+    if invalid:
+        with pytest.raises(ValueError, match='observed failed'):
+            retry(store.worktree, store.handle, wave_id='recovery', delegation_id='a', replacement_id='a2')
+        assert 'spawn_error' not in snapshot(store.worktree, 'root')['spawns']['rejected-spawn']
+    else:
+        recovered = retry(store.worktree, store.handle, wave_id='recovery', delegation_id='a', replacement_id='a2')
+        assert recovered['dispatch_required'] == ['a2', 'b']
+        prior = snapshot(store.worktree, 'root')['spawns']['rejected-spawn']
+        assert prior['spawn_error'] == 'native-task-name-validation-failed'
+        assert prior['failure_evidence']['call_id'] == 'rejected-spawn'
 
 
 def test_wait_is_not_blocked_by_terminal_task_history(runtime):

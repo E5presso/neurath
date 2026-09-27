@@ -15,7 +15,7 @@ import time
 
 
 class Host:
-    def __init__(self, project, output):
+    def __init__(self, project, output, executable="codex"):
         self.events = []
         self.queue = queue.Queue()
         self.sequence = 0
@@ -27,7 +27,7 @@ class Host:
             if not key.startswith(("NEURATH_", "CLAUDE", "CODEX_")) or key == "CODEX_HOME"
         }
         self.process = subprocess.Popen(
-            ["codex", "app-server", "--stdio"],
+            [executable, "app-server", "--stdio"],
             cwd=project,
             env=env,
             stdin=subprocess.PIPE,
