@@ -1,7 +1,7 @@
 """A current native input must answer an exact pending choice, never an agent boolean."""
 import hashlib
 import pytest
-from neurath.runtime.user_choices import ChoiceStore, verify_answer, verify_registered_prompt
+from neurath.runtime.user_choices import ChoiceStore, target, verify_answer, verify_registered_prompt
 
 def receipt(text,generation=2,revision=1):
     return {"prompt_digest":hashlib.sha256(text.encode()).hexdigest(),
@@ -166,4 +166,34 @@ def test_update_choice_rechecks_prepared_plan_under_service_lock(monkeypatch):
         service.choose("offer","yes",user_confirmed=True,expected_plan_id="old-plan")
     assert state["choices"]=={}
     service.choose("offer","yes",user_confirmed=True,expected_plan_id="new-plan")
-    assert state["choices"]["2"]["decision"]=="yes"
+    assert state["choices"]["offer"]["decision"]=="yes"
+
+
+def test_update_choice_question_identifies_exact_same_version_asset(monkeypatch):
+    offers = {
+        "unknown": {"id":"unknown","current":"0.1.0","version":"0.1.0",
+                    "sha256":"a"*64,"relation":"same-version-origin-unknown"},
+        "distinct": {"id":"distinct","current":"0.1.0","version":"0.1.0",
+                     "sha256":"b"*64,"relation":"same-version-distinct-asset"},
+    }
+    state = {"operation":{"phase":"prepared","offer_id":None,"plan_id":"same-plan",
+                          "distribution":"d"*64,
+                          "changes":[{"action":"write","path":".neurath/run"}]}}
+    class Service:
+        def __init__(self, root):
+            pass
+        def _read(self):
+            return state
+        def _offer(self, current, offer_id):
+            current["operation"]["offer_id"] = offer_id
+            return offers[offer_id]
+    monkeypatch.setattr("neurath.updates.Updates", Service)
+
+    unknown = target(None, "releases_choose", "unknown")["question"]
+    distinct = target(None, "releases_choose", "distinct")["question"]
+
+    assert unknown != distinct
+    assert "a"*64 in unknown
+    assert "b"*64 in distinct
+    assert "origin unknown" in unknown
+    assert "distinct from recorded installed asset" in distinct

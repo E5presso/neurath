@@ -17,6 +17,7 @@ from neurath.install.records import read_state
 API = "https://api.github.com/repos/E5presso/neurath"
 INTERVAL = 86400
 MAX_WHEEL = 32 * 1024 * 1024
+ASSET_IDENTITY_FIELDS = ("version", "release_id", "asset_id", "name", "sha256", "size")
 
 
 def version(value):
@@ -56,7 +57,23 @@ def download_asset(asset_id):
     return _request(f"/releases/assets/{asset_id}", binary=True)
 
 
-def candidate(value, current):
+def _asset_identity(value):
+    try:
+        identity = {key: value[key] for key in ASSET_IDENTITY_FIELDS}
+    except (KeyError, TypeError) as error:
+        raise ValueError("invalid release asset identity") from error
+    target = identity["version"]
+    version(target)
+    if (type(identity["release_id"]) is not int or identity["release_id"] <= 0
+            or type(identity["asset_id"]) is not int or identity["asset_id"] <= 0
+            or identity["name"] != f"neurath-{target}-py3-none-any.whl"
+            or not re.fullmatch(r"[a-f0-9]{64}", identity["sha256"] or "")
+            or type(identity["size"]) is not int or not 0 < identity["size"] <= MAX_WHEEL):
+        raise ValueError("invalid release asset identity")
+    return identity
+
+
+def candidate(value, current, installed_asset=None):
     if value is None:
         return None
     if (not isinstance(value, dict) or value.get("draft") is not False
@@ -64,7 +81,9 @@ def candidate(value, current):
         raise ValueError("release is not published and stable")
     tag = value.get("tag_name", "")
     target = tag.removeprefix("v")
-    if tag != "v" + target or version(target) <= version(current):
+    target_version = version(target)
+    current_version = version(current)
+    if tag != "v" + target or target_version < current_version:
         return None
     release_id = value.get("id")
     if type(release_id) is not int or release_id <= 0:
@@ -87,6 +106,14 @@ def candidate(value, current):
     offer = dict(current=current, version=target, tag=tag, release_id=release_id,
                  asset_id=asset["id"], name=name, sha256=asset["digest"][7:], size=asset["size"],
                  notes=notes, url=f"https://github.com/E5presso/neurath/releases/tag/{tag}")
+    if target_version > current_version:
+        offer["relation"] = "newer-version"
+    elif installed_asset is None:
+        offer["relation"] = "same-version-origin-unknown"
+    elif _asset_identity(installed_asset) == _asset_identity(offer):
+        return None
+    else:
+        offer["relation"] = "same-version-distinct-asset"
     offer["id"] = hashlib.sha256(canonical(offer).encode()).hexdigest()
     return offer
 
@@ -99,7 +126,7 @@ class Updates:
         from neurath.runtime.local_state import LocalState
         self.state_store = LocalState(self.root, "updates", self.path, self._decode,
             lambda: dict(schema=1, checked=0, requested=0, status="unchecked", offer=None,
-                         choices={}, announced=[], operation=None))
+                         choices={}, announced=[], operation=None, installed_asset=None))
 
     def _read(self):
         return self.state_store.read()
@@ -115,6 +142,25 @@ class Updates:
                 or not isinstance(state.get("checked"), (int, float))
                 or not isinstance(state.get("requested"), (int, float))):
             raise ValueError("invalid update state; update disabled")
+        installed_asset = state.get("installed_asset")
+        if installed_asset is not None:
+            if (not isinstance(installed_asset, dict)
+                    or set(installed_asset) != set(ASSET_IDENTITY_FIELDS) | {"distribution"}
+                    or not re.fullmatch(r"[a-f0-9]{64}", installed_asset.get("distribution") or "")):
+                raise ValueError("invalid installed release asset; update disabled")
+            _asset_identity(installed_asset)
+        # Version-only state from older installations is exact only when its retained
+        # offer names the same immutable offer ID. Preserve that decision/notice while
+        # allowing a distinct same-version asset to receive a new explicit choice.
+        offer = state.get("offer")
+        if isinstance(offer, dict) and isinstance(offer.get("id"), str):
+            offer_id, offer_version = offer["id"], offer.get("version")
+            state["announced"] = [offer_id if item == offer_version else item
+                                  for item in state["announced"]]
+            previous = state["choices"].get(offer_version)
+            if isinstance(previous, dict) and previous.get("offer_id") == offer_id:
+                state["choices"].setdefault(offer_id, previous)
+                del state["choices"][offer_version]
         return state
 
     @contextmanager
@@ -130,15 +176,31 @@ class Updates:
     def _save(self, state):
         self.state_store.save(state)
 
+    @staticmethod
+    def _installed_asset(state, installed):
+        provenance = state.get("installed_asset")
+        if (not provenance or provenance["version"] != installed["version"]
+                or provenance["distribution"] != installed["distribution"]):
+            return None
+        return _asset_identity(provenance)
+
+    @staticmethod
+    def _choice(state, offer):
+        return state["choices"].get(offer["id"])
+
     def _status(self, state):
         installed = read_state(self.root)
         offer = state.get("offer")
+        status = state["status"]
         if not installed or offer and installed["version"] != offer["current"]:
             offer = None
-        return dict(status=state["status"], current=installed["version"] if installed else None,
-                    offer=offer, decision=state["choices"].get(offer["version"], {}).get("decision")
-                    if offer else None, operation=state.get("operation"),
-                    checked=state["checked"])
+        elif offer and self._installed_asset(state, installed) == _asset_identity(offer):
+            offer = None
+            status = "current"
+        return dict(status=status, current=installed["version"] if installed else None,
+                    offer=offer, decision=self._choice(state, offer).get("decision")
+                    if offer and self._choice(state, offer) else None,
+                    operation=state.get("operation"), checked=state["checked"])
 
     def status(self):
         return self._status(self._read())
@@ -160,10 +222,11 @@ class Updates:
             installed = read_state(self.root)
             if not installed:
                 return dict(status="not-installed", offer=None)
+            installed_asset = self._installed_asset(state, installed)
             state.update(checked=time.time(), status="unavailable", offer=None)
             self._save(state)  # Rate-limit even an interrupted or failed network call.
             try:
-                state["offer"] = candidate(fetch_release(), installed["version"])
+                state["offer"] = candidate(fetch_release(), installed["version"], installed_asset)
                 state["status"] = "available" if state["offer"] else "current"
             except (OSError, ValueError, TypeError, KeyError, AttributeError):
                 state["status"] = "unavailable"
@@ -174,10 +237,10 @@ class Updates:
         with self._locked() as state:
             offer = self._status(state)["offer"]
             if (not offer or state["status"] != "available"
-                    or offer["version"] in state["announced"]
-                    or offer["version"] in state["choices"]):
+                    or offer["id"] in state["announced"]
+                    or offer["id"] in state["choices"]):
                 return None
-            state["announced"].append(offer["version"])
+            state["announced"].append(offer["id"])
             self._save(state)
             return offer
 
@@ -185,7 +248,7 @@ class Updates:
         if user_confirmed is not True or decision not in {"yes", "no", "later"}:
             raise ValueError("explicit user decision required")
         with self._locked() as state:
-            offer = self._offer(state, offer_id)
+            self._offer(state, offer_id)
             operation = state.get("operation")
             if operation and operation["phase"] == "applying":
                 raise ValueError("update requires recovery first")
@@ -195,7 +258,7 @@ class Updates:
             if expected_plan_id is not None and (
                     not operation or operation.get("plan_id") != expected_plan_id):
                 raise ValueError("prepared update changed after user decision")
-            state["choices"][offer["version"]] = dict(decision=decision, offer_id=offer_id)
+            state["choices"][offer_id] = dict(decision=decision, offer_id=offer_id)
             self._save(state)
             return self._status(state)
 
@@ -206,13 +269,16 @@ class Updates:
             if state.get("operation") and state["operation"]["phase"] == "applying":
                 raise ValueError("update requires recovery first")
             # New preview always requires a new decision; never carries consent forward.
-            previous = state["choices"].get(offer["version"])
+            previous = self._choice(state, offer)
             if previous and previous["decision"] == "yes":
                 previous["decision"] = "later"
             self._save(state)
-            if candidate(fetch_release(offer["release_id"]), offer["current"]) != offer:
+            installed = read_state(self.root)
+            if candidate(fetch_release(offer["release_id"]), offer["current"],
+                         self._installed_asset(state, installed)) != offer:
                 raise ValueError("release changed; check and review a new offer")
             state["operation"] = release_install.prepare(self.root, self.directory, offer)
+            state["operation"]["previous_asset"] = state.get("installed_asset")
             self._save(state)
             return self._status(state)
 
@@ -220,23 +286,29 @@ class Updates:
         from neurath import release_install
         with self._locked() as state:
             offer = self._offer(state, offer_id)
-            if state["choices"].get(offer["version"]) != dict(decision="yes", offer_id=offer_id):
+            if self._choice(state, offer) != dict(decision="yes", offer_id=offer_id):
                 raise ValueError("exact release requires user consent")
             operation = state.get("operation")
             if not operation or operation["phase"] != "prepared" or operation["offer_id"] != offer_id:
                 raise ValueError("update is not prepared or requires recovery")
             # Recheck the SAME release, never resolve latest again after consent.
-            if candidate(fetch_release(offer["release_id"]), offer["current"]) != offer:
-                state["choices"][offer["version"]]["decision"] = "later"
+            installed = read_state(self.root)
+            if candidate(fetch_release(offer["release_id"]), offer["current"],
+                         self._installed_asset(state, installed)) != offer:
+                state["choices"][offer_id]["decision"] = "later"
                 self._save(state)
                 raise ValueError("release changed; check and review a new offer")
             operation["phase"] = "applying"
             self._save(state)
             try:
                 operation.update(release_install.apply(self.root, self.directory, offer, operation))
+                installed = read_state(self.root)
+                state["installed_asset"] = {
+                    **_asset_identity(offer), "distribution": installed["distribution"],
+                }
             except Exception:
                 # Keep the durable applying record. Recover handles before/after/partial writes.
-                state["choices"][offer["version"]]["decision"] = "later"
+                state["choices"][offer_id]["decision"] = "later"
                 self._save(state)
                 raise
             self._save(state)
@@ -251,7 +323,12 @@ class Updates:
             operation.update(release_install.recover(self.root, self.directory, operation))
             offer = state.get("offer")
             if offer:
-                state["choices"][offer["version"]] = dict(decision="later", offer_id=offer["id"])
+                state["choices"][offer["id"]] = dict(decision="later", offer_id=offer["id"])
+            previous_asset = operation.get("previous_asset")
+            if previous_asset is None:
+                state.pop("installed_asset", None)
+            else:
+                state["installed_asset"] = previous_asset
             self._save(state)
             return self._status(state)
 

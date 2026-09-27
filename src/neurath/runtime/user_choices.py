@@ -272,7 +272,20 @@ def target(root, operation, target_id):
         body={"offer":offer,"preview":preview}
         changes="" if not prepared else "\n".join(
             "- "+c["action"]+": "+c["path"] for c in preview["changes"])
-        question=f"Neurath {offer['current']} → {offer['version']}\n"+changes
+        relation=offer.get("relation") or (
+            "same-version-origin-unknown" if offer["current"]==offer["version"] else "newer-version")
+        relation_text={
+            "newer-version":"newer version / 새 버전",
+            "same-version-origin-unknown":(
+                "same version; installed wheel origin unknown / 같은 버전; 설치 wheel 출처 미확인"),
+            "same-version-distinct-asset":(
+                "same version; distinct from recorded installed asset / "
+                "같은 버전; 기록된 설치 asset과 다름"),
+        }.get(relation)
+        if relation_text is None:
+            raise ValueError("invalid release asset relation")
+        question=(f"Neurath {offer['current']} → {offer['version']}\n"
+                  f"Wheel SHA-256: {offer['sha256']}\nAsset relation: {relation_text}\n"+changes)
         question+="\n\n이 업데이트를 승인할까요? / Approve this update?" if prepared else (
             "\n\n업데이트를 거절하거나 나중으로 미룰까요? / Decline or defer this update?")
         decisions=["yes","no","later"] if prepared else ["no","later"]
