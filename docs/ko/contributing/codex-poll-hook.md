@@ -63,7 +63,9 @@ root가 정확한 성공 결과로 수락한 뒤 `provider_wave_supersede(old_wa
 new_wave_id, key)`로 task 원장을 조정합니다. Task 정의, workflow, 항목 의존성,
 provider와 worktree가 같아야 하며 이전 worker lease는 종료되고 OS 잠금도 풀려
 있어야 합니다. 이전 결과는 failed/cancelled로 남고, 이 조정은 누락된 연결 종료를
-증명하거나 이전 native 세션의 재실행을 허용하지 않습니다.
+증명하거나 이전 native 세션의 재실행을 허용하지 않습니다. 실행되지 않은 후속 항목은
+cancelled, 이미 수락한 형제 결과는 accepted로 보존하며 이전 wave의 새 예약·재시도는
+거부합니다.
 
 이전 attempt를 포함한 모든 wave 연결 run은 `provider_recover`를 거부합니다.
 이 도구의 inbox 연결 복구는 구현 assignment를 충족할 수 없습니다. 새로 검증한

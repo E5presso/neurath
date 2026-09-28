@@ -66,7 +66,9 @@ use `provider_wave_supersede(old_wave_id, new_wave_id, key)` for task accounting
 It requires the same task definition, workflow, entry dependencies, providers
 and worktrees, plus finished and unlocked old worker leases. The old result
 remains failed or cancelled; supersession never supplies missing closure proof
-or permits replay of the old native session.
+or permits replay of the old native session. Queued dependents that never ran
+stay cancelled, accepted sibling results stay accepted, and the superseded
+wave cannot schedule or retry another attempt.
 
 Every wave-associated run, including prior attempts, rejects `provider_recover`.
 That operation restores an inbox connection and cannot satisfy an implementation

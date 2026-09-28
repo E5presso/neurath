@@ -78,6 +78,10 @@ def _validate_scope(store, db, scope):
 
 def _schedule(store, db, wave_id):
     row = db.execute('SELECT * FROM provider_waves WHERE id=?', (wave_id,)).fetchone()
+    if (db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='provider_wave_supersessions'").fetchone()
+            and db.execute('SELECT 1 FROM provider_wave_supersessions WHERE old_wave_id=?',
+                           (wave_id,)).fetchone()):
+        return
     db.after_commit[('provider-wave', wave_id)] = lambda: _drain(store, wave_id)
     if row['cancel_requested']:
         return
@@ -275,11 +279,16 @@ def supersede(root, identity, *, old_wave_id, new_wave_id, key):
                        _replacement_scope(json.loads(new['request']))):
                 raise ValueError('supersession requires an exact successful replacement')
             if not old_state['entries'] or any(
-                    entry['status'] not in {'failed', 'cancelled'} or
-                    entry['run_id'] is None or entry['dispatch_state'] != 'terminal'
+                    not ((entry['run_id'] is None and entry['status'] in {'blocked', 'cancelled'})
+                         or (entry['run_id'] is not None and entry['dispatch_state'] == 'terminal'
+                             and (entry['status'] in {'failed', 'cancelled'}
+                                  or (entry['status'] == 'completed' and entry['consumption']
+                                      and entry['consumption']['verdict'] == 'accepted'))))
                     for entry in old_state['entries']):
-                raise ValueError('old wave must have only terminal failed or cancelled runs')
+                raise ValueError('old wave has unfinished or unaccepted entries')
             for entry in old_state['entries']:
+                if entry['run_id'] is None:
+                    continue
                 lease = db.execute('SELECT generation,state FROM provider_worker_leases WHERE run_id=?',
                                    (entry['run_id'],)).fetchone()
                 if (lease is None or lease['state'] != 'finished'
@@ -394,6 +403,9 @@ def retry(root, identity, *, wave_id, entry_id, request, key, request_digest='')
             _validate_scope(store, db, definition['task_scope'])
             if wave['cancel_requested']:
                 raise ValueError('cancelled wave cannot admit another attempt')
+            if db.execute('SELECT 1 FROM provider_wave_supersessions WHERE old_wave_id=?',
+                          (wave['id'],)).fetchone():
+                raise ValueError('superseded wave cannot retry')
             item = db.execute('SELECT * FROM provider_wave_entries WHERE wave_id=? AND entry_id=?', (wave['id'], entry_id)).fetchone()
             if item['run_id'] != old_run_id:
                 raise ValueError('retry current attempt changed')

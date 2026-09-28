@@ -73,7 +73,7 @@ def consume(wave, result, wave_id='wave', **overrides):
     root, owner, *_ = wave
     fields = {'wave_id': wave_id, 'entry_id': result['entry_id'], 'run_id': result['run_id'],
                   'generation': result['generation'], 'result_digest': result['result_digest'],
-                  'verdict': 'accepted', 'key': 'consume-' + result['entry_id']}
+                  'verdict': 'accepted', 'key': 'consume-' + wave_id + '-' + result['entry_id']}
     return waves.consume(root, owner, **(fields | overrides))
 
 
@@ -514,6 +514,72 @@ def test_supersession_rejects_success_for_a_different_worktree(wave):
         waves.supersede(root, owner, old_wave_id='old', new_wave_id='other', key='wrong')
     assert [item['wave_id'] for item in waves.pending(
         root, session_id=scope['session_id'], actor_id=scope['actor_id'], task_id=scope['task_id'])] == ['old']
+
+
+def test_supersession_preserves_runless_cancelled_dependency(wave):
+    root, owner, scope, _, _ = wave
+    graph = [entry(root, 'a'), entry(root, 'b', ['a'])]
+    waves.admit(root, owner, wave_id='old', task_scope=scope, entries=graph,
+                max_parallel=1, capacity_basis='one slot', key='old')
+    finish(wave, 'a', status='failed', wave_id='old')
+    waves.cancel(root, owner, wave_id='old', key='cancel-old')
+    blocked = waves.read(root, owner, 'old')['entries'][1]
+    assert blocked['run_id'] is None and blocked['status'] == 'cancelled'
+
+    waves.admit(root, owner, wave_id='new', task_scope=scope, entries=graph,
+                max_parallel=1, capacity_basis='one slot', key='new')
+    consume(wave, finish(wave, 'a', wave_id='new'), wave_id='new')
+    consume(wave, finish(wave, 'b', wave_id='new'), wave_id='new')
+
+    waves.supersede(root, owner, old_wave_id='old', new_wave_id='new', key='replace')
+    assert waves.read(root, owner, 'old')['entries'][1]['run_id'] is None
+    assert waves.pending(root, session_id=scope['session_id'], actor_id=scope['actor_id'],
+                         task_id=scope['task_id']) == []
+
+
+def test_supersession_preserves_accepted_sibling_of_failed_entry(wave):
+    root, owner, scope, _, _ = wave
+    graph = [entry(root, 'a'), entry(root, 'b')]
+    waves.admit(root, owner, wave_id='old', task_scope=scope, entries=graph,
+                max_parallel=2, capacity_basis='two slots', key='old')
+    consume(wave, finish(wave, 'a', wave_id='old'), wave_id='old')
+    finish(wave, 'b', status='failed', wave_id='old')
+    waves.admit(root, owner, wave_id='new', task_scope=scope, entries=graph,
+                max_parallel=2, capacity_basis='two slots', key='new')
+    consume(wave, finish(wave, 'a', wave_id='new'), wave_id='new')
+    consume(wave, finish(wave, 'b', wave_id='new'), wave_id='new')
+
+    waves.supersede(root, owner, old_wave_id='old', new_wave_id='new', key='replace')
+    assert waves.read(root, owner, 'old')['states'] == {'a': 'succeeded', 'b': 'failed'}
+    assert waves.pending(root, session_id=scope['session_id'], actor_id=scope['actor_id'],
+                         task_id=scope['task_id']) == []
+
+
+def test_superseded_wave_cannot_retry_its_old_assignment(wave):
+    root, owner, scope, _, leases = wave
+    original = entry(root, 'a')
+    waves.admit(root, owner, wave_id='old', task_scope=scope, entries=[original],
+                max_parallel=1, capacity_basis='one slot', key='old')
+    old = waves.read(root, owner, 'old')['entries'][0]
+    lease = next(item for item in leases if item.run_id == old['run_id'])
+    jobs._finish(jobs._store(root), lease.run_id, {
+        'status': 'failed', 'worker_generation': 1,
+        'created': {'provider': 'codex', 'native_session': 'old-native'},
+        'closure': {'native_session': 'old-native', 'transport': 'codex-app-server',
+                    'connection_closed': True, 'native_process_exited': True,
+                    'source': 'owned-app-server-close', 'reason': 'transport-closed'},
+    }, lease)
+    lease.close()
+    waves.admit(root, owner, wave_id='new', task_scope=scope, entries=[original],
+                max_parallel=1, capacity_basis='one slot', key='new')
+    consume(wave, finish(wave, 'a', wave_id='new'), wave_id='new')
+    waves.supersede(root, owner, old_wave_id='old', new_wave_id='new', key='replace')
+
+    with pytest.raises(ValueError, match='superseded'):
+        waves.retry(root, owner, wave_id='old', entry_id='a', request=original['request'], key='retry-old')
+    assert waves.read(root, owner, 'old')['entries'][0]['run_id'] == old['run_id']
+    assert waves.pending(root, session_id=scope['session_id'], actor_id=scope['actor_id'],
+                         task_id=scope['task_id']) == []
 
 
 def test_consumption_accepts_native_claude_completion_shape(wave):
