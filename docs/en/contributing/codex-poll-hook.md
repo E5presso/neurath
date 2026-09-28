@@ -1,4 +1,4 @@
-<!-- last_updated: 2026-09-27; synced_from: f35185774aa9f18d1f4f7f13c74b4287a0fac751 -->
+<!-- last_updated: 2026-09-28; synced_from: 653dedfdfce8a5f741317d23026d3bf8583981f8 -->
 # Stock Codex batch orchestration
 
 [한국어](../../ko/contributing/codex-poll-hook.md)
