@@ -35,6 +35,9 @@ def definitions(text_field, count, choice, provider_fields):
         "provider_wave_cancel": ("Cancel an owned wave and its exact provider runs through their control channels. Prevent future reservations; retain observed outcomes and unfinished user requirements.", keyed, False),
         "provider_wave_retry": ("Explicitly retry one provably ended failed implementation with fresh plan and inherited policy admission. Preserve its prior attempt and original assignment, provider and worktree. Inbox recovery is not an implementation retry.",
             {**keyed, "entry_id": text_field(128), "request": request_schema}, False),
+        "provider_wave_supersede": ("Retire one terminal failed or cancelled wave only after the same owned task and issue graph have an accepted successful replacement. Preserve both wave results and never claim historical native closure.",
+            {"old_wave_id": text_field(128), "new_wave_id": text_field(128),
+             "key": text_field(512)}, False),
     }
     return {name: ("provider-wave", name, description, fields, readonly)
             for name, (description, fields, readonly) in values.items()}
@@ -63,6 +66,14 @@ def execute(root, name, fields, *, identity, expected_turn, verified_policy_evid
         return waves.consume(root, identity, **fields)
     if name == "provider_wave_retry":
         return _retry_entry(root, fields, identity, expected_turn, verified_policy_evidence, before)
+    if name == "provider_wave_supersede":
+        old = waves.snapshot(root, identity, fields["old_wave_id"])
+        scope = old["task_scope"]
+        handle = _handle(root, identity, expected_turn, verified_policy_evidence)
+        checked = instruction_scope(root, handle.inspect(), scope["task_id"], scope["task_revision"])
+        if checked["definition_digest"] != scope["definition_digest"]:
+            raise TaskError("revision-conflict", "supersession task definition changed")
+        return waves.supersede(root, identity, **fields)
 
     handle = _handle(root, identity, expected_turn, verified_policy_evidence)
     state = handle.inspect()

@@ -78,6 +78,10 @@ def _validate_scope(store, db, scope):
 
 def _schedule(store, db, wave_id):
     row = db.execute('SELECT * FROM provider_waves WHERE id=?', (wave_id,)).fetchone()
+    if (db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='provider_wave_supersessions'").fetchone()
+            and db.execute('SELECT 1 FROM provider_wave_supersessions WHERE old_wave_id=?',
+                           (wave_id,)).fetchone()):
+        return
     db.after_commit[('provider-wave', wave_id)] = lambda: _drain(store, wave_id)
     if row['cancel_requested']:
         return
@@ -232,6 +236,76 @@ def cancel(root, identity, *, wave_id, key):
     return _read(store, identity, wave_id)
 
 
+def _replacement_scope(request):
+    """Compare issue coverage without equating an implementation with its continuation."""
+    return (request['task_scope'], request['workflow_id'], sorted(
+        (item['entry_id'], tuple(sorted(item['depends_on'])),
+         item['request'].get('provider', 'codex'), item['request']['worktree'])
+        for item in request['entries']))
+
+
+def supersede(root, identity, *, old_wave_id, new_wave_id, key):
+    """Retire an unsuccessful wave only after an exact successful replacement.
+
+    This is task accounting, not a retry or a claim that the old native transport
+    closed. The old job/result and its missing historical closure stay immutable.
+    """
+    if old_wave_id == new_wave_id:
+        raise ValueError('replacement wave must differ from the old wave')
+    store = open_wave_store(root)
+    recovery = JobRecovery(store)
+    with store.connection() as db:
+        old = owned_wave(db, identity, old_wave_id)
+        owned_wave(db, identity, new_wave_id)
+        run_ids = [entry['run_id'] for entry in wave_snapshot(db, old)['entries']
+                   if entry['run_id'] is not None]
+    locks = []
+    try:
+        # The old worker OS lease must be free even though its native transport
+        # closure is not used as authority for the separate replacement wave.
+        for run_id in run_ids:
+            locks.append(recovery._lock(run_id))
+        with store.connection() as db:
+            old = owned_wave(db, identity, old_wave_id)
+            new = owned_wave(db, identity, new_wave_id)
+            old_state, new_state = wave_snapshot(db, old), wave_snapshot(db, new)
+            prior = db.execute('SELECT * FROM provider_wave_supersessions WHERE old_wave_id=?',
+                               (old['id'],)).fetchone()
+            if prior is not None:
+                if prior['new_wave_id'] != new['id'] or prior['owner'] != identity.address:
+                    raise ValueError('old wave already has a different replacement')
+            elif (old_state['all_succeeded'] or not new_state['all_succeeded']
+                    or _replacement_scope(json.loads(old['request'])) !=
+                       _replacement_scope(json.loads(new['request']))):
+                raise ValueError('supersession requires an exact successful replacement')
+            if not old_state['entries'] or any(
+                    not ((entry['run_id'] is None and entry['status'] in {'blocked', 'cancelled'})
+                         or (entry['run_id'] is not None and entry['dispatch_state'] == 'terminal'
+                             and (entry['status'] in {'failed', 'cancelled'}
+                                  or (entry['status'] == 'completed' and entry['consumption']
+                                      and entry['consumption']['verdict'] == 'accepted'))))
+                    for entry in old_state['entries']):
+                raise ValueError('old wave has unfinished or unaccepted entries')
+            for entry in old_state['entries']:
+                if entry['run_id'] is None:
+                    continue
+                lease = db.execute('SELECT generation,state FROM provider_worker_leases WHERE run_id=?',
+                                   (entry['run_id'],)).fetchone()
+                if (lease is None or lease['state'] != 'finished'
+                        or lease['generation'] != entry['generation']):
+                    raise ValueError('old worker lease is not finished')
+            record_operation(db, identity.address, key, ['supersede', old_wave_id, new_wave_id])
+            if prior is None:
+                db.execute('INSERT INTO provider_wave_supersessions VALUES(?,?,?,?)',
+                           (old['id'], new['id'], identity.address, key))
+            return {'old_wave': old_state, 'new_wave': new_state,
+                    'supersession': {'old_wave_id': old_wave_id, 'new_wave_id': new_wave_id,
+                                      'authority': 'owner-accounting'}}
+    finally:
+        for descriptor in locks:
+            os.close(descriptor)
+
+
 def pending(root, *, session_id, actor_id, task_id=None, db=None):
     """Task gates can supply their existing connection without nested initialization."""
     if db is None:
@@ -239,9 +313,18 @@ def pending(root, *, session_id, actor_id, task_id=None, db=None):
             return pending(root, session_id=session_id, actor_id=actor_id, task_id=task_id, db=connection)
     if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='provider_waves'").fetchone():
         return []
-    rows = db.execute('SELECT * FROM provider_waves WHERE session=? AND actor=?', (session_id, actor_id))
-    return [snapshot for row in rows if task_id is None or row['task_id'] == task_id
-            if not (snapshot := wave_snapshot(db, row))['all_succeeded']]
+    rows = list(db.execute('SELECT * FROM provider_waves WHERE session=? AND actor=?',
+                           (session_id, actor_id)))
+    snapshots = {row['id']: wave_snapshot(db, row) for row in rows
+                 if task_id is None or row['task_id'] == task_id}
+    retired = {}
+    if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='provider_wave_supersessions'").fetchone():
+        retired = {item['old_wave_id']: item['new_wave_id'] for item in db.execute(
+            'SELECT old_wave_id,new_wave_id FROM provider_wave_supersessions')}
+    return [snapshot for wave_id, snapshot in snapshots.items()
+            if not snapshot['all_succeeded']
+            and not (retired.get(wave_id) in snapshots
+                     and snapshots[retired[wave_id]]['all_succeeded'])]
 
 
 def on_terminal(store, db, run_id, result):
@@ -320,6 +403,9 @@ def retry(root, identity, *, wave_id, entry_id, request, key, request_digest='')
             _validate_scope(store, db, definition['task_scope'])
             if wave['cancel_requested']:
                 raise ValueError('cancelled wave cannot admit another attempt')
+            if db.execute('SELECT 1 FROM provider_wave_supersessions WHERE old_wave_id=?',
+                          (wave['id'],)).fetchone():
+                raise ValueError('superseded wave cannot retry')
             item = db.execute('SELECT * FROM provider_wave_entries WHERE wave_id=? AND entry_id=?', (wave['id'], entry_id)).fetchone()
             if item['run_id'] != old_run_id:
                 raise ValueError('retry current attempt changed')

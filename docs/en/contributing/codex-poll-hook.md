@@ -1,4 +1,4 @@
-<!-- last_updated: 2026-09-27; synced_from: f35185774aa9f18d1f4f7f13c74b4287a0fac751 -->
+<!-- last_updated: 2026-09-28; synced_from: 653dedfdfce8a5f741317d23026d3bf8583981f8 -->
 # Stock Codex batch orchestration
 
 [한국어](../../ko/contributing/codex-poll-hook.md)
@@ -58,6 +58,17 @@ admission, a finished generation-1 result, a released worker OS lease and, if
 a native session was created, verified closure of that session's connection and
 process. Accepted work, accepted descendants and a cancelled wave cannot retry.
 The old attempt's request, result, digest and consumption remain immutable.
+
+If a terminal failed or cancelled wave cannot retry because its historical
+native closure is unverified, a separate wave may finish the same issue graph.
+After every replacement entry has an exact owner-accepted success, the root may
+use `provider_wave_supersede(old_wave_id, new_wave_id, key)` for task accounting.
+It requires the same task definition, workflow, entry dependencies, providers
+and worktrees, plus finished and unlocked old worker leases. The old result
+remains failed or cancelled; supersession never supplies missing closure proof
+or permits replay of the old native session. Queued dependents that never ran
+stay cancelled, accepted sibling results stay accepted, and the superseded
+wave cannot schedule or retry another attempt.
 
 Every wave-associated run, including prior attempts, rejects `provider_recover`.
 That operation restores an inbox connection and cannot satisfy an implementation

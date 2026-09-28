@@ -139,6 +139,7 @@ def test_inventory_is_task_shaped_and_preserves_legacy():
         "provider_wave_consume",
         "provider_wave_cancel",
         "provider_wave_retry",
+        "provider_wave_supersede",
         "releases_apply",
         "releases_check",
         "releases_choose",
