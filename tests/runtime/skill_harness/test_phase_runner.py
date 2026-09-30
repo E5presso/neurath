@@ -3077,7 +3077,7 @@ class PhaseRunnerApplicationTest(TestCase):
         self.assertEqual(1, result.exit_code)
         self.assertEqual("EVIDENCE_PATTERN_MISMATCH", result.payload["code"])
         message = str(result.payload["message"])
-        self.assertIn("merge_command.delete_branch", message)
+        self.assertIn("merge_command.merge_invocation", message)
         self.assertIn("issue_status_readback.done", message)
         self.assertIn("branch_cleanup_readback.remote_branch_deleted", message)
         self.assertIn("branch_cleanup_readback.local_branch_removed", message)
@@ -3104,6 +3104,12 @@ class PhaseRunnerApplicationTest(TestCase):
                     "agent_session.owned_worktree=/tmp/worktree route_owner=autopilot "
                     "terminal_sink=autopilot merge_policy=auto"
                 ),
+                "--evidence",
+                (
+                    "session_workflow_context: agent_session.kind=worktree_owner "
+                    "agent_session.owned_worktree=/tmp/worktree route_owner=autopilot "
+                    "terminal_sink=autopilot merge_policy=auto"
+                ),
             )
 
             result = fixture.run(
@@ -3115,7 +3121,7 @@ class PhaseRunnerApplicationTest(TestCase):
                 "--summary",
                 "merge cleanup finished",
                 "--evidence",
-                "merge_command: gh pr merge --squash --delete-branch",
+                "merge_command: root issuer ran gh api repos/example/repo/pulls/131/merge -X PUT with exact reviewed head; the remote branch was deleted separately",
                 "--evidence",
                 "merge_approval: merge_policy=auto auto_merge_invocation=true",
                 "--evidence",
@@ -3136,7 +3142,7 @@ class PhaseRunnerApplicationTest(TestCase):
                 "gap_dispatch_check: gaps_detected=none gaps_dispatched=none spawned=none",
             )
 
-        self.assertEqual(0, result.exit_code)
+        self.assertEqual(0, result.exit_code, result.payload)
 
     def test_process_ticket_merge_cleanup_rejects_auto_policy_without_invocation(
         self,
