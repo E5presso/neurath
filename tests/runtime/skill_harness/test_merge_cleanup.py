@@ -44,6 +44,39 @@ SPEC.loader.exec_module(MERGE_CLEANUP)
 class MergeCleanupTest(TestCase):
     """Root checkout과 ticket worktree를 함께 정리하는 atomic boundary를 검증합니다."""
 
+    def test_surviving_issuer_reads_exact_cleaned_worker_without_recreating_checkout(self) -> None:
+        """Deleted worker cwd cannot dispatch; its issuer can inspect fenced finalization."""
+        import json
+        from neurath.providers.job_store import open_store
+        from neurath.runtime.bundled_services import service
+        with MergeCleanupFixture() as fixture:
+            fixture.claim_worktree()
+            receipt = service("cleanup").MergeCleanupApplication().run(
+                environment={"CODEX_THREAD_ID": "owner-thread"}, cwd=fixture.worktree,
+                workflow_id=WorkflowId("process-ticket-128"),
+                base_branch="trunk", remote_ref="origin/trunk")
+            with self.assertRaises(FileNotFoundError):
+                subprocess.run(["git", "status"], cwd=fixture.worktree, check=True)
+            store = open_store(fixture.repo)
+            created = {"provider": "codex", "native_session": "owner-thread",
+                       "worktree": str(fixture.worktree.resolve()), "transport": "codex-app-server"}
+            result = {"created": created, "worker_generation": 1, "closure": {
+                "native_session": "owner-thread", "transport": "codex-app-server",
+                "connection_closed": True, "native_process_exited": True}}
+            with store.connection() as db:
+                db.execute("INSERT INTO provider_jobs VALUES (?,?,?,?,?,?,0,0)",
+                    ("generic-run", "codex:issuer", json.dumps({"worktree": str(fixture.worktree.resolve()),
+                     "provider": "codex"}), "completed", json.dumps(result), str(fixture.repo)))
+            from neurath.runtime.post_cleanup import inspect_cleaned_worker
+            observed = inspect_cleaned_worker(fixture.repo, "codex:issuer", "generic-run",
+                                              "process-ticket-128")
+            self.assertEqual("owner-thread", observed["source_session"])
+            self.assertEqual(receipt, observed["cleanup"])
+            self.assertFalse(fixture.worktree.exists())
+            with self.assertRaisesRegex(ValueError, "owner"):
+                inspect_cleaned_worker(fixture.repo, "codex:foreign", "generic-run",
+                                       "process-ticket-128")
+
     def test_cleanup_fast_forwards_real_root_checkout_before_removing_worktree(self) -> None:
         """성공 시 root HEAD, index, worktree가 remote trunk과 정확히 일치합니다."""
         with MergeCleanupFixture() as fixture:
