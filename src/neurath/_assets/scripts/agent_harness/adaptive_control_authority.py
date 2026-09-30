@@ -1341,7 +1341,7 @@ class AdaptiveControlAuthorityVerifier:
                     execution_receipts.verify_recorded_after_cleanup(
                         self._criterion_evidence(claim), state.contract,
                         expected_workflow_revision=workflow_revision,
-                        ticket_head_oid=post_cleanup_receipt.get("ticket_head_oid"),
+                        root_head_oid=post_cleanup_receipt.get("root_head"),
                     )
             except AdaptiveExecutionReceiptError as error:
                 raise AdaptiveControlAuthorityInvalid(str(error)) from error

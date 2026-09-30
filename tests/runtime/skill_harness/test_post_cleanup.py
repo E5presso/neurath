@@ -65,10 +65,18 @@ class PostCleanupTest(TestCase):
         task_id = defined["tasks"][0]["id"]
         tasks.start(task_id, expected_revision=1, expected_task_revision=1, key="start")
         head = git("rev-parse", "HEAD")
+        (worktree / "worker-ticket.txt").write_text("ticket branch differs from primary\n")
+        subprocess.run(["git", "-C", str(worktree), "add", "worker-ticket.txt"], check=True)
+        subprocess.run(["git", "-C", str(worktree), "-c", "user.name=Neurath Test",
+                        "-c", "user.email=test@example.invalid", "commit", "-qm",
+                        "advance ticket branch"], check=True)
+        ticket_head = subprocess.run(["git", "-C", str(worktree), "rev-parse", "HEAD"],
+                                     check=True, capture_output=True, text=True).stdout.strip()
+        self.assertNotEqual(head, ticket_head)
         SkillStateStore(owner, fixture.workflow_id).update({
             "merged": {"state": "MERGED", "pr_number": 1, "merge_commit_oid": head},
             "monitor_event_ack": {"reason": "merged", "event_id": "actual-ack",
-                "evidence": ["terminal_readback:headRefOid=" + head]}})
+                "evidence": ["terminal_readback:headRefOid=" + ticket_head]}})
         # Use an actual executable claim. A semantic-only completion does not
         # exercise the historical source fingerprint after the worker is gone.
         contract = fixture._contract(authority_tests.EvidenceKind.PROPERTY_TEST,

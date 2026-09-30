@@ -308,14 +308,14 @@ class AdaptiveExecutionReceiptStore:
 
     def verify_recorded_after_cleanup(
         self, evidence: CriterionEvidence, contract: GoalContract, *,
-        expected_workflow_revision: int, ticket_head_oid: str,
+        expected_workflow_revision: int, root_head_oid: str,
     ) -> None:
         """Verify an immutable prior execution without replaying deleted source.
 
         This path is used only by issuer-fenced post-cleanup finalization. The
         consumed evaluator candidate must independently preserve the exact
         pre-cleanup payload; this check retains receipt identity, an exit-zero
-        command and ancestry to the cleaned ticket head. It never substitutes
+        command and ancestry to the cleaned primary head. It never substitutes
         the surviving primary checkout's bytes for the deleted worker's bytes.
         """
         workflow = self._active_owner_workflow()
@@ -363,15 +363,15 @@ class AdaptiveExecutionReceiptStore:
                 or not artifact["source_import_roots"]):
             raise AdaptiveExecutionReceiptInvalid("historical import provenance is invalid")
         receipt = artifact["command_receipt"]
-        if not self._sha(ticket_head_oid, 40):
-            raise AdaptiveExecutionReceiptInvalid("cleaned ticket head is invalid")
+        if not self._sha(root_head_oid, 40):
+            raise AdaptiveExecutionReceiptInvalid("cleaned primary head is invalid")
         ancestor = subprocess.run(
             ["git", "-C", str(self._handle._repository_control_root()), "merge-base",
-             "--is-ancestor", receipt["head_sha"], ticket_head_oid],
+             "--is-ancestor", receipt["head_sha"], root_head_oid],
             check=False, capture_output=True,
         )
         if ancestor.returncode != 0:
-            raise AdaptiveExecutionReceiptInvalid("historical execution is not in the cleaned ticket head")
+            raise AdaptiveExecutionReceiptInvalid("historical execution is not in the cleaned primary head")
 
     def _active_owner_workflow(self) -> WorkflowRecord:
         state = self._handle.inspect()
