@@ -696,6 +696,23 @@ class WorkflowFinalized(KernelEvent):
     """Workflow에 남을 final operational projection입니다."""
 
 
+class PostCleanupFinalized(KernelEvent):
+    """Authenticated issuer completes an already-cleaned worker without acting as it."""
+
+    __slots__ = ("workflow_id", "actor_id", "original_owner", "expected_workflow_revision",
+                 "payload", "admission_reference")
+    terminal_status = WorkflowStatus.COMPLETED
+
+    def __init__(self, *, session_id, workflow_id, actor_id, original_owner,
+                 expected_workflow_revision, payload, admission_reference, idempotency_key):
+        """Retain the actual issuer separately from the original workflow owner."""
+        super().__init__(session_id, idempotency_key)
+        for name, value in (("workflow_id", workflow_id), ("actor_id", actor_id),
+                ("original_owner", original_owner), ("expected_workflow_revision", expected_workflow_revision),
+                ("payload", MappingProxyType(dict(payload))), ("admission_reference", admission_reference)):
+            object.__setattr__(self, name, value)
+
+
 class ForegroundTurnProvisioned(KernelEvent):
     """Runtime start에서 provenance 없는 active outer turn을 선행 생성합니다."""
 

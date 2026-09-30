@@ -1218,6 +1218,16 @@ class WorktreeRegistry:
                     return None
                 return self._release_receipt(record, view, str(worktree_id))
 
+    def release_receipt_transaction(self, transaction, worktree_id):
+        """Read a released fence inside SQLite without reversing the file-lock order."""
+        record = transaction.get("worktree", str(worktree_id))
+        if record is None:
+            return None
+        view = self._view(record, worktree_id)
+        if view["current"] is not None:
+            return None
+        return self._release_receipt(record, view, str(worktree_id))
+
     @contextmanager
     def terminal_admission(self, worktree_id):
         """Serialize lease changes and post-release bookkeeping before inner mutexes."""

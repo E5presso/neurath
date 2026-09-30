@@ -4,10 +4,18 @@ from pathlib import Path
 
 
 def definitions():
-    from neurath.runtime.task_schema import choice, document_field, text_field
+    from neurath.runtime.task_schema import choice, document_field, text_field, strings
     key = {"key": text_field(512)}
     workflow = {"workflow_id": text_field(256)}
     entries = {
+        "worktree_finalize_read": ("Inspect only this issuer's closed provider worker after exact merged cleanup. Derives source session from run_id; never resumes or repeats cleanup.", {
+            "run_id": text_field(256), **workflow}, True),
+        "worktree_finalize": ("Finish the exact cleaned worker's last process-ticket phase and one task from the surviving primary checkout. Requires the original issuer, closed worker generation, released cleanup fence, unchanged source revisions and complete adaptive authority. Evidence is an explicit issuer report; source receipts are generated internally. Never resumes, impersonates or repeats cleanup.", {
+            "run_id": text_field(256), **workflow, "task_id": text_field(128),
+            "task_scope_delegation_id": text_field(256),
+            **{field: {"type": "integer", "minimum": 0, "maximum": 2**53 - 1}
+               for field in ("expected_revision", "expected_list_revision", "expected_task_revision")},
+            "evidence": strings(), "summary": text_field(4096), **key}, False),
         "process_evidence_record": ("Record an existing structured event result in the exact workflow. Copy the event result into value; merged uses {} and verifies the registered PR itself. Monitor subscriptions retain live process checks; report-only fields do not certify completion.", {
             **workflow, "field": choice("commit_done", "push_done", "pr_opened", "failed", "merged",
                                        "monitor_event_subscription", "monitor_started"),
@@ -33,6 +41,13 @@ def execute(root, name, fields, *, identity, expected_turn, verified_policy_evid
     result_store = MessageStore(root)
     handle = _guarded_handle(root, bound, identity, expected_turn, verified_policy_evidence,
                              connection_root=control_root)
+    if name in {"worktree_finalize_read", "worktree_finalize"}:
+        from neurath.runtime.post_cleanup import inspect_cleaned_worker, finalize_cleaned_worker
+        handle.inspect()
+        if name == "worktree_finalize_read":
+            return inspect_cleaned_worker(root, identity.address, fields["run_id"], fields["workflow_id"])
+        _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence)
+        return finalize_cleaned_worker(root, handle, identity.address, fields)
     if name == "worktree_cleanup":
         _mcp_execution_policy(root, identity, expected_turn, verified_policy_evidence, ownership_required=False)
     elif name == "process_evidence_record" and fields["field"] in {"merged", "monitor_event_subscription"}:

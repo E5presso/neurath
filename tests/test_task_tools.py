@@ -171,6 +171,8 @@ def test_inventory_is_task_shaped_and_preserves_legacy():
         "turn_yield",
         "worktree_claim",
         "worktree_cleanup",
+        "worktree_finalize",
+        "worktree_finalize_read",
         "worktree_inspect",
         "worktree_isolation",
         "worktree_release",

@@ -58,6 +58,33 @@ merge하고 state를 갱신한 뒤 execution artifact를 정리합니다.
 10. `gaps_detected`, `gaps_dispatched`, `spawned`의 일치성을 확인합니다.
 11. terminal state, PR URL, verification, residual risk를 보고합니다.
 
+## 삭제된 worker의 최종 기록 복구
+
+정리로 현재 checkout이 제거되면 같은 worker의 후속 도구 호출은 시작하지 못할 수 있습니다.
+성공한 cleanup을 반복하거나 checkout을 재생성하지 않습니다. 원래 provider issuer는 worker의
+실제 프로세스·연결 종료가 기록된 뒤 surviving primary checkout에서
+`worktree_finalize_read(run_id, workflow_id)`를 호출합니다. 원본 세션은 입력으로 선택하지 않고
+issuer가 소유한 provider run의 persisted native session에서 파생합니다.
+
+반환한 `task_scopes`의 정확한 객체를 새 native 직접 자식에게
+`{"kind":"post-cleanup-task-scope","scope":SCOPE}` assignment로 위임합니다. 검토자는 task의 모든
+인수 조건이 해당 workflow의 최종 기록에 속하는지 검토하고
+`neurath.post-cleanup-task-scope.v1` schema, 정확한 `scope`, `task_matches_terminal_workflow=true`,
+구체적 `reason`을 artifact로 보고합니다. 실제 pass 결과를 consume한 뒤 그 delegation ID를
+`task_scope_delegation_id`로 전달합니다. 같은 prompt나 동일한 goal 문구만으로 연결하지 않습니다.
+
+반환한 정확한 workflow/task revisions와 유일한 미완료 finalization task를 사용해
+`worktree_finalize`를 호출합니다. `evidence`에는 실제로 관측한 병합·issue·parent·branch 상태와
+terminal report를 각 label로 전달합니다. Cleanup 결과, merged producer 및 adaptive 근거 label은
+도구가 검증하여 생성하므로 직접 제출하지 않습니다. 실제 issuer를 기록하는 typed event,
+최종 phase, task 결과와 idempotency 기록이 하나의 트랜잭션으로 완료됩니다. 별도 task_resolve나
+phase_finalize를 원래 worker 명의로 호출하지 않습니다.
+
+복구는 원래 issuer, 종료된 provider generation, 원 소유자, released lease/fencing token,
+변하지 않은 evaluator candidate와 정확한 revision을 모두 요구합니다. 잘못된 source, 재생성된
+checkout/branch, 새로운 claim, 변경된 지시·평가 근거, 여러 미완료 task는 거부합니다. 충돌 시
+기존 source를 보존하고 실제 차이를 조사하며, permission이나 identity를 변경하지 않습니다.
+
 ## Parent issue 완료 전파
 
 Parent가 없으면 `parent_issue_completion_readback: parent_issue=none`을 남깁니다. 모든 child가
