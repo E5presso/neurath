@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+import sys
 from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
@@ -2267,10 +2268,25 @@ class AdaptiveAuthorityFixture:
             "def test_passes():\n    assert True\n",
             encoding="utf-8",
         )
+        project = self.repository / ".neurath/project.json"
+        project.parent.mkdir()
+        project.write_text(
+            json.dumps({
+                "verification": {
+                    "pytest": {
+                        "argv": [sys.executable, "-m", "pytest"],
+                        "cwd": ".",
+                        "success_codes": [0],
+                    }
+                }
+            }),
+            encoding="utf-8",
+        )
         subprocess.run(
             (
                 "git",
                 "add",
+                ".neurath/project.json",
                 ".gitignore",
                 "docs/repository-fact.txt",
                 "tests/test_runtime_evidence.py",

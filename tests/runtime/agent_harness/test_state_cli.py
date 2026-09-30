@@ -3,6 +3,7 @@
 import hashlib
 import json
 import subprocess
+import sys
 import unittest
 from dataclasses import replace
 from pathlib import Path
@@ -1170,6 +1171,20 @@ class StateCliApplicationTest(TestCase):
         runtime_test.parent.mkdir(parents=True)
         runtime_test.write_text(
             "def test_passes():\n    assert True\n",
+            encoding="utf-8",
+        )
+        project = self.repository / ".neurath/project.json"
+        project.parent.mkdir(exist_ok=True)
+        project.write_text(
+            json.dumps({
+                "verification": {
+                    "pytest": {
+                        "argv": [sys.executable, "-m", "pytest"],
+                        "cwd": ".",
+                        "success_codes": [0],
+                    }
+                }
+            }),
             encoding="utf-8",
         )
         subprocess.run(("git", "add", "."), cwd=self.repository, check=True)

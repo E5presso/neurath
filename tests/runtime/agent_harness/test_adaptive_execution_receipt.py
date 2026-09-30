@@ -1,6 +1,8 @@
 """Executable adaptive evidence가 current worktree runtime readback을 소유하는지 검증합니다."""
 
+import json
 import subprocess
+import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
@@ -21,7 +23,12 @@ from scripts.agent_harness.adaptive_execution_receipt import (
     AdaptiveExecutionReceiptInvalid,
     AdaptiveExecutionReceiptStore,
 )
-from scripts.agent_harness.harness_incident import run_regression_commands
+from scripts.agent_harness.bounded_process import BoundedProcessResult
+from scripts.agent_harness.harness_incident import (
+    HarnessIncidentValidationError,
+    resolve_neurath_import_provenance,
+    run_regression_commands,
+)
 from scripts.agent_harness.session_kernel import (
     SessionLocator,
     WorkflowId,
@@ -62,11 +69,34 @@ class AdaptiveExecutionReceiptStoreTest(TestCase):
         tests.write_text(
             "def test_passes():\n"
             "    assert True\n\n"
+            "def test_imports_checkout_source():\n"
+            "    import neurath\n"
+            "    assert neurath.SOURCE_BOUNDARY == 'checkout'\n\n"
             "def test_fails():\n"
             "    assert False\n\n"
             "def test_skips():\n"
             "    import pytest\n"
             "    pytest.skip('no execution')\n",
+            encoding="utf-8",
+        )
+        source_package = self.repository / "src/neurath"
+        source_package.mkdir(parents=True)
+        (source_package / "__init__.py").write_text(
+            "SOURCE_BOUNDARY = 'checkout'\n",
+            encoding="utf-8",
+        )
+        project = self.repository / ".neurath/project.json"
+        project.parent.mkdir()
+        project.write_text(
+            json.dumps({
+                "verification": {
+                    "pytest": {
+                        "argv": [sys.executable, "-m", "pytest"],
+                        "cwd": ".",
+                        "success_codes": [0],
+                    }
+                }
+            }),
             encoding="utf-8",
         )
         subprocess.run(("git", "add", "."), cwd=self.repository, check=True)
@@ -113,6 +143,67 @@ class AdaptiveExecutionReceiptStoreTest(TestCase):
             self.contract,
             expected_workflow_revision=0,
         )
+
+    def test_execution_imports_fingerprinted_checkout_source(self) -> None:
+        """Project verifier가 installed distribution 대신 fingerprinted checkout을 import합니다."""
+        issued = self.store.execute_pytest(
+            self.contract,
+            criterion_id="runtime-proof",
+            evidence_kind=EvidenceKind.EXAMPLE_TEST,
+            pytest_node="tests/test_runtime_evidence.py::test_imports_checkout_source",
+        )
+
+        artifact = self.store._artifacts.read_json(issued.evidence.reference)
+        self.assertEqual(
+            [
+                ".neurath/run",
+                "verify",
+                "pytest",
+                "--node",
+                "tests/test_runtime_evidence.py::test_imports_checkout_source",
+            ],
+            artifact["command_argv"],
+        )
+        self.assertEqual(["src", "."], artifact["source_import_roots"])
+        self.assertEqual(
+            {
+                "boundary": "checkout-source",
+                "expected_root": "src/neurath",
+                "module": "neurath",
+                "resolved_origin": "src/neurath/__init__.py",
+            },
+            artifact["source_import_provenance"],
+        )
+        self.store.verify(
+            issued.evidence,
+            self.contract,
+            expected_workflow_revision=0,
+        )
+
+    def test_import_provenance_rejects_origin_outside_checkout_source(self) -> None:
+        """Configured interpreter의 실제 module origin이 checkout 밖이면 receipt를 거부합니다."""
+        outside = self.repository.parent / "installed/neurath/__init__.py"
+        observed = json.dumps({"module": "neurath", "origin": str(outside)}).encode()
+
+        with (
+            patch(
+                "scripts.agent_harness.harness_incident.run_bounded_process",
+                return_value=BoundedProcessResult(
+                    returncode=0,
+                    stdout=observed,
+                    stderr=b"",
+                    timed_out=False,
+                ),
+            ),
+            self.assertRaisesRegex(
+                HarnessIncidentValidationError,
+                "outside the fingerprinted checkout",
+            ),
+        ):
+            resolve_neurath_import_provenance(
+                self.repository,
+                "tests/test_runtime_evidence.py::test_imports_checkout_source",
+            )
 
     def test_fabricated_or_missing_receipt_cannot_verify(self) -> None:
         """Executable enum과 SHA 모양만 자가 작성한 evidence는 runtime proof가 아닙니다."""
