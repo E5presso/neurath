@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 from collections.abc import Mapping
@@ -585,6 +586,123 @@ def run_regression_commands(worktree: Path, commands: list[str]) -> list[dict[st
     return receipts
 
 
+def source_checkout_import_roots(worktree: Path) -> tuple[Path, ...]:
+    """Return the controlled Python import roots for one source checkout.
+
+    Neurath's tracked asset bundle takes precedence so runtime ``scripts`` are
+    imported from the fingerprinted checkout. The source-layout directory and
+    repository root follow it. Caller-provided ``PYTHONPATH`` values are
+    intentionally not preserved.
+    """
+    root = worktree.resolve()
+    assets = root / "src/neurath/_assets"
+    source = root / "src"
+    roots = [assets] if (assets / "scripts").is_dir() else []
+    if source.is_dir():
+        roots.append(source)
+    return (*roots, root)
+
+
+def resolve_neurath_import_provenance(
+    worktree: Path,
+    pytest_node: str,
+) -> dict[str, str | None]:
+    """Resolve the ``neurath`` module with the configured pytest interpreter.
+
+    A Neurath source checkout must resolve inside its own ``src/neurath`` tree.
+    Installed target projects without that source tree retain their installed
+    module boundary, while the receipt records the observed origin explicitly.
+    """
+    from neurath.runtime.commands import bound_command
+
+    root = worktree.resolve()
+    try:
+        arguments, directory, timeout_seconds, _expected = bound_command(
+            root,
+            "pytest",
+            (pytest_node,),
+        )
+        probe = _python_import_probe_arguments(arguments)
+    except (KeyError, OSError, TypeError, ValueError) as error:
+        raise HarnessIncidentValidationError(str(error)) from error
+    environment = _isolated_git_environment()
+    environment["PYTHONPATH"] = os.pathsep.join(
+        str(path) for path in source_checkout_import_roots(root)
+    )
+    result = run_bounded_process(
+        probe,
+        cwd=directory,
+        environment=environment,
+        timeout_seconds=min(timeout_seconds, 30),
+    )
+    if result.timed_out or result.returncode != 0:
+        raise HarnessIncidentValidationError(
+            "configured pytest interpreter could not resolve neurath import provenance: "
+            + _bounded_diagnostic_tail(result.stdout + b"\n" + result.stderr)
+        )
+    try:
+        payload = json.loads(result.stdout.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise HarnessIncidentValidationError(
+            "configured pytest interpreter returned invalid import provenance"
+        ) from error
+    if (
+        not isinstance(payload, dict)
+        or set(payload) != {"module", "origin"}
+        or payload.get("module") != "neurath"
+        or not isinstance(payload.get("origin"), str)
+        or not payload["origin"]
+    ):
+        raise HarnessIncidentValidationError(
+            "configured pytest interpreter returned incomplete import provenance"
+        )
+    origin = Path(payload["origin"]).resolve()
+    expected_root = (root / "src/neurath").resolve()
+    has_checkout_source = expected_root.is_dir()
+    if has_checkout_source and not origin.is_relative_to(expected_root):
+        raise HarnessIncidentValidationError(
+            "configured pytest interpreter imports neurath outside the fingerprinted checkout"
+        )
+    relative_origin = origin.relative_to(root).as_posix() if origin.is_relative_to(root) else str(origin)
+    return {
+        "boundary": "checkout-source" if has_checkout_source else "installed",
+        "expected_root": "src/neurath" if has_checkout_source else None,
+        "module": "neurath",
+        "resolved_origin": relative_origin,
+    }
+
+
+def _python_import_probe_arguments(pytest_arguments: list[str]) -> list[str]:
+    """Map an admitted pytest binding to the same environment's Python probe."""
+    probe = (
+        "import importlib.util,json;"
+        "spec=importlib.util.find_spec('neurath');"
+        "print(json.dumps({'module':'neurath','origin':None if spec is None else spec.origin},"
+        "sort_keys=True,separators=(',',':')))"
+    )
+    executable = Path(pytest_arguments[0]).name
+    if executable.startswith("python"):
+        return [pytest_arguments[0], "-c", probe]
+    if executable == "uv" and pytest_arguments[1:3] == ["run", "pytest"]:
+        return [pytest_arguments[0], "run", "python", "-c", probe]
+    if executable == "pytest":
+        resolved = shutil.which(pytest_arguments[0])
+        if resolved is None:
+            raise HarnessIncidentValidationError(
+                "configured pytest executable is unavailable for import provenance"
+            )
+        directory = Path(resolved).resolve().parent
+        interpreter = next(
+            (candidate for name in ("python", "python3") if (candidate := directory / name).is_file()),
+            None,
+        )
+        if interpreter is not None:
+            return [str(interpreter), "-c", probe]
+    raise HarnessIncidentValidationError(
+        "configured pytest binding has no matching interpreter provenance probe"
+    )
+
+
 def validate_harness_incidents(
     current_state: object,
     worktree: Path,
@@ -821,6 +939,10 @@ def _execute_regression_command(
             timeout_seconds = min(timeout_seconds, configured_timeout)
             environment.pop("PYTEST_ADDOPTS", None)
             environment.pop("PYTEST_CURRENT_TEST", None)
+            if nodes:
+                environment["PYTHONPATH"] = os.pathsep.join(
+                    str(path) for path in source_checkout_import_roots(worktree)
+                )
             _reject_nonexecuting_arguments(arguments, command)
         except (ValueError, OSError, TypeError, KeyError) as error:
             raise HarnessIncidentValidationError(str(error)) from error

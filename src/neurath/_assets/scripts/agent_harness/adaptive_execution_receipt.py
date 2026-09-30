@@ -2,7 +2,6 @@
 
 import re
 import shlex
-import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -21,7 +20,9 @@ from scripts.agent_harness.adaptive_control_store import (
 from scripts.agent_harness.artifact_store import ArtifactStoreError, SessionArtifactStore
 from scripts.agent_harness.harness_incident import (
     HarnessIncidentValidationError,
+    resolve_neurath_import_provenance,
     run_regression_commands,
+    source_checkout_import_roots,
 )
 from scripts.agent_harness.repository_readback import (
     RepositoryReadbackError,
@@ -73,7 +74,7 @@ class AdaptiveExecutionReceiptIssuance:
 class AdaptiveExecutionReceiptStore:
     """Exact pytest node execution과 content-addressed runtime replay를 결합합니다."""
 
-    _ARTIFACT_SCHEMA = "neurath.adaptive-execution-receipt.v1"
+    _ARTIFACT_SCHEMA = "neurath.adaptive-execution-receipt.v2"
     _ISSUER_ID = "harness:adaptive-execution"
     _EXECUTABLE_KINDS = frozenset({
         EvidenceKind.EXAMPLE_TEST,
@@ -92,6 +93,8 @@ class AdaptiveExecutionReceiptStore:
         "pytest_node",
         "schema",
         "session_id",
+        "source_import_provenance",
+        "source_import_roots",
         "source_revision",
         "workflow_id",
         "workflow_revision",
@@ -152,6 +155,8 @@ class AdaptiveExecutionReceiptStore:
         normalized_node = self._pytest_node(pytest_node)
         command_argv = self._command_argv(normalized_node)
         command = shlex.join(command_argv)
+        source_import_provenance = self._source_import_provenance(normalized_node)
+        source_import_roots = self._source_import_roots()
         before_fingerprint = self._repository.worktree_fingerprint()
         self._repository.read_tracked_file(normalized_node.split("::", maxsplit=1)[0])
         try:
@@ -187,6 +192,8 @@ class AdaptiveExecutionReceiptStore:
             "pytest_node": normalized_node,
             "schema": self._ARTIFACT_SCHEMA,
             "session_id": str(self._handle.session_id),
+            "source_import_provenance": source_import_provenance,
+            "source_import_roots": list(source_import_roots),
             "source_revision": contract.source_revision,
             "workflow_id": str(self._workflow_id),
             "workflow_revision": workflow.revision,
@@ -406,6 +413,8 @@ class AdaptiveExecutionReceiptStore:
             "pytest_node": pytest_node,
             "schema": self._ARTIFACT_SCHEMA,
             "session_id": str(self._handle.session_id),
+            "source_import_provenance": self._source_import_provenance(pytest_node),
+            "source_import_roots": list(self._source_import_roots()),
             "source_revision": contract.source_revision,
             "workflow_id": str(self._workflow_id),
             "workflow_revision": expected_workflow_revision,
@@ -467,7 +476,23 @@ class AdaptiveExecutionReceiptStore:
         return value
 
     def _command_argv(self, pytest_node: str) -> tuple[str, ...]:
-        return (sys.executable, "-m", "pytest", "-q", pytest_node)
+        return (".neurath/run", "verify", "pytest", "--node", pytest_node)
+
+    def _source_import_roots(self) -> tuple[str, ...]:
+        root = self._handle._repository_control_root().resolve()
+        return tuple(
+            "." if path == root else path.relative_to(root).as_posix()
+            for path in source_checkout_import_roots(root)
+        )
+
+    def _source_import_provenance(self, pytest_node: str) -> dict[str, str | None]:
+        try:
+            return resolve_neurath_import_provenance(
+                self._handle._repository_control_root(),
+                pytest_node,
+            )
+        except HarnessIncidentValidationError as error:
+            raise AdaptiveExecutionReceiptInvalid(str(error)) from error
 
     def _sha(self, value: object, width: int) -> bool:
         return isinstance(value, str) and re.fullmatch(rf"[0-9a-f]{{{width}}}", value) is not None
