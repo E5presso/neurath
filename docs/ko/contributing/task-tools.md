@@ -17,6 +17,8 @@ MCP 서버는 `tools/list`로 이름이 정해진 도구를 공개합니다. 현
 
 소스 스키마는 `src/neurath/runtime/task_schema.py`, 가져온 정의 모듈, `definitions()` / `arguments()`에서 확인합니다. 현재 발견 경로는 `phase_*`를 사용합니다. `workflow_start`, `workflow_advance`, `workflow_finalize`는 저장된 호출의 호환 경로로 남아 있습니다. `material_*`, `verification_*`, 일반 `agent(argv)` 기반 경로는 공개 목록 밖에 있습니다. 일반 편집과 테스트에 material 또는 verification 상태를 중복 기록할 필요는 없습니다.
 
+`session_status(detail="full")`은 진단 목록에 내부 연산 이름을 유지하지만, 서버의 `tools/list`에서 제외된 연산은 `implemented: true`, `available: false`, `reason: "not-exposed-by-task-mcp"`와 실행 가능한 다음 경로인 `next_action`을 반환합니다. 숨겨진 verification·material 연산은 현재 호스트 권한 안에서 승인된 편집·검사를 기본 편집·명령 도구로 수행하도록 안내하며, 호환용 workflow 연산은 대응하는 공개 `phase_*` 도구를 안내합니다. 이는 내부 연산을 다른 전송 경로로 재실행할 권한이 아닙니다. 사용 가능 여부에는 기존 네이티브 활성화·소유권·실행 정책 검사도 유지됩니다. 진단 결과는 권한을 부여하거나 클라이언트가 서버의 도구 목록을 불러왔음을 증명하지 않으므로 호출 전 실제 호스트의 현재 도구 목록을 확인합니다. 저장된 호출의 스키마·실행 경로·허용 조건은 바뀌지 않습니다.
+
 ## 결과 봉투를 읽고 다음 작업 결정
 
 성공 응답에는 `ok`, `operation`, `result`가 있습니다. 실패 응답에는 `ok`, `operation`과 아래 필드를 가진 `error`가 있습니다.

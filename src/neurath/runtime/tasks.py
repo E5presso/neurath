@@ -18,7 +18,7 @@ from neurath.runtime.admission import (
     _mcp_execution_policy as _mcp_execution_policy,
     _verification_owner as _verification_owner,
 )
-from neurath.runtime.task_schema import TASKS, TaskError, arguments
+from neurath.runtime.task_schema import TASKS, TaskError, arguments, public_task, undiscovered_task_action
 
 
 def execute(root, name, inputs, *, identity, expected_turn=None, verified_policy_evidence=None):
@@ -190,9 +190,11 @@ def session_status(root, *, identity=None, expected_turn=None, verified_policy_e
     if detail == "full":
         report["capabilities"] = [{"transport": "task-mcp", "authority": "diagnostic",
         "operations": {name: {"implemented": True,
-            "available": admission._direct_mcp_execution(report)
+            "available": public_task(name) and (admission._direct_mcp_execution(report)
                 if name in {"verification_run", "provider_run"} else native_active and
-                (name != "memory_checkpoint" or root_actor)}
+                (name != "memory_checkpoint" or root_actor)),
+            **({"reason": "not-exposed-by-task-mcp", "next_action": undiscovered_task_action(name)}
+               if not public_task(name) else {})}
             for name in TASKS}}]
         if report.get("provider"):
             report["capabilities"].append(provider_task("provider_capabilities", {"provider": report["provider"]}))

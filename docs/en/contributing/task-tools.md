@@ -17,6 +17,8 @@ For `harness_bypass`, omitting `enabled` or passing `null` reads the current wor
 
 For source-level schema inspection, contributors can inspect `src/neurath/runtime/task_schema.py`, its imported definition modules, and `definitions()` / `arguments()`. Current discovery uses `phase_*`; `workflow_start`, `workflow_advance`, and `workflow_finalize` remain saved-call compatibility. `material_*`, `verification_*`, and generic `agent(argv)` infrastructure are outside public discovery. Ordinary edits and tests need no duplicate material or verification bookkeeping.
 
+`session_status(detail="full")` retains internal operation names in its diagnostic catalog, but an operation omitted from the server's `tools/list` has `implemented: true`, `available: false`, `reason: "not-exposed-by-task-mcp"`, and an actionable `next_action`. Hidden verification and material operations direct authorized work to native editing and command tools under the current host permissions; compatibility workflow operations point to their public `phase_*` equivalents. This does not authorize replaying an internal operation through another transport. Availability also retains the existing native activation, ownership, and execution-policy checks; a diagnostic result does not grant permission or prove that a client loaded the server's tool list. Inspect the actual current host namespace before calling a tool. Saved-call schemas, dispatch, and admission checks remain unchanged.
+
 ## Read the result envelope before continuing
 
 A successful response contains `ok`, `operation`, and its `result`. Failures contain `ok`, `operation`, and an `error` with these fields:

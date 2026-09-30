@@ -227,10 +227,25 @@ SERVER_INSTRUCTIONS = (
 COMPATIBILITY_TASKS = frozenset({"workflow_start", "workflow_advance", "workflow_finalize"})
 
 
+def public_task(name):
+    """Whether this operation is exposed by the current server's tools/list."""
+    return name in TASKS and name not in COMPATIBILITY_TASKS and not name.startswith(("material_", "verification_"))
+
+
+def undiscovered_task_action(name):
+    """Supported route for internal operations retained for saved calls only."""
+    replacements = {"workflow_start": "phase_start", "workflow_advance": "phase_complete",
+                    "workflow_finalize": "phase_finalize"}
+    if name in replacements:
+        return f"Use the public {replacements[name]} tool with its current schema."
+    return ("Use native editing and command tools for authorized changes and checks under the current "
+            "host permissions; record results with task tools. Do not replay internal operations through another transport.")
+
+
 def definitions():
     result = []
     for name, (_, _, description, fields, readonly) in TASKS.items():
-        if name in COMPATIBILITY_TASKS or name.startswith(("material_", "verification_")):
+        if not public_task(name):
             continue
         public_fields = deepcopy(fields)
         if name in ADAPTIVE_STATE_TASKS:
