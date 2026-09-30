@@ -16,6 +16,8 @@ def prepare(sessions, labels, notes=None, revision=0, key="evidence"):
     ('normalized_items', '{"issues":[96]}'),
     ('dependency_dag', '{"issues":[96],"edges":[]}'),
     ('native_wave_receipt', 'no_op=all_satisfied'),
+    ('monitor_terminal_state', 'monitor_event=terminal reason=merged source=local-pr-monitor'),
+    ('monitor_event_readback', 'monitor_event=terminal source=local-pr-monitor resume_status=pending-delivery'),
 ])
 def test_prepared_report_trailer_preserves_structured_phase_values(sessions, monkeypatch, label, value):
     from scripts.skill_harness.phase_runner import PhaseContract, PhaseRunner, SkillContract, SkillContractRepository
@@ -35,7 +37,7 @@ def test_prepared_report_trailer_preserves_structured_phase_values(sessions, mon
     assert evidence[0].endswith(' [authority=agent-report]')
     runner = PhaseRunner(SkillContractRepository(root))
     assert runner._evidence._evidence_item(evidence, label) == label + ': ' + value
-    if label != 'native_wave_receipt':
+    if label in {'normalized_items', 'dependency_dag'}:
         assert runner._evidence._autopilot_issue_set(evidence, label) == frozenset({96})
 
 

@@ -52,6 +52,8 @@ canonical worktree `workdir` metadata와 함께 한 physical line씩 실행합�
 
 Fresh는 `init.current_phase → complete.next_phase`를 따릅니다. Resume·compaction·
 conflict 때만 `uv run python -m scripts.skill_harness.phase_runner current --workflow-id PROCESS_WORKFLOW_ID`를 사용합니다.
+`phase_evidence_prepare`의 각 note 본문에는 그 note의 label에 해당하는 값만 씁니다.
+다른 필수 label 이름을 산문에 반복하면 출처 위장 방지 검사가 거부합니다.
 Adaptive final은 authority refresh 후 별도 finalize하며 결과 기록 전 완료를 금지합니다.
 
 ## Tool runtime 호환성

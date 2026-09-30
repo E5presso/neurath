@@ -1,4 +1,4 @@
-<!-- last_updated: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
+<!-- last_updated: 2026-09-30; synced_from: c7bc3a4fa115567cda7b4cc143bf9b9ae4020122 -->
 # 필요한 작업에서 도구 찾기
 
 [English](../../en/contributing/capability-map.md)
@@ -51,8 +51,8 @@
 | `phase_finalize` | 상태 변경 | `workflow_id`, `expected_revision`, `key`, `terminal_state` |
 | `adaptive_read` | 조회 | `workflow_id` |
 | `adaptive_preflight` | 조회 | 없음 |
-| `adaptive_replace` | 상태 변경 | `workflow_id`, `expected_revision`, `key`, `state` |
-| `adaptive_override_goal` | 상태 변경 | `workflow_id`, `expected_revision`, `key`, `state` |
+| `adaptive_replace` | 상태 변경 | `workflow_id`, `expected_revision`, `key`, `state_ref` |
+| `adaptive_override_goal` | 상태 변경 | `workflow_id`, `expected_revision`, `key`, `state_ref` |
 | `turn_yield` | 상태 변경 | `expected_turn_revision`, `outcome`, `key` |
 
 ## 범위가 정해진 작업 위임과 평가
@@ -63,9 +63,9 @@
 | --- | --- | --- |
 | `delegation_prepare` | 상태 변경 | `delegation_id`, `assignment`, `key` |
 | `delegation_assign` | 상태 변경 | `workflow_id`, `delegation_id`, `assignment`, `target`, `key` |
-| `evaluation_prepare` | 상태 변경 | `workflow_id`, `key`, `state` |
+| `evaluation_prepare` | 상태 변경 | `workflow_id`, `key`, `state_ref` |
 | `evaluation_read` | 조회 | `workflow_id`, `assignment` |
-| `evaluation_execute` | 상태 변경 | `workflow_id`, `key`, `state`, `criterion_id`, `evidence_kind`, `pytest_node` |
+| `evaluation_execute` | 상태 변경 | `workflow_id`, `key`, `state_ref`, `criterion_id`, `evidence_kind`, `pytest_node` |
 | `evaluation_report` | 상태 변경 | `delegation_id`, `key`, `verdict`, `summary`, `outcome_ref` |
 | `evaluation_consume` | 상태 변경 | `delegation_id`, `key` |
 | `evaluation_loop_open` | 상태 변경 | `workflow_id`, `loop_id`, `goal`, `acceptance`, `key` |

@@ -16,13 +16,14 @@ EXPECTED = {
     "graphify": "graphify", "implement-ui": "implement-ui", "investigate": "debug",
     "monitor-pr": "watch-pr", "optimize-harness": "optimize-harness", "plan-issues": "plan",
     "pr-review": "review-pr", "process-ticket": "implement-issue", "promote-memory": "memory-to-rules",
+    "reconnect-host": "reconnect-host",
     "review-code": "review-code", "review-ui": "review-ui", "sync-design": "sync-design",
     "sync-dev-docs": "dev-docs", "sync-docs": "sync-docs", "sync-user-docs": "user-docs",
     "triage-comments": "pr-feedback", "update-dependencies": "update-deps",
     "update-neurath": "update-neurath",
     "update-project-status": "update-status",
 }
-UNCONTRACTED = {"explain-code", "graphify", "update-neurath"}
+UNCONTRACTED = {"explain-code", "graphify", "reconnect-host", "update-neurath"}
 
 
 def test_public_names_paths_and_calls_are_short_but_contracts_stay_compatible():

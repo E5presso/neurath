@@ -20,7 +20,7 @@ RETAINED = {
     "create-ticket", "create-worktree", "dependency-audit", "evaluate-harness",
     "explain-code", "explore-ui", "finish-session", "graphify", "implement-ui",
     "investigate", "monitor-pr", "optimize-harness", "plan-issues", "pr-review",
-    "process-ticket", "promote-memory", "review-code", "review-ui", "sync-design",
+    "process-ticket", "promote-memory", "reconnect-host", "review-code", "review-ui", "sync-design",
     "sync-dev-docs", "sync-docs", "sync-user-docs", "triage-comments",
     "update-dependencies", "update-neurath", "update-project-status",
 }
@@ -76,7 +76,7 @@ def contents(repo):
 def test_inventory_retires_only_the_seven_approved_skills():
     assert set(skills()) == RETAINED
     contracts = json.loads((BUNDLE / ".agents/skills/contracts.json").read_text())["skills"]
-    assert set(contracts) == RETAINED - {"explain-code", "graphify", "update-neurath"}
+    assert set(contracts) == RETAINED - {"explain-code", "graphify", "reconnect-host", "update-neurath"}
     cases = json.loads((BUNDLE / ".agents/skills/intent-routing-evals.json").read_text())["cases"]
     for case in cases:
         assert case.get("expected_selected_skill") not in RETIRED
@@ -92,6 +92,20 @@ def test_neurath_update_skill_uses_exact_release_offer_and_native_choice(repo):
     assert "releases_choose" in skill
     assert "releases_apply" in skill
     assert (repo / ".claude/skills/update-neurath").resolve() == repo / ".agents/skills/update-neurath"
+
+
+def test_host_reconnect_skill_installs_without_replacing_user_skill(repo):
+    custom = repo / ".agents/skills/local-restart/SKILL.md"
+    custom.parent.mkdir(parents=True)
+    custom.write_text("User-owned restart guidance\n")
+
+    installer.apply_plan(repo, installer.make_plan(repo, hosts=["codex", "claude-code"]))
+
+    assert custom.read_text() == "User-owned restart guidance\n"
+    installed = repo / ".agents/skills/reconnect-host"
+    assert (installed / "SKILL.md").is_file()
+    assert (installed / "scripts/relaunch_codex.py").is_file()
+    assert (repo / ".claude/skills/reconnect-host").resolve() == installed
 
 
 @pytest.mark.parametrize("hosts", [["codex"], ["claude-code"], ["codex", "claude-code"]])

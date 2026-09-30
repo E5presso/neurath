@@ -1,4 +1,4 @@
-<!-- updated: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
+<!-- updated: 2026-09-30; synced_from: c7bc3a4fa115567cda7b4cc143bf9b9ae4020122 -->
 
 # Choose a procedure that serves the user's outcome
 
@@ -10,7 +10,7 @@ In the hypothetical saved-filter investigation, `debug` can structure reproducti
 
 ## Use public names and edit owned sources
 
-The installed catalog contains 32 public skills: 29 have phase contracts; `explain-code`, `graphify`, and `update-neurath` have none. Public names are mapped from source identifiers. For example, users invoke `debug` while the source directory and contract identify `investigate`. An installation prefix changes invocation spelling, not the internal skill identity or phase IDs.
+The installed catalog contains 33 public skills: 29 have phase contracts; `explain-code`, `graphify`, `reconnect-host`, and `update-neurath` have none. Public names are mapped from source identifiers. For example, users invoke `debug` while the source directory and contract identify `investigate`. An installation prefix changes invocation spelling, not the internal skill identity or phase IDs.
 
 The editable originals live under [src/neurath/_assets/.agents/skills/](../../../src/neurath/_assets/.agents/skills/). Installed `.agents/skills` and `.neurath/rules` are projections. Change the original asset and update its generated manifest in an authorized implementation change. Installation, package execution, and real-host activation remain separate validation work; merely editing the procedure does not prove that an already-open host loaded it.
 
@@ -40,6 +40,7 @@ The catalog below starts from the work the agent needs to do. Read the selected 
 | `review-pr` | Review a pull request and its acceptance. | `pr-review` | 1 | `completed`, `blocked`, `failed` |
 | `implement-issue` | Carry an issue through implementation and checks. | `process-ticket` | 9 | `merged`, `mergeable-clean`, `failed`, `skipped`, `blocked` |
 | `memory-to-rules` | Propose reviewed durable guidance from memory. | `promote-memory` | 1 | `completed`, `blocked`, `failed` |
+| `reconnect-host` | Resume an authorized Codex host after a Neurath distribution mismatch and verify live activation. | `reconnect-host` | — | Live readiness readback |
 | `review-code` | Inspect changes for actionable defects. | `review-code` | 1 | `completed`, `blocked`, `failed` |
 | `review-ui` | Review the implemented user interface. | `review-ui` | 2 | `review-ready`, `accepted`, `revision-requested`, `blocked`, `failed` |
 | `sync-design` | Reconcile implementation with design sources. | `sync-design` | 1 | `synced`, `no-change`, `blocked`, `failed` |
@@ -54,6 +55,8 @@ The catalog below starts from the work the agent needs to do. Read the selected 
 ## Record progress only when its evidence exists
 
 An explicit phase contract is a stateful procedure. `phase_start` binds a `workflow_id`, public/source skill identity as required by the runtime, `run_id`, and the `north_star` outcome. `phase_current` returns the current phase and revision. Reading the skill or saying that a phase passed does not advance it.
+
+Starting a semantic workflow does not require a reviewer child merely to create phase state. A genuine host-attested evaluator is still required when its result is used for independent evaluation or semantic completion.
 
 `phase_evidence_prepare` creates an immutable evidence reference for the current phase and revision. Evidence labels come from that skill's contract. Its notes distinguish agent reports from observed source or execution evidence. `phase_complete` uses the exact expected revision and evidence reference. `phase_finalize` records the allowed terminal state when a separate finalization is required. An operational final phase may finalize atomically with `terminal_state`; do not finalize it twice.
 

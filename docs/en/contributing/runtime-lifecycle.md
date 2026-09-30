@@ -1,4 +1,4 @@
-<!-- last_updated: 2026-09-27; synced_from: 5ddfa1392b9cf4cbceb3e9112858e0988ce2cc69 -->
+<!-- last_updated: 2026-09-30; synced_from: c7bc3a4fa115567cda7b4cc143bf9b9ae4020122 -->
 # From a user request to a finished native turn
 
 [한국어](../../ko/contributing/runtime-lifecycle.md)
@@ -36,6 +36,8 @@ A PR monitor observes a specific workflow and pull request and can resume its ow
 Startup does not issue `thread/resume` while the owner is still in the turn that requested the monitor. The monitor records its subscription from the first observation; a later idle-owner resume checks the current native policy immediately before using the app-server route.
 
 `poll_interval_seconds` defaults to `30` and accepts `5`–`600`; `once` and `observe_only` both default to `false`. An observe-only monitor does not resume the owner or claim resume delivery. `monitor_readback` reads the live process and subscription receipts. `monitor_ack` consumes the exact event occurrence using current live evidence and a compare-and-swap check of the workflow revision.
+
+An autopilot root may merge while the worker owner is already active. In that case the monitor defers a new resume. The worker can complete a merged or closed terminal readback using the exact event ID, its typed `monitor_ack` result, and matching live PR state and head. It must not claim that a resume invocation occurred. A clean but still open PR retains the existing resume requirement.
 
 Before resuming a Codex owner, the monitor rereads that owner’s latest native policy even when the foreground turn is idle. Changed or unobserved approval policy, approvals reviewer, sandbox policy, or collaboration mode rejects resume and requires `monitor_recover`. Recovery first requires the actual previous process to have exited, then starts a new generation while retaining the workflow and PR scope. `monitor_cancel` requests cancellation through a durable flag and private authenticated control channel; inspect the terminal result before reporting cancellation complete.
 

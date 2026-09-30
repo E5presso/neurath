@@ -35,6 +35,12 @@ Autopilot의 구현 자식은 root에 결과를 반환하며 root가 별도의 �
 
    `python3 .agents/skills/process-ticket/scripts/process_state_evidence.py --workflow-id WORKFLOW_ID --field FIELD --value-json JSON_VALUE`
 
+   Publisher가 비교하는 canonical head key는 `commit_done.sha`,
+   `push_done.local_sha`, `push_done.remote_sha`, `pr_opened.head_sha`입니다.
+   `commit_sha`처럼 다른 이름으로 같은 SHA를 기록하면 게시 전에 거부됩니다.
+   후속 push로 PR head가 바뀌면 네 필드를 실제 commit·remote·PR read-back에서
+   다시 맞춘 뒤 검토 결과를 게시합니다. 관측하지 않은 event 값을 만들어 넣지 않습니다.
+
    Persistence 파일이나 workflow payload를 직접 변경하지 않습니다.
 6. `/create-pr`에는 phase 4.5 acceptance 결과를 전달합니다. executable
    acceptance가 있으면 `acceptance_check: PASS` 근거를, 없으면

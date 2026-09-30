@@ -7,7 +7,7 @@
 설치된 투영의 drift는 `diagnostics_project` MCP로 검사합니다. 소스 생성은 `tools/build_manifest.py`가 담당합니다.
 
 - Rules: 8
-- Skills: 32
+- Skills: 33
 - Contracted skills: 29
 
 ## Rules
@@ -49,6 +49,7 @@
 | [`pr-review`](skills/pr-review/SKILL.md) | yes | `pull-request.review` | `github-pr-state` | `source.review`<br>`pull-request-comments.triage` | `contracted` | 검증된 final-local-review를 exact PR head의 ai-review 승인 신호로 게시합니다. |
 | [`process-ticket`](skills/process-ticket/SKILL.md) | yes | `ticket.execute` | `github-work-item` | `work-item-set.execute`<br>`spec.plan` | `contracted` | 승인된 Neurath work item 하나를 분석, test, 구현, PR, monitoring, 선택적 merge까지 실행합니다. |
 | [`promote-memory`](skills/promote-memory/SKILL.md) | yes | `personal-memory-pattern.promote` | `private-personal-memory` | `harness-prompt.optimize`<br>`docs.route`<br>`knowledge-graph.project` | `contracted` | private/personal memory에서 여러 session에 걸쳐 반복 확인된 사용자 선호나 작업 pattern을 privacy-safe하게 검토하여 대상 프로젝트의 적절한 durable owner 후보를 제안하거나, 사용자가 repository 반영을 승인하면 해당 owner로 승격할 때 사용합니다. 제안-only 요청에서는 repository를 수정하지 않습니다. prompt token 최적화, 일반 harness cleanup, 제품 memory architecture 설계, workflow typed-state 보존에는 사용하지 않습니다. |
+| [`reconnect-host`](skills/reconnect-host/SKILL.md) | yes | `harness.host-reconnect` | `live-session-diagnostic` | `harness.update`<br>`unrelated-app.restart` | `uncontracted` | 설치된 Neurath와 실행 중 MCP 배포본이 다를 때 승인된 Codex 호스트 재시작을 한 번 예약하고, 같은 작업에서 실제 활성화를 확인합니다. 일반 앱 재시작이나 Neurath 설치를 대신하지 않습니다. |
 | [`review-code`](skills/review-code/SKILL.md) | yes | `source.review` | `repository-source` | `source.explain`<br>`pull-request.review` | `contracted` | 변경된 코드를 합리적 동료 태세로 검토하여 구체적 탐지 시그널에 매치되는 결함 의문점을 생성합니다. |
 | [`review-ui`](skills/review-ui/SKILL.md) | yes | `product-ui.roundtrip-review` | `product-surface-and-approved-node` | `product-ui.art-direct`<br>`product-ui.design-mirror-sync`<br>`product-ui.approved-design-implement` | `contracted` | 승인된 canvas node와 runtime capture를 병치하고 사용자의 최종 시각 결정을 받습니다. 일반 QA에는 사용하지 않습니다. |
 | [`sync-design`](skills/sync-design/SKILL.md) | yes | `product-ui.design-mirror-sync` | `repository-source` | `product-ui.art-direct`<br>`product-ui.approved-design-implement`<br>`product-ui.roundtrip-review` | `contracted` | Repository token과 component mapping을 design canvas로 한 방향 동기화하고 read-back합니다. UI 탐색·구현에는 사용하지 않습니다. |
@@ -71,7 +72,7 @@ Skill entry 외 필수 reference, path rule, hook protocol, name/path wrapper는
 |---|---|---:|
 | Neurath policy + common rules | Claude native source proxy | 80864 |
 | Neurath policy + behavioral | Codex explicit base | 41156 |
-| Skill descriptions | Native discovery source | 5053 |
+| Skill descriptions | Native discovery source | 5302 |
 
 ## Skill entry measurements
 
@@ -97,8 +98,9 @@ Skill entry 외 필수 reference, path rule, hook protocol, name/path wrapper는
 | `optimize-harness` | 3521 | 315 | 44677 |
 | `plan-issues` | 11960 | 307 | 53116 |
 | `pr-review` | 8225 | 92 | 49381 |
-| `process-ticket` | 10016 | 114 | 51172 |
+| `process-ticket` | 10219 | 114 | 51375 |
 | `promote-memory` | 2723 | 522 | 43879 |
+| `reconnect-host` | 3115 | 249 | 44271 |
 | `review-code` | 17852 | 139 | 59008 |
 | `review-ui` | 1795 | 150 | 42951 |
 | `sync-design` | 2077 | 155 | 43233 |
@@ -112,5 +114,5 @@ Skill entry 외 필수 reference, path rule, hook protocol, name/path wrapper는
 
 ## Join diagnostics
 
-- Uncontracted skills: `explain-code`, `graphify`, `update-neurath`
+- Uncontracted skills: `explain-code`, `graphify`, `reconnect-host`, `update-neurath`
 - Orphan contracts: none

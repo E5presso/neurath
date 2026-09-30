@@ -957,7 +957,7 @@
             "local_review_matrix_receipt": "matrix_id=[0-9a-f]{64}.*frozen=true.*head_sha=[0-9a-f]{40}.*row_count=[0-9]+.*verified_rows=[0-9]+.*blocking_findings=0.*verdict=pass.*kind=final-local-review.*outcome=result-applied",
             "owner_lifecycle_readback": "state=(active|idle|recovering|terminal).*owner_session_id=",
             "monitor_mailbox_readback": "pending_events=[0-9]+.*active_claim=(none|[0-9a-f]{64})",
-            "monitor_event_readback": "monitor_event=(terminal.*source=local-pr-monitor.*resume_status=invoked|event.*source=local-pr-monitor.*resume_status=invoked.*turn_completion.status=completed.*turn.status=completed)",
+            "monitor_event_readback": "monitor_event=(terminal.*source=local-pr-monitor.*resume_status=invoked|terminal.*source=local-pr-monitor.*resume_status=pending-delivery.*event_id=[0-9a-f]{64}|event.*source=local-pr-monitor.*resume_status=invoked.*turn_completion.status=completed.*turn.status=completed)",
             "live_terminal_readback": "reason=(mergeable-clean.*state=OPEN.*mergeState=CLEAN.*reviewDecision=APPROVED.*failedChecks=0.*pendingChecks=0.*headRefOid=.*unresolvedReviewThreads=0|merged.*state=MERGED.*headRefOid=.*unresolvedReviewThreads=0|closed-without-merge.*state=CLOSED.*headRefOid=.*unresolvedReviewThreads=0)",
             "delegate_transition_receipt": "delegation_id=.*owner_session_id=.*target_agent_id=.*outcome=result-applied.*outcome_ref=sha256:[0-9a-f]{64}",
             "pending_human_comments": "TOTAL=0",

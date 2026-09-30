@@ -1618,7 +1618,10 @@ class PhaseEvidenceValidator:
             failures.append("monitor_terminal_state.event_kind")
         if "source=local-pr-monitor" not in terminal_state:
             failures.append("monitor_terminal_state.source")
-        if not self._resume_invoked(terminal_state):
+        acknowledged_terminal = self._acknowledged_active_terminal(
+            terminal_state, monitor_event_readback, live_terminal_readback, skill_state
+        )
+        if not self._resume_invoked(terminal_state) and not acknowledged_terminal:
             failures.append("monitor_terminal_state.resume_status")
         if "provider=local-pr-monitor" not in route_resume:
             failures.append("route_resume_contract.provider")
@@ -1626,8 +1629,13 @@ class PhaseEvidenceValidator:
             failures.append("route_resume_contract.resume_adapter")
         if "source=local-pr-monitor" not in monitor_event_readback:
             failures.append("monitor_event_readback.source")
-        if not self._resume_invoked(monitor_event_readback):
+        if not self._resume_invoked(monitor_event_readback) and not acknowledged_terminal:
             failures.append("monitor_event_readback.resume_status")
+        if (
+            self._evidence_value(monitor_event_readback, "resume_status") == "pending-delivery"
+            and not acknowledged_terminal
+        ):
+            failures.append("monitor_event_readback.ack")
         terminal_reason = self._evidence_value(terminal_state, "reason")
         live_reason = self._evidence_value(live_terminal_readback, "reason")
         if not live_reason or live_reason != terminal_reason:
@@ -1747,6 +1755,46 @@ class PhaseEvidenceValidator:
 
     def _resume_invoked(self, evidence: str) -> bool:
         return re.search(r"\bresume_status=invoked(?!-)\b", evidence) is not None
+
+    def _acknowledged_active_terminal(
+        self,
+        terminal_state: str,
+        event_readback: str,
+        live_readback: str,
+        skill_state: Mapping[str, object],
+    ) -> bool:
+        """Admit an active owner's merged event only through the typed live ACK."""
+        reason = self._evidence_value(terminal_state, "reason")
+        if reason not in {"merged", "closed-without-merge"}:
+            return False
+        if any(
+            self._evidence_value(item, "resume_status") != "pending-delivery"
+            for item in (terminal_state, event_readback)
+        ):
+            return False
+        event_id = self._evidence_value(event_readback, "event_id")
+        if (
+            re.fullmatch(r"[0-9a-f]{64}", event_id or "") is None
+            or self._evidence_value(terminal_state, "event_id") != event_id
+            or self._evidence_value(event_readback, "reason") != reason
+        ):
+            return False
+        acknowledgement = skill_state.get("monitor_event_ack")
+        if not isinstance(acknowledgement, Mapping):
+            return False
+        if acknowledgement.get("event_id") != event_id or acknowledgement.get("reason") != reason:
+            return False
+        live_state = "MERGED" if reason == "merged" else "CLOSED"
+        head = self._evidence_value(live_readback, "headRefOid")
+        evidence = acknowledgement.get("evidence")
+        return (
+            isinstance(evidence, list)
+            and all(isinstance(item, str) for item in evidence)
+            and self._evidence_value(live_readback, "state") == live_state
+            and re.fullmatch(r"[0-9a-f]{40}", head or "") is not None
+            and f"terminal_readback:state={live_state}" in evidence
+            and f"terminal_readback:headRefOid={head}" in evidence
+        )
 
     def _previous_evidence_item(self, state: PhaseRunState, evidence_key: str) -> str:
         for phase in reversed(state.phases):

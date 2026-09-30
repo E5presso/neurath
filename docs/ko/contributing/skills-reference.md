@@ -1,4 +1,4 @@
-<!-- updated: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
+<!-- updated: 2026-09-30; synced_from: c7bc3a4fa115567cda7b4cc143bf9b9ae4020122 -->
 
 # 사용자 결과에 맞는 절차 선택하기
 
@@ -10,7 +10,7 @@
 
 ## 공개 이름을 사용하고 원본 자산 수정하기
 
-설치되는 공개 스킬은 32개입니다. 29개에 단계 계약이 있고 `explain-code`, `graphify`, `update-neurath`에는 단계 계약이 없습니다. 공개 이름과 소스 식별자가 연결됩니다. 예를 들어 사용자는 `debug`를 부르지만 소스 디렉터리와 계약의 식별자는 `investigate`입니다. 설치 접두사는 호출 표기만 바꾸며 내부 스킬 식별자나 단계 ID를 바꾸지 않습니다.
+설치되는 공개 스킬은 33개입니다. 29개에 단계 계약이 있고 `explain-code`, `graphify`, `reconnect-host`, `update-neurath`에는 단계 계약이 없습니다. 공개 이름과 소스 식별자가 연결됩니다. 예를 들어 사용자는 `debug`를 부르지만 소스 디렉터리와 계약의 식별자는 `investigate`입니다. 설치 접두사는 호출 표기만 바꾸며 내부 스킬 식별자나 단계 ID를 바꾸지 않습니다.
 
 수정할 원본은 [src/neurath/_assets/.agents/skills/](../../../src/neurath/_assets/.agents/skills/) 아래 있습니다. 설치된 `.agents/skills`, `.neurath/rules`는 투영 결과입니다. 승인된 구현 변경에서는 원본 자산을 고치고 생성된 manifest를 갱신합니다. 설치, 패키지 실행, 실제 호스트 활성화는 따로 검증해야 합니다. 절차 파일을 고쳤다고 이미 열린 호스트가 새 내용을 읽었다는 뜻은 아닙니다.
 
@@ -40,6 +40,7 @@
 | `review-pr` | PR과 수락 조건 검토 | `pr-review` | 1 | `completed`, `blocked`, `failed` |
 | `implement-issue` | 이슈 구현과 검증 수행 | `process-ticket` | 9 | `merged`, `mergeable-clean`, `failed`, `skipped`, `blocked` |
 | `memory-to-rules` | 기억에서 검토할 영구 지침 제안 | `promote-memory` | 1 | `completed`, `blocked`, `failed` |
+| `reconnect-host` | 승인된 Codex 호스트를 Neurath 배포본 불일치 뒤 재연결하고 실제 활성화 확인 | `reconnect-host` | — | 실제 준비 상태 재조회 |
 | `review-code` | 변경에서 조치 가능한 결함 검토 | `review-code` | 1 | `completed`, `blocked`, `failed` |
 | `review-ui` | 구현된 사용자 화면 검토 | `review-ui` | 2 | `review-ready`, `accepted`, `revision-requested`, `blocked`, `failed` |
 | `sync-design` | 구현과 디자인 원본 대조 | `sync-design` | 1 | `synced`, `no-change`, `blocked`, `failed` |
@@ -54,6 +55,8 @@
 ## 근거가 있을 때만 단계 진행 기록하기
 
 명시적인 단계 계약은 상태를 갖는 절차입니다. `phase_start`는 `workflow_id`, 런타임이 요구하는 공개·소스 스킬 식별자, `run_id`, `north_star` 목표를 연결합니다. `phase_current`는 현재 단계와 revision을 반환합니다. 스킬을 읽거나 단계가 통과했다고 말하는 것만으로 상태가 진행되지는 않습니다.
+
+의미 평가가 필요한 워크플로라도 단계 상태를 만들기 위해 검토자 자식을 미리 생성하지 않습니다. 독립 평가 결과를 사용하거나 의미상 완료를 판정할 때는 실제 호스트가 확인한 검토자가 여전히 필요합니다.
 
 `phase_evidence_prepare`는 현재 단계와 revision에 맞는 불변 근거 참조를 만듭니다. 근거 label은 선택한 스킬 계약에서 가져옵니다. 메모에서는 에이전트 보고와 소스·실행 관측을 구분합니다. `phase_complete`에는 정확한 expected revision과 근거 참조를 사용합니다. 별도의 종료가 필요하면 `phase_finalize`로 허용된 종결 상태를 기록합니다. 운영 절차의 마지막 단계는 `terminal_state`와 함께 원자적으로 끝날 수 있으므로 두 번 종료하지 않습니다.
 

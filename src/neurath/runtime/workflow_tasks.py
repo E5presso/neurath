@@ -301,17 +301,11 @@ def _preflight_start(root, name, fields, handle):
     if name not in {"phase_start", "workflow_start"}:
         return
     from neurath.skill_names import source_id
-    from scripts.agent_harness.evaluation_admission import EvaluationAdmissionPolicy
-    from scripts.skill_harness.phase_runner import PhaseRunState, PhaseRunnerError, SkillContractRepository
+    from scripts.skill_harness.phase_runner import PhaseRunState, SkillContractRepository
     skill = source_id(fields["skill"] if name == "phase_start" else fields["kind"])
     run_id = fields["run_id"] if name == "phase_start" else fields["initial_state"]["run_id"]
     goal = fields["north_star"] if name == "phase_start" else fields["goal"]
-    state = PhaseRunState.initialize(SkillContractRepository(root).get(skill), run_id, goal)
-    if state.adaptive_control_required and EvaluationAdmissionPolicy().inspect(
-            handle.inspect(), handle.actor_id)["status"] == "unavailable":
-        raise PhaseRunnerError("EVALUATOR_UNAVAILABLE",
-            "no current host-attested direct child evaluator; register the native evaluator "
-            "and retry the same request; no workflow was created")
+    PhaseRunState.initialize(SkillContractRepository(root).get(skill), run_id, goal)
     _require_new_root_task_intake(root, fields, handle)
 
 

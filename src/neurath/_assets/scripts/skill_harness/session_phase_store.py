@@ -17,7 +17,6 @@ from scripts.agent_harness.delegation_evidence import (
     FinalReviewEvidencePolicy,
     FinalReviewVerification,
 )
-from scripts.agent_harness.evaluation_admission import EvaluationAdmissionPolicy
 from scripts.agent_harness.harness_incident import (
     validate_harness_incidents as validate_session_harness_incidents,
 )
@@ -216,17 +215,6 @@ class SessionPhaseStateStore:
         phase_payload = self._encode(state)
         if state.terminal_state is not None:
             raise PhaseStateTerminalError("cannot initialize a terminal phase state")
-        if state.adaptive_control_required:
-            admission = EvaluationAdmissionPolicy().inspect(
-                self._handle.inspect(),
-                self._handle.actor_id,
-            )
-            if admission["status"] == "unavailable":
-                raise PhaseRunnerError(
-                    "EVALUATOR_UNAVAILABLE",
-                    "no current host-attested direct child evaluator; retain a state-free review "
-                    "and retry init after host registration; no workflow was created",
-                )
         payload = {self._PHASE_NAMESPACE: phase_payload, "skill_state": {}}
         if self._skill == "autopilot":
             process = self._handle.inspect()

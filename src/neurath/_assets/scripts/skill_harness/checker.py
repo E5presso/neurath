@@ -42,7 +42,7 @@ class SkillHarnessChecker:
             return [*violations, Violation("NS001", path, str(error))]
         directory = path.parent
         actual = {p.parent.name for p in directory.glob("*/SKILL.md")}
-        if set(contracts) != actual - {"explain-code", "graphify", "update-neurath"}:
+        if set(contracts) != actual - {"explain-code", "graphify", "reconnect-host", "update-neurath"}:
             violations.append(Violation("NS002", path, "skill inventory and contracts differ"))
         for name, contract in contracts.items():
             skill = directory / name / "SKILL.md"

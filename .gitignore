@@ -37,6 +37,7 @@ graphify-out/
 .agents/skills/review-pr/
 .agents/skills/implement-issue/
 .agents/skills/memory-to-rules/
+.agents/skills/reconnect-host/
 .agents/skills/review-code/
 .agents/skills/review-ui/
 .agents/skills/sync-design/
@@ -69,6 +70,7 @@ graphify-out/
 .claude/skills/review-pr
 .claude/skills/implement-issue
 .claude/skills/memory-to-rules
+.claude/skills/reconnect-host
 .claude/skills/review-code
 .claude/skills/review-ui
 .claude/skills/sync-design

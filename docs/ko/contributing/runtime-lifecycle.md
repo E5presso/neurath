@@ -1,4 +1,4 @@
-<!-- last_updated: 2026-09-27; synced_from: 5ddfa1392b9cf4cbceb3e9112858e0988ce2cc69 -->
+<!-- last_updated: 2026-09-30; synced_from: c7bc3a4fa115567cda7b4cc143bf9b9ae4020122 -->
 # 사용자 요청에서 호스트 턴 종료까지
 
 [English](../../en/contributing/runtime-lifecycle.md)
@@ -36,6 +36,8 @@ PR 모니터는 특정 워크플로와 PR을 관찰하며 승인된 경로로만
 모니터 시작 시에는 요청한 소유자의 턴이 아직 활성 상태이므로 `thread/resume`을 호출하지 않습니다. 첫 관찰에서 구독을 기록하고, 나중에 소유자가 idle이 되어 재개할 때 현재 네이티브 정책을 다시 확인한 뒤 app-server 경로를 사용합니다.
 
 `poll_interval_seconds`는 기본 `30`초이며 `5`~`600`초를 받습니다. `once`와 `observe_only`는 모두 기본 `false`입니다. 관찰 전용 모니터는 소유자를 재개하지 않고 재개 전달도 주장하지 않습니다. `monitor_readback`은 실제 살아 있는 프로세스와 구독 receipt를 읽습니다. `monitor_ack`는 현재 실행 근거와 워크플로 리비전의 비교 후 변경(CAS) 검사를 사용해 정확한 발생 이벤트를 소비합니다.
+
+Autopilot root가 worker 소유자의 활성 턴 중에 PR을 병합하면 monitor는 새 재개 호출을 보류합니다. 이때 worker는 정확한 이벤트 ID, typed `monitor_ack` 결과, 일치하는 실제 PR 상태와 head로 병합·종료 이벤트의 read-back을 완료할 수 있습니다. 실행되지 않은 재개를 호출됐다고 기록하지 않습니다. 아직 열린 clean PR에는 기존 재개 요건이 적용됩니다.
 
 Codex 소유자를 재개하기 전에는 전경 턴이 idle이어도 해당 소유자의 최신 호스트 정책을 다시 읽습니다. 승인 정책, 승인 검토자, 샌드박스 정책, 협업 모드가 바뀌었거나 관찰되지 않으면 재개를 거부하고 `monitor_recover`가 필요합니다. 복구는 이전 프로세스가 실제 종료됐는지 먼저 확인한 뒤 같은 워크플로·PR 범위를 유지해 새 세대를 시작합니다. `monitor_cancel`은 영속 취소 플래그와 비공개 인증 제어 채널로 취소를 요청합니다. 취소 완료를 보고하기 전에 최종 결과를 확인해야 합니다.
 

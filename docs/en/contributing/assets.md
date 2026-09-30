@@ -1,4 +1,4 @@
-<!-- date: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
+<!-- date: 2026-09-30; synced_from: c7bc3a4fa115567cda7b4cc143bf9b9ae4020122 -->
 
 # Change the assets that Neurath installs
 
@@ -19,7 +19,7 @@ An asset change should reach a target project through a built Neurath distributi
 
 All source paths above are beneath `src/neurath`. Other repositories are not build inputs. The target project supplies its own product documents and verification commands through `.neurath/project.json`.
 
-The current inventory has 32 public skills: 29 have phase contracts, while `explain-code`, `graphify`, and `update-neurath` work without those contracts. Public names describe the work a reader requests; internal identifiers keep persisted workflows stable. For example, source contract `investigate` is invoked as `debug`, and `monitor-pr` as `watch-pr`. A configured `neurath-` prefix changes the invocation to `/neurath-debug` without renaming its internal contract. See [skill reference](skills-reference.md) for the complete mapping.
+The current inventory has 33 public skills: 29 have phase contracts, while `explain-code`, `graphify`, `reconnect-host`, and `update-neurath` work without those contracts. Public names describe the work a reader requests; internal identifiers keep persisted workflows stable. For example, source contract `investigate` is invoked as `debug`, and `monitor-pr` as `watch-pr`. A configured `neurath-` prefix changes the invocation to `/neurath-debug` without renaming its internal contract. See [skill reference](skills-reference.md) for the complete mapping.
 
 ## Follow a source change into its projection
 

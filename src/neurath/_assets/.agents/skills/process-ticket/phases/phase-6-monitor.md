@@ -100,6 +100,15 @@ CLI는 runtime identity로 `StateHandle.attach`하고 `SkillStateStore.compare_a
 선택 당시 workflow revision을 제출합니다. Live read-back 도중 revision이 바뀌면 stale ACK를
 적용하지 않고 non-zero로 종료하므로 latest workflow에서 command 전체를 다시 실행합니다.
 
+Autopilot root가 worker owner의 현재 turn 동안 PR을 병합하면 monitor는 그 turn을 다시
+깨우지 않고 `resume_status=pending-delivery`를 기록할 수 있습니다. 이때 exact `merged`
+또는 `closed-without-merge` terminal event를 ACK 도구로 live 확인한 뒤,
+`monitor_terminal_state`와 `monitor_event_readback`에 같은 64자리 `event_id`와
+`resume_status=pending-delivery`를 남깁니다. Phase gate는 저장된 typed ACK의
+event ID·reason·terminal head와 live read-back을 재대조합니다. 실제 호출되지 않은
+resume을 `invoked`로 꾸미지 않습니다. `mergeable-clean`은 기존 invoked 경로를
+유지합니다.
+
 `comments-changed`와 `review-blocked`:
 
 ```text

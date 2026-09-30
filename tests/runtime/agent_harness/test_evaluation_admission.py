@@ -112,8 +112,8 @@ class EvaluationAdmissionTest(TestCase):
             )["status"],
         )
 
-    def test_semantic_init_without_evaluator_creates_no_workflow(self) -> None:
-        """실행 전 가용성 부족은 새 pending workflow를 만들지 않고 진단으로 반환합니다."""
+    def test_semantic_init_without_evaluator_defers_admission_to_evaluation(self) -> None:
+        """단계 초기화는 허용하되 독립 평가 권한은 생성하지 않습니다."""
         contracts = self.fixture.repository / ".agents/skills/contracts.json"
         contracts.parent.mkdir(parents=True)
         contracts.write_text(
@@ -149,8 +149,15 @@ class EvaluationAdmissionTest(TestCase):
             ],
             environment=self.environment,
         )
-        self.assertNotEqual(0, result)
-        self.assertEqual({}, dict(self.handle.inspect().workflows))
+        self.assertEqual(0, result)
+        workflow = WorkflowId("unavailable")
+        self.assertEqual("active", self.handle.inspect().workflows[workflow].status.value)
+        self.assertEqual(
+            "unavailable",
+            EvaluationAdmissionPolicy().inspect(
+                self.handle.inspect(), self.handle.actor_id, workflow
+            )["status"],
+        )
 
     def test_incomplete_return_preserves_the_existing_workflow(self) -> None:
         """현재 evaluator가 없으면 불완료 반환은 workflow를 성공·실패로 바꾸지 않습니다."""

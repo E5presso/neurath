@@ -142,7 +142,10 @@ def prepare(root, handle, fields):
         provenance.append({"label":label,"authority":"source-readback"})
     for note in fields["notes"]:
         label, value = note["label"], note["text"]
-        if label in SOURCE_LABELS or any(re.search(r"\b"+re.escape(other)+r"\b",value) for other in all_labels-{label}):
+        if label in SOURCE_LABELS or any(
+            re.search(r"(?:^|\s)" + re.escape(other) + r"\s*:", value)
+            for other in all_labels - {label}
+        ):
             raise ValueError("report cannot impersonate a reserved source or another evidence label")
         evidence.append(label+": "+value+" [authority=agent-report]")
         provenance.append({"label":label,"authority":"agent-report"})

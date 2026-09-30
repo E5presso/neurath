@@ -56,17 +56,17 @@ def test_artifact_schema_bounds_data_without_promoting_it_to_authority():
         arguments("artifact_put", {"document": {}, "key": "path", "path": ".process-state.json"})
 
 
-def test_missing_evaluator_rejection_does_not_poison_initialization_key(sessions):
-    from neurath.agents.store import MessageStore
+def test_missing_evaluator_does_not_block_workflow_initialization(sessions):
     call(sessions, "worktree_claim", {})
-    for invocation in ("missing-first", "missing-second"):
-        with pytest.raises(ValueError, match="evaluator"):
-            call(sessions, "phase_start", {"workflow_id": "unstarted", "skill": "sync-docs",
-                "north_star": "Review documentation", "run_id": "run", "key": "same-key"}, invocation=invocation)
-    with MessageStore(sessions[0]).connection() as db:
-        exists = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='workflow_task_requests'").fetchone()
-        if exists:
-            assert db.execute("SELECT count(*) FROM workflow_task_requests WHERE key='same-key'").fetchone()[0] == 0
+    call(sessions, "task_define", {"tasks": [{"key": "docs-task", "title": "Review docs",
+        "goal": "Review documentation", "sources": [],
+        "acceptance": ["The documentation workflow records its observed result"],
+        "dependencies": []}], "expected_revision": 0, "key": "docs-intake"})
+    initialized = call(sessions, "phase_start", {"workflow_id": "unstarted", "skill": "sync-docs",
+        "north_star": "Review documentation", "run_id": "run", "key": "same-key"})
+    assert initialized["workflow_revision"] == 0
+    assert call(sessions, "adaptive_preflight", {"workflow_id": "unstarted"})["status"] == "unavailable"
+    assert call(sessions, "phase_current", {"workflow_id": "unstarted"})["phase_id"] == 0
 
 
 def start(sessions, *, alias=False, workflow="phase", key="start", skill="commit", host="codex", session="api"):
@@ -122,12 +122,13 @@ def test_start_requires_registered_contract_and_owner(sessions):
         start(sessions, host="claude-code", session="ui", key="other-owner")
 
 
-def test_adaptive_phase_start_preserves_independent_evaluator_gate(sessions):
+def test_adaptive_phase_start_defers_independent_evaluator_gate(sessions):
     call(sessions, "worktree_claim", {})
-    with pytest.raises(ValueError, match="evaluator"):
-        start(sessions, skill="plan-issues")
+    started = start(sessions, skill="plan-issues")
+    assert started["workflow_revision"] == 0
+    assert call(sessions, "adaptive_preflight", {"workflow_id": "phase"})["status"] == "unavailable"
     state = call(sessions, "session_inspect", {})
-    assert "phase" not in state["workflows"]
+    assert state["workflows"]["phase"]["status"] == "active"
 
 
 def test_phase_cannot_certify_completion_with_raw_string_evidence(sessions, monkeypatch):

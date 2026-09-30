@@ -1,4 +1,4 @@
-<!-- last_updated: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
+<!-- last_updated: 2026-09-30; synced_from: c7bc3a4fa115567cda7b4cc143bf9b9ae4020122 -->
 # Find a capability by the work it supports
 
 [한국어](../../ko/contributing/capability-map.md)
@@ -51,8 +51,8 @@ A workflow is a skill run; a phase is a step in its procedure. Read the selected
 | `phase_finalize` | State change | `workflow_id`, `expected_revision`, `key`, `terminal_state` |
 | `adaptive_read` | Read | `workflow_id` |
 | `adaptive_preflight` | Read | None |
-| `adaptive_replace` | State change | `workflow_id`, `expected_revision`, `key`, `state` |
-| `adaptive_override_goal` | State change | `workflow_id`, `expected_revision`, `key`, `state` |
+| `adaptive_replace` | State change | `workflow_id`, `expected_revision`, `key`, `state_ref` |
+| `adaptive_override_goal` | State change | `workflow_id`, `expected_revision`, `key`, `state_ref` |
 | `turn_yield` | State change | `expected_turn_revision`, `outcome`, `key` |
 
 ## Delegate and evaluate a bounded candidate
@@ -63,9 +63,9 @@ Delegation gives a participant a bounded assignment. Preparation creates spawn i
 | --- | --- | --- |
 | `delegation_prepare` | State change | `delegation_id`, `assignment`, `key` |
 | `delegation_assign` | State change | `workflow_id`, `delegation_id`, `assignment`, `target`, `key` |
-| `evaluation_prepare` | State change | `workflow_id`, `key`, `state` |
+| `evaluation_prepare` | State change | `workflow_id`, `key`, `state_ref` |
 | `evaluation_read` | Read | `workflow_id`, `assignment` |
-| `evaluation_execute` | State change | `workflow_id`, `key`, `state`, `criterion_id`, `evidence_kind`, `pytest_node` |
+| `evaluation_execute` | State change | `workflow_id`, `key`, `state_ref`, `criterion_id`, `evidence_kind`, `pytest_node` |
 | `evaluation_report` | State change | `delegation_id`, `key`, `verdict`, `summary`, `outcome_ref` |
 | `evaluation_consume` | State change | `delegation_id`, `key` |
 | `evaluation_loop_open` | State change | `workflow_id`, `loop_id`, `goal`, `acceptance`, `key` |

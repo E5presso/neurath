@@ -1,8 +1,8 @@
 """Canonical harness sources에서 생성되는 catalog projection을 검증합니다."""
 
-from pathlib import Path
 from unittest import TestCase
 
+from neurath.resources import BUNDLE
 from scripts.skill_harness.harness_catalog import HarnessCatalog
 
 
@@ -11,7 +11,7 @@ class HarnessCatalogTest(TestCase):
 
     def setUp(self) -> None:
         """현재 checkout의 canonical harness root를 준비합니다."""
-        self.root = Path(__file__).resolve().parents[3]
+        self.root = BUNDLE
 
     def test_catalog_derives_rule_scope_and_all_skill_contract_coverage(self) -> None:
         """Frontmatter scope와 optional contract join을 누락 없이 projection합니다."""
@@ -20,7 +20,7 @@ class HarnessCatalogTest(TestCase):
         skills = {item.name: item for item in catalog.skills}
 
         self.assertEqual(8, len(rules))
-        self.assertEqual(32, len(skills))
+        self.assertEqual(33, len(skills))
         self.assertEqual("path", rules["worktree-isolation"].injection)
         self.assertIn(".agents/worktrees/**", rules["worktree-isolation"].paths)
         self.assertEqual("always", rules["behavioral"].injection)
@@ -49,8 +49,9 @@ class HarnessCatalogTest(TestCase):
         self.assertEqual("product-ui.roundtrip-review", skills["review-ui"].intent_class)
         self.assertFalse(skills["explain-code"].contracted)
         self.assertFalse(skills["graphify"].contracted)
+        self.assertFalse(skills["reconnect-host"].contracted)
         self.assertFalse(skills["update-neurath"].contracted)
-        self.assertEqual(("explain-code", "graphify", "update-neurath"), catalog.uncontracted_skills)
+        self.assertEqual(("explain-code", "graphify", "reconnect-host", "update-neurath"), catalog.uncontracted_skills)
         self.assertEqual((), catalog.orphan_contracts)
 
     def test_committed_navigation_and_audit_indexes_are_exact_projections(self) -> None:
@@ -83,5 +84,5 @@ class HarnessCatalogTest(TestCase):
         self.assertIn(optimize.description, audit)
         self.assertIn("`harness-prompt.optimize`", audit)
         self.assertIn("`repository-prompt-surface`", audit)
-        self.assertIn("Uncontracted skills: `explain-code`, `graphify`, `update-neurath`", audit)
+        self.assertIn("Uncontracted skills: `explain-code`, `graphify`, `reconnect-host`, `update-neurath`", audit)
         self.assertIn("Orphan contracts: none", audit)
