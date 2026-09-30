@@ -71,7 +71,9 @@ class AdaptiveExecutionReceiptStoreTest(TestCase):
             "    assert True\n\n"
             "def test_imports_checkout_source():\n"
             "    import neurath\n"
+            "    import scripts\n"
             "    assert neurath.SOURCE_BOUNDARY == 'checkout'\n\n"
+            "    assert scripts.ASSET_BOUNDARY == 'checkout-assets'\n\n"
             "def test_fails():\n"
             "    assert False\n\n"
             "def test_skips():\n"
@@ -83,6 +85,12 @@ class AdaptiveExecutionReceiptStoreTest(TestCase):
         source_package.mkdir(parents=True)
         (source_package / "__init__.py").write_text(
             "SOURCE_BOUNDARY = 'checkout'\n",
+            encoding="utf-8",
+        )
+        asset_package = source_package / "_assets/scripts"
+        asset_package.mkdir(parents=True)
+        (asset_package / "__init__.py").write_text(
+            "ASSET_BOUNDARY = 'checkout-assets'\n",
             encoding="utf-8",
         )
         project = self.repository / ".neurath/project.json"
@@ -164,7 +172,10 @@ class AdaptiveExecutionReceiptStoreTest(TestCase):
             ],
             artifact["command_argv"],
         )
-        self.assertEqual(["src", "."], artifact["source_import_roots"])
+        self.assertEqual(
+            ["src/neurath/_assets", "src", "."],
+            artifact["source_import_roots"],
+        )
         self.assertEqual(
             {
                 "boundary": "checkout-source",

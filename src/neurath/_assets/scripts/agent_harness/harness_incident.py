@@ -589,13 +589,17 @@ def run_regression_commands(worktree: Path, commands: list[str]) -> list[dict[st
 def source_checkout_import_roots(worktree: Path) -> tuple[Path, ...]:
     """Return the controlled Python import roots for one source checkout.
 
-    The source-layout directory takes precedence when present, followed by the
-    repository root for root packages such as the installed harness assets.
-    Caller-provided ``PYTHONPATH`` values are intentionally not preserved.
+    Neurath's tracked asset bundle takes precedence so runtime ``scripts`` are
+    imported from the fingerprinted checkout. The source-layout directory and
+    repository root follow it. Caller-provided ``PYTHONPATH`` values are
+    intentionally not preserved.
     """
     root = worktree.resolve()
+    assets = root / "src/neurath/_assets"
     source = root / "src"
-    roots = [source] if source.is_dir() else []
+    roots = [assets] if (assets / "scripts").is_dir() else []
+    if source.is_dir():
+        roots.append(source)
     return (*roots, root)
 
 
