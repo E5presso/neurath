@@ -137,11 +137,12 @@ def _verify_task_scope(issuer_handle, caller, scope, delegation_id):
 class _TerminalSource:
     """Application-scoped source access, never a native binding or general actor handle."""
 
-    def __init__(self, kernel, source, workflow_id):
+    def __init__(self, kernel, source, workflow_id, cleanup_receipt=None):
         self._kernel = kernel
         self.session_id = source.session.id
         self.actor_id = source.session.root_actor_id
         self.workflow_id = workflow_id
+        self.post_cleanup_receipt = cleanup_receipt
         self._staged = source
 
     def _repository_control_root(self):
@@ -222,7 +223,7 @@ def finalize_cleaned_worker(root, issuer_handle, issuer, fields):
                     raise ValueError("source ownership was migrated")
                 if workflow.revision != fields["expected_revision"]:
                     raise ValueError("source workflow revision changed")
-                handle = _TerminalSource(kernel, source, WorkflowId(workflow_id))
+                handle = _TerminalSource(kernel, source, WorkflowId(workflow_id), cleanup)
                 store = SessionPhaseRunnerStore.open_existing(handle, WorkflowId(workflow_id))
                 phase = store.read()
                 if (phase.skill != "process-ticket"
@@ -239,7 +240,7 @@ def finalize_cleaned_worker(root, issuer_handle, issuer, fields):
                             not in ack.get("evidence", [])):
                     raise ValueError("source lacks exact merged monitor acknowledgement")
                 authority = AdaptiveControlAuthorityVerifier(handle, WorkflowId(workflow_id))
-                proof = authority.verify_completion(workflow.revision)
+                proof = authority.verify_completion(workflow.revision, post_cleanup_receipt=cleanup)
                 record, ledger = read_ledger(tx, source)
                 task = next((t for t in ledger.tasks if t.id == fields["task_id"]), None)
                 if task is None or task.status is not TaskStatus.IN_PROGRESS:

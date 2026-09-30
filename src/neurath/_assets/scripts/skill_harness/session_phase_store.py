@@ -291,10 +291,12 @@ class SessionPhaseStateStore:
             raise AdaptiveControlStoreError(
                 "adaptive contract changed while reading phase evidence"
             )
-        authority = AdaptiveControlAuthorityVerifier(
+        verifier = AdaptiveControlAuthorityVerifier(
             self._handle,
             self._workflow_id,
-        ).verify()
+        )
+        cleanup = getattr(self._handle, "post_cleanup_receipt", None)
+        authority = verifier.verify() if cleanup is None else verifier.verify(post_cleanup_receipt=cleanup)
         return AdaptiveControlPhaseReadback(
             receipt=receipt,
             authority=authority,
@@ -311,10 +313,12 @@ class SessionPhaseStateStore:
             AdaptiveControlStoreError: Read 중 authority revision이 바뀌면 발생합니다.
         """
         snapshot = AdaptiveControlStore(SkillStateStore(self._handle, self._workflow_id)).read()
-        authority = AdaptiveControlAuthorityVerifier(
+        verifier = AdaptiveControlAuthorityVerifier(
             self._handle,
             self._workflow_id,
-        ).verify()
+        )
+        cleanup = getattr(self._handle, "post_cleanup_receipt", None)
+        authority = verifier.verify() if cleanup is None else verifier.verify(post_cleanup_receipt=cleanup)
         if (
             authority.workflow_id != snapshot.workflow_id
             or authority.workflow_revision != snapshot.workflow_revision
@@ -523,10 +527,15 @@ class SessionPhaseStateStore:
                 )
             return
         try:
-            AdaptiveControlAuthorityVerifier(
+            verifier = AdaptiveControlAuthorityVerifier(
                 self._handle,
                 self._workflow_id,
-            ).verify_completion(workflow.revision)
+            )
+            cleanup = getattr(self._handle, "post_cleanup_receipt", None)
+            if cleanup is None:
+                verifier.verify_completion(workflow.revision)
+            else:
+                verifier.verify_completion(workflow.revision, post_cleanup_receipt=cleanup)
         except AdaptiveControlAuthorityError as error:
             raise PhaseStateTerminalError("adaptive completion authority is invalid") from error
 

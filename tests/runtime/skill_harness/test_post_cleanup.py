@@ -69,7 +69,26 @@ class PostCleanupTest(TestCase):
             "merged": {"state": "MERGED", "pr_number": 1, "merge_commit_oid": head},
             "monitor_event_ack": {"reason": "merged", "event_id": "actual-ack",
                 "evidence": ["terminal_readback:headRefOid=" + head]}})
-        authority_tests.AdaptiveControlAuthorityVerifierTest()._persist_verified_completion(fixture, "cleanup")
+        # Use an actual executable claim. A semantic-only completion does not
+        # exercise the historical source fingerprint after the worker is gone.
+        contract = fixture._contract(authority_tests.EvidenceKind.PROPERTY_TEST,
+                                     authority_tests.OracleOwner.EXECUTABLE)
+        executable = fixture.execute_evidence()
+        executable_claim, coverage_claim = fixture.mixed_claims(executable)
+        evaluator_result = fixture.write_artifact("cleanup-executable",
+            (executable_claim, coverage_claim),
+            report_overrides={"goal_fingerprint": coverage_claim["goal_fingerprint"]},
+            contract=contract)
+        lineage = fixture.independent_lineage("cleanup-executable", evaluator_result)
+        candidate = fixture.mixed_snapshot(lineage, executable)
+        assignment, candidate_ref = fixture.prepare_candidate(candidate.state)
+        fixture.transition_delegation("cleanup-executable", evaluator_result,
+            lifecycle="consumed",
+            assignment_overrides={"goal_fingerprint": coverage_claim["goal_fingerprint"]},
+            candidate_state=candidate.state,
+            prepared_assignment=assignment,
+            prepared_candidate_ref=candidate_ref)
+        fixture.persist_snapshot(candidate)
         identity = WorktreeIdentityResolver().resolve(worktree)
         WorktreeRegistry(SessionLocator.from_worktree(root)).claim(WorktreeClaim(
             worktree_id=identity.worktree_id, path=identity.path,
@@ -183,6 +202,12 @@ class PostCleanupTest(TestCase):
         with self.assertRaises(ValueError):
             finalize_cleaned_worker(root, issuer, "codex:issuer", {**fields, "expected_list_revision": 1})
         self.assertEqual(observed["workflow_revision"], owner.inspect().workflows[fixture.workflow_id].revision)
+        # The surviving primary advances after cleanup; the original worker's
+        # executable receipt must remain tied to its recorded bytes, not replay
+        # against this newer checkout.
+        (root / "post-cleanup-new-source.txt").write_text("new primary source\n")
+        git("add", "post-cleanup-new-source.txt")
+        git("commit", "-qm", "advance surviving primary")
         completed = finalize_cleaned_worker(root, issuer, "codex:issuer", fields)
         self.assertEqual("completed", completed["workflow_status"])
         self.assertEqual("codex:issuer", completed["issuer"])

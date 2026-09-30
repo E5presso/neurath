@@ -481,7 +481,15 @@ class SessionKernel:
             return
         if not isinstance(raw_state, Mapping):
             raise TransitionRejected("persisted adaptive_control state is invalid")
-        verifier.verify_completion(workflow.revision)
+        cleanup_receipt = None
+        if isinstance(event, PostCleanupFinalized):
+            cleanup_receipt = workflow.payload.get("skill_state", {}).get("merge_cleanup_receipt")
+            if not isinstance(cleanup_receipt, Mapping):
+                raise TransitionRejected("post-cleanup adaptive receipt is missing")
+        if cleanup_receipt is None:
+            verifier.verify_completion(workflow.revision)
+        else:
+            verifier.verify_completion(workflow.revision, post_cleanup_receipt=cleanup_receipt)
 
     def inspect(self, session_id: SessionId) -> ProcessState:
         """Exact session snapshot만 읽고 다른 directory로 fallback하지 않습니다.
