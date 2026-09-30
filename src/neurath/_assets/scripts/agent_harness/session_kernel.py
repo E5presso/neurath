@@ -59,6 +59,7 @@ from scripts.agent_harness.session_events import (
     HarnessIncidentResolved,
     HarnessIncidentsRefreshed,
     KernelEvent,
+    PostCleanupFinalized,
     MaterialActionAbandoned,
     MaterialActionPrepared,
     MaterialActionResolved,
@@ -306,7 +307,26 @@ class SessionKernel:
 
     def _requires_adaptive_admission(self, event: KernelEvent) -> bool:
         """External adaptive authority를 확인해야 하는 final aggregate event인지 반환합니다."""
-        return isinstance(event, ReservedSkillStateAdvanced | WorkflowFinalized)
+        return isinstance(event, ReservedSkillStateAdvanced | WorkflowFinalized | PostCleanupFinalized)
+
+    def finalize_cleaned_transaction(self, transaction, event, expected_revision):
+        """Commit only the typed issuer recovery inside its task/result transaction.
+
+        SQLite owns the CAS. Do not take session file locks after acquiring its
+        writer lock; the application holds the original provider lifetime fence.
+        """
+        if not isinstance(event, PostCleanupFinalized):
+            raise TransitionRejected("post-cleanup transaction requires its typed issuer event")
+        store = SessionStateStore(self._locator.locate(event.session_id).process_state)
+        source = store.read_transaction(transaction, event.session_id)
+        if source.revision != expected_revision:
+            raise RevisionConflict("post-cleanup source process revision changed")
+        self._validate_adaptive_authority(source, event)
+        candidate = SessionStateReducer().reduce(source, event).with_revision(source.revision + 1)
+        from scripts.agent_harness.session_state_codec import SessionStateCodec
+        transaction.put("session", str(event.session_id), SessionStateCodec().encode(candidate),
+                        expected_revision=source.revision)
+        return candidate
 
     def _transact_with_adaptive_admission(
         self,
@@ -359,7 +379,10 @@ class SessionKernel:
             StateHandle,
         )
 
-        if not isinstance(event, ReservedSkillStateAdvanced | WorkflowFinalized):
+        if isinstance(event, PostCleanupFinalized):
+            from scripts.agent_harness.post_cleanup_admission import verify_admission
+            verify_admission(self._locator, state, event)
+        if not isinstance(event, ReservedSkillStateAdvanced | WorkflowFinalized | PostCleanupFinalized):
             raise TransitionRejected("adaptive admission requires a workflow event")
         workflow = state.workflows.get(event.workflow_id)
         if workflow is None:
@@ -369,7 +392,7 @@ class SessionKernel:
             RuntimeIdentityBinding(
                 runtime=state.session.runtime,
                 session_id=state.session.id,
-                actor_id=event.actor_id,
+                actor_id=event.original_owner if isinstance(event, PostCleanupFinalized) else event.actor_id,
                 root_actor_id=state.session.root_actor_id,
             ),
         )
@@ -458,7 +481,15 @@ class SessionKernel:
             return
         if not isinstance(raw_state, Mapping):
             raise TransitionRejected("persisted adaptive_control state is invalid")
-        verifier.verify_completion(workflow.revision)
+        cleanup_receipt = None
+        if isinstance(event, PostCleanupFinalized):
+            cleanup_receipt = workflow.payload.get("skill_state", {}).get("merge_cleanup_receipt")
+            if not isinstance(cleanup_receipt, Mapping):
+                raise TransitionRejected("post-cleanup adaptive receipt is missing")
+        if cleanup_receipt is None:
+            verifier.verify_completion(workflow.revision)
+        else:
+            verifier.verify_completion(workflow.revision, post_cleanup_receipt=cleanup_receipt)
 
     def inspect(self, session_id: SessionId) -> ProcessState:
         """Exact session snapshot만 읽고 다른 directory로 fallback하지 않습니다.

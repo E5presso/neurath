@@ -1427,7 +1427,10 @@ class PhaseEvidenceValidator:
         evidence: tuple[str, ...],
     ) -> list[str]:
         approval = self._evidence_item(evidence, "merge_approval")
-        agent_session = self._previous_evidence_item(state, "agent_session_context")
+        agent_session = (
+            self._previous_evidence_item(state, "agent_session_context")
+            or self._previous_evidence_item(state, "session_workflow_context")
+        )
         merge_policy = self._evidence_value(agent_session, "merge_policy")
 
         failures: list[str] = []
@@ -1460,8 +1463,13 @@ class PhaseEvidenceValidator:
         worktree_cleanup = self._evidence_item(evidence, "worktree_cleanup_readback")
 
         failures: list[str] = []
-        if "--delete-branch" not in merge_command:
-            failures.append("merge_command.delete_branch")
+        # A root-owned exact-head API merge can delete the branch separately.
+        # The remote and local deletion readbacks below remain mandatory.
+        if not merge_command or not (
+            "--delete-branch" in merge_command
+            or ("gh api " in merge_command and "/pulls/" in merge_command and "/merge" in merge_command)
+        ):
+            failures.append("merge_command.merge_invocation")
         if not (
             self._evidence_value(merge_readback, "state").casefold() == "merged"
             or self._evidence_flag(merge_readback, "merged")

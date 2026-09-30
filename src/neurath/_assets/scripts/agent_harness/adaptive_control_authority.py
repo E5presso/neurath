@@ -208,7 +208,7 @@ class AdaptiveControlAuthorityVerifier:
         self._adaptive = AdaptiveControlStore(SkillStateStore(handle, workflow_id))
         self._candidates = AdaptiveEvaluationCandidateStore(handle, workflow_id)
 
-    def verify(self) -> AdaptiveControlAuthorityVerification:
+    def verify(self, *, post_cleanup_receipt: Mapping[str, object] | None = None) -> AdaptiveControlAuthorityVerification:
         """Current adaptive snapshot의 external authority를 fail closed로 검증합니다.
 
         Returns:
@@ -227,11 +227,14 @@ class AdaptiveControlAuthorityVerifier:
             workflow,
             snapshot.state,
             prompt_required_decisions=frozenset(),
+            post_cleanup_receipt=post_cleanup_receipt,
         )
 
     def verify_completion(
         self,
         expected_workflow_revision: int,
+        *,
+        post_cleanup_receipt: Mapping[str, object] | None = None,
     ) -> AdaptiveCompletionAuthorityReadback:
         """한 current snapshot에서 semantic completion과 external authority를 검증합니다.
 
@@ -292,6 +295,7 @@ class AdaptiveControlAuthorityVerifier:
             workflow,
             snapshot.state,
             prompt_required_decisions=frozenset(),
+            post_cleanup_receipt=post_cleanup_receipt,
         )
         if (
             external_authority.workflow_id != receipt.workflow_id
@@ -391,6 +395,7 @@ class AdaptiveControlAuthorityVerifier:
         state: AdaptiveControlState,
         *,
         prompt_required_decisions: frozenset[str],
+        post_cleanup_receipt: Mapping[str, object] | None = None,
     ) -> AdaptiveControlAuthorityVerification:
         turn = foreground_turns.get(workflow.owner_actor_id)
         user_prompt_receipt = None if turn is None else turn.user_prompt_receipt
@@ -421,6 +426,7 @@ class AdaptiveControlAuthorityVerifier:
                 state,
                 delegation_id,
                 report,
+                post_cleanup_receipt=post_cleanup_receipt,
             )
             verified.append(delegation_id)
 
@@ -1253,6 +1259,8 @@ class AdaptiveControlAuthorityVerifier:
         state: AdaptiveControlState,
         delegation_id: str,
         group: _IndependentCompletionReport,
+        *,
+        post_cleanup_receipt: Mapping[str, object] | None = None,
     ) -> None:
         delegation = delegations.get(DelegationId(delegation_id))
         if delegation is None:
@@ -1320,11 +1328,21 @@ class AdaptiveControlAuthorityVerifier:
                     self._workflow_id,
                 )
             try:
-                execution_receipts.verify(
-                    self._criterion_evidence(claim),
-                    state.contract,
-                    expected_workflow_revision=workflow_revision,
-                )
+                if post_cleanup_receipt is None:
+                    execution_receipts.verify(
+                        self._criterion_evidence(claim), state.contract,
+                        expected_workflow_revision=workflow_revision,
+                    )
+                else:
+                    if (workflow.kind != "process-ticket"
+                            or workflow.payload.get("skill_state", {}).get("merge_cleanup_receipt")
+                                != dict(post_cleanup_receipt)):
+                        raise AdaptiveControlAuthorityInvalid("post-cleanup receipt is not current")
+                    execution_receipts.verify_recorded_after_cleanup(
+                        self._criterion_evidence(claim), state.contract,
+                        expected_workflow_revision=workflow_revision,
+                        root_head_oid=post_cleanup_receipt.get("root_head"),
+                    )
             except AdaptiveExecutionReceiptError as error:
                 raise AdaptiveControlAuthorityInvalid(str(error)) from error
 

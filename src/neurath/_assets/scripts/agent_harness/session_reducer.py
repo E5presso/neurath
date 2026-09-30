@@ -51,6 +51,7 @@ from scripts.agent_harness.session_events import (
     HarnessIncidentResolved,
     HarnessIncidentsRefreshed,
     KernelEvent,
+    PostCleanupFinalized,
     MaterialActionAbandoned,
     MaterialActionPrepared,
     MaterialActionResolved,
@@ -150,6 +151,8 @@ class SessionStateReducer:
             return self._advance_workflow(state, event)
         if isinstance(event, WorkflowFinalized):
             return self._finalize_workflow(state, event)
+        if isinstance(event, PostCleanupFinalized):
+            return self._finalize_cleaned_workflow(state, event)
         if isinstance(event, ForegroundTurnProvisioned):
             return self._provision_foreground_turn(state, event)
         if isinstance(event, ForegroundTurnPrompted):
@@ -606,6 +609,37 @@ class SessionStateReducer:
             event.idempotency_key,
         )
         return state.__replace__(workflows=workflows)
+
+    def _finalize_cleaned_workflow(self, state, event):
+        """Reduce an issuer recovery event; ordinary source-owner events stay in memory."""
+        workflow = state.workflows.get(event.workflow_id)
+        if (workflow is None or workflow.owner_actor_id != event.original_owner
+                or workflow.kind != "process-ticket" or workflow.revision != event.expected_workflow_revision):
+            raise TransitionRejected("post-cleanup original workflow identity changed")
+        before, after = workflow.payload.get("phase_run", {}), event.payload.get("phase_run", {})
+        if (not before.get("phases") or before.get("current_phase_id") != before["phases"][-1]["id"]
+                or before["phases"][-1]["name"] != "merge_cleanup"
+                or before["phases"][:-1] != after.get("phases", [])[:-1]
+                or after.get("current_phase_id") is not None or after.get("terminal_state") != "merged"
+                or after["phases"][-1]["status"] != "completed"
+                or {k: v for k, v in workflow.payload.items() if k != "phase_run"}
+                    != {k: v for k, v in event.payload.items() if k != "phase_run"}):
+            raise TransitionRejected("post-cleanup event may only finish the final cleanup phase")
+        intermediate = dict(event.payload)
+        intermediate["phase_run"] = {**after, "terminal_state": None}
+        advanced = self._advance_workflow(state, WorkflowAdvanced(
+            session_id=event.session_id, workflow_id=event.workflow_id, actor_id=event.original_owner,
+            expected_workflow_revision=workflow.revision, payload=intermediate,
+            idempotency_key=event.idempotency_key + ":validated-phase"))
+        finalized = self._finalize_workflow(advanced, WorkflowFinalized(
+            session_id=event.session_id, workflow_id=event.workflow_id, actor_id=event.original_owner,
+            expected_workflow_revision=workflow.revision + 1, payload=event.payload,
+            terminal_status=WorkflowStatus.COMPLETED, idempotency_key=event.idempotency_key))
+        result = dict(finalized.workflows)
+        result[event.workflow_id] = WorkflowRecord(workflow.id, workflow.owner_actor_id, workflow.kind,
+            workflow.goal, event.payload, workflow.revision + 1, WorkflowStatus.COMPLETED,
+            event.idempotency_key)
+        return state.__replace__(workflows=result)
 
     def _finalize_workflow(
         self,

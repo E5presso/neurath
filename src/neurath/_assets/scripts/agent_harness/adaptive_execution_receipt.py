@@ -2,6 +2,7 @@
 
 import re
 import shlex
+import subprocess
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -304,6 +305,73 @@ class AdaptiveExecutionReceiptStore:
                 "adaptive execution replay must produce exactly one receipt"
             )
         self._verified.add(cache_key)
+
+    def verify_recorded_after_cleanup(
+        self, evidence: CriterionEvidence, contract: GoalContract, *,
+        expected_workflow_revision: int, root_head_oid: str,
+    ) -> None:
+        """Verify an immutable prior execution without replaying deleted source.
+
+        This path is used only by issuer-fenced post-cleanup finalization. The
+        consumed evaluator candidate must independently preserve the exact
+        pre-cleanup payload; this check retains receipt identity, an exit-zero
+        command and ancestry to the cleaned primary head. It never substitutes
+        the surviving primary checkout's bytes for the deleted worker's bytes.
+        """
+        workflow = self._active_owner_workflow()
+        self._require_contract(workflow, contract, evidence.criterion_id, evidence.kind)
+        self._require_evidence(evidence, contract)
+        if not isinstance(expected_workflow_revision, int) or isinstance(expected_workflow_revision, bool):
+            raise AdaptiveExecutionReceiptInvalid("historical execution revision is invalid")
+        try:
+            artifact = self._artifacts.read_json(evidence.reference)
+        except ArtifactStoreError as error:
+            raise AdaptiveExecutionReceiptInvalid(str(error)) from error
+        if not isinstance(artifact, Mapping) or frozenset(artifact) != self._ARTIFACT_FIELDS:
+            raise AdaptiveExecutionReceiptInvalid("historical execution artifact schema changed")
+        node = artifact.get("pytest_node")
+        if (not isinstance(node, str) or not node or node != node.strip()
+                or "\0" in node or "\\" in node or node.startswith(("-", "/"))
+                or ".." in node.split("::", 1)[0].split("/")
+                or len(node.split("::")) < 2 or not node.split("::", 1)[0].endswith(".py")):
+            raise AdaptiveExecutionReceiptInvalid("historical pytest node is invalid")
+        command_argv = self._command_argv(node)
+        expected = {
+            "command_argv": list(command_argv),
+            "criterion_id": evidence.criterion_id,
+            "evidence_kind": evidence.kind.value,
+            "goal_fingerprint": contract.fingerprint,
+            "intent_revision": contract.intent_revision,
+            "owner_actor_id": str(workflow.owner_actor_id),
+            "schema": self._ARTIFACT_SCHEMA,
+            "session_id": str(self._handle.session_id),
+            "source_revision": contract.source_revision,
+            "workflow_id": str(self._workflow_id),
+            "workflow_revision": expected_workflow_revision,
+        }
+        if any(artifact.get(key) != value for key, value in expected.items()):
+            raise AdaptiveExecutionReceiptInvalid("historical execution artifact identity changed")
+        self._verify_command_receipt(artifact.get("command_receipt"), command_argv)
+        fingerprint = artifact.get("worktree_fingerprint")
+        if not self._sha(fingerprint, 64):
+            raise AdaptiveExecutionReceiptInvalid("historical worktree fingerprint is invalid")
+        provenance = artifact.get("source_import_provenance")
+        if (not isinstance(provenance, Mapping) or provenance.get("module") != "neurath"
+                or not isinstance(provenance.get("resolved_origin"), str)
+                or not provenance["resolved_origin"]
+                or not isinstance(artifact.get("source_import_roots"), list)
+                or not artifact["source_import_roots"]):
+            raise AdaptiveExecutionReceiptInvalid("historical import provenance is invalid")
+        receipt = artifact["command_receipt"]
+        if not self._sha(root_head_oid, 40):
+            raise AdaptiveExecutionReceiptInvalid("cleaned primary head is invalid")
+        ancestor = subprocess.run(
+            ["git", "-C", str(self._handle._repository_control_root()), "merge-base",
+             "--is-ancestor", receipt["head_sha"], root_head_oid],
+            check=False, capture_output=True,
+        )
+        if ancestor.returncode != 0:
+            raise AdaptiveExecutionReceiptInvalid("historical execution is not in the cleaned primary head")
 
     def _active_owner_workflow(self) -> WorkflowRecord:
         state = self._handle.inspect()

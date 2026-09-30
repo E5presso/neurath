@@ -664,6 +664,9 @@ class AdaptiveEvaluationCandidateStore:
             or current_digest != artifact.target_workflow_payload_digest
             or not self._is_exact_adaptive_transition(workflow, artifact)
         ):
+            from scripts.agent_harness.post_cleanup_admission import cleanup_preserves_candidate
+            if cleanup_preserves_candidate(self._handle, workflow, artifact):
+                return
             raise AdaptiveEvaluationCandidateConflict(
                 "adaptive evaluation candidate does not own the current workflow revision"
             )
