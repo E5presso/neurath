@@ -88,7 +88,7 @@
     "_assets/.agents/skills/monitor-pr/scripts/monitor_launch_lock.py": "067ed910b41819e9088d20288c1824b86f1255f2f07968a0575318cd9850b850",
     "_assets/.agents/skills/monitor-pr/scripts/monitor_observation_store.py": "4b2792e246b17be9f7a9c0e235cc4adaf563895d3a9ddc546a73c950c3bb49a8",
     "_assets/.agents/skills/monitor-pr/scripts/monitor_process_manager.py": "be2937ccc72b0a2d1500ff3963c811ed1eccc7dfab63f195d0fc5dbd32203a99",
-    "_assets/.agents/skills/monitor-pr/scripts/monitor_runtime_handoff.py": "3d63e858e18a4c969ce103dab8805f1e0dc5e3cdb313146f457b142a53852805",
+    "_assets/.agents/skills/monitor-pr/scripts/monitor_runtime_handoff.py": "7e5188ba42388bb351e0035a926cb41a1d1420fc5590dab2cb9504ba3f47de96",
     "_assets/.agents/skills/monitor-pr/scripts/monitor_runtime_lock.py": "3629d9166f8825a66147193a3d8dc4232ce0e1eb36d387253eb9f525a80828fd",
     "_assets/.agents/skills/monitor-pr/scripts/monitor_runtime_readback.py": "731ebeabcf63d3ea2669039572df6c18c6ec00df8ba9f7394085cbb5ecd74dbc",
     "_assets/.agents/skills/monitor-pr/scripts/monitor_runtime_resources.py": "e572a9239c25943697e6dc018c04207b2af5b00218243805f00243d02bcdddf5",

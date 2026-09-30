@@ -693,7 +693,9 @@ class MonitorRuntimeHandoffService:
         original = self._store.read()
         self._validator.validate(original.skill_state)
         existing = original.skill_state.get("monitor_runtime_handoff")
-        if isinstance(existing, Mapping) and existing.get("state") in {"prepared", "completed"}:
+        if (isinstance(existing, Mapping) and existing.get("state") in {"prepared", "completed"}
+                and (existing.get("state") == "prepared"
+                     or existing.get("expected_label") == expected_label)):
             plan = MonitorHandoffPlan.from_receipt(
                 existing,
                 paths=self._paths,

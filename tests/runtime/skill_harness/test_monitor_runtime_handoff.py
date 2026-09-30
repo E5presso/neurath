@@ -266,6 +266,29 @@ class MonitorRuntimeHandoffTest(TestCase):
         self.assertEqual("owner-thread", lifecycle["owner_session_id"])
         self.assertEqual(1, len(router.commands))
 
+    def test_completed_handoff_can_rotate_to_next_pr_label(self) -> None:
+        """A completed PR handoff must not pin a multi-issue workflow to its first PR."""
+        fixture = MonitorRuntimeHandoffFixture()
+        try:
+            paths = monitor_runtime_handoff.MonitorRuntimePaths(
+                monitor_runtime_handoff.WorktreeIdentityResolver().resolve(fixture.root)
+            )
+            service = monitor_runtime_handoff.MonitorRuntimeHandoffService(
+                handle=fixture.handle, workflow_id=fixture.workflow_id, paths=paths
+            )
+            with patch.object(monitor_runtime_handoff.shutil, "which", return_value=None):
+                first = service.prepare(expected_label="com.neurath.pr131.local-monitor", user_id=501)
+                replay = service.prepare(expected_label="com.neurath.pr131.local-monitor", user_id=501)
+                second = service.prepare(expected_label="com.neurath.pr132.local-monitor", user_id=501)
+            retained = fixture.mapping(fixture.skill_state()["monitor_runtime_handoff"], "handoff")
+        finally:
+            fixture.close()
+
+        self.assertEqual(first["handoff_id"], replay["handoff_id"])
+        self.assertNotEqual(first["handoff_id"], second["handoff_id"])
+        self.assertEqual("completed", second["state"])
+        self.assertEqual("com.neurath.pr132.local-monitor", retained["expected_label"])
+
     def test_keeps_current_monitor_state_and_label(self) -> None:
         """Current canonical local runtime artifacts는 restart handoff에서 보존합니다."""
         fixture = MonitorRuntimeHandoffFixture()
