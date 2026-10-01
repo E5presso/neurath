@@ -125,6 +125,11 @@ def _host_hook(root, host, raw, environment=None, stop_guard=None, *, identity_o
         from neurath.hosts.identity import validate_tool_foreground
 
         validate_tool_foreground(root, host, payload, env)
+        from neurath.runtime.delegation_tasks import guard_tool
+        try:
+            guard_tool(root, payload, host=host)
+        except (ValueError, RuntimeError) as error:
+            return 2, {}, str(error)
         # Fence a migrated source even when an older MCP server is still loaded.
         # The installed native hook runs before issuing another tool capability.
         from neurath.runtime.database import RuntimeDatabase
@@ -407,6 +412,12 @@ def _hook(root, host, raw, environment=None):
         # host-attested PreToolUse binding. No other hook work runs here.
         from neurath.agents.mcp import TOOL_NAMES, bind_call
 
+        if isinstance(switch, dict) and switch.get("hook_event_name") == "PreToolUse":
+            try:
+                from neurath.runtime.delegation_tasks import guard_tool
+                guard_tool(root, switch, host=host)
+            except (ValueError, RuntimeError) as error:
+                return 2, {}, str(error)
         if (not isinstance(switch, dict) or switch.get("hook_event_name") != "PreToolUse"
                 or switch.get("tool_name") not in TOOL_NAMES):
             return 0, {}, ""

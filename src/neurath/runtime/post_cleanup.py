@@ -253,7 +253,7 @@ def finalize_cleaned_worker(root, issuer_handle, issuer, fields):
                 _verify_task_scope(issuer_handle, caller,
                     _task_scope(issuer, run_id, source, workflow, release, ledger, task),
                     fields.get("task_scope_delegation_id", ""))
-                validate_instruction_sources(tx, source, task.definition.sources)
+                validate_instruction_sources(tx, source, task.definition.sources, definition=task.definition)
                 from neurath.providers.waves import pending
                 from scripts.agent_harness.delegation_wave import require_complete
                 if pending(root, session_id=str(source.session.id), actor_id=str(handle.actor_id),

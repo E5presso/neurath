@@ -24,6 +24,17 @@ from neurath.runtime.task_schema import TASKS, TaskError, arguments, public_task
 def execute(root, name, inputs, *, identity, expected_turn=None, verified_policy_evidence=None):
     fields = arguments(name, inputs)
     domain, action = TASKS[name][:2]
+    if identity is not None and not TASKS[name][4] and name not in {
+            "task_resolve", "worktree_release", "delegation_grant_prepare", "delegation_grant_choose", "delegation_grant_revoke"}:
+        from neurath.runtime.delegation_tasks import execution_guard
+        try:
+            execution_guard(root, identity.session, actor=identity.actor, operation=name)
+        except ValueError as error:
+            raise TaskError("delegated-execution-denied", str(error)) from error
+    if domain == "user-delegation":
+        from neurath.runtime.delegation_tasks import execute as delegation_execute
+        return delegation_execute(root, name, fields, identity=identity, expected_turn=expected_turn,
+                                  verified_policy_evidence=verified_policy_evidence)
     if domain == "memory-migration":
         from neurath.memory.migration import PullMigration
         from neurath.runtime.task_ledger_tasks import service_for

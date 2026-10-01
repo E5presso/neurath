@@ -62,9 +62,26 @@ Neurath는 코딩 에이전트가 받은 사용자 요청을 작업 기록, 호�
 
 관련 회귀 검사는 [tests/test_app_project_observation.py](../../../tests/test_app_project_observation.py), [tests/test_goal_reminders.py](../../../tests/test_goal_reminders.py), [tests/runtime/agent_harness/test_foreground_stop_aggregate.py](../../../tests/runtime/agent_harness/test_foreground_stop_aggregate.py)에서 확인할 수 있습니다. 이는 소스 수준의 확인 위치이며, 특정 설치나 현재 MCP 연결, 실제 앱 세션의 활성화를 보증하는 결과는 아닙니다.
 
-현재 검색에 노출되는 명명 공개 도구는 128개이고 내부 연산은 138개입니다. 도구가 존재해도 활성 네이티브 바인딩이 필요합니다. `UNATTESTED`인 세션·턴·자식은 실행 상태를 바꿀 수 없습니다. Codex 자식 검증은 실제 생성 결과와 자식 트랜스크립트의 부모·세션 메타데이터를, Claude는 자식 트랜스크립트의 일회성 부모 Agent 호출 근거를 사용합니다. 등록이 늦었다면 첫 상태 동작에서 신원 검증을 다시 시도할 수 있지만 실제 계보가 확인되기 전에는 셸·쓰기가 `child-identity-unverified`로 남습니다.
+현재 검색에 노출되는 명명 공개 도구는 143개이고 내부 연산은 153개입니다. 도구가 존재해도 활성 네이티브 바인딩이 필요합니다. `UNATTESTED`인 세션·턴·자식은 실행 상태를 바꿀 수 없습니다. Codex 자식 검증은 실제 생성 결과와 자식 트랜스크립트의 부모·세션 메타데이터를, Claude는 자식 트랜스크립트의 일회성 부모 Agent 호출 근거를 사용합니다. 등록이 늦었다면 첫 상태 동작에서 신원 검증을 다시 시도할 수 있지만 실제 계보가 확인되기 전에는 셸·쓰기가 `child-identity-unverified`로 남습니다.
 
 ## 명명 도구 입력 참조
+
+### 로컬 opt-in 앱 위임
+
+기본 상태에는 grant가 없습니다. 수신 native 루트가 `delegation_grant_prepare`로 정확한 제안을 준비하고 반환된 `question`을 전체 질문으로 그대로 표시한 뒤 실제 native 사용자의 새 답변을 기다립니다. `delegation_grant_choose`는 그 질문, 현재 receipt와 native 트랜스크립트를 확인합니다. `approved=true`, peer 문구, 복사한 동의는 API 입력이 아닙니다. target 세션·actor·canonical Git 프로젝트·정확한 worktree는 호출자가 선택하지 않고 native binding에서 가져옵니다.
+
+활성 grant는 source가 별도로 승인받은 앱 메시지에 사용할 `delivery_input`을 반환합니다. 이 입력은 프로토콜 schema, grant 참조, 승인된 작업 정의 digest만 담습니다. 수신자는 `create_thread` 또는 `send_message_to_thread`의 native `codex_app` 수신·완료 이벤트 쌍이 확인된 경우에만 `delegation` 작업 출처를 수락합니다. 수신 turn·ID·출력 해시를 검증한 뒤 엄격한 parser로 escape된 바깥 envelope를 읽습니다. 일반 사용자·도구 본문의 XML, 중첩·중복 필드, DTD, `read_thread` 표시 객체는 출처 권한이 아닙니다. 현재 envelope는 source 호스트나 계정을 증명하지 않으며 구형 text-only 앱 전달은 미지원입니다.
+
+Intake는 작업 하나, delegation 출처 하나, 승인된 정확한 key·title·goal·acceptance·dependencies를 요구합니다. 소비·전달 replay 방지·task 생성은 같은 SQLite 트랜잭션에서 수행하며 task CAS 실패는 grant를 소비하지 않습니다. Grant는 한 번의 intake만 허용하고 target 프로젝트·세션에 로컬로 결속됩니다. Task 시작, native 변경 도구 admission, named MCP 실행, native 자식 task-scope admission에서 다시 검사합니다. 만료·취소는 harness bypass 중에도 이후 효과를 차단하며 작업 결과 기록, grant 관리, 정확한 claim 해제는 허용합니다. 이미 admission된 동작을 소급해 되돌리지 않으며 미완료 task를 자동 종료하지 않습니다. 세션 migration, 다른 checkout, 변경된 작업 정의는 새 승인 grant가 필요합니다. Grant는 앱 메시지, 설치, 훅 신뢰 또는 호스트 권한 변경을 승인하지 않습니다.
+
+| API | 필수 입력 |
+| --- | --- |
+| `delegation_grant_prepare` | `source_session` (canonical 앱 thread UUID), `task` (정확한 `key`, `title`, `goal`, `acceptance`, `dependencies`), `expires_at` (향후 24시간 안의 Unix 초), `use_count` (정확히 `1`), `key` |
+| `delegation_grant_choose` | `reference`, `decision` (새 native 답변과 일치하는 `yes` 또는 `no`), `key` |
+| `delegation_grant_status` | `reference`; 현재 record `revision`, 상태, 만료, 사용 횟수 반환 |
+| `delegation_grant_revoke` | `reference`, status에서 읽은 `expected_revision`, `key`; 실제 native 사용자 원문은 `revoke delegation <reference>` 또는 `위임 취소 <reference>`여야 함 |
+
+이 출처는 별도 `delegation`이며 `current_prompt_source`를 채우거나 `ForegroundUserPromptReceipt`를 만들지 않습니다. 구현은 `hosts/app_delegation.py`, `runtime/delegation_tasks.py`, bundled `scripts/agent_harness/user_delegation.py`에 있습니다. `tests/test_user_delegation_grants.py`는 모의 프로토콜과 native-bound MCP fixture를 확인하며 실제 프로젝트에 사용자 grant가 등록됐다는 증명은 아닙니다.
 
 아래는 현재 명명 도구의 입력 계약입니다. 중첩 필드의 필수 조건은 상위 객체나 배열 항목을 제공했을 때 적용됩니다. 스키마 통과는 첫 검사일 뿐이며 네이티브 신원, 소유권, 출처, revision, 각 동작의 전제 조건도 적용됩니다. `_neurath_binding`은 호스트가 제공하므로 임의로 만들지 않습니다.
 
@@ -112,7 +129,7 @@ Neurath는 코딩 에이전트가 받은 사용자 요청을 작업 기록, 호�
 | `tasks[].title` | 필수 | 문자열; 1–512 자 |
 | `tasks[].goal` | 필수 | 문자열; 1–16000 자 |
 | `tasks[].sources` | 필수 | 배열; 0–31 항목 |
-| `tasks[].sources[].kind` | 필수 | 문자열: `"prompt"`, `"ticket"`, `"spec"` |
+| `tasks[].sources[].kind` | 필수 | 문자열: `"prompt"`, `"ticket"`, `"spec"`, `"delegation"` |
 | `tasks[].sources[].reference` | 필수 | 문자열; 1–4096 자 |
 | `tasks[].sources[].revision` | 필수 | 문자열; 1–4096 자 |
 | `tasks[].acceptance` | 필수 | 배열; 1–32 항목; 문자열; 1–16000 자 |

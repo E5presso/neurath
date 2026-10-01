@@ -495,9 +495,17 @@ def test_existing_install_adopts_tracked_checkout_bootstrap_without_losing_user_
                  ".claude/settings.json", ".mcp.json"):
         text = (source / name).read_text()
         if name == ".codex/config.toml":
+            # The checkout registration can predate new API definitions. Build
+            # this fixture from the current catalog without changing the host.
+            from neurath.runtime.task_schema import TASKS
+            launcher = 'exec "$(git rev-parse --show-toplevel)/tools/checkout_host" mcp'
             text = ("# neurath:checkout-bootstrap\n" + codex_user
-                    + "[mcp_servers.neurath_collaboration]"
-                    + text.split("[mcp_servers.neurath_collaboration]", 1)[1])
+                    + '[mcp_servers.neurath_collaboration]\ncommand = "sh"\n'
+                    + 'args = ' + json.dumps(["-c", launcher]) + '\n'
+                    + 'tool_timeout_sec = 3660\nstartup_timeout_sec = 600\n'
+                    + 'enabled_tools = ' + json.dumps([*TASKS, "agent"]) + '\n'
+                    + ''.join(f'[mcp_servers.neurath_collaboration.tools.{tool}]\napproval_mode = "approve"\n'
+                              for tool in (*TASKS, "agent")))
         elif name == ".claude/settings.json":
             settings = json.loads(text)
             settings["model"] = "user-choice"

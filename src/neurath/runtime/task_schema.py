@@ -16,6 +16,7 @@ from neurath.runtime.process_tasks import definitions as process_definitions
 from neurath.runtime.monitor_tasks import definitions as monitor_definitions
 from neurath.runtime.task_ledger_tasks import definitions as task_ledger_definitions
 from neurath.runtime.provider_wave_tasks import definitions as provider_wave_definitions
+from neurath.runtime.delegation_tasks import definitions as delegation_definitions
 
 
 class TaskError(ValueError):
@@ -193,6 +194,7 @@ TASKS.update(installation_definitions())
 TASKS.update(process_definitions())
 TASKS.update(monitor_definitions())
 TASKS.update(task_ledger_definitions())
+TASKS.update(delegation_definitions())
 TASKS.update({
     "delivery_status": ("delivery", "status", "Inspect a participating message's delivery attempts and repair hold. Not a polling monitor.",
         {"message_id": text_field(64)}, True),

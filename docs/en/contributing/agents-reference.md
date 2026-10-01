@@ -66,9 +66,26 @@ The identity and task rules are implemented in [src/neurath/hosts/identity.py](.
 
 Relevant regression coverage includes [tests/test_app_project_observation.py](../../../tests/test_app_project_observation.py), [tests/test_goal_reminders.py](../../../tests/test_goal_reminders.py), and [tests/runtime/agent_harness/test_foreground_stop_aggregate.py](../../../tests/runtime/agent_harness/test_foreground_stop_aggregate.py). These references identify source-level checks. They do not certify a particular installation, current MCP connection, or visible native app session.
 
-Current discovery exposes 128 public named tools over 138 internal operations. Tool presence still needs a live native binding. An `UNATTESTED` session, turn, or child cannot mutate execution state. Codex child verification uses the actual spawn result and child transcript parent/session metadata; Claude uses one-time parent Agent-call evidence in the child transcript. Late registration can retry identity verification at the first state operation, but shell and writes remain `child-identity-unverified` until real lineage is established.
+Current discovery exposes 143 public named tools over 153 internal operations. Tool presence still needs a live native binding. An `UNATTESTED` session, turn, or child cannot mutate execution state. Codex child verification uses the actual spawn result and child transcript parent/session metadata; Claude uses one-time parent Agent-call evidence in the child transcript. Late registration can retry identity verification at the first state operation, but shell and writes remain `child-identity-unverified` until real lineage is established.
 
 ## Named input reference
+
+### Local opt-in app delegation
+
+No grant exists by default. The receiving native root prepares an exact proposal using `delegation_grant_prepare`, displays the returned `question` verbatim as the complete assistant question, and waits for a fresh actual native user answer. `delegation_grant_choose` verifies that question, the current receipt and the native transcript; `approved=true`, peer text and copied consent are not API inputs. The target session, actor, canonical Git project and exact worktree are taken from the native binding, not chosen by the caller.
+
+An active grant returns `delivery_input` for the source's independently authorized app message. It contains only the protocol schema, grant reference and approved task-definition digest. The receiver accepts a `delegation` task source only from paired native `codex_app` ingress/completion records for `create_thread` or `send_message_to_thread`. A strict parser reads the escaped outer envelope after verifying the recipient turn, ID and output hash. XML in ordinary user/tool content, nested/duplicate fields, DTDs and `read_thread` display objects do not establish authority. The current envelope does not prove the source host or account, and older text-only app deliveries are unsupported.
+
+The intake requires one task, one delegation source and the exact approved key/title/goal/acceptance/dependencies. Consumption, delivery replay fencing and task creation share one SQLite transaction; failed task CAS consumes nothing. The grant permits exactly one intake, remains local to the target project and session, and is checked again at task start, native material-tool admission, named MCP execution and native child task-scope admission. Expiry or revocation blocks future effects, including during harness bypass, while task result recording, grant administration and exact claim release remain available. Previously admitted operations are not retroactively undone. Unfinished tasks are not automatically resolved. Session migration, a different checkout or a changed task definition requires a new approved grant; grants do not authorize app messaging, installation, hook trust or host permission changes.
+
+| API | Required input |
+| --- | --- |
+| `delegation_grant_prepare` | `source_session` (canonical app thread UUID), `task` (exact `key`, `title`, `goal`, `acceptance`, `dependencies`), `expires_at` (Unix seconds, in the next 24 hours), `use_count` (exactly `1`), `key` |
+| `delegation_grant_choose` | `reference`, `decision` (`yes` or `no` matching the fresh native answer), `key` |
+| `delegation_grant_status` | `reference`; returns the current record `revision`, state, expiry and uses |
+| `delegation_grant_revoke` | `reference`, `expected_revision` from status, `key`; the actual native user text must be `revoke delegation <reference>` or `위임 취소 <reference>` |
+
+These are separate `delegation` sources; they never populate `current_prompt_source` or create a `ForegroundUserPromptReceipt`. Source code: `hosts/app_delegation.py`, `runtime/delegation_tasks.py` and the bundled `scripts/agent_harness/user_delegation.py`. `tests/test_user_delegation_grants.py` covers simulated protocol and native-bound MCP fixtures; these checks do not claim a real user grant was registered in a live project.
 
 The tables below are the current named-tool input contract. Nested required fields are required when their parent object or array item is supplied. Schema acceptance is only the first check; native identity, ownership, source, revision, and operation-specific prerequisites still apply. The host supplies `_neurath_binding`; do not synthesize it.
 
@@ -116,7 +133,7 @@ No agent-supplied input fields.
 | `tasks[].title` | required | text; 1–512 characters |
 | `tasks[].goal` | required | text; 1–16000 characters |
 | `tasks[].sources` | required | array; 0–31 items |
-| `tasks[].sources[].kind` | required | text: `"prompt"`, `"ticket"`, `"spec"` |
+| `tasks[].sources[].kind` | required | text: `"prompt"`, `"ticket"`, `"spec"`, `"delegation"` |
 | `tasks[].sources[].reference` | required | text; 1–4096 characters |
 | `tasks[].sources[].revision` | required | text; 1–4096 characters |
 | `tasks[].acceptance` | required | array; 1–32 items; text; 1–16000 characters |

@@ -28,6 +28,14 @@ This is distinct from assigning work to a particular peer. An article is a repor
 
 The newsroom does not wake sleeping sessions or replay the publications from a period when a session was inactive. An active registry entry alone also does not establish live participation. Use direct collaboration when a particular agent needs a response or an assignment. A newsroom publication stays in local project storage; it is not a public issue or a message to an external service.
 
+## Authorize one request from another Codex app task
+
+App messages do not automatically become your instructions. You can ask the agent in the receiving task to prepare a local, one-use permission for a specific source task, exact receiving task and project, exact work, and expiry time. The agent shows those details before asking for your approval. Preparation alone permits no work; only your fresh answer to that exact proposal registers the permission.
+
+After approval, the agent can provide the bounded request for the authorized source task. The receiving agent checks the actual app delivery and accepts only the approved work. A copied message, XML quote, changed scope, other source or target, expired permission, or repeated request is rejected. You can ask to revoke the permission using the exact reference the agent supplied; the agent verifies your instruction and blocks future delegated actions. Revocation cannot undo an operation already admitted, and unfinished work remains recorded.
+
+This permission is off by default and does not change app messaging permissions, hook trust, or host security settings. The supported app envelope identifies the source task but does not independently identify its host or account. The agent must report an unsupported or ambiguous delivery rather than infer those identities. Installing support and approving an actual permission are separate actions.
+
 ## Delegate a bounded check to a child
 
 For an independent reproduction or review within the current host's task, the host may create a subordinate agent. When the host verifies its direct relationship to the current session, Neurath treats it as a **native child**.

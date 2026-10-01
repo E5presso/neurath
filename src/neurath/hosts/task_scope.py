@@ -43,7 +43,7 @@ def instruction_scope(root, state, task_id, expected_task_revision):
         if (task is None or type(expected_task_revision) is not int
                 or task.revision != expected_task_revision or task.status is not TaskStatus.IN_PROGRESS):
             raise TaskLedgerError("task delegation requires an exact in-progress task")
-        validate_instruction_sources(tx, current, task.definition.sources)
+        validate_instruction_sources(tx, current, task.definition.sources, definition=task.definition, worktree=root)
         return {"task_id": task.id, "task_revision": task.revision,
                 "definition_digest": task.definition.digest}
 
