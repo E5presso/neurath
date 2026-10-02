@@ -684,8 +684,39 @@ def _task_result_reporting(root, state, record, payload):
         if (task is None or task.definition.digest != scope["definition_digest"]
                 or task.revision != scope["task_revision"] + int(task.status.terminal)):
             return False
-        validate_instruction_sources(tx, state, task.definition.sources)
+        sources = task.definition.sources
+        if len(sources) == 1 and sources[0].kind == "delegation":
+            from scripts.agent_harness.user_delegation import validate_consumed_source
+            validate_consumed_source(tx, state, sources[0], task.definition, root)
+        else:
+            validate_instruction_sources(tx, state, sources, definition=task.definition, worktree=root)
     return True
+
+
+def issued_result_reporting(root, session, actor, operation):
+    """Allow only an already issued native child's scoped result submission."""
+    from scripts.agent_harness.session_kernel import ActorId, ActorLineageAssurance, DelegationId
+    if operation not in {"artifact_put", "evaluation_report"}:
+        return False
+    state = _state(root, session)
+    if str(state.session.root_actor_id) == actor:
+        return False
+    child = state.actors.get(ActorId(actor))
+    if (child is None or child.parent_actor_id != state.session.root_actor_id
+            or child.lineage_assurance is not ActorLineageAssurance.HOST_ATTESTED):
+        return False
+    records = [record for record in snapshot(root, session)["spawns"].values()
+               if record.get("delegation") and f"{record.get('host')}:{record.get('child')}" == actor]
+    if len(records) != 1:
+        return False
+    record = records[0]
+    issued = state.delegations.get(DelegationId(record["delegation"]["id"]))
+    if (issued is None or str(issued.target_actor_id) != actor
+            or issued.owner_actor_id != state.session.root_actor_id
+            or issued.assignment != record["delegation"]["assignment"]):
+        return False
+    return _task_result_reporting(root, state, record,
+        {"tool_name": "mcp__neurath_collaboration__" + operation})
 
 
 def attach_delegation(root, host, payload):
@@ -972,8 +1003,13 @@ def recover_missing_codex_prompt(root, host, payload, environment):
 
 def _native_peer_turn(root, path, session, turn_id):
     """Require paired peer or scheduled host delivery; text grants no authority."""
+    return _verified_peer_delivery(root, path, session, turn_id) is not None
+
+
+def _verified_peer_delivery(root, path, session, turn_id):
+    """Return the exact app-produced output from one native ingress/completion pair."""
     if not native_root_turn(root, path, session, turn_id):
-        return False
+        return None
 
     def delivery(item):
         if (not isinstance(item, dict) or "call_id" in item
@@ -985,33 +1021,36 @@ def _native_peer_turn(root, path, session, turn_id):
             return None
         return item["name"], item["id"], hashlib.sha256(item["output"].encode()).hexdigest()
 
-    completed, verified = None, False
+    completed, verified, seen_completion = None, None, False
     for record in _reverse_native_records(path, {
         "task_started", "item_completed", "function_call_output", "message",
     }):
         if record.get("type") == "oversized_native_record":
-            return False  # Its size cannot hide an unreconciled human prompt.
+            return None  # Its size cannot hide an unreconciled human prompt.
         item = record.get("payload")
         if not isinstance(item, dict):
             continue
         if record.get("type") == "event_msg":
             if item.get("type") == "task_started":
-                return verified and item.get("turn_id") == turn_id
+                return verified if item.get("turn_id") == turn_id else None
             native = item.get("item")
             if (item.get("type") == "item_completed"
                     and item.get("thread_id") == session and item.get("turn_id") == turn_id
-                    and isinstance(native, dict) and native.get("type") == "FunctionCallOutput"):
+                    and isinstance(native, dict) and native.get("type") == "FunctionCallOutput"
+                    and "call_id" not in native and not seen_completion):
                 completed = delivery(native)
+                seen_completion = True
         elif record.get("type") == "response_item":
             if (item.get("type") == "message" and item.get("role") == "user"
                     and not _native_context_refresh(item, turn_id)):
-                return False  # A deferred human prompt still needs its own reconciliation.
+                return None  # A deferred human prompt still needs its own reconciliation.
             metadata = item.get("internal_chat_message_metadata_passthrough")
             if (item.get("type") == "function_call_output"
                     and isinstance(metadata, dict) and metadata.get("turn_id") == turn_id
                     and completed is not None and delivery(item) == completed):
-                verified = True
-    return False
+                if verified is None:
+                    verified = item
+    return None
 
 
 def _resume_peer_foreground(root, session, path, turn_id):

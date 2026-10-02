@@ -105,7 +105,7 @@ def definitions():
     def obj(properties):
         return {"type": "object", "properties": properties, "required": list(properties),
                 "additionalProperties": False}
-    source = obj({"kind": choice("prompt", "ticket", "spec"), "reference": text_field(4096),
+    source = obj({"kind": choice("prompt", "ticket", "spec", "delegation"), "reference": text_field(4096),
                   "revision": text_field(4096)})
     definition = obj({"key": text_field(512), "title": text_field(512), "goal": text_field(),
         "sources": array(source, maximum=31), "acceptance": array(text_field(), 1, 32),
@@ -162,10 +162,21 @@ def service_for(root, *, identity, expected_turn, verified_policy_evidence=None,
                    task_id=task_id, db=tx.connection):
             raise TaskLedgerError("task has unfinished or unsuccessful provider waves")
 
-    return TaskService(handle, worktree=root, admission=admission,
+    service = TaskService(handle, worktree=root, admission=admission,
                        start_admission=start_admission if operation_name == "task_start" else None,
                        resolve_admission=resolve_admission if operation_name == "task_resolve" else None,
                        completion_admission=completion_admission if operation_name == "task_resolve" else None)
+    if identity.host == "codex":
+        from neurath.hosts.app_delegation import current_delivery
+        def delivery(process):
+            from scripts.agent_harness.task_ledger import TaskLedgerError
+            try:
+                return current_delivery(root, identity.session,
+                    process.foreground_turns[process.session.root_actor_id].vendor_turn_id)
+            except ValueError as error:
+                raise TaskLedgerError(str(error)) from error
+        service.delegation_delivery = delivery
+    return service
 
 
 def execute(root, name, fields, *, identity, expected_turn, verified_policy_evidence=None):

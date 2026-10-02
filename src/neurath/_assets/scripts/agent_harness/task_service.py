@@ -21,9 +21,16 @@ def read_ledger(tx, process):
     return record, ledger
 
 
-def validate_instruction_sources(tx, process, sources):
+def validate_instruction_sources(tx, process, sources, *, definition=None, worktree=None, now=None):
     """Validate retained native instructions without creating a new prompt."""
     prompts = [source for source in sources if source.kind == "prompt"]
+    delegated = [source for source in sources if source.kind == "delegation"]
+    if delegated:
+        if len(sources) != 1 or definition is None:
+            raise TaskLedgerError("delegation must be the sole exact task instruction source")
+        from .user_delegation import validate_source
+        validate_source(tx, process, delegated[0], definition, worktree, now=now)
+        return
     if not prompts:
         raise TaskLedgerError("an explicit native prompt source is required")
     for source in prompts:
@@ -48,7 +55,7 @@ def validate_task_scope(tx, process, scope):
             or task.revision != scope["task_revision"] or task.status is not TaskStatus.IN_PROGRESS
             or task.definition.digest != scope["definition_digest"]):
         raise TaskLedgerError("task delegation requires an exact in-progress task")
-    validate_instruction_sources(tx, process, task.definition.sources)
+    validate_instruction_sources(tx, process, task.definition.sources, definition=task.definition)
 
 
 def validate_scoped_foreground(tx, process, foreground):
@@ -131,6 +138,8 @@ class TaskService:
         self.start_admission = start_admission
         self.resolve_admission = resolve_admission
         self.completion_admission = completion_admission
+        self.delegation_delivery = None
+        self.delegation_clock = None
         root = handle._repository_control_root()
         self.worktree = Path(root if worktree is None else worktree).resolve()
         self.database = RuntimeDatabase(root)
@@ -226,10 +235,11 @@ class TaskService:
             for item in tasks:
                 sources = tuple(TaskSource(**source) for source in item["sources"])
                 has_prompt = any(source.kind == "prompt" for source in sources)
-                if prompt is None and not has_prompt:
+                delegated = any(source.kind == "delegation" for source in sources)
+                if prompt is None and not has_prompt and not delegated:
                     raise TaskLedgerError(
                         "task intake requires a native user instruction receipt or an explicit retained prompt source")
-                if (prompt is not None and ledger.tasks and not has_prompt
+                if (prompt is not None and ledger.tasks and not has_prompt and not delegated
                         and not any(source.kind == "prompt"
                             and source.reference == prompt.authority_reference
                             and source.revision == prompt.prompt_digest
@@ -238,20 +248,34 @@ class TaskService:
                         "appending tasks after a new prompt requires an explicit prompt source; "
                         "select the original requirement or an explicit new request from task_list, "
                         "not an implicit status question")
-                if not has_prompt:
+                if not has_prompt and not delegated:
                     sources += (TaskSource("prompt", prompt.authority_reference, prompt.prompt_digest),)
-                validate_instruction_sources(tx, process, sources)
-                definitions.append(TaskDefinition(key=item["key"], title=item["title"], goal=item["goal"],
+                definition = TaskDefinition(key=item["key"], title=item["title"], goal=item["goal"],
                     sources=sources, acceptance=tuple(item["acceptance"]), producer="canonical",
-                    evidence_contract=item.get("evidence_contract", "agent-report"), dependencies=tuple(item["dependencies"])))
+                    evidence_contract=item.get("evidence_contract", "agent-report"), dependencies=tuple(item["dependencies"]))
+                if delegated:
+                    if len(sources) != 1 or len(tasks) != 1:
+                        raise TaskLedgerError("delegation intake requires one exact task and one grant")
+                    from .user_delegation import consume
+                    import time
+                    delivery = None if self.delegation_delivery is None else self.delegation_delivery(process)
+                    consume(tx, process, sources[0], definition, self.worktree, delivery,
+                            now=time.time() if self.delegation_clock is None else self.delegation_clock())
+                else:
+                    validate_instruction_sources(tx, process, sources)
+                definitions.append(definition)
             return ledger.define(tuple(definitions), expected_revision=expected_revision, key=key)
         request = ["define", expected_revision, sorted(tasks, key=lambda item: item["key"])]
         return self._mutate(key, request, transform)
 
     def start(self, task_id, *, expected_revision, expected_task_revision, key):
         def transform(tx, process, ledger):
+            task = next((t for t in ledger.tasks if t.id == task_id), None)
             if self.start_admission is not None:
                 self.start_admission(process, ledger, task_id)
+            if task is not None and any(s.kind == "delegation" for s in task.definition.sources):
+                validate_instruction_sources(tx, process, task.definition.sources, definition=task.definition,
+                    worktree=self.worktree, now=None if self.delegation_clock is None else self.delegation_clock())
             return ledger.start(task_id, expected_revision=expected_revision,
                 expected_task_revision=expected_task_revision, key=key)
         return self._mutate(key, ["start", task_id, expected_revision, expected_task_revision],

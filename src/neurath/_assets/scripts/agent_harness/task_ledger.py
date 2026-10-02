@@ -77,7 +77,7 @@ class TaskSource:
     revision: str
 
     def __post_init__(self):
-        if self.kind not in {"prompt", "ticket", "spec"}:
+        if self.kind not in {"prompt", "ticket", "spec", "delegation"}:
             raise TaskLedgerError("unsupported instruction source")
         _text(self.reference, 4096)
         _text(self.revision, 4096)
