@@ -9,6 +9,9 @@ PACKAGE = Path(__file__).resolve().parents[1] / "src/neurath"
 
 
 def main():
+    from versioning import prepare_version
+
+    prepare_version(PACKAGE.parents[1])
     # The catalog measures projected policy bytes. Refresh it before hashing so
     # a policy change cannot ship with stale generated audit measurements.
     sys.path.insert(0, str(PACKAGE.parent))

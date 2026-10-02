@@ -109,7 +109,7 @@ Skill entry 외 필수 reference, path rule, hook protocol, name/path wrapper는
 | `sync-user-docs` | 1019 | 92 | 42175 |
 | `triage-comments` | 10977 | 110 | 52133 |
 | `update-dependencies` | 1686 | 74 | 42842 |
-| `update-neurath` | 3088 | 225 | 44244 |
+| `update-neurath` | 3400 | 225 | 44556 |
 | `update-project-status` | 953 | 63 | 42109 |
 
 ## Join diagnostics

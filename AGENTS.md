@@ -17,6 +17,8 @@ Neurath는 기술 스택과 독립적인 Claude Code/Codex 하네스 설치 패�
 - 개발 환경은 `uv sync --locked`로 준비하고 `uv run --locked python tools/check.py`로 검사한다.
 - 자기 설치는 `./setup --self`를 사용한다. 개발 `.venv`와 설치된 하네스의 도구 환경은 분리한다.
 - 실행 자산을 바꾸면 `uv run --locked python tools/build_manifest.py`를 실행한 뒤 검사·빌드·자기 설치 업데이트를 수행한다.
+- 매니페스트 생성은 HEAD 이후 실행 자산이 바뀌고 버전이 그대로일 때 patch 버전을 한 번 올리고 패키지·런타임·lockfile을 함께 갱신한다. 반복 실행은 같은 작업의 버전을 다시 올리지 않는다. 명시적으로 올린 더 높은 버전은 유지한다. 필수 검사는 실행 자산 변경에 버전 갱신이 없거나 세 버전이 불일치하면 실패한다.
+- 소스 수정·자기 설치와 공개 릴리스는 별개다. `update-neurath`가 사용할 공개 릴리스에는 새 버전의 정확한 wheel 게시가 필요하며, 공개 배포는 별도 사용자 요청을 따른다. 공개 릴리스가 없으면 최신이라고 보고하지 않는다.
 - `.agents/skills`와 `.neurath/rules`는 설치 결과다. 원본 `src/neurath/_assets`를 수정한다.
 - 검증 원문·로컬 상태·설치 receipt·개인 경로를 공개 문서나 배포본에 넣지 않는다.
 

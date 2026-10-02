@@ -226,8 +226,10 @@ class Updates:
             state.update(checked=time.time(), status="unavailable", offer=None)
             self._save(state)  # Rate-limit even an interrupted or failed network call.
             try:
-                state["offer"] = candidate(fetch_release(), installed["version"], installed_asset)
-                state["status"] = "available" if state["offer"] else "current"
+                release = fetch_release()
+                state["offer"] = candidate(release, installed["version"], installed_asset)
+                state["status"] = ("no-release" if release is None else
+                                   "available" if state["offer"] else "current")
             except (OSError, ValueError, TypeError, KeyError, AttributeError):
                 state["status"] = "unavailable"
             self._save(state)

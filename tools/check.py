@@ -20,6 +20,7 @@ def worker_count(value):
 def steps(suite, workers):
     pytest = ['-m', 'pytest', '-q', '-x', '-n', str(workers), '--dist', 'load', '--durations=10']
     if suite == 'all':
+        yield 'Package version consistency', ['tools/versioning.py', '--check']
         yield 'Distribution integrity', ['-m', 'neurath', 'integrity']
         yield 'Python diagnostics', ['-m', 'ruff', 'check', 'src/neurath', '--select', 'E4,E7,E9,F']
     if suite == 'fast':

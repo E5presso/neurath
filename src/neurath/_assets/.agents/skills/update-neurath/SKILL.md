@@ -19,7 +19,10 @@ user-invocable: true
    요청합니다. 실제 해제 전에는 claim을 재시도하거나 강제로 회수하지 않습니다.
 2. `releases_status`를 읽고 `releases_check`로 안정 릴리스를 확인합니다.
    사용자가 **지금 다시 확인**하라고 명시했을 때만 `force: true`를 사용합니다.
-   후보가 없거나 확인 결과가 `unavailable`이면 그 상태를 구분해 보고합니다.
+   `no-release`는 공개 안정 릴리스가 없다는 뜻이며 최신 설치라는 뜻이 아닙니다.
+   소스 변경이나 자기 설치만으로 공개 wheel이 생기지 않습니다. 버전이 같다는
+   이유만으로 업데이트가 없다고 결론 내리지 않고 반환된 asset identity와
+   `relation`을 확인합니다. `current`, `no-release`, `unavailable`을 구분해 보고합니다.
 3. 반환된 `offer_id`로 `releases_prepare`를 실행하고 버전, 배포본, 설치 변경,
    충돌을 검토합니다. 준비가 실패하거나 관리 파일 충돌이 있으면 적용하지 않습니다.
 4. `maintenance_choice_prepare(operation="releases_choose", target_id=offer_id)`가

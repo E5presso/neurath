@@ -65,6 +65,8 @@ uv run --locked python tools/run_core_regressions.py --workers 0 scripts/agent_h
 uv run --locked python tools/build_manifest.py
 ```
 
+Git 소스 checkout에서 매니페스트 생성은 HEAD 이후 실행 파일이 바뀌었고 버전이 아직 오르지 않았을 때 patch 버전을 한 번 올립니다. 해시를 만들기 전에 `pyproject.toml`, 런타임 버전, `uv.lock`을 함께 갱신합니다. 같은 작업 변경에서 반복 실행하거나 명시적으로 더 높은 버전을 지정했다면 그 버전을 유지합니다. 문서만 바꾸거나 생성된 매니페스트만 바꾸면 버전은 오르지 않습니다. 전체 검사는 버전 불일치 또는 버전 증가 없는 미커밋 실행 자산 변경을 거부합니다. 소스 아카이브는 선언된 버전을 유지합니다. 소스 빌드나 자기 설치는 공개 배포가 아니며, 업데이트 스킬에는 별도 승인으로 게시한 안정 릴리스와 해당 wheel이 필요합니다.
+
 이 명령은 카탈로그의 파생 인덱스도 갱신합니다. 독립 런타임 회귀 실행기는 소유한 자산과 테스트를 임시 Git fixture에 복사합니다. 남겨 둘 경로를 `--target`으로 지정한다면 아직 존재하지 않아야 합니다. 선택자는 fixture의 pytest 실행 범위를 좁힙니다. 전체 소스·패키지 과정은 [자산 개발](assets.md)에 있습니다.
 
 일반 소스 편집과 테스트는 네이티브 도구를 사용하며 `material_*`, `verification_*` 원장에 중복 기록할 필요가 없습니다. 프로젝트 검증 명령을 연결하면 설정과 실행 전후 작업 트리 지문을 가진 결과 기록을 추가로 남깁니다. 검증 도중 작업 트리가 바뀌거나, 제한 시간이 지나거나, 설정한 성공 조건을 만족하지 못하면 실패합니다. 정확한 설정은 [설정 참조](setup-reference.md#프로젝트-검증-명령-설정하기)에 있습니다.
@@ -75,9 +77,9 @@ uv run --locked python tools/build_manifest.py
 
 ```sh
 uv build
-uv run --locked python tools/validate_distribution.py dist/neurath-0.1.0-py3-none-any.whl --output PRIVATE_DISTRIBUTION_REPORT.json
+uv run --locked python tools/validate_distribution.py dist/neurath-0.1.1-py3-none-any.whl --output PRIVATE_DISTRIBUTION_REPORT.json
 uv run --locked python tools/validate_setup.py --output PRIVATE_SETUP_REPORT.json
-uv run --locked python tools/validate_updates.py dist/neurath-0.1.0-py3-none-any.whl --output PRIVATE_UPDATE_REPORT.json
+uv run --locked python tools/validate_updates.py dist/neurath-0.1.1-py3-none-any.whl --output PRIVATE_UPDATE_REPORT.json
 ```
 
 예시 버전은 현재 패키지 소스의 버전이며 실제 빌드한 파일 이름을 사용해야 합니다. 비용이 있는 배포 검증 절차이므로 문서 수정의 자동 요구사항으로 적용하지 않습니다.

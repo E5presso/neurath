@@ -9,6 +9,7 @@ import zipfile
 import pytest
 
 from neurath.install.transaction import apply_plan, make_plan, read_state
+from neurath import __version__ as CURRENT_VERSION
 
 
 @pytest.mark.parametrize("requirements,accepted", [
@@ -66,7 +67,7 @@ def service(project, monkeypatch):
 def test_announcement_once_and_choices_survive_restart(service):
     from neurath.updates import Updates
     result = service.check()
-    assert result["offer"]["current"] == "0.1.0"
+    assert result["offer"]["current"] == CURRENT_VERSION
     assert result["offer"]["version"] == "0.2.0"
     assert result["offer"]["notes"]
     assert service.notice() is not None
@@ -96,6 +97,18 @@ def test_network_failure_is_cached_and_does_not_offer_stale_release(service, mon
     assert service.notice() is None
 
 
+def test_missing_public_release_is_not_reported_as_current(service, monkeypatch):
+    calls = []
+    monkeypatch.setattr("neurath.updates.fetch_release", lambda *args: calls.append(args))
+    result = service.check()
+    assert result["status"] == "no-release"
+    assert result["offer"] is None
+    assert service.status()["status"] == "no-release"
+    assert service.check()["status"] == "no-release"
+    assert len(calls) == 1
+    assert service.notice() is None
+
+
 @pytest.mark.parametrize("edit", [
     {"draft": True}, {"prerelease": True}, {"tag_name": "v0.2.0rc1"},
     {"tag_name": "main"}, {"assets": []}, {"published_at": None},
@@ -108,13 +121,13 @@ def test_ineligible_release_never_offered(service, monkeypatch, edit):
 
 
 def test_same_version_changed_wheel_is_offered_without_asset_provenance(service, monkeypatch):
-    value = release(version="0.1.0", digest="b" * 64)
+    value = release(version=CURRENT_VERSION, digest="b" * 64)
     monkeypatch.setattr("neurath.updates.fetch_release", lambda *args: value)
 
     result = service.check()
 
     assert result["status"] == "available"
-    assert result["offer"]["current"] == result["offer"]["version"] == "0.1.0"
+    assert result["offer"]["current"] == result["offer"]["version"] == CURRENT_VERSION
     assert result["offer"]["sha256"] == "b" * 64
     assert result["offer"]["relation"] == "same-version-origin-unknown"
 
@@ -186,7 +199,7 @@ def build_wheel_bytes(version):
     entries = {p.relative_to(PACKAGE).as_posix(): p.read_bytes() for p in PACKAGE.rglob("*")
                if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc"
                and p.name != "manifest.json"}
-    entries["__init__.py"] = entries["__init__.py"].replace(b'"0.1.0"', f'"{version}"'.encode())
+    entries["__init__.py"] = entries["__init__.py"].replace(f'"{CURRENT_VERSION}"'.encode(), f'"{version}"'.encode())
     entries["manifest.json"] = json.dumps(dict(schema=1, files={name: hashlib.sha256(data).hexdigest()
                                           for name, data in entries.items()})).encode()
     files = {"neurath/" + name: data for name, data in entries.items()}
@@ -211,7 +224,7 @@ def wheel_bytes():
 
 @pytest.fixture(scope="module")
 def same_version_wheel_bytes():
-    return build_wheel_bytes("0.1.0")
+    return build_wheel_bytes(CURRENT_VERSION)
 
 
 @pytest.fixture
@@ -223,14 +236,14 @@ def prepared(service, monkeypatch, wheel_bytes):
     offer = service.check()["offer"]
     result = service.prepare(offer["id"])
     assert result["operation"]["phase"] == "prepared"
-    assert read_state(service.root)["version"] == "0.1.0"
+    assert read_state(service.root)["version"] == CURRENT_VERSION
     return service, offer
 
 
 def test_applied_same_version_asset_is_not_reoffered(service, monkeypatch,
                                                       same_version_wheel_bytes):
     digest = hashlib.sha256(same_version_wheel_bytes).hexdigest()
-    value = release(version="0.1.0", digest=digest)
+    value = release(version=CURRENT_VERSION, digest=digest)
     value["assets"][0]["size"] = len(same_version_wheel_bytes)
     monkeypatch.setattr("neurath.updates.fetch_release", lambda *args: value)
     monkeypatch.setattr("neurath.release_install.download_asset",
@@ -242,7 +255,7 @@ def test_applied_same_version_asset_is_not_reoffered(service, monkeypatch,
     assert service.apply(offer["id"])["status"] == "current"
     assert service.check(force=True)["offer"] is None
 
-    changed = release(version="0.1.0", digest="b" * 64)
+    changed = release(version=CURRENT_VERSION, digest="b" * 64)
     monkeypatch.setattr("neurath.updates.fetch_release", lambda *args: changed)
     result = service.check(force=True)
     assert result["status"] == "available"
@@ -327,7 +340,7 @@ def test_release_replaced_after_approval_fails_before_mutation(prepared, monkeyp
     monkeypatch.setattr("neurath.updates.fetch_release", lambda *args: release(digest="b" * 64))
     with pytest.raises(ValueError, match="release changed"):
         service.apply(offer["id"])
-    assert read_state(service.root)["version"] == "0.1.0"
+    assert read_state(service.root)["version"] == CURRENT_VERSION
     assert service.status()["decision"] == "later"
 
 
@@ -340,7 +353,7 @@ def test_corrupt_runtime_does_not_execute_update(prepared):
     service.choose(offer["id"], "yes", user_confirmed=True)
     with pytest.raises(ValueError, match="failed|integrity"):
         service.apply(offer["id"])
-    assert read_state(service.root)["version"] == "0.1.0"
+    assert read_state(service.root)["version"] == CURRENT_VERSION
 
 
 def test_busy_update_lock_never_waits_in_hook(project):
@@ -421,4 +434,4 @@ def test_cli_requires_explicit_choice_flag_and_original_task_failure_is_not_hidd
         result = subprocess.run([project / ".neurath/run", "releases", *args], env=env,
                                 capture_output=True, text=True)
         assert result.returncode == 2
-    assert read_state(project)["version"] == "0.1.0"
+    assert read_state(project)["version"] == CURRENT_VERSION

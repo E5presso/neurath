@@ -65,6 +65,8 @@ When executable assets changed, regenerate the manifest before the check:
 uv run --locked python tools/build_manifest.py
 ```
 
+In a Git source checkout, manifest generation prepares one patch version when runtime files differ from HEAD and the version has not increased. It updates `pyproject.toml`, the runtime version, and `uv.lock` together before hashing. Repeating generation for the same working changes preserves that version; an explicit higher version is also preserved. Documentation-only and generated-manifest changes do not increment it. The full check rejects inconsistent versions or pending runtime changes with no version increase. Source archives retain their declared version. A source build or self-install does not publish a release: the update skill needs a separately authorized public stable release with the matching wheel.
+
 This also refreshes generated catalog indexes. The standalone runtime regression runner copies the owned corpus and tests into a disposable Git fixture. Its optional retained `--target` must not already exist; test selectors restrict the fixture's pytest run. See [assets](assets.md) for the complete source-to-package workflow.
 
 Ordinary source edits and tests use native tools and need no duplicate `material_*` or `verification_*` ledger entries. A configured project verifier adds a retained result tied to command configuration and before/after worktree fingerprints. It fails if the worktree changed during verification, if the command timed out, or if the configured success conditions were not met. [Setup reference](setup-reference.md#configure-a-project-verifier) describes the exact configuration.
@@ -75,9 +77,9 @@ Build the current candidate, then use its actual wheel path:
 
 ```sh
 uv build
-uv run --locked python tools/validate_distribution.py dist/neurath-0.1.0-py3-none-any.whl --output PRIVATE_DISTRIBUTION_REPORT.json
+uv run --locked python tools/validate_distribution.py dist/neurath-0.1.1-py3-none-any.whl --output PRIVATE_DISTRIBUTION_REPORT.json
 uv run --locked python tools/validate_setup.py --output PRIVATE_SETUP_REPORT.json
-uv run --locked python tools/validate_updates.py dist/neurath-0.1.0-py3-none-any.whl --output PRIVATE_UPDATE_REPORT.json
+uv run --locked python tools/validate_updates.py dist/neurath-0.1.1-py3-none-any.whl --output PRIVATE_UPDATE_REPORT.json
 ```
 
 The version shown is the current package source version; use the filename produced by the build. These commands are substantial acceptance procedures, not automatic requirements for a documentation edit.

@@ -22,7 +22,7 @@ def test_full_check_stops_on_failure_without_success_marker(monkeypatch, capsys)
 
     monkeypatch.setattr(check.subprocess, 'run', run)
     assert check.main([]) == 7
-    assert len(calls) == 2
+    assert len(calls) == 3
     assert not any('pytest' in command for command in calls)
     assert 'CHECK_OK' not in capsys.readouterr().out
 
@@ -32,10 +32,11 @@ def test_full_check_includes_both_test_corpora_before_success(monkeypatch, capsy
     monkeypatch.setattr(check.subprocess, 'run',
                         lambda command, **kwargs: calls.append(command) or SimpleNamespace(returncode=0))
     assert check.main(['--workers', '2']) == 0
-    assert len(calls) == 4
-    assert calls[2][1:3] == ['-m', 'pytest']
-    assert calls[2][calls[2].index('-n') + 1] == '2'
-    assert calls[3][1:] == ['tools/run_core_regressions.py', '--workers', '2']
+    assert len(calls) == 5
+    assert calls[0][1:] == ['tools/versioning.py', '--check']
+    assert calls[3][1:3] == ['-m', 'pytest']
+    assert calls[3][calls[3].index('-n') + 1] == '2'
+    assert calls[4][1:] == ['tools/run_core_regressions.py', '--workers', '2']
     assert 'NEURATH_CHECK_OK' in capsys.readouterr().out
 
 
