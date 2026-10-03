@@ -99,6 +99,7 @@ Every response has `ok` and `operation`. A successful call carries its canonical
 | --- | --- | --- |
 | `purpose` | optional; default `"task"` | string: `"task"`, `"perspective"`, `"worktree-worker"`, `"user-session"` |
 | `reason` | optional; default `""` | string; 0–2400 characters; nonempty for nondefault selection |
+| `session_basis` | optional; default `""` | `"independent-lifecycle"` or `"native-capability-gap"`; required to select same-provider independent execution |
 | `provider` | required | text: `"codex"`, `"claude-code"` |
 | `operation` | required | text: `"create"`, `"discover"`, `"connect"`, `"status"`, `"message"`, `"resume"`, `"cancel"`, `"peer"` |
 | `native_session` | optional; default `""` | text; 0–256 characters |
@@ -124,6 +125,7 @@ Every response has `ok` and `operation`. A successful call carries its canonical
 | --- | --- | --- |
 | `purpose` | optional; default `"task"` | string: `"task"`, `"perspective"`, `"worktree-worker"`, `"user-session"` |
 | `reason` | optional; default `""` | string; 0–2400 characters; nonempty for nondefault selection |
+| `session_basis` | optional; default `""` | `"independent-lifecycle"` or `"native-capability-gap"`; required to select same-provider independent execution |
 | `worktree` | required | text; 1–4096 characters |
 | `assignment` | required | text; 1–16000 characters |
 | `model` | optional; default `""` | text; 0–256 characters |

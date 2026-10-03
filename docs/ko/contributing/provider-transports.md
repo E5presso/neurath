@@ -101,6 +101,7 @@ Claude의 `ResultMessage`는 결과를 담는 형식이지 성공 판정 자체�
 | --- | --- | --- |
 | `purpose` | 선택; 기본 `"task"` | 문자열: `"task"`, `"perspective"`, `"worktree-worker"`, `"user-session"` |
 | `reason` | 선택; 기본 `""` | 문자열; 0–2400 자; 기본 외 선택에는 구체적인 이유 필수 |
+| `session_basis` | 선택; 기본 `""` | `"independent-lifecycle"` 또는 `"native-capability-gap"`; 같은 provider 독립 실행 선택에 필요 |
 | `provider` | 필수 | 문자열: `"codex"`, `"claude-code"` |
 | `operation` | 필수 | 문자열: `"create"`, `"discover"`, `"connect"`, `"status"`, `"message"`, `"resume"`, `"cancel"`, `"peer"` |
 | `native_session` | 선택; 기본 `""` | 문자열; 0–256 자 |
@@ -126,6 +127,7 @@ Claude의 `ResultMessage`는 결과를 담는 형식이지 성공 판정 자체�
 | --- | --- | --- |
 | `purpose` | 선택; 기본 `"task"` | 문자열: `"task"`, `"perspective"`, `"worktree-worker"`, `"user-session"` |
 | `reason` | 선택; 기본 `""` | 문자열; 0–2400 자; 기본 외 선택에는 구체적인 이유 필수 |
+| `session_basis` | 선택; 기본 `""` | `"independent-lifecycle"` 또는 `"native-capability-gap"`; 같은 provider 독립 실행 선택에 필요 |
 | `worktree` | 필수 | 문자열; 1–4096 자 |
 | `assignment` | 필수 | 문자열; 1–16000 자 |
 | `model` | 선택; 기본 `""` | 문자열; 0–256 자 |

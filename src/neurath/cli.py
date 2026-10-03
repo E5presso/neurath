@@ -102,6 +102,7 @@ def main(arguments=None):
     for field in ("native-session", "model", "project-id", "message-id", "worktree", "assignment", "reason"):
         route.add_argument("--" + field, default="")
     route.add_argument("--purpose", choices=("task", "perspective", "worktree-worker", "user-session"), default="task")
+    route.add_argument("--session-basis", choices=("", "independent-lifecycle", "native-capability-gap"), default="")
     route.add_argument("--requested-json", default="{}")
     provider_run = provider.add_parser("run")
     provider_run.add_argument("--worktree", required=True)
@@ -109,6 +110,7 @@ def main(arguments=None):
     provider_run.add_argument("--assignment", required=True)
     provider_run.add_argument("--purpose", choices=("task", "perspective", "worktree-worker", "user-session"), default="task")
     provider_run.add_argument("--reason", default="")
+    provider_run.add_argument("--session-basis", choices=("", "independent-lifecycle", "native-capability-gap"), default="")
     provider_run.add_argument("--provider", choices=("codex", "claude-code"), default="codex")
     provider_run.add_argument("--model", default="")
     provider_run.add_argument("--mode", choices=("inherit", "read-only", "workspace-write", "danger-full-access", "native"), default="inherit")
@@ -205,7 +207,7 @@ def main(arguments=None):
 
                 fields = {name: getattr(args, name) for name in ("worktree", "assignment", "model",
                     "provider", "mode", "permission_mode", "approval_policy", "approvals_reviewer", "collaboration_mode", "project_id", "key",
-                    "plan_id", "plan_revision", "assignment_revision", "reasoning_effort", "purpose", "reason")}
+                    "plan_id", "plan_revision", "assignment_revision", "reasoning_effort", "purpose", "reason", "session_basis")}
                 result = run(root, fields, identity=_native_or_terminal(root))
                 emit(result)
                 return 0 if result["status"] in {"accepted", "starting", "completed"} else 1
@@ -214,7 +216,7 @@ def main(arguments=None):
             fields = {"provider": args.provider}
             if args.provider_command == "route":
                 fields.update({name: getattr(args, name) for name in (
-                    "operation", "native_session", "model", "project_id", "message_id", "worktree", "assignment", "purpose", "reason")})
+                    "operation", "native_session", "model", "project_id", "message_id", "worktree", "assignment", "purpose", "reason", "session_basis")})
                 fields["requested"] = json.loads(args.requested_json)
             issuer = (_native_or_terminal(root) if fields.get("purpose") in {"perspective", "worktree-worker"} else None)
             emit(provider_task("provider_" + args.provider_command, fields,

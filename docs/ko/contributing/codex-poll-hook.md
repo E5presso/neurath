@@ -23,13 +23,14 @@ Neurath는 일반 Codex 설치와 실행 경로를 사용합니다. 패치한 Co
 
 ## 런타임이 관리하는 worktree 배치
 
-Root는 범위가 정해진 구현 assignment의 DAG를 `provider_wave_run`에 전달합니다.
+Root는 작업 요구와 관측한 호스트 지원에 따라 native subagent, 독립 세션, 교차 provider 위탁을 먼저 선택합니다. 독립 실행이 필요한 assignment만 `provider_wave_run`에 전달하며 worktree 격리나 stock Codex만으로 이 backend를 선택하지 않습니다.
 각 항목은 `entry_id`, `depends_on`, assignment·서로 다른 설치된 issue worktree·
 정확한 모델 plan ID/revision을 담은 provider `request`를 가집니다.
 Wave는 현재 task ID/revision, 관측한 capacity, 해당하는 경우 소유한 workflow에
 결속됩니다. 하나라도 실행하기 전에 모든 항목을 검증합니다. 대상은 격리되고
-깨끗하며 claim되지 않은 worktree여야 하고, 기존 `worktree-worker`·모델·실행
-정책 검사를 그대로 적용합니다.
+깨끗하며 claim되지 않은 worktree여야 하고, 실행 선택·모델·실행 정책 검사를 적용합니다.
+각 request는 `purpose`와 구체적인 `reason`을 명시하며 같은 provider의 `worktree-worker`에는
+`session_basis=independent-lifecycle` 또는 `native-capability-gap`도 필요합니다. 배치가 이 값을 자동 생성하지 않습니다.
 
 런타임은 `max_parallel` 한도 내의 ready 항목을 한 transaction에서 예약하고,
 제출 전에 실행할 항목을 영속 저장합니다. Worker의 종료 이벤트가 슬롯을 비우면
@@ -37,7 +38,7 @@ Wave는 현재 task ID/revision, 관측한 capacity, 해당하는 경우 소유�
 결과를 읽고 수락한 뒤에만 준비됩니다. 접수·실행·worker 완료·root 수락은
 서로 다른 상태입니다.
 
-이 worker는 기존 `worktree-worker` 경로로 실행되는 독립 provider 세션입니다.
+이 worker는 선택한 `worktree-worker` 또는 교차 provider `perspective` 경로의 독립 세션입니다.
 네이티브 직접 자식이나 독립 검토자가 아닙니다. 각 worker는 쓰기 전에 자신의
 네이티브 준비 상태와 worktree claim을 확인해야 합니다. Root는 task/workflow
 소유권, 통합, 검토와 최종 수락을 유지합니다.

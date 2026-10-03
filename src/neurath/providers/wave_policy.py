@@ -88,6 +88,9 @@ def request_scope(request):
         "assignment": request.get("assignment"),
         "provider": request.get("provider", "codex"),
         "worktree": request.get("worktree"),
+        "purpose": request.get("purpose", "task"),
+        "session_basis": request.get("session_basis", ""),
+        "reason": request.get("reason", ""),
     }
 
 

@@ -10,12 +10,14 @@ def admit_wave_entry(root, identity, fields, policy):
     from neurath.providers.collaboration_policy import select
     from pathlib import Path
 
-    if fields.get("purpose") != "worktree-worker":
-        raise TaskError("invalid-input", "provider waves require worktree-worker entries")
+    if fields.get("purpose") not in {"worktree-worker", "perspective"}:
+        raise TaskError("invalid-input", "provider waves require explicitly selected worktree-worker or perspective entries")
     if fields.get("mode") != "inherit":
         raise TaskError("invalid-input", "provider waves require inherited execution policy")
     fields = {**fields, "worktree": str(Path(fields["worktree"]).resolve())}
-    select(identity.host, fields["provider"], fields["purpose"], fields["reason"])
+    selection = select(identity.host, fields["provider"], fields["purpose"], fields["reason"], fields.get("session_basis", ""))
+    if selection["kind"] != "provider-worker":
+        raise TaskError("native-subagent-required", "Use the native child; worktree location alone does not select an independent session")
     _worktree_worker_preflight(root, fields)
     fields = admitted_request(root, identity, fields, policy)
     fields = resolve_policy(root, identity, fields, policy)
@@ -78,7 +80,7 @@ def run(root, inputs, *, identity=None, expected_turn=None, verified_policy_evid
         result = reconcile_admission(root, identity, fields["key"], fields)
     else:
         from neurath.providers.collaboration_policy import select
-        selection = select(identity.host, fields["provider"], fields.get("purpose", "task"), fields.get("reason", ""))
+        selection = select(identity.host, fields["provider"], fields.get("purpose", "task"), fields.get("reason", ""), fields.get("session_basis", ""))
         if selection["kind"] == "native-subagent":
             raise TaskError("native-subagent-required", "Use delegation_prepare and the native child tool for work owned by this session")
         if fields.get("purpose") == "worktree-worker":

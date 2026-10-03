@@ -49,7 +49,7 @@ def _requested(value):
 
 def route(provider, operation, *, native_session=None, model=None, project_id=None,
           requested=None, message_id=None, worktree=None, assignment=None,
-          source_provider=None, purpose="task", reason=""):
+          source_provider=None, purpose="task", reason="", session_basis=""):
     catalog(provider)
     if operation not in OPERATIONS:
         raise UnsupportedOperation("unsupported provider operation")
@@ -76,7 +76,7 @@ def route(provider, operation, *, native_session=None, model=None, project_id=No
             return {**result, "status": "source-provider-required",
                     "reason": "A provider worker needs the actual issuing provider before routing."}
         from neurath.providers.collaboration_policy import select
-        selection = select(source_provider or provider, provider, purpose, reason)
+        selection = select(source_provider or provider, provider, purpose, reason, session_basis)
         result["collaboration"] = selection
         if selection["kind"] == "provider-worker" and (not worktree or not assignment):
             return {**result, "status": "assignment-input-required",
@@ -93,6 +93,8 @@ def route(provider, operation, *, native_session=None, model=None, project_id=No
         if not requested:
             arguments = {"provider": provider, "mode": "inherit", "worktree": worktree,
                          "assignment": assignment, "purpose": purpose, "reason": reason}
+            if session_basis:
+                arguments["session_basis"] = session_basis
             if model is not None:
                 arguments["model"] = model
             if project_id is not None:
@@ -107,6 +109,8 @@ def route(provider, operation, *, native_session=None, model=None, project_id=No
                 return {**result, "status": "assignment-input-required"}
             arguments = {"provider": provider, "mode": "native", "permission_mode": requested["permission_mode"],
                          "worktree": worktree, "assignment": assignment, "purpose": purpose, "reason": reason}
+            if session_basis:
+                arguments["session_basis"] = session_basis
             if model is not None:
                 arguments["model"] = model
             return {**result, "next_operation": {"tool": "provider_run", "arguments": arguments},
@@ -127,6 +131,8 @@ def route(provider, operation, *, native_session=None, model=None, project_id=No
         arguments = {"worktree": worktree, "assignment": assignment, "purpose": purpose, "reason": reason,
                      "mode": requested["sandbox"],
                      **{key: value for key, value in requested.items() if key != "sandbox"}}
+        if session_basis:
+            arguments["session_basis"] = session_basis
         if project_id is not None:
             arguments["project_id"] = project_id
         if model is not None:

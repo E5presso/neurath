@@ -16,8 +16,11 @@ milestone, parent issue, issue set을 끝까지 처리하기 위해 존재하며
 
 실행 전체에서 `mergeable-clean`과 `merged`를 구분합니다.
 
-스톡 Codex의 병렬 worktree 구현은 `provider_wave_run`으로 root가 일괄 접수하고
-런타임이 ready 슬롯을 실행합니다. 커스텀 Codex 빌드나 launcher를 요구하지 않습니다.
+각 assignment의 성격·난이도·필요한 능력과 수명에 따라 native subagent, 독립 세션,
+Claude ↔ Codex 위탁을 먼저 선택합니다. Native child가 기본이며 worktree나 병렬 실행
+필요만으로 독립 세션을 선택하지 않습니다. 독립 세션 또는 교차 provider가 필요한
+항목만 `provider_wave_run`으로 접수하고 런타임이 ready 슬롯을 실행합니다.
+커스텀 Codex 빌드나 launcher를 요구하지 않습니다.
 각 worker는 독립 provider peer이며 native 직접 자식·독립 evaluator 권한을 갖지 않습니다.
 Root는 정확한 결과를 `provider_wave_consume`으로 수락하고, fresh native child에
 독립 리뷰를 별도로 맡깁니다. 실제 hook 지원이 검증된 호스트의 native wave도 유지합니다.

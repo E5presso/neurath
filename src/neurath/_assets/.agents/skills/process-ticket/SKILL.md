@@ -25,18 +25,33 @@ metadata 보정은 중간 사용자 승인 사유가 아닙니다. 아래 중단
 
 ## 결정적 phase 실행
 
-### Repository root 진입
+### 실행 방식 선택과 Repository root 진입
 
-Branch/PR ticket을 repository root에서 받았다면 phase workflow를 시작하기 전에
-별도 issue worktree를 만들고 그곳에 Neurath를 설치해 `.neurath/run`과 설치 진단을
-확인합니다. `provider_route`에 현재 provider와 같은 provider,
-`purpose=worktree-worker`, 구체적인 reason, target worktree와 전체 ticket assignment를
-전달하고 model plan을 거친 `provider_run`으로 별도 native worker를 시작합니다.
-Root owner는 durable run과 실제 worker 결과를 확인할 때까지 원래 task의 소유자입니다.
-Worker가 자기 native session에서 target claim과 `worktree_isolation`을 확인한 뒤
-workflow를 시작합니다. Shell cwd만 바꿔 root actor가 target claim을 시도하지 않습니다.
-설치, branch 분리, root와 target의 clean 상태, target claim 또는 worker readiness가 실패하면
-원래 root workflow를 실행하지 않고 그 조건을 보존합니다.
+위임 전에 작업의 성격·난이도·필요한 능력·수명을 보고 서브에이전트, 독립 세션,
+Claude ↔ Codex 업무 위탁 중 하나를 선택하고 이유를 기록합니다. 현재 대화에 속한
+bounded 작업은 `purpose=task`의 native subagent가 기본입니다. 다른 provider의 능력이나
+관점이 필요하면 `purpose=perspective`를 선택합니다. 사용자가 직접 방문해 이어갈
+독립 대화는 `purpose=user-session`이며 앱 생성 도구의 명시적 요청 조건을 유지합니다.
+
+Repository root, ticket 크기, 실행 시간, worktree 필요만으로 새 세션을 만들지 않습니다.
+Branch/PR ticket의 격리 대상과 실제 native tool의 target binding 지원을 별도로 확인합니다.
+현재 호스트가 지원하는 native child 경로를 우선하며, read-only 조사·계획·patch 제안과
+root의 통합으로 닫을 수 있는 작업도 새 세션으로 옮기지 않습니다. 실제 쓰기 actor가
+target에 결속되지 않았다면 cwd만 바꿔 claim하거나 workflow를 시작하지 않습니다.
+
+같은 provider의 별도 실행이 필요할 때만 `purpose=worktree-worker`를 사용합니다.
+이 값은 네 번째 위임 옵션이 아니라 선택한 독립 세션의 worktree 실행 경로입니다.
+`session_basis=independent-lifecycle`은 현재 대화와 별개로 유지할 실제 작업 수명을,
+`session_basis=native-capability-gap`은 필요한 target binding 등을 native tool이 지원하지
+않는다는 현재 관측을 뜻합니다. `reason`에는 그 구체적 필요와 검토한 native 대안을 적습니다.
+해당 근거 없이 worktree-worker를 route하면 native child로 안내하며 직접 실행은 거부합니다.
+기능 부족을 추정하거나 새 앱 프로젝트 생성으로 우회하지 않습니다.
+
+선택한 독립 실행 전에 issue worktree를 만들거나 재사용하고 Neurath 설치, branch 분리,
+root/target clean 상태와 unclaimed target을 확인합니다. 정확한 모델 계획을 결속한 뒤
+실행하며 worker는 자기 native 신원, target claim과 격리를 확인합니다. 원래 root는 실제
+결과를 수락할 때까지 task 소유자입니다. 필요한 실행 경로가 없으면 관측한 capability gap을
+보존하며 같은 제약 아래 root에서 실행 가능한 남은 작업을 계속합니다.
 
 계약이 있는 phase 작업은 하나의 required `workflow_id`에서 단계별 실행 기록으로 실행합니다.
 Runtime이 주입한 session/actor identity가 먼저 존재해야 하며, agent가 state path나

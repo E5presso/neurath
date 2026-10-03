@@ -6,8 +6,9 @@
 
 1. workflow가 branch 또는 PR을 요구하면 `tool:create_worktree`를 사용합니다.
    이때 worktree path는 반드시 `<대상 프로젝트의 분리된 worktree 경로>`입니다.
-   Repository root에서 시작한 경우에는 skill의 root preflight가 별도 native worker를
-   해당 worktree에 먼저 시작해야 합니다. CWD 변경만으로 actor binding이 이동하지 않습니다.
+   Worktree 생성은 새 세션 선택이 아닙니다. Skill의 실행 방식 선택을 먼저 따르고
+   실제 target binding이 지원되는 native 경로를 우선합니다. 독립 세션은 구체적인
+   session_basis와 reason이 있을 때만 사용합니다. CWD 변경만으로 actor binding이 이동하지 않습니다.
 2. 이후 모든 command에 사용할 absolute worktree path를 보존합니다.
 3. Runtime identity가 시작한 exact session에 required `workflow_id`가 active인지 phase runner
    `current`로 확인합니다. 경로나 issue 번호로 다른 workflow를 찾지 않습니다.

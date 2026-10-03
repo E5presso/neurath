@@ -23,13 +23,13 @@ wait in arbitrary stock Codex tool calls.
 
 ## Runtime-owned worktree batches
 
-The root uses `provider_wave_run` for a DAG of bounded implementation assignments.
+The root first chooses native subagents, independent sessions or cross-provider delegation from task requirements and observed host support. Only assignments requiring independent execution enter `provider_wave_run`; worktree isolation and stock Codex alone do not select this backend.
 Each entry has an `entry_id`, `depends_on`, and a provider `request` with its
 assignment, distinct installed issue worktree and exact model plan ID/revision.
 The wave is bound to the current task ID/revision, observed capacity and, when
 applicable, the owned workflow. Every entry is admitted before any launch:
 targets must be isolated, clean and unclaimed, and the existing
-`worktree-worker`, model and execution-policy checks still apply.
+execution-selection, model and execution-policy checks still apply. Each request supplies `purpose` and a concrete `reason`; same-provider `worktree-worker` requests also require `session_basis=independent-lifecycle` or `native-capability-gap`. The batch does not generate these values.
 
 The runtime reserves the ready set up to `max_parallel` in one transaction and
 persists pending launches before submitting them. Worker terminal events free
@@ -38,7 +38,7 @@ the root reads and accepts the exact successful predecessor result. Admission,
 launch, worker completion and root acceptance are separate states.
 
 These workers are independent provider sessions using the existing
-`worktree-worker` route. They are neither native direct children nor independent
+`worktree-worker` or cross-provider `perspective` route. They are neither native direct children nor independent
 evaluators. Each worker must establish its own native readiness and worktree
 claim before writing. The root retains task/workflow ownership, integration,
 review and final acceptance.

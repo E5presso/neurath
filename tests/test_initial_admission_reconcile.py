@@ -44,6 +44,16 @@ def test_previous_admission_marks_required_write_but_does_not_execute(accepted, 
     assert result['reconciliation_required'] is True
 
 
+def test_new_empty_session_basis_preserves_an_already_accepted_request(accepted):
+    root, identity, fields, run_id = accepted
+    result = model_tasks.previous_admission(root, identity, 'key', {
+        **fields, 'key': 'key', 'session_basis': ''})
+    assert result['run_id'] == run_id and result['replayed'] is True
+    with pytest.raises(ValueError, match='changed request'):
+        model_tasks.previous_admission(root, identity, 'key', {
+            **fields, 'key': 'key', 'session_basis': 'independent-lifecycle'})
+
+
 @pytest.mark.parametrize('allow', [False, True])
 def test_mcp_policy_checked_before_reconciliation_write(accepted, monkeypatch, allow):
     root, identity, fields, _ = accepted

@@ -298,14 +298,20 @@ DECLARED hook은 AVAILABLE host 증명이 아니다. 원시 agent_id는 direct-c
 사소한 설명 요청에 stateful workflow를 강제하지 않는다.
 
 ## Provider 선택과 작업 간 대화
-현재 대화 안의 bounded 작업은 네이티브 직접 자식이 기본이다. 스톡 Codex autopilot의
-병렬 worktree 구현은 provider_wave_run으로 runtime이 관리하는 배치를 사용한다.
+작업 성격·난이도·필요한 능력·수명에 따라 서브에이전트, 독립 세션, Claude ↔ Codex
+업무 위탁을 선택한다. 현재 대화 안의 bounded 작업은 네이티브 직접 자식이 기본이다.
+Root 경로, worktree 격리, 병렬 실행 또는 실행 시간만으로 새 세션을 선택하지 않는다.
+Native tool의 실제 target binding과 대안을 확인하고, 독립 실행이 필요한 항목만
+provider_wave_run으로 runtime이 관리하는 배치를 사용한다.
 사용자가 해당 대화를 직접 방문하여 이어갈 가능성이 있을 때만 사용자용 독립 세션을 선택한다.
 다른 provider의 충분한 추론 능력과 새로운 관점·대안·반증이 유용하면 에이전트가 자율적으로
 provider worker를 선택하고 구체적인 이유를 남긴다. 별도 교차 검증 요청을 선행 조건으로 삼지 않는다.
 provider_route와 provider_run의 purpose는 task, perspective, worktree-worker, user-session을 구분한다.
 task는 native child로 보내며 provider_run 직접 호출로 새 세션을 만들지 않는다.
-worktree-worker는 루트 ticket을 별도로 설치한 issue worktree에 옮기는 같은 provider의 제한된 경로다.
+worktree-worker는 선택한 같은 provider 독립 세션의 격리 실행 경로이며 네 번째 옵션이 아니다.
+session_basis=independent-lifecycle 또는 native-capability-gap과 구체적인 reason이 필요하다.
+Reason에는 실제 독립 작업 수명이나 관측한 native 기능 부족과 검토한 대안을 적는다.
+Basis가 없으면 route는 native child로 안내하고 독립 실행은 거부한다. 새 앱 프로젝트로 우회하지 않는다.
 관점 다양화를 위한 기술적 worker는 사용자가 관리할 앱 대화와 다르다. 앱 생성 도구의 별도
 명시적 요청 조건은 유지한다. 단순 메시지 전달은 새 실행이 아니다.
 Autopilot root는 task와 workflow, 통합, review, monitor 결과 수락을 소유한다.
@@ -314,7 +320,8 @@ Provider wave의 worker는 독립 peer root이며 발행자의 직접 자식이�
 provider_wave_run에는 현재 task ID/revision, entries(entry_id, depends_on, request),
 관측한 capacity, 고유 wave ID와 key를 전달하고 해당하는 owned workflow_id를 결속한다.
 각 request는 distinct isolated installed worktree, assignment와 정확한 모델 plan ID/revision을
-담는다. 기존 worktree-worker·모델·실행 정책을 모든 항목에 검증한 뒤 runtime이 ready set을
+담는다. 각 request의 purpose·reason과 같은 provider의 session_basis를 명시하며 배치가
+이를 자동 생성하지 않는다. 기존 모델·실행 정책·격리 대상을 검증한 뒤 runtime이 ready set을
 원자적으로 예약하고 실행할 항목을 영속 저장한다. 기본 mode=inherit를 유지한다.
 Worker 종료는 독립 ready 작업의 슬롯을 비우지만 dependency를 해제하지 않는다.
 Root가 provider_wave_read로 실제 결과를 읽고 provider_wave_consume에 정확한 entry/run ID,
@@ -323,7 +330,7 @@ generation, digest와 판정을 전달한다. 수락한 성공만 dependency를 
 provider_wave_cancel은 새 예약을 막고 실제 run 취소를 요청하며 결과와 미완료 요구를 보존한다.
 
 provider_wave_retry는 정확히 종료된 failed/cancelled 구현 attempt만 다시 접수한다.
-원래 assignment·provider·worktree는 바꾸지 않고 모델 계획과 상속 정책을 새로 검증한다.
+원래 assignment·provider·worktree·purpose·session_basis는 바꾸지 않고 모델 계획과 상속 정책을 새로 검증한다.
 이전 run의 generation 1 종료 결과, worker OS lease 해제와 생성된 native 세션의
 일치하는 연결·프로세스 종료를 확인한다. 수락한 작업·후속 작업 또는 취소된 wave는 재시도하지 않는다.
 이전 attempt의 요청·결과·지문·소비 기록은 변경 없이 보존한다. 모든 wave 연결 run과

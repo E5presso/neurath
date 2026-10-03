@@ -5,7 +5,10 @@
 ## 절차
 
 Root orchestrator가 모든 티켓의 task/workflow, 통합, 검토와 monitor 결과 수락을 소유합니다.
-스톡 Codex에서는 격리된 issue worktree의 병렬 구현을 `provider_wave_run` 배치로 실행합니다.
+각 issue의 성격·난이도·능력과 수명에 따라 native subagent, 독립 세션, 교차 provider
+위탁을 먼저 선택합니다. Native child가 기본입니다. 독립 실행이 필요한 issue만
+격리된 worktree의 `provider_wave_run` 배치로 실행합니다. Stock Codex라는 이유나
+root/worktree 위치만으로 provider 배치를 고르지 않습니다.
 Runtime이 ready 항목 예약과 실행을 관리하며 에이전트의 wait hook에 의존하지 않습니다.
 Worker는 자신의 native 준비 상태와 worktree claim을 확인한 뒤 bounded 구현을 수행합니다.
 이 worker는 독립 provider peer root이며 발행자의 직접 자식이나 독립 검토자가 아닙니다.
@@ -14,11 +17,16 @@ Root는 구현 worker와 별도의 `role=review` native 직접 자식을 새 컨
 Codex 리뷰는 `fork_turns="none"`이며 실제 호스트의 계보·컨텍스트 증명을 확인합니다.
 
 1. Phase 2의 구현 대상 이슈마다 `issue-<번호>`를 고유 entry ID로 사용합니다.
-   Stock provider 배치의 절차는 다음과 같습니다.
+   실제 지원을 관측한 native child wave를 우선합니다. 아래 provider 배치는 각 항목에
+   독립 실행 또는 교차 provider 필요를 확인한 뒤에만 사용합니다.
 
    - 각 항목에 distinct isolated worktree와 bounded assignment, `provider_plan`의
      정확한 ID/revision을 준비합니다. 대상은 설치되고 깨끗하며 claim되지 않은 issue
-     worktree여야 합니다. 기존 `worktree-worker` 경로, 모델 계획과 실행 정책을 유지합니다.
+     worktree여야 합니다. 각 request에 선택한 `purpose`와 구체적인 `reason`을 넣습니다.
+     같은 provider의 `worktree-worker`에는 `session_basis=independent-lifecycle` 또는
+     `native-capability-gap`과 실제 수명·호스트 관측을 기록합니다. 다른 provider의
+     `perspective`에는 필요한 능력·관점을 기록합니다. 배치는 이 선택이나 이유를 자동 생성하지 않습니다.
+     네이티브 대안을 검토하고 기존 모델 계획과 실행 정책을 유지합니다.
      기본 `mode=inherit`를 실패한 권한 승계를 피하는 다른 모드로 바꾸지 않습니다.
    - `provider_wave_run`에 현재 in-progress task ID/revision, 고유 wave ID,
      entries(entry_id, depends_on, request), max_parallel, capacity_basis, 안정된 key를
@@ -73,8 +81,8 @@ Codex 리뷰는 `fork_turns="none"`이며 실제 호스트의 계보·컨텍스�
    `native_wave_receipt: no_op=all_satisfied`를 사용합니다.
    미완료·실패 wave를 성공으로 기록하지 않습니다.
 
-   - 같은 대화의 bounded 작업은 native subagent가 기본이며, stock 병렬 worktree 구현은
-     위 provider 배치를 사용합니다. 별도 worktree나 실행 시간만으로 사용자용 세션을 만들지 않습니다.
+   - 같은 대화의 bounded 작업은 native subagent가 기본입니다. 필요한 독립 실행만
+     위 provider 배치를 사용합니다. 별도 worktree나 실행 시간만으로 세션을 만들지 않습니다.
    - 사용자가 직접 방문해 이어갈 작업은 user-session, 다른 관점이 필요한 작업은
      구체적인 perspective 사유로 선택합니다. 결과 수락은 현재 root가 맡습니다.
    - 배치 도구·격리 대상·권한이 없으면 정확한 capability gap을 보고합니다.
@@ -93,8 +101,9 @@ Codex 리뷰는 `fork_turns="none"`이며 실제 호스트의 계보·컨텍스�
 
 ## Monitor event routing
 
-같은 세션 안의 bounded 작업과 독립 검토는 native subagent를 사용하고, 스톡 Codex의
-병렬 worktree 구현은 provider 배치를 사용합니다. Provider 선택은 공통 정책의 purpose와 reason을 따릅니다. 앱 create_thread는 사용자가 방문할 독립 작업을 위한 도구이며
+같은 세션 안의 bounded 작업과 독립 검토는 native subagent를 사용하고, 독립 실행이
+선택된 병렬 구현에만 provider 배치를 사용합니다. 선택은 공통 정책의 purpose,
+session_basis와 reason을 따릅니다. 앱 create_thread는 사용자가 방문할 독립 작업을 위한 도구이며
 내부 티켓 위임을 대신하지 않습니다. Root가 각 티켓의 monitor route와 terminal sink를 소유합니다.
 
 진행 중 새 작업은 기존 태스크를 지우지 않고 task_define으로 추가합니다. task_start와

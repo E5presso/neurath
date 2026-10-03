@@ -268,19 +268,21 @@
 
 ## 병렬 wave와 협업 방식 선택
 
-현재 대화 안의 범위가 정해진 작업은 native subagent가 기본입니다. 스톡 Codex autopilot의 병렬 구현은 격리된 issue worktree에서 런타임이 관리하는 provider 배치를 사용합니다. 실행 시간이나 worktree 수만으로 사용자용 대화를 새로 만들지 않습니다. 사용자가 해당 대화를 직접 방문해 이어갈 가능성이 있을 때만 사용자용 세션을 선택합니다. 다른 관점이 대안이나 놓친 반증을 찾는 데 유용하면 다른 provider를 선택할 수 있습니다. 기술적 provider worker가 사용자용 앱 작업을 뜻하지 않으며 호스트 도구의 명시적 생성 요청 조건을 유지합니다.
+작업의 성격·난이도·필요한 능력·수명에 따라 native subagent, 독립 세션, 교차 provider 위탁 중 하나를 선택합니다. 현재 대화에 속한 bounded 작업은 native subagent가 기본입니다. Repository root 진입, 실행 시간, 병렬 실행, worktree 격리만으로 새 세션을 선택하지 않습니다. Native host의 실제 target binding 지원을 관측하고 read-only 분석이나 patch 제안으로 닫을 수 있는지 검토한 뒤 독립 실행을 선택합니다. 사용자용 앱 작업은 호스트 도구의 명시적 사용자 요청 조건을 유지하며 새 앱 프로젝트 생성으로 우회하지 않습니다.
 
-`provider_route`와 `provider_run`은 `purpose` (`task`, `perspective`, `worktree-worker`, `user-session`)와 `reason`을 받습니다. 기본 `task` 경로는 native delegation으로 안내하며 provider 직접 실행에서는 거부합니다. `perspective`는 다른 provider와 구체적인 이유가 필요합니다. `worktree-worker`는 저장소 root에서 별도로 설치되고 깨끗하며 claim되지 않은 issue worktree로 보내는 같은 provider의 제한된 경로입니다. 각 worker는 자신의 native 신원과 claim을 확인합니다. `user-session`에는 사용자가 이어서 작업할 것으로 예상하는 이유가 필요합니다. 모든 경로에서 모델 계획·실행 정책·native 준비 상태 검사를 유지합니다.
+`provider_route`와 `provider_run`은 `purpose` (`task`, `perspective`, `worktree-worker`, `user-session`), `reason`, `session_basis`를 받습니다. Purpose는 실행 경로이며 사용자 수준의 네 가지 위임 옵션이 아닙니다. `task`는 native delegation을 선택하고 provider 직접 실행은 거부합니다. `perspective`는 다른 provider와 구체적인 능력·관점의 이유가 필요합니다. `user-session`은 사용자가 이어갈 독립 대화입니다. `worktree-worker`는 선택한 같은 provider 독립 세션의 격리 실행 경로입니다. `session_basis=independent-lifecycle` 또는 `native-capability-gap`이 필요하며 `reason`에는 실제 독립 수명이나 관측한 native 기능 부족과 검토한 대안을 적습니다. Basis가 없으면 native child로 안내하고 provider 직접 실행은 새 세션 생성을 거부합니다. Basis는 발행자가 기록한 선택이며 호스트가 입증한 사실은 아닙니다. 모델 계획·실행 정책·격리 대상·native 준비 상태 검사를 유지합니다.
 
 Root는 task, ticket workflow, 통합, 리뷰, monitor 결과와 최종 수락을 소유합니다. Provider worker는 독립 peer root이며 발행자의 native 직접 자식이나 독립 검토자가 아닙니다. Assignment가 발행자 workflow의 소유권을 부여하지 않습니다. 쓰기 권한이 확인되지 않은 worker는 patch artifact를 반환합니다. 발행 root가 native 리뷰어를 별도로 준비하며 구현 결과를 독립 리뷰로 취급하지 않습니다.
 
 ### 런타임이 관리하는 provider 배치
 
-`provider_wave_run`은 DAG를 정확한 active `task_id`와 `expected_task_revision`, 선택적으로 소유한 `workflow_id`에 결속합니다. Entries는 `entry_id`, `depends_on`, assignment·worktree·정확한 모델 plan ID/revision을 담은 provider `request`로 구성합니다. 안정된 `key`, `wave_id`, `max_parallel`, 관측한 `capacity_basis`를 전달합니다. 배치는 서로 다른 격리 대상의 `worktree-worker` 항목만 접수하며, 실행 전에 모든 항목에 기존 모델·정책·대상 검사를 적용합니다. 선언한 capacity는 소유자의 관측이며 호스트 확인이 아닙니다.
+`provider_wave_run`은 DAG를 정확한 active `task_id`와 `expected_task_revision`, 선택적으로 소유한 `workflow_id`에 결속합니다. Entries는 `entry_id`, `depends_on`, assignment·worktree·정확한 모델 plan ID/revision을 담은 provider `request`로 구성합니다. 안정된 `key`, `wave_id`, `max_parallel`, 관측한 `capacity_basis`를 전달합니다. 각 request는 `purpose`와 `reason`을 명시하고 같은 provider의 `worktree-worker`에는 `session_basis`도 필요합니다. 배치는 선택이나 상투적 이유를 자동 생성하지 않습니다. 선택된 `worktree-worker` 또는 교차 provider `perspective` 항목을 서로 다른 격리 대상에서 접수하며, 실행 전에 모든 항목에 기존 모델·정책·대상 검사를 적용합니다. 선언한 capacity는 소유자의 관측이며 호스트 확인이 아닙니다.
+
+이미 접수된 이전 버전의 wave·retry 요청은 추가된 선택 필드가 없어도 정확한 재조회가 가능합니다. 새 접수 검증 전에 원래 공개 요청 지문을 확인하며 선택을 만들어 넣거나 대상을 재접수하거나 다른 run을 생성하지 않습니다. 선택 필드를 생략한 새 요청은 거부합니다.
 
 런타임은 capacity 내 ready 항목을 원자적으로 예약하고 실행할 항목을 영속 저장합니다. Worker 종료 이벤트가 슬롯을 비우면 에이전트의 추가 dispatch를 기다리지 않고 독립 ready 작업을 실행합니다. 의존 작업은 root가 선행 작업의 정확한 성공 결과를 수락할 때까지 잠겨 있습니다. 이벤트 뒤 `provider_wave_read`로 실제 run 신원·결과 지문을 읽고 미제출 작업을 조정합니다. `provider_wave_consume`에는 `entry_id`, `run_id`, `generation`, `result_digest`, `accepted` 또는 `rejected` 판정과 안정된 key가 필요합니다. Worker 종료나 보고 수신만으로 dependency를 충족하지 않습니다. `provider_wave_cancel`은 새 예약을 막고 실제 run의 취소를 요청하되 결과와 원래 사용자 요구를 보존합니다.
 
-`provider_wave_retry(wave_id, entry_id, request, key)`는 모델 계획·상속 정책을 새로 검증하여 failed 또는 cancelled 구현을 다시 접수합니다. 원래 assignment·provider·worktree를 유지합니다. 정확한 이전 run에 generation 1의 종료 결과와 worker OS lease 해제가 필요하며, native 세션이 생성됐다면 그 세션과 일치하는 연결·프로세스 종료 근거도 필요합니다. 수락한 구현·수락한 후속 작업이 있거나 wave가 취소됐으면 재시도할 수 없습니다. 이전 attempt의 요청·결과·지문·소비 기록은 변경 없이 보존합니다. 보관된 이전 attempt를 포함한 모든 wave 연결 run은 `provider_recover`를 거부합니다. Inbox만 복구한 결과는 구현 완료가 될 수 없습니다.
+`provider_wave_retry(wave_id, entry_id, request, key)`는 모델 계획·상속 정책을 새로 검증하여 failed 또는 cancelled 구현을 다시 접수합니다. 원래 assignment·provider·worktree·purpose·session_basis를 유지합니다. 정확한 이전 run에 generation 1의 종료 결과와 worker OS lease 해제가 필요하며, native 세션이 생성됐다면 그 세션과 일치하는 연결·프로세스 종료 근거도 필요합니다. 수락한 구현·수락한 후속 작업이 있거나 wave가 취소됐으면 재시도할 수 없습니다. 이전 attempt의 요청·결과·지문·소비 기록은 변경 없이 보존합니다. 보관된 이전 attempt를 포함한 모든 wave 연결 run은 `provider_recover`를 거부합니다. Inbox만 복구한 결과는 구현 완료가 될 수 없습니다.
 
 미제출 실행 복구는 인증된 owner의 조회, 동일 요청 replay, 정확한 결과 소비와 worker 종료 callback에서 수행합니다. 영속 실행 신원과 lease 검사를 사용하며 시작 시 scanner나 주기적 polling은 없습니다. 같은 미제출 실행의 replay는 구현을 대체할 새 attempt를 만들지 않습니다.
 

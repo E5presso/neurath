@@ -8,8 +8,9 @@ from pathlib import Path
 def definitions(text_field, count, choice, provider_fields):
     """Expose closed request schemas; native identity never comes from arguments."""
     request = deepcopy(provider_fields)
-    for field in ("key", "purpose"):
-        request.pop(field)
+    request.pop("key")
+    request["purpose"] = choice("worktree-worker", "perspective")
+    request["reason"] = text_field(2400)
     request["plan_id"] = text_field(128)
     request["mode"] = {**choice("inherit"), "default": "inherit"}
     request_schema = {"type": "object", "additionalProperties": False,
@@ -89,6 +90,8 @@ def execute(root, name, fields, *, identity, expected_turn, verified_policy_evid
                             request_digest=request_digest, key=fields["key"])
     if previous is not None:
         return previous
+    for entry in fields['entries']:
+        _require_execution_choice(entry['request'])
     targets = [str(Path(entry["request"]["worktree"]).resolve()) for entry in fields["entries"]]
     if len(targets) != len(set(targets)):
         raise TaskError("invalid-input", "wave workers require distinct isolated worktrees")
@@ -96,8 +99,7 @@ def execute(root, name, fields, *, identity, expected_turn, verified_policy_evid
     admitted = []
     for entry in fields["entries"]:
         key = hashlib.sha256(canonical([fields["wave_id"], entry["entry_id"], fields["key"]]).encode()).hexdigest()
-        request = arguments("provider_run", {**entry["request"], "purpose": "worktree-worker",
-            "reason": entry["request"].get("reason") or "Runtime-owned parallel worktree wave",
+        request = arguments("provider_run", {**entry["request"],
             "key": "wave-entry:" + key})
         admitted.append({"entry_id": entry["entry_id"], "depends_on": entry["depends_on"],
                          "request": admit_wave_entry(root, identity, request, policy)})
@@ -131,16 +133,19 @@ def _retry_entry(root, fields, identity, expected_turn, evidence, before):
         entry_id=fields["entry_id"], request_digest=request_digest, key=fields["key"])
     if previous is not None:
         return previous
+    _require_execution_choice(fields['request'])
     selected = next((entry for entry in current["entries"] if entry["entry_id"] == fields["entry_id"]), None)
     if selected is None:
         raise TaskError("invalid-input", "retry entry does not exist")
-    request = arguments("provider_run", {**fields["request"], "purpose": "worktree-worker",
-        "reason": fields["request"].get("reason") or "Explicit failed wave implementation retry",
+    request = arguments("provider_run", {**fields["request"],
         "key": "wave-retry:" + request_digest})
     original = selected["original_request"]
     if (request["assignment"] != original["assignment"] or request["provider"] != original["provider"]
-            or Path(request["worktree"]).resolve() != Path(original["worktree"]).resolve()):
-        raise TaskError("invalid-input", "retry cannot change assignment, provider or worktree")
+            or Path(request["worktree"]).resolve() != Path(original["worktree"]).resolve()
+            or request["purpose"] != original["purpose"]
+            or request["session_basis"] != original.get("session_basis", "")
+            or request["reason"] != original.get("reason", "")):
+        raise TaskError("invalid-input", "retry cannot change assignment, provider, worktree or execution choice")
     policy = observed_policy(root, identity, expected_turn, evidence)
     admitted = admit_wave_entry(root, identity, request, policy)
     if _verification_owner(root, identity) != before:
@@ -148,3 +153,11 @@ def _retry_entry(root, fields, identity, expected_turn, evidence, before):
     _mcp_execution_policy(root, identity, expected_turn, evidence)
     return waves.retry(root, identity, wave_id=fields["wave_id"], entry_id=fields["entry_id"],
                        request=admitted, request_digest=request_digest, key=fields["key"])
+
+
+def _require_execution_choice(request):
+    # Omitted fields remain parseable only so an exact accepted legacy request
+    # can replay above. New work never receives a manufactured choice/reason.
+    if not request.get('purpose') or not request.get('reason'):
+        from neurath.runtime.task_schema import TaskError
+        raise TaskError('invalid-input', 'new provider work requires an explicit execution choice and reason')

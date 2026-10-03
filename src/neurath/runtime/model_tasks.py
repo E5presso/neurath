@@ -181,7 +181,7 @@ def previous_admission(root, identity, key, fields):
     original = request.get("model_request", request)
     # Additive schema defaults must not turn an old accepted request into a new
     # execution. Explicit nondefault intent still conflicts with the saved key.
-    for name, default in (("purpose", "task"), ("reason", "")):
+    for name, default in (("purpose", "task"), ("reason", ""), ("session_basis", "")):
         if name not in original and incoming.get(name) == default:
             incoming.pop(name, None)
     if original != incoming:
