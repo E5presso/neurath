@@ -1,7 +1,7 @@
 """Bind maintenance decisions to exact targets and fresh native user input.
 
-The authority is the existing kernel UserPromptReceipt plus its registered native
-transcript, not an agent boolean, memory item, tool output or copied prose.
+Maintenance authority is a selected prepared option on a correlated native question
+tool call, not an agent boolean, prompt hash or copied prose.
 Unsupported/ambiguous host input formats fail closed without inventing a choice.
 """
 import hashlib
@@ -11,13 +11,7 @@ import secrets
 
 from neurath.serialization import canonical
 from neurath.project_paths import control_root
-
-ANSWERS = {"yes":"yes", "ye":"yes", "ne":"yes", "예":"yes", "네":"yes",
-           "승인합니다":"yes", "동의합니다":"yes", "동의":"yes", "ok":"yes", "okay":"yes",
-           "no":"no", "아니요":"no", "아니오":"no", "아니":"no", "거절합니다":"no",
-           "동의하지 않습니다":"no", "동의하지 않아요":"no",
-           "later":"later", "나중에":"later", "보류":"later"}
-
+from neurath.runtime.choice_selection import question_options, native_selection, verify_selection
 
 def digest(value):
     return hashlib.sha256(value.encode()).hexdigest()
@@ -32,7 +26,7 @@ class ChoiceStore:
                 id TEXT PRIMARY KEY, owner TEXT, request_key TEXT, request TEXT,
                 record TEXT, used_key TEXT, proof TEXT, UNIQUE(owner,request_key))""")
 
-    def prepare(self, owner, key, subject, receipt):
+    def prepare(self, owner, key, subject, receipt, *, host="codex"):
         if receipt is None:
             raise ValueError("native user prompt receipt required")
         request = canonical(subject)
@@ -51,6 +45,7 @@ class ChoiceStore:
                       "target_id":subject["target_id"], "subject_digest":digest(request),
                       "question":question, "decisions":subject["decisions"],
                       "prepared_prompt":receipt, "status":"awaiting-user"}
+            record.update(question_options(record, host))
             db.execute("INSERT INTO user_choices VALUES(?,?,?,?,?,?,?)",
                        (identifier,owner,key,request,canonical(record),None,None))
         return record
@@ -64,57 +59,29 @@ class ChoiceStore:
         if row is None:
             raise ValueError("native choice reference missing or wrong owner")
         return {**json.loads(row[0]), "status":"admitted" if row[1] else "awaiting-user",
-                "application_status":application[0] if application else "not-recorded"}
+                "application_status":application[0] if application else "not-recorded",
+                "selection":None if row[2] is None else json.loads(row[2])}
 
-    def admit(self, owner, reference, subject, receipt, messages, decision, key):
+    def admit_selection(self, owner, reference, subject, selected, decision, key):
         with self.calls._db() as db:
-            row=db.execute("SELECT request,record,used_key,proof FROM user_choices WHERE id=? AND owner=?",
-                           (reference,owner)).fetchone()
+            row = db.execute("SELECT request,record,used_key,proof FROM user_choices WHERE id=? AND owner=?",
+                             (reference, owner)).fetchone()
             if row is None:
                 raise ValueError("native choice reference missing or wrong owner")
             if row[0] != canonical(subject):
                 raise ValueError("choice target changed; review the current target")
+            proof = verify_selection(json.loads(row[1]), selected)
+            if proof["decision"] != decision:
+                raise ValueError("requested decision differs from native selected option")
             if row[2] is not None:
                 if row[2] != key:
                     raise ValueError("native choice already used by another action")
-                proof=json.loads(row[3])
-                if proof["decision"] != decision:
-                    raise ValueError("native choice key changed decision")
+                if json.loads(row[3]) != proof:
+                    raise ValueError("native choice key changed selection")
                 return proof
-            record=json.loads(row[1])
-            actual=verify_answer(record,receipt,messages)
-            if actual != decision or actual not in record["decisions"]:
-                raise ValueError("requested decision differs from native user answer")
-            proof={"decision":actual,"user_choice_ref":reference,
-                   "prompt_digest":receipt["prompt_digest"],"subject_digest":record["subject_digest"],
-                   "authority":"native-user-prompt"}
             db.execute("UPDATE user_choices SET used_key=?,proof=? WHERE id=? AND owner=?",
-                       (key,canonical(proof),reference,owner))
+                       (key, canonical(proof), reference, owner))
         return proof
-
-
-def verify_answer(choice, receipt, messages):
-    if receipt is None or (receipt["generation"],receipt["turn_revision"]) <= (
-        choice["prepared_prompt"]["generation"],choice["prepared_prompt"]["turn_revision"]
-    ):
-        raise ValueError("choice requires a fresh native user input after preparation")
-    # The reader emits only real visible assistant/question and user frames.
-    if len(messages)<2 or messages[-1][0]!="user" or messages[-2][0]!="assistant":
-        raise ValueError("native question and user response are unobserved")
-    text=messages[-1][1]
-    # Codex transcript frames can retain a terminal line break that its
-    # UserPromptReceipt omitted. Keep exact-byte matching first so receipts
-    # for replies that intentionally include a line break still work.
-    if (digest(text)!=receipt["prompt_digest"]
-            and digest(text.rstrip("\r\n"))!=receipt["prompt_digest"]):
-        raise ValueError("native user input does not match the current prompt receipt")
-    if messages[-2][1].strip()!=choice["question"].strip():
-        raise ValueError("last assistant message must equal the prepared question verbatim; remove any preamble or trailing text")
-    answer=ANSWERS.get(text.strip().casefold().rstrip(".!。").strip())
-    if answer is None or answer not in choice["decisions"]:
-        allowed=", ".join(choice["decisions"])
-        raise ValueError(f"native user reply is not an accepted answer for this choice ({allowed}); reply with one unambiguous allowed decision")
-    return answer
 
 
 def _visible(content):
@@ -313,36 +280,34 @@ def prepare(root, fields, *, identity, expected_turn, context):
         raise ValueError("native user prompt receipt is missing")
     subject=target(root,fields["operation"],fields.get("target_id",""))
     store = _store(root)
-    result=store.prepare(identity.address,fields["key"],subject,receipt.to_payload())
+    result=store.prepare(identity.address,fields["key"],subject,receipt.to_payload(), host=identity.host)
     return {**result,"preview":subject["snapshot"],
-            "next_action":"Send the returned question as the entire final assistant message, with no preamble or trailing notes. "
-                          "Wait for a fresh user reply. Accepted replies include yes, ye, ne, 예, 네, 승인합니다, 동의합니다, ok, okay, no, 아니요, 아니오, 거절합니다, or later when offered. "
-                          "Preparation is not a decision."}
+            "next_action":"Call native_question.tool with its exact arguments to display the prepared options. "
+                          "Wait for the actual selection, then apply its decision with user_choice_ref. "
+                          "Do not supply answers, infer consent from prose, or repeat an unanswered question. "
+                          "If the host question tool is unavailable, preserve this pending choice and report the limitation."}
+
 
 
 def validate(root, name, fields, *, identity, expected_turn, context):
     from neurath.runtime.state_tasks import _handle
-    handle=_handle(root,identity,expected_turn,context)
-    receipt=handle.inspect().foreground_turns[handle.actor_id].user_prompt_receipt
+    _handle(root,identity,expected_turn,context)
     subject=target(root,name,fields.get("draft_id",fields.get("offer_id","")))
     store = _store(root)
     choice=store.read(identity.address,fields["user_choice_ref"])
     if choice["subject_digest"]!=digest(canonical(subject)):
         raise ValueError("choice target changed")
-    messages=native_messages(root,identity)
-    value=None if receipt is None else receipt.to_payload()
-    actual=verify_answer(choice,value,messages)
-    expected="yes" if name=="releases_check" else fields["decision"]
-    if actual!=expected:
-        raise ValueError("requested decision differs from native user answer")
-    return subject,value,messages
+    selected=native_selection(root,identity,choice)
+    proof=verify_selection(choice,selected)
+    if proof["decision"]!=fields["decision"]:
+        raise ValueError("requested decision differs from native selected option")
+    return subject,selected
 
 
 def commit(root, name, fields, validated, *, identity):
-    subject,receipt,messages=validated
-    store = _store(root)
-    return store.admit(identity.address,fields["user_choice_ref"],subject,receipt,messages,
-                       "yes" if name=="releases_check" else fields["decision"],fields["key"])
+    subject,selected=validated
+    return _store(root).admit_selection(identity.address,fields["user_choice_ref"],subject,selected,
+                                       fields["decision"],fields["key"])
 
 
 def read(root, fields, *, identity):

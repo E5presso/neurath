@@ -92,7 +92,7 @@ A host capability begins as `unobserved` until a relevant native submission is o
 
 The capability retirement hook permits index-only removal of one installed skill's `SKILL.md` when its Git index blob, worktree bytes, installation ownership record, and packaged asset all match, and the root `.gitignore` contains an exact anchored rule for that file. The command must invoke the host's resolved Git executable by its absolute path. An absolute target works when the native shell omits `workdir`; a relative target requires an explicit execution directory. File deletion, broad targets, and changed assets remain denied.
 
-For native maintenance choices, the prompt receipt remains the authority. A Codex visible user frame may contain terminal line breaks omitted from that receipt; choice validation compares the exact text first, then the text without terminal line breaks. Other text changes still fail the receipt check.
+Native maintenance consent uses prepared option digests and correlated question-tool results. Claude `AskUserQuestion` returns structured `questions`/`answers` on the matching `tool_use_id`; Codex asynchronous replies identify the tool call and question index in `questionItemId`. Both paths validate the selected option against its retained digest without requiring a new `UserPromptSubmit` or hashing the complete reply. Display prose and JSON formatting cannot change the selected option. Unsupported result formats preserve the pending choice instead of falling back to plain-text consent.
 
 ## Stop validation and response delivery
 

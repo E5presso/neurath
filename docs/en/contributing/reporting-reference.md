@@ -18,13 +18,13 @@ To obtain the native question, call `maintenance_choice_prepare`:
 {"operation": "reporting_consent", "key": "reporting-question-1"}
 ```
 
-Show its exact question, then wait for the actual user response. The returned `user_choice_ref` identifies the question and its subject. A native **receipt** is a retained host record establishing that the user answered it. An agent-authored “yes” or a copied reference is not that record. With the real answer, use `reporting_consent`:
+Call the returned `native_question.tool` with `native_question.arguments`: `AskUserQuestion` on Claude, `request_user_input_async` on Codex. The stored `options` bind each decision, label and description to a SHA-256 digest of the option, choice reference and target. Wait for the user to select an option, then call `reporting_consent` with its decision and `user_choice_ref`:
 
 ```json
 {"decision": "yes", "user_choice_ref": "RETURNED_USER_CHOICE_REF", "key": "reporting-consent-1"}
 ```
 
-Send the returned question as the entire final assistant message, without introductory or trailing explanation. The supported Claude path is a fresh plain-text user reply; `AskUserQuestion` tool results do not produce the required prompt receipt. Common replies such as `yes`, `네`, `동의합니다`, `ok`, `no`, and `아니요` are recognized. Errors distinguish a changed question from an unsupported answer.
+The registered transcript must correlate the question call and result: Claude uses `tool_use_id` and structured `questions`/`answers`; Codex uses `questionItemId` containing the tool name, call ID and question index. The selected option digest must match the prepared option. This works within the same turn without a new prompt receipt. Whole-prompt hashing and adjacent assistant prose are not consent checks. Cancellation, inactivity auto-resolution, free text outside the options, changed targets/options and reuse by another action are rejected. `accepted:true` alone is not a selection. Existing saved reporting preferences remain valid; a legacy pending text question must be prepared again with a new key. Do not repeat an unanswered native question.
 
 Use `no` for a decline or revocation. Reporting state uses canonical private `LocalState`/SQLite storage; old reporting JSON is migration input, not a second current authority.
 
@@ -57,7 +57,7 @@ Preparation returns an immutable draft ID binding the public title, body, and de
 
 ## Approve a contribution, then submit
 
-For a contribution, prepare another native question using `operation:"reporting_approve"` and `target_id` equal to the draft ID. The question contains the exact public draft. After the real reply, call `reporting_approve` with `draft_id`, `decision`, `user_choice_ref`, and `key`. Saved common-report consent does not approve a contribution's contents.
+For a contribution, prepare another native question using `operation:"reporting_approve"` and `target_id` equal to the draft ID. The question contains the exact public draft. After the native option selection, call `reporting_approve` with `draft_id`, `decision`, `user_choice_ref`, and `key`. Saved common-report consent does not approve a contribution's contents.
 
 For an authorized common report or an approved contribution, `reporting_submit` takes:
 

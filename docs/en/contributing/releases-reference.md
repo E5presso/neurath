@@ -38,7 +38,7 @@ The user needs that concrete preview to decide. Prepare the native question with
 {"operation": "releases_choose", "target_id": "RETURNED_OFFER_ID", "key": "release-question-1"}
 ```
 
-Show the exact returned question. For a release choice it displays the full wheel SHA-256 and the asset `relation`, so two same-version wheels with identical file plans remain visibly distinct. The returned `user_choice_ref` identifies the prepared question; it becomes usable only with the actual native user reply. A **receipt** here is the retained record linking a real host event to that reply, not a string the agent can supply as permission. Before a candidate is prepared, this question can offer `no` or `later`; afterward it can also offer `yes`.
+Call the returned `native_question.tool` with its exact `arguments` to display the prepared options. Claude uses `AskUserQuestion`; Codex uses `request_user_input_async`. The question includes the full wheel SHA-256 and asset `relation`. Each stored option digest binds its decision and visible content to the choice reference and release target. The registered host result must identify that same question call and select one matching option; a plain-text yes or async `accepted:true` is insufficient. Before preparation only `no` and `later` are available; after preparation `yes` is also offered.
 
 After an affirmative reply, `releases_choose` records the exact choice:
 

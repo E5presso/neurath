@@ -18,13 +18,13 @@ Neurath 공개 보고서는 사용자 프로젝트를 드러내지 않으면서 
 {"operation": "reporting_consent", "key": "reporting-question-1"}
 ```
 
-정확히 반환된 질문을 보여 주고 실제 사용자 답변을 기다립니다. `user_choice_ref`는 질문과 그 대상을 식별합니다. 네이티브 **receipt**는 사용자가 해당 질문에 답했다는 호스트의 보존 기록입니다. 에이전트가 쓴 “예”나 다른 곳에서 복사한 참조는 이 기록을 대신하지 못합니다. 실제 답변이 있으면 `reporting_consent`를 사용합니다.
+반환한 `native_question.tool`을 `native_question.arguments`로 호출합니다. Claude는 `AskUserQuestion`, Codex는 `request_user_input_async`입니다. 저장된 `options`는 결정·레이블·설명을 질문 참조와 대상에 묶은 SHA-256 해시를 갖습니다. 사용자가 옵션을 선택하면 해당 결정과 `user_choice_ref`로 `reporting_consent`를 호출합니다.
 
 ```json
 {"decision": "yes", "user_choice_ref": "RETURNED_USER_CHOICE_REF", "key": "reporting-consent-1"}
 ```
 
-반환된 질문만 최종 메시지로 보내고 앞뒤에 설명을 덧붙이지 않습니다. Claude에서는 사용자의 새 텍스트 답변을 사용합니다. `AskUserQuestion` 도구 결과는 필요한 프롬프트 기록을 만들지 않으므로 이 동의 경로에 사용하지 않습니다. `yes`, `네`, `동의합니다`, `ok`, `no`, `아니요` 같은 답변을 인식하며, 오류는 질문이 달라진 경우와 답변을 인식하지 못한 경우를 구분합니다.
+등록된 대화 기록에서 질문 호출과 결과를 연결합니다. Claude는 `tool_use_id`와 구조화된 `questions`/`answers`, Codex는 도구명·호출 ID·질문 번호가 든 `questionItemId`를 사용합니다. 선택한 옵션 해시가 준비한 값과 일치해야 합니다. 새 프롬프트 기록 없이 같은 턴에서도 처리하며, 프롬프트 전체 해시나 인접한 설명 문장은 동의 검사에 사용하지 않습니다. 취소·비활동 자동 응답·옵션 외 자유 입력·대상이나 옵션 변경·다른 작업의 재사용은 거부합니다. `accepted:true`만으로는 선택이 아닙니다. 기존에 저장한 보고 설정은 유지하고, 옛 텍스트 질문이 대기 중이면 새 key로 옵션 질문을 준비합니다. 응답 대기 중인 질문을 반복하지 않습니다.
 
 거절하거나 철회할 때는 `no`를 사용합니다. 보고 상태는 비공개 `LocalState`/SQLite의 기준 기록에 저장합니다. 옛 보고 JSON은 이전 데이터를 가져오는 입력이며 별도의 현재 기준 상태가 아닙니다.
 
