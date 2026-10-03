@@ -258,7 +258,10 @@ notice가 반환한 현재 버전·새 버전·주요 변경점·공식 릴리�
 반환값이 null이면 같은 버전을 다시 권하지 않는다. 답변이 없으면 업데이트하지 않는다.
 사용자가 업데이트를 검토하면 `releases prepare <offer-id>`로 정확한 wheel의 해시·버전·
 manifest를 검증하고 별도 실행 환경과 설치 계획을 준비한다. 대상 파일은 아직 바꾸지 않는다.
-준비한 변경 목록을 요약하고 이 프로젝트를 해당 버전으로 업데이트할지 명시적 동의를 받는다.
+준비한 변경 목록을 검토하고 maintenance_choice_prepare로 승인 대상과 옵션 해시를 고정한다.
+반환한 native_question.tool과 arguments로 선택지를 표시한다. Claude는 AskUserQuestion,
+Codex는 request_user_input_async를 사용하며 실제 선택 결과의 호출 ID와 옵션 해시를 검증한다.
+자유문 yes나 질문 접수 성공만으로 승인하지 않는다. 질문 도구가 없으면 미지원 상태를 알린다.
 동의한 경우에만 `releases choose <offer-id> yes --user-confirmed` 뒤
 `releases apply <offer-id>`를 실행한다. 검증용 fixture 실행 동의를 실제 설치 동의로 쓰지 않는다.
 거절은 no, 나중에는 later로 같은 choose 명령에 기록한다. 두 선택 모두 해당 버전을 다시
@@ -451,7 +454,9 @@ SessionStart에서만 관련 작업 기억을 최대 3 KB 주입한다. 후속 �
 ## 공통 하네스의 upstream 보고
 최초 설치·온보딩에서 `.neurath/run report status`의 질문으로 자동 보고 동의를 받는다.
 동의는 Neurath의 공개 GitHub 이슈로 보낸다는 의미이며, 프로젝트별 비공개 Git 관리 영역에
-저장한다. 명시적 답변만 `report consent yes|no --user-confirmed`로 기록한다.
+저장한다. maintenance_choice_prepare의 native_question 도구와 arguments로 옵션을 제시한다.
+실제 도구 선택 결과만 `report consent yes|no --user-confirmed`로 기록한다.
+질문 도구 호출과 선택한 옵션 해시를 검증하며 자유문 답변의 전체 해시는 동의 근거로 쓰지 않는다.
 미응답은 보고 금지이며 작업을 막거나 반복해서 질문하지 않는다. 거부 후에는 다시 권하지 않는다.
 업데이트는 기존 선택을 유지하며 사용자가 변경·철회를 요청하면 에이전트가 기록하고 확인한다.
 
@@ -469,7 +474,8 @@ component(패키지 상대 경로), summary, expected, observed, reproduction, p
 반환한 제목·본문·ID를 확인하고 `report submit <ID>`로 고정된 Neurath 저장소에 게시한다.
 
 프로젝트에서 발전한 기능의 일반화가 유용하면 별도 contribution 초안을 먼저 작성한다.
-사용자에게 정확한 공개 제목·본문·대상 저장소를 보여 주고 해당 초안의 기여 동의를 받는다.
+maintenance_choice_prepare로 정확한 공개 제목·본문·대상 저장소와 옵션을 고정하고
+반환한 native_question 도구에서 해당 초안의 공개 제출 선택을 받는다.
 동의한 경우에만 `report approve <ID> yes --user-confirmed` 후 submit한다. 거절도 no로 기록한다.
 자동 보고 플래그는 이 동의를 대신하지 않으며 초안 변경 시 새로운 동의가 필요하다.
 이슈 제안 동의는 전용 코드 공개나 권리 이전 동의가 아니다.

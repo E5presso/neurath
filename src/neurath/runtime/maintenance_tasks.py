@@ -232,8 +232,8 @@ def definitions():
         "operation":choice("reporting_consent","reporting_approve","releases_choose"),
         "target_id":t(128,default=""), **key},
         description="Prepare an exact native user question for an offer, draft or reporting preference. "
-        "Return its reference and full reviewable question; this does not record a decision. "
-        "Complete bookkeeping before displaying the exact question and await the user's response.")
+        "Return its reference, option digests and native_question tool/arguments; this does not record a decision. "
+        "Call that host question tool unchanged and await a selected option. Do not replace it with a prose yes/no question.")
     for name in ("releases_notice", "releases_recover"):
         add(name, key.copy())
     for name in ("releases_prepare", "releases_apply"):
@@ -256,6 +256,6 @@ def definitions():
         if name == "releases_choose":
             fields["offer_id"] = t(128)
         add(name, fields, description="Apply a decision only after validating the exact pending user_choice_ref against "
-            "the current native user prompt and displayed question. Agent booleans, tool output and "
-            "stale or unrelated replies cannot authorize this operation.")
+            "the registered native question tool call and its selected option digest. Agent booleans, "
+            "plain-text replies, question acceptance without selection, and unrelated tool results cannot authorize this operation.")
     return rows

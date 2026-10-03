@@ -26,8 +26,10 @@ user-invocable: true
 3. 반환된 `offer_id`로 `releases_prepare`를 실행하고 버전, 배포본, 설치 변경,
    충돌을 검토합니다. 준비가 실패하거나 관리 파일 충돌이 있으면 적용하지 않습니다.
 4. `maintenance_choice_prepare(operation="releases_choose", target_id=offer_id)`가
-   반환한 **질문 전문**을 사용자에게 보여 주고 답변을 기다립니다. 실제 네이티브
-   답변과 `user_choice_ref`가 확인되면 `releases_choose`에 `yes`, `no` 또는
+   반환한 `native_question.tool`과 `native_question.arguments`로 선택지를 표시합니다.
+   Claude는 `AskUserQuestion`, Codex는 `request_user_input_async`를 사용합니다.
+   옵션이나 질문을 다시 작성하지 않고 실제 선택 결과를 기다립니다. 도구 호출 ID와
+   준비된 옵션 해시가 연결된 선택 및 `user_choice_ref`가 확인되면 `releases_choose`에 `yes`, `no` 또는
    `later`를 기록합니다. 응답이 없거나 미리보기가 바뀌면 임의로 결정하지 않습니다.
 5. `yes`일 때만 같은 `offer_id`로 `releases_apply`를 실행합니다. 반환된 설치 기록,
    선택 버전·배포본, 배치·프로토콜 진단과 `releases_status`를 읽습니다. 결과가

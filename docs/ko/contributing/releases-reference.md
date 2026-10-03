@@ -38,7 +38,7 @@
 {"operation": "releases_choose", "target_id": "RETURNED_OFFER_ID", "key": "release-question-1"}
 ```
 
-반환된 질문을 그대로 보여 줍니다. 릴리스 선택 질문은 전체 wheel SHA-256과 asset `relation`을 표시하므로 같은 버전이고 파일 계획이 같아도 서로 다른 두 wheel을 눈으로 구분할 수 있습니다. `user_choice_ref`는 준비한 질문을 식별하며 실제 네이티브 사용자 답변이 있어야 사용할 수 있습니다. 여기서 **receipt**는 실제 호스트 이벤트와 답변을 연결한 보존 기록입니다. 에이전트가 권한을 나타내려고 임의로 넣는 문자열이 아닙니다. 후보를 준비하기 전에는 `no`와 `later`를, 준비한 후에는 `yes`까지 선택할 수 있습니다.
+반환한 `native_question.tool`을 정확한 `arguments`로 호출해 준비된 옵션을 표시합니다. Claude는 `AskUserQuestion`, Codex는 `request_user_input_async`를 사용합니다. 질문에는 전체 wheel SHA-256과 asset `relation`이 들어갑니다. 각 옵션 해시는 결정과 표시 내용을 질문 참조·릴리스 대상에 연결합니다. 등록된 호스트 결과가 같은 질문 호출을 가리키고 일치하는 옵션 하나를 선택해야 합니다. 자유문 yes나 비동기 질문 접수 결과 `accepted:true`만으로는 승인하지 않습니다. 준비 전에는 `no`·`later`, 준비 후에는 `yes`까지 제공합니다.
 
 실제 긍정 답변을 받은 다음 `releases_choose`로 정확한 결정을 기록합니다.
 
