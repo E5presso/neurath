@@ -152,7 +152,7 @@ The replacement consists of domain models/transitions, one store, application co
 
 Remove the old session kernel, duplicate task/phase/adaptive ledgers, review-specific state system, legacy CLI replay and prose-regex evidence gates from execution and distribution once the replacement meets its acceptance scenarios. A new facade over the old engine is not completion. Do not silently delete historical execution data or treat it as successful; preserve unfinished goals at an explicit export/adoption boundary.
 
-Build a candidate distribution that excludes the old core first. After its actual-host acceptance scenarios pass, delete the previous implementation from the repository and verify the final distribution again.
+Build and test the replacement without the old core. Remove the previous implementation from version-controlled source as part of the rewrite; this reversible source change does not replace an active immutable installation. Actual-host acceptance remains required before claiming production readiness or switching the installed runtime. Preserve existing live work until the explicit data-adoption and host-reconnection boundary.
 
 ## 11. Acceptance scenarios
 
