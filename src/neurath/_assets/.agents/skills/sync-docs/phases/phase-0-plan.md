@@ -6,7 +6,7 @@ documentation sync scope를 결정합니다.
 
 1. scope를 `dev`, `user`, `all`, specific component 중 하나로 parse합니다.
 2. approved plan, changed code, test, manifest, existing docs를 읽습니다.
-3. `/sync-dev-docs`, `/sync-user-docs`, 둘 다 중 무엇이 필요한지 결정합니다.
+3. `/dev-docs`, `/user-docs`, 둘 다 중 무엇이 필요한지 결정합니다.
 4. Neurath product purpose가 settled되지 않아 blocked 상태로 남아야 하는 docs를
    식별합니다.
 5. source evidence와 target file이 있는 sync plan을 만듭니다.

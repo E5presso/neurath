@@ -1,0 +1,141 @@
+{
+  "autopilot": [
+    "collect_issues",
+    "dependency_dag",
+    "execute_waves",
+    "recovery",
+    "meta_detection",
+    "intent_audit",
+    "sync_docs",
+    "terminal_report"
+  ],
+  "automate-qa": [
+    "scenario_and_environment",
+    "deployed_surface_evidence",
+    "gap_and_loop_closure"
+  ],
+  "commit": [
+    "status_and_diff",
+    "stage_scope",
+    "commit"
+  ],
+  "create-pr": [
+    "branch_state",
+    "push",
+    "pr"
+  ],
+  "create-ticket": [
+    "prepare_issue_content",
+    "create_github_objects",
+    "verify_readback",
+    "report_result"
+  ],
+  "evaluate-harness": [
+    "define_failure_scenario",
+    "independent_evaluation",
+    "gap_and_verification"
+  ],
+  "monitor-pr": [
+    "start_monitor",
+    "record_subscription",
+    "resume_event",
+    "terminal_state"
+  ],
+  "optimize-harness": [
+    "inventory",
+    "optimize",
+    "evaluate"
+  ],
+  "plan-issues": [
+    "input",
+    "analysis",
+    "grill_and_plan",
+    "spec_artifact",
+    "documentation",
+    "cold_read_simulation",
+    "github_issue_hierarchy",
+    "report_result"
+  ],
+  "process-ticket": [
+    "orientation",
+    "intent_and_scan",
+    "worktree_context",
+    "test_first",
+    "implementation",
+    "verification",
+    "publication",
+    "monitoring",
+    "merge_cleanup"
+  ],
+  "sync-docs": [
+    "plan",
+    "write",
+    "verify",
+    "reconcile",
+    "report",
+    "deliver"
+  ],
+  "audit-spec": [
+    "execute"
+  ],
+  "checkpoint": [
+    "execute"
+  ],
+  "create-worktree": [
+    "execute"
+  ],
+  "dependency-audit": [
+    "execute"
+  ],
+  "investigate": [
+    "execute"
+  ],
+  "pr-review": [
+    "execute"
+  ],
+  "promote-memory": [
+    "execute"
+  ],
+  "finish-session": [
+    "status_and_diff",
+    "stage_scope",
+    "commit",
+    "push_readback",
+    "graphify_update",
+    "worktree_release"
+  ],
+  "review-code": [
+    "execute"
+  ],
+  "sync-dev-docs": [
+    "execute"
+  ],
+  "sync-user-docs": [
+    "execute"
+  ],
+  "triage-comments": [
+    "execute"
+  ],
+  "update-dependencies": [
+    "execute"
+  ],
+  "update-project-status": [
+    "execute"
+  ],
+  "explore-ui": [
+    "authority_and_references",
+    "canvas_exploration",
+    "user_selection",
+    "implementation_handoff"
+  ],
+  "sync-design": [
+    "execute"
+  ],
+  "implement-ui": [
+    "execute"
+  ],
+  "review-ui": [
+    "capture_and_compare",
+    "user_visual_decision"
+  ]
+}

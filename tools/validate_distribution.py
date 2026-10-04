@@ -54,29 +54,9 @@ def validate(wheel, output):
             repeated = json.loads(run([*command, "install"], env=env, cwd=area))
             assert repeated["changed"] == 0
             doctor = json.loads(run([*command, "doctor", "--protocol"], env=env, cwd=area))
-            for module in ("scripts.agent_harness", "scripts.skill_harness"):
-                run([*command, "engine", module], env=env, cwd=area)
-            run(
-                [root / ".neurath/run", "engine", "scripts.agent_harness.state_cli", "--help"],
-                env=env,
-                cwd=area,
-            )
-            run(
-                [root / ".neurath/run", "engine", "scripts.skill_harness.phase_runner", "--help"],
-                env=env,
-                cwd=area,
-            )
-            run(
-                [
-                    root / ".neurath/run",
-                    "skill",
-                    "monitor-pr",
-                    "monitor_runtime_readback.py",
-                    "--help",
-                ],
-                env=env,
-                cwd=area,
-            )
+            assert doctor["protocol"]["codex"]["status"] == "passed"
+            assert doctor["protocol"]["claude-code"]["status"] == "passed"
+            run([root / ".neurath/run", "integrity"], env=env, cwd=area)
             settings = json.loads((root / ".claude/settings.json").read_text())
             assert settings["permissions"]["deny"] == ["Bash(rm *)"]
             assert settings["env"]["KEEP"] == "yes"
@@ -92,7 +72,8 @@ def validate(wheel, output):
             assert not (root / ".codex/hooks.json").exists()
         code = """import importlib, json, sys
 from pathlib import Path
-from neurath.runtime.engine import activate
+import neurath.core
+from neurath.core.commands import COMMANDS
 from neurath.resources import BUNDLE
 source_root = Path(sys.argv[1]).resolve()
 def guard(event, args):
@@ -101,14 +82,14 @@ def guard(event, args):
         if target.is_relative_to(source_root) or "projects" in target.parts:
             raise RuntimeError("source checkout access forbidden")
 sys.addaudithook(guard)
-activate()
 imported=[]
-for path in sorted((BUNDLE / "scripts").rglob("*.py")):
-    if "tests" in path.parts or path.name in ("__main__.py", "__init__.py"):
+for path in sorted(Path(neurath.core.__file__).parent.glob("*.py")):
+    if path.name in ("__main__.py", "__init__.py"):
         continue
-    module=".".join(path.relative_to(BUNDLE).with_suffix("").parts)
+    module="neurath.core." + path.stem
     importlib.import_module(module)
     imported.append(module)
+assert "task_complete" in COMMANDS and "phase_complete" in COMMANDS
 print(json.dumps({"modules":len(imported),"bundle":str(BUNDLE)}))"""
         imported = json.loads(run([python, "-I", "-c", code, Path(__file__).resolve().parents[1]], cwd=area, env=env))
         report = {

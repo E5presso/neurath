@@ -6,7 +6,7 @@ import pytest
 
 from neurath.reporting import Reporting
 from neurath.updates import Updates
-from neurath.runtime.database import LegacyStateChanged, RecordConflict
+from neurath.core.domain import CoreError
 
 
 def project(tmp_path):
@@ -27,7 +27,7 @@ def test_reporting_import_preserves_consent_without_new_json_writes(tmp_path):
     assert Reporting(root).status()["auto_report"] is False
     assert service.path.read_text() == raw
     service.path.write_text(raw.replace("true", "false"))
-    with pytest.raises(LegacyStateChanged):
+    with pytest.raises(CoreError, match="service-source-changed"):
         service.status()
 
 
@@ -37,7 +37,7 @@ def test_local_state_rejects_stale_snapshot_without_lost_update(tmp_path):
     a["auto_report"] = True
     service._save(a)
     b["auto_report"] = False
-    with pytest.raises(RecordConflict):
+    with pytest.raises(CoreError, match="revision-conflict"):
         service._save(b)
     assert service.status()["auto_report"] is True
     assert not service.path.exists()

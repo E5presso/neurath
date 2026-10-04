@@ -1,93 +1,49 @@
-# Tool Runtime Map
+# 실행 도구 선택
 
-## Neurath 작업 도구
+Neurath의 named MCP는 Task·phase·출처·위임·소유권 상태를 다룬다. 파일 수정·검사·
+실제 subagent/provider 실행은 현재 호스트의 native 도구를 사용한다. 반환된 계획이나
+marker는 실제 실행·승인·완료가 아니다. 현재 스키마와 반환 ID를 따른다.
 
-두 호스트 모두 현재 도구 목록에 노출된 구조화 MCP를 우선한다. 입력은 도구 스키마를 사용하며
-CLI 옵션 문자열을 조립하지 않는다. 도구 응답은 현재 권한을 대신하거나 새로운 권한을 만들지 않는다.
+| 작업 | Neurath 명령 또는 native 표면 |
+| --- | --- |
+| 현재 작업 | session_status, task_list, task_read, task_focus |
+| 요구와 진행 | task_define/start/wait/resume/complete, skill_start, phase_read/complete/restart |
+| 실제 원문 | source_list/read/quote, evidence_list |
+| 보고와 승인 해석 | report_record, approval_record |
+| writer 자원 | worktree_read/claim/release |
+| 작업 위임 | assignment_prepare/start/read/report/accept/reject/cancel |
+| 다른 세션/provider | provider_prepare/read 및 반환된 native 실행 |
+| 동료 메시지 | collaboration_discover/send/inbox/reply/ack |
+| 공유 지식 | newsroom_publish/headlines/read, memory_recall/checkpoint/pull |
+| 공개 결과 확인 | publication_read |
+| 결함 복구 | 상태·원문 오류를 보존하고 승인된 native 도구로 수리 |
 
-| 작업 | 명명 MCP 도구 | 확인할 경계 |
-|---|---|---|
-| 세션 진단 | `session_status` | 설치·활성화·모드·소유권 각각 관측 |
-| 호스트 기능과 경로 | `provider_capabilities`, `provider_route` | 경로 제안은 실행 아님 |
-| 독립 작업 실행 | `provider_run` | 실제 발행자의 정책 승계 |
-| 프로젝트 기억 | `memory_recall`, `memory_checkpoint` | 보고는 완료 권위 아님 |
-| 검증 | `verification_run`, `verification_builtin`, `verification_nodes` | 실제 실행과 소스 지문 |
-| 동료 통신 | `collaboration_discover/inbox/send/reply` | 실제 수신자와 안정된 메시지 ID. `delivery: pull-only`는 현재 깨울 수 있는 연결이 없으며 다음 네이티브 턴에서 읽힘 |
-| 뉴스 | `newsroom_headlines/read/publish` | 활성 동료의 참고 정보 |
+재사용 가능한 `tool:<key>` 참조는 아래 의미를 가진다. 정확한 native 이름은 현재
+호스트의 inventory와 schema에서 확인하며 도구 부재를 성공으로 기록하지 않는다.
 
-CLI는 최초 부트스트랩·서버 시작·호스트 콜백과 내부 실행 기반으로 유지한다.
-기존 `agent(argv)`는 저장 호출 호환용이며 새 도구 목록에는 노출하지 않는다.
-명명 도구가 없거나 현재 정책을 집행할 수 없으면 구체적인 미지원 상태를 보고한다. 다른 전송으로
-같은 작업을 우회 실행하지 않는다. 사용자에게 하네스 실행이나 설정 편집을 맡기지 않는다.
-설치·프로토콜 진단과 실제 활성화·관측된 모드·정식 소유권을 각각 확인한다.
-검사 실패·중단의 상태를 읽고 복구한다. 같은 key의 쓰기는 같은 내용으로 재시도하며,
-실행 결과가 불확실한 검사는 자동 재실행하지 않는다. 독립 검토와 사용자 승인은 그대로 필요하다.
+| key | 실제 동작 |
+| --- | --- |
+| read_file, search_files, read_many | Read/Glob/Grep 또는 native shell의 cat/rg 읽기 |
+| edit_file | Edit/Write 또는 apply_patch, 실제 절대 대상 경로 |
+| run_shell | 호스트의 Bash/exec_command와 실제 workdir |
+| ask_user | 현재 host의 사용자 질문 도구 |
+| spawn_agent, team_create | 현재 native subagent 도구 |
+| create_worktree | 예약된 실제 경로에 native Git worktree 생성 |
+| send_progress | 사용자에게 현재 결과·남은 불확실성 설명 |
+| send_message | 승인된 native agent 메시지 또는 프로젝트 mailbox |
+| github | 현재 GitHub connector 또는 native gh |
+| source_research | 현재 문서 검색 도구와 원문 조회 |
+| design_canvas, browser, native_mobile | 실제 해당 native 기능; 없으면 정확한 미지원 보고 |
+| phase_runner | 같은 Task의 skill_start 및 phase_read/complete/restart |
+| verify_repository | project.json의 등록된 실제 native 검사 명령 |
+| local_pr_monitor | 현재 지원되는 PR 이벤트 감시와 그 실제 결과 |
 
-Skill과 phase file은 아래 stable `tool:<key>`로 Claude Code와 Codex tool call을 참조합니다.
+서로 독립된 읽기 조사 둘 이상은 병렬 위임하고 결과를 대조한다. 필요 없이 슬롯을
+채우지 않는다. 독립 리뷰는 새 컨텍스트의 reviewer 한 명이 전체 검토 기준을 확인하며
+구현자의 자체 검토로 대체하지 않는다. 리뷰어의 읽기·실패 보고에 writer lease나 관측할
+수 없는 부모 계보를 선행 조건으로 요구하지 않는다.
 
-| key | claude code | codex |
-|-----|-------------|-------|
-| `read_file` | `Read` | `functions.exec_command` with `sed`, `nl`, or `cat` |
-| `search_files` | `Glob`, `Grep`, or `Bash` with `rg` | `functions.exec_command` with `rg` or `rg --files` |
-| `read_many` | multiple `Read` calls; 승인된 위임은 현재 `Agent` 또는 `Task` schema 확인 | parallel `functions.exec_command` reads |
-| `edit_file` | `Edit`, `MultiEdit`, or `Write` | `functions.apply_patch`; formatter for mechanical edits |
-| `run_shell` | `Bash` | `functions.exec_command` without `sandbox_permissions` |
-| `ask_user` | question tool or direct message | concise commentary/final question |
-| `spawn_agent` | 현재 호스트의 `Agent` 또는 `Task`; 실제 inventory/schema 확인 | 현재 multi-agent tool; unavailable이면 skill이 허용한 serial fallback만 사용 |
-| `team_create` | 현재 `TeamCreate` 또는 지원되는 named agent 기능 | 현재 multi-agent tool 또는 worker boundary를 보존한 serial execution |
-| `create_worktree` | `CreateWorkTree` or repo script | `/create-worktree` or `git worktree`; `.agents/worktrees/` 격리 유지 |
-| `send_progress` | `SendMessage` | commentary update or phase runner JSON evidence |
-| `send_message` | named `SendMessage` | commentary, phase evidence, or multi-agent message |
-| `github` | GitHub MCP or `gh` | GitHub connector when available, otherwise `gh` |
-| `source_research` | `WebSearch`, `WebFetch`, docs connector | web research tool or `find-docs` |
-| `design_canvas` | native canvas MCP | native canvas MCP; 없으면 blocked |
-| `browser` | Claude in Chrome (`--chrome`/`/chrome`) 등 native control | browser/chrome skill의 네이티브 브라우저 제어 |
-| `native_mobile` | simulator용 native computer control | computer-use skill의 simulator control |
-| `phase_runner` | `phase_*` MCP | `phase_*` MCP |
-| `verify_repository` | `verification_run/builtin/nodes` MCP | `verification_run/builtin/nodes` MCP |
-| `local_pr_monitor` | `monitor_start/status/cancel/recover` MCP | `monitor_start/status/cancel/recover` MCP |
-
-## 규칙
-
-- Repository gate는 structured edit의 literal target만 다룹니다. Shell/web/browser/subagent/provider
-  tool의 의미·승인·sandbox는 host 소유이며 harness는 grammar·option·allowlist를 복제하지 않습니다.
-- 재사용 문서는 vendor-only 이름 대신 `tool:<key>`를 씁니다. Native research/browser/mobile
-  capability는 shell·Playwright·web fetch로 가장하지 않고 없으면 blocked입니다. Chat에서 logic을
-  복제하지 말고 repository command를 사용합니다.
-- Effectful test/pre-commit/mise/frontend 검증은 closed `verification_runner`만 사용합니다. Runner가
-  exact profile, index 포함 before/after, bounded diagnostic과 owned process를 검증합니다. Daemon survivor는
-  실패이며 same-user hostile sandbox는 아닙니다. Explicit pyrefly/ruff check만 read-only입니다.
-- Web/user/subagent 호출은 nonmaterial boundary이지 semantic evidence가 아닙니다.
-  `write_stdin`은 host-owned control이며 owning-PTY, material, 완료, 효율 증거가 아닙니다.
-- Claude와 Codex child event는 official `session_id+agent_id`를 권한을 저장하지 않는 같은
-  lifecycle adapter(`state-free lifecycle adapter`)로
-  정규화합니다. Repository config의 `SubagentStart`/`SubagentStop` 선언은 `DECLARED`일 뿐 host가 config를
-  load했거나 event를 전달·재시도·차단한다는 증명이 아닙니다. 두 runtime 모두 parent가 없거나
-  host가 바로 위 부모를 확인하지 못하면 same-session bounded context/no-op만 허용하고 actor,
-  turn, outbox를 persist하지 않습니다. Raw `parent_agent_id` 자체도 authority가 아닙니다.
-- Host가 바로 위 부모를 확인했을 때만(`host-attested exact parent`) registered actor와 독립적인
-  바로 아래 자식 권한(`DIRECT_CHILD`)을 만들고,
-  persisted child의 `SubagentStop`이 gate를 닫습니다. Codex는 실제 transcript의 parent metadata와
-  root 생성 호출을 대조합니다. 실제 증명이 없는 child의 상태 변경·검토 권한은 UNAVAILABLE입니다.
-  child의 실행 권한과 worktree 소유권은 별도 확인하며 root 권한을 대신 사용하지 않습니다.
-  리뷰에는 계보와 별도로 native spawn의 fresh context와 review 역할을 검증합니다.
-- Stateful command 예시는 한 physical line의 literal argv로 기록합니다. 실제 option grammar와
-  authority는 각 CLI와 host runtime이 소유합니다. `UPPER_SNAKE_CASE`는 invocation 전에 실제 값으로
-  치환하고 native `workdir`를 사용합니다.
-- Stateful JSON은 literal read와 agent 해석을 분리하며 shell capture/JQ 대신 returned object와 hook digest를
-  사용합니다. Contract evidence 이름은 runtime과 무관하게 유지합니다.
-- Claude auto `PermissionDenied`는 UNKNOWN으로 닫습니다. Post event가 없으면 첫 Stop이 UNKNOWN/BLOCKED로
-  terminalize하고 recovery turn을 강제합니다.
-- Backend scaffold는 shared generated-file inventory 전체를 prepare하며 broad directory authority를 금지합니다.
-- 독립 read-only 조사 둘 이상은 root가 병렬 위임하고 대조합니다.
-  상한을 채우지 않으며 child 재위임·mutation·권위 위임은 금지합니다. `/review-code`는
-  독립 single-subagent readback 없으면 blocked이고 serial fallback이 없습니다.
-- Claim 충돌은 `worktree_inspect`로 실제 owner를 읽고 기존 세션의 현재 작업 상태를 확인한다.
-  기존 세션이 끝낼 수 있으면 `finish-session`, 미완료 작업이 있으면 안전한 인계와 claim 반환을 요청한다.
-  실제 release를 다시 읽기 전에는 claim을 재시도하지 않는다.
-- Codex app의 기존 세션은 현재 `read_thread`로 상태를 확인하고 승인된 `send_message_to_thread`를 우선한다.
-  Claude는 현재 `ListAgents`로 동료를 발견하고 정확한 반환 주소와 현재 schema로 `SendMessage`를 사용한다.
-  수신 보류·거부·대기 상태를 보존한다. 사용자 승인 아래 막힌 claim을 조율할 때는 idle owner에도
-  후속 메시지를 보낼 수 있다. 일반 알림을 위해 비활성 동료를 임의로 깨우지 않는다.
-  외부 app-server는 해당 adapter가 소유한 세션만 제어한다. CLI resume은 terminal이 소유한 실행에 한정하며,
-  이미 실행 중인 app·Claude 세션을 다른 headless process로 대신하지 않는다.
+같은 계정·프로세스의 모든 프로그램 효과를 정적으로 증명한다고 주장하지 않는다.
+알려진 편집·게시·정리 효과를 현재 phase에서 검사하고, 분류되지 않은 실행은 execute로
+처리한다. 혼합 호출의 알려진 효과를 지우지 않는다. Host sandbox와 승인 체계는 그대로
+유지한다. 출력의 PASS 문자열·도구 시작 handle·write_stdin 접수는 실제 완료 근거가 아니다.

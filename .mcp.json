@@ -4,7 +4,7 @@
       "command": "sh",
       "args": [
         "-c",
-        "exec \"$(git rev-parse --show-toplevel)/tools/checkout_host\" mcp"
+        "exec \"$(git rev-parse --show-toplevel)/tools/checkout_host\" mcp --provider claude-code"
       ]
     }
   }

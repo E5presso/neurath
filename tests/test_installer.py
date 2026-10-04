@@ -15,11 +15,14 @@ def repo(tmp_path):
     return tmp_path
 
 
-def test_codex_mcp_timeout_exceeds_supported_verifier_deadline(repo):
+def test_native_checks_do_not_require_a_long_running_mcp_verifier(repo):
     import tomllib
     apply_plan(repo, make_plan(repo))
     config = tomllib.loads((repo / '.codex/config.toml').read_text())
-    assert config['mcp_servers']['neurath_collaboration'].get('tool_timeout_sec', 0) > 3600
+    server = config['mcp_servers']['neurath_collaboration']
+    assert 'tool_timeout_sec' not in server
+    assert 'neurath.core.mcp' in server['args']
+    assert 'verification_run' not in server['enabled_tools']
     assert 'tool_timeout_sec' not in json.loads((repo / '.mcp.json').read_text())['mcpServers']['neurath_collaboration']
 
 
@@ -168,7 +171,7 @@ def test_codex_update_preserves_settings_added_after_install_and_uninstall(repo,
 def test_codex_managed_permission_change_is_still_a_conflict(repo):
     apply_plan(repo, make_plan(repo))
     path = repo / ".codex/config.toml"
-    path.write_text(path.read_text().replace('approval_mode = "approve"', 'approval_mode = "deny"', 1))
+    path.write_text(path.read_text() + '\n[mcp_servers.neurath_collaboration.tools.task_complete]\napproval_mode = "deny"\n')
     with pytest.raises(InstallError, match="conflict"):
         make_plan(repo, action="update")
 
@@ -373,15 +376,15 @@ def test_agents_guidance_routes_work_and_preserves_other_integrations(repo, pref
     apply_plan(repo, make_plan(repo, skill_prefix=prefix))
     content = (repo / "AGENTS.md").read_text()
     assert content.startswith(original)
-    for tool in ("session_status", "task_define", "task_start", "task_resolve",
+    for tool in ("session_status", "task_define", "task_start", "task_complete",
                  "memory_recall", "memory_checkpoint", "memory_pull",
                  "collaboration_discover", "collaboration_inbox", "collaboration_reply",
                  "newsroom_headlines", "newsroom_read", "newsroom_publish",
-                 "provider_models", "provider_plan", "provider_run", "learning_pending"):
+                 "assignment_prepare", "provider_prepare", "phase_read", "phase_complete"):
         assert f"`{tool}`" in content
-    assert "claim conflict" in content
-    assert "owning session" in content
-    assert "finish-session" in content
+    assert "Never force" in content
+    assert "unfinished" in content
+    assert "task_resolve" not in content
     assert content.count("<!-- neurath:managed -->") == 1
     assert len(content[len(original):].encode()) < 4500
     assert make_plan(repo)["changes"] == []
@@ -497,15 +500,13 @@ def test_existing_install_adopts_tracked_checkout_bootstrap_without_losing_user_
         if name == ".codex/config.toml":
             # The checkout registration can predate new API definitions. Build
             # this fixture from the current catalog without changing the host.
-            from neurath.runtime.task_schema import TASKS
-            launcher = 'exec "$(git rev-parse --show-toplevel)/tools/checkout_host" mcp'
+            from neurath.core.commands import COMMANDS
+            launcher = 'exec "$(git rev-parse --show-toplevel)/tools/checkout_host" mcp --provider codex'
             text = ("# neurath:checkout-bootstrap\n" + codex_user
                     + '[mcp_servers.neurath_collaboration]\ncommand = "sh"\n'
                     + 'args = ' + json.dumps(["-c", launcher]) + '\n'
-                    + 'tool_timeout_sec = 3660\nstartup_timeout_sec = 600\n'
-                    + 'enabled_tools = ' + json.dumps([*TASKS, "agent"]) + '\n'
-                    + ''.join(f'[mcp_servers.neurath_collaboration.tools.{tool}]\napproval_mode = "approve"\n'
-                              for tool in (*TASKS, "agent")))
+                    + 'startup_timeout_sec = 600\n'
+                    + 'enabled_tools = ' + json.dumps(sorted(COMMANDS)) + '\n')
         elif name == ".claude/settings.json":
             settings = json.loads(text)
             settings["model"] = "user-choice"
@@ -513,6 +514,9 @@ def test_existing_install_adopts_tracked_checkout_bootstrap_without_losing_user_
             text = json.dumps(settings, indent=2) + "\n"
         elif name == ".mcp.json":
             config = json.loads(text)
+            config["mcpServers"]["neurath_collaboration"] = {
+                "command": "sh", "args": ["-c", 'exec "$(git rev-parse --show-toplevel)/tools/checkout_host" mcp --provider claude-code'],
+            }
             config["mcpServers"]["user"] = {"command": "user-server"}
             text = json.dumps(config, indent=2) + "\n"
         (repo / name).write_text(text)

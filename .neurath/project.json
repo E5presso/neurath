@@ -2,13 +2,23 @@
   "schema": 1,
   "documents": {
     "intent": "README.md",
-    "decisions": "docs/en/contributing/architecture.md"
+    "decisions": "docs/en/contributing/architecture.md",
+    "core_spec": "docs/en/contributing/core-v2-spec.md",
+    "core_plan": "docs/en/contributing/core-v2-plan.md"
   },
   "verification": {
     "runtime-contracts": {
-      "argv": ["uv", "run", "--locked", "python", "tools/run_core_regressions.py"],
+      "argv": [
+        "uv",
+        "run",
+        "--locked",
+        "python",
+        "tools/run_core_regressions.py"
+      ],
       "cwd": ".",
-      "success_codes": [0],
+      "success_codes": [
+        0
+      ],
       "timeout_seconds": 300
     },
     "check": {

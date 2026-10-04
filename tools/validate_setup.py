@@ -109,7 +109,7 @@ def validate(source, output):
                 doctor = json.loads(run([root / ".neurath/run", "doctor", "--protocol"]))
                 assert doctor["placement"]["status"] == "passed"
                 assert doctor["protocol"]["codex"]["status"] == "passed"
-                run([root / ".neurath/run", "engine", "scripts.agent_harness.state_cli", "--help"])
+                run([root / ".neurath/run", "integrity"])
                 run([root / ".neurath/run", "uninstall"])
             finally:
                 moved.rename(copied)

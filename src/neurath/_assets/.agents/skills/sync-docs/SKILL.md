@@ -8,66 +8,21 @@ argument-hint: "[dev|user|all] [component]"
 user-invocable: true
 ---
 
-# Sync Docs
+# sync-docs
 
-## 결정적 phase 실행
+현재 source와 승인된 동작을 기준으로 developer/user documentation 범위를 정한다. 조건에 맞는 dev-docs/user-docs를 사용한다. 작성과 검증을 구분하고 사실·metadata·링크·중요 경고를 독립적으로 대조한다. 문서가 실행 동작을 바꾸거나 미승인 요구를 확정하지 않게 한다. 불일치를 수정하고 실제 전달/게시 범위까지만 완료한다.
 
-계약이 있는 phase 작업은 다음 명령으로 initialize, inspect, complete,
-evaluate, finalize합니다.
+## 실행
 
-```bash
-uv run python -m scripts.skill_harness.phase_runner
-```
+현재 사용자 지시와 `.neurath/policy.md`, `.neurath/project.json`을 따른다. 기존 Task/Assignment를 먼저 읽고, 이 스킬을 실행할 때 같은 Task에 `skill_start`한다. `phase_read`가 반환하는 다음 단계와 조건을 따르며 모든 단계 뒤에만 사용자 Task 인수를 판단한다. 별도 workflow/adaptive 원장을 만들거나 phase를 skip하지 않는다. 실패·대기는 실제 상태로 보존한다.
 
-phase runner가 evidence를 수락하고 다음 phase 또는 terminal output을 내기 전에는
-phase 결과나 다음 phase 진입을 주장하지 않습니다.
+| 단계 ID | 완료할 결과 |
+| --- | --- |
+| plan | sync_scope, source_evidence |
+| write | writer_report, changed_docs, source_sha, frontmatter_or_metadata_check |
+| verify | verifier_report, source_fact_check, frontmatter_or_metadata_check, critical_warning_findings, writer_independence_check, ten_point_fact_check, critical_warning_report |
+| reconcile | reconcile_result |
+| report | sync_report |
+| deliver | delivery_result |
 
-## Tool runtime 호환성
-
-`.agents/rules/tool-runtime-map.md`를 사용합니다. phase 파일은 `tool:<key>`로
-tool action을 표현할 수 있으며, Claude Code와 Codex에서는 map을 통해 변환합니다.
-
-## Phase 개요
-
-각 phase에 진입할 때 해당 phase 파일을 읽습니다.
-
-| Phase | 목적 | 파일 |
-|-------|------|------|
-| 0 | 문서화 범위 계획 | `phases/phase-0-plan.md` |
-| 1 | 문서 작성 | `phases/phase-1-write.md` |
-| 2 | 문서 검증 | `phases/phase-2-verify.md` |
-| 3 | finding 조정 | `phases/phase-3-reconcile.md` |
-| 4 | sync result 보고 | `phases/phase-4-report.md` |
-| 5 | 검증된 변경 전달 | `phases/phase-5-deliver.md` |
-
-문서 format과 per-doc writing rule은 `doc-format.md`에 있습니다.
-
-## Writer/Verifier 분리
-
-문서 변경은 Writer와 Verifier를 분리합니다. Writer는 code, test, manifest,
-approved plan, ADR을 읽고 문서를 작성합니다. Verifier는 별도 context에서 같은
-source를 다시 읽고 fact-check합니다. Writer가 쓴 문서를 같은 context가 검증하지
-않습니다.
-
-Verifier는 다음을 확인합니다.
-
-- 모든 behavior claim에 code, test, plan, ADR evidence가 있습니다.
-- import path, command, package name, deployment manifest path가 현재 파일과
-  일치합니다.
-- DD 용어가 `.neurath/project.json (documents 슬롯)`와 일치합니다.
-- 승인되지 않은 product behavior를 implemented처럼 설명하지 않습니다.
-- 문서 frontmatter 또는 상단 metadata에 `date`와 `synced_from` 또는 equivalent
-  source SHA가 있습니다.
-
-Critical/Warning finding이 남아 있으면 sync 완료로 보고하지 않습니다.
-
-1. scope를 결정합니다.
-   - `dev`: `/sync-dev-docs` 실행
-   - `user`: `/sync-user-docs` 실행
-   - `all`: 둘 다 실행
-2. code, test, manifest, approved plan을 source of truth로 사용합니다.
-3. 승인되지 않은 product behavior를 실제처럼 문서화하지 않습니다.
-4. docs edit 후 `uv run python -m scripts.agent_harness.verification_runner pre-commit` 또는 관련 docs/harness subset을
-   실행합니다.
-
-scope가 없으면 요청과 변경 내용을 보고 개발자용·사용자용 문서 중 실제 대상을 판별합니다.
+원문·실제 tool 결과·agent report를 구분하고 필요한 근거를 `phase_complete`로 연결한다. Task의 인수 조건도 충족해야 `task_complete`할 수 있다.

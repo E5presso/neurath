@@ -10,7 +10,9 @@ from pathlib import Path
 from neurath.serialization import canonical as canonical
 from neurath.redaction import clean as clean
 from neurath.project_paths import control_root as control_root
-from neurath.runtime.database import RuntimeDatabase
+from neurath.core.store import Store
+from neurath.core.archive import import_tables
+from neurath.memory.learning import initialize_tables
 NEWSROOM_NOTICE = "Newsroom operation; article content requires explicit newsroom read."
 NEWSROOM_METADATA = {"tool", "tool_name", "exit_code", "status", "authority"}
 
@@ -20,10 +22,10 @@ class MemoryConflict(ValueError):
 
 
 class ProjectMemory:
-    def __init__(self, root):
+    def __init__(self, root, *, store=None):
         self.worktree = Path(root).resolve()
-        self.root = control_root(self.worktree)
-        self.database = RuntimeDatabase(self.root)
+        self.root = control_root(self.worktree) if store is None else store.root
+        self.database = Store(self.root) if store is None else store
         self.path = self.database.path
         with self.connection() as db:
             db.execute("""CREATE TABLE IF NOT EXISTS events (
@@ -34,6 +36,16 @@ class ProjectMemory:
             db.execute(
                 "CREATE INDEX IF NOT EXISTS events_session ON events(host, session, sequence)"
             )
+            initialize_tables(db)
+        import_tables(self.database, "project-memory", {
+            "events": ("sequence", "id", "host", "session", "source", "kind", "content", "metadata", "created"),
+            "learning_observations": ("event",),
+            "lessons": ("id", "problem", "solution", "family", "source_host", "source_session", "failure_id", "recovery_id", "verifier", "status", "revision"),
+            "lesson_history": ("sequence", "lesson", "status", "reason", "evidence"),
+            "exposures": ("lesson", "host", "session", "sequence"),
+            "learning_checks": ("lesson", "host", "session", "observation", "disposition", "evidence"),
+        })
+        with self.connection() as db:
             # Upgrade old shell observations before replay compares source identities,
             # or automatic recall could expose bodies recorded by an older harness.
             legacy = db.execute(
@@ -48,7 +60,7 @@ class ProjectMemory:
                                (NEWSROOM_NOTICE, canonical(metadata), row["id"]))
 
     def connection(self):
-        return self.database.connection()
+        return self.database.sql_transaction()
 
     def record(self, host, session, source, kind, content, metadata=None, *, _db=None):
         if host not in ("codex", "claude-code"):
@@ -117,6 +129,7 @@ class ProjectMemory:
         next_steps=(),
         lessons=(),
         status="paused",
+        _db=None,
     ):
         if status not in ("active", "paused", "completed", "blocked"):
             raise ValueError("invalid checkpoint status")
@@ -137,6 +150,7 @@ class ProjectMemory:
                 "status": status,
                 "completion_authority": "agent-report",
             },
+            _db=_db,
         )
 
     def needs_checkpoint(self, host, session):
@@ -152,8 +166,8 @@ class ProjectMemory:
         value["metadata"] = json.loads(value["metadata"])
         return value
 
-    def history(self, host, session):
-        with self.connection() as db:
+    def history(self, host, session, *, _db=None):
+        with (self.connection() if _db is None else nullcontext(_db)) as db:
             return [
                 self._entry(row)
                 for row in db.execute(
@@ -162,15 +176,15 @@ class ProjectMemory:
                 )
             ]
 
-    def count(self):
-        with self.connection() as db:
+    def count(self, *, _db=None):
+        with (self.connection() if _db is None else nullcontext(_db)) as db:
             return db.execute("SELECT count(*) FROM events").fetchone()[0]
 
-    def recall(self, query="", *, host=None, session=None, limit=12):
+    def recall(self, query="", *, host=None, session=None, limit=12, _db=None):
         if not 1 <= limit <= 100:
             raise ValueError("recall limit must be between 1 and 100")
         terms = list(dict.fromkeys(re.findall(r"[\w./-]{2,}", query.casefold())))[:16]
-        with self.connection() as db:
+        with (self.connection() if _db is None else nullcontext(_db)) as db:
             recent = list(db.execute("SELECT * FROM events ORDER BY sequence DESC LIMIT 80"))
             matches = []
             if terms:
@@ -205,7 +219,7 @@ class ProjectMemory:
             "schema": 1,
             "authority": "reference-only",
             "entries": entries,
-            "total_events": self.count(),
+            "total_events": self.count(_db=_db),
             "current_host": host,
             "current_session": session,
         }

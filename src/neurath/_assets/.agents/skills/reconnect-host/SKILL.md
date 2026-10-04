@@ -11,12 +11,14 @@ user-invocable: true
 
 `session_status`가 설치된 배포본과 실행 중인 MCP의 불일치를 확인했을 때 사용합니다.
 설치 성공, 새 turn, 앱 창 표시만으로 활성화됐다고 판단하지 않습니다.
+같은 Task에 `skill_start(skill="reconnect-host")`하고 inspect → authorize → schedule → verify → cleanup 순서로 `phase_read`의 조건을 충족합니다. 2번은 authorize, 3·4번은 schedule, 5번은 verify, 6번은 cleanup 단계입니다.
 
-1. 현재 `session_status`, `task_list`, worktree claim과 미완료 workflow를 읽습니다.
+1. 현재 `session_status`, `task_list`, worktree claim과 미완료 Task를 읽습니다.
    이전 검사·설치를 반복하지 말고 이어갈 정확한 작업과 배포본을 기록합니다.
 2. 재시작에 대한 현재 사용자 지시가 있거나 이미 승인된 작업의 명시적 재시작 범위인지
-   확인합니다. 관련 없는 활성 작업이 있다면 그 소유 상태를 보존합니다. 현재 actor가
-   claim을 쥐고 있고 재시작 전에 풀어도 안전하면 정확한 lease/token으로 해제합니다.
+   확인합니다. 관련 없는 활성 작업이 있다면 그 소유 상태를 보존합니다. 예약 helper 실행에
+   필요한 대상 checkout의 claim을 확인하고 없으면 정상 획득합니다. 예약 전에 lease를
+   반환하지 않습니다. 같은 Task를 재개할 때까지 현재 소유권을 보존합니다.
 3. Codex 데스크톱 macOS에서는 현재 앱의 실제 PID, 실행 파일, bundle ID와 현재 thread
    ID를 관측합니다. 앱 도구가 제공되면 **같은 thread**에 한시적 heartbeat continuation을
    먼저 만들거나 기존 것을 갱신합니다. 같은 목적의 heartbeat를 중복 생성하지 않습니다.
@@ -28,7 +30,7 @@ user-invocable: true
    상태입니다. 같은 key로 다시 예약하지 말고 해당 label의 `launchctl print`를 읽어
    실제 실행 또는 종료 상태를 확인합니다.
 5. 돌아온 **새 호스트 이벤트**에서 앱 PID 변경과 `session_status`의 설치·활성화·정책을
-   다시 읽습니다. 필요한 worktree는 정상 claim으로 다시 획득하고 기존 task/workflow를
+   다시 읽습니다. 필요한 worktree는 정상 claim으로 다시 획득하고 기존 Task/phase를
    이어갑니다. 다른 worker의 활성화는 그 worker의 실제 세션에서 따로 확인합니다.
 6. `scripts/relaunch_codex.py cleanup --thread-id <같은 UUID> --key <같은 키>`로
    자신이 만든 LaunchAgent와 로그만 정리합니다. 완료되면 한시적 heartbeat를 멈춥니다.

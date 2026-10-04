@@ -40,26 +40,31 @@ def family(command):
     return canonical([executable, *args[1:]])
 
 
+
+def initialize_tables(db):
+    db.execute("CREATE TABLE IF NOT EXISTS learning_observations (event TEXT PRIMARY KEY)")
+    db.execute("""CREATE TABLE IF NOT EXISTS lessons (
+        id TEXT PRIMARY KEY, problem TEXT NOT NULL, solution TEXT NOT NULL,
+        family TEXT NOT NULL, source_host TEXT NOT NULL, source_session TEXT NOT NULL,
+        failure_id TEXT NOT NULL, recovery_id TEXT NOT NULL, verifier TEXT,
+        status TEXT NOT NULL, revision INTEGER NOT NULL)""")
+    db.execute("""CREATE TABLE IF NOT EXISTS lesson_history (
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT, lesson TEXT NOT NULL,
+        status TEXT NOT NULL, reason TEXT NOT NULL, evidence TEXT NOT NULL)""")
+    db.execute("""CREATE TABLE IF NOT EXISTS exposures (
+        lesson TEXT NOT NULL, host TEXT NOT NULL, session TEXT NOT NULL,
+        sequence INTEGER NOT NULL, PRIMARY KEY(lesson,host,session))""")
+    db.execute("""CREATE TABLE IF NOT EXISTS learning_checks (
+        lesson TEXT NOT NULL, host TEXT NOT NULL, session TEXT NOT NULL,
+        observation TEXT NOT NULL, disposition TEXT NOT NULL, evidence TEXT NOT NULL,
+        PRIMARY KEY(lesson,host,session,observation))""")
+
+
 class Learning:
     def __init__(self, memory):
         self.memory = memory
         with memory.connection() as db:
-            db.execute("CREATE TABLE IF NOT EXISTS learning_observations (event TEXT PRIMARY KEY)")
-            db.execute("""CREATE TABLE IF NOT EXISTS lessons (
-                id TEXT PRIMARY KEY, problem TEXT NOT NULL, solution TEXT NOT NULL,
-                family TEXT NOT NULL, source_host TEXT NOT NULL, source_session TEXT NOT NULL,
-                failure_id TEXT NOT NULL, recovery_id TEXT NOT NULL, verifier TEXT,
-                status TEXT NOT NULL, revision INTEGER NOT NULL)""")
-            db.execute("""CREATE TABLE IF NOT EXISTS lesson_history (
-                sequence INTEGER PRIMARY KEY AUTOINCREMENT, lesson TEXT NOT NULL,
-                status TEXT NOT NULL, reason TEXT NOT NULL, evidence TEXT NOT NULL)""")
-            db.execute("""CREATE TABLE IF NOT EXISTS exposures (
-                lesson TEXT NOT NULL, host TEXT NOT NULL, session TEXT NOT NULL,
-                sequence INTEGER NOT NULL, PRIMARY KEY(lesson,host,session))""")
-            db.execute("""CREATE TABLE IF NOT EXISTS learning_checks (
-                lesson TEXT NOT NULL, host TEXT NOT NULL, session TEXT NOT NULL,
-                observation TEXT NOT NULL, disposition TEXT NOT NULL, evidence TEXT NOT NULL,
-                PRIMARY KEY(lesson,host,session,observation))""")
+            initialize_tables(db)
 
     def verifier_digest(self):
         path = self.memory.worktree / ".neurath/project.json"
@@ -72,8 +77,8 @@ class Learning:
             return None
         return hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()
 
-    def status(self):
-        with self.memory.connection() as db:
+    def status(self, *, _db=None):
+        with (self.memory.connection() if _db is None else nullcontext(_db)) as db:
             return [dict(row) for row in db.execute("SELECT * FROM lessons ORDER BY rowid")]
 
     def history(self, identity):
@@ -134,9 +139,9 @@ class Learning:
                 )
         return due
 
-    def pending(self, host, session):
+    def pending(self, host, session, *, _db=None):
         digest = self.verifier_digest()
-        with self.memory.connection() as db:
+        with (self.memory.connection() if _db is None else nullcontext(_db)) as db:
             return self._obligations(db, host, session, digest)
 
     def defer(self, host, session, reason):

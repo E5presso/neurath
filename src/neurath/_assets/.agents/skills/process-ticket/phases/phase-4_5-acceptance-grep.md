@@ -1,22 +1,7 @@
-# Phase 4.5: Acceptance gate
+# 실제 검증
 
-commit과 PR 생성 전에 mechanical acceptance check를 실행합니다.
+work item의 인수 조건을 현재 결과와 대조한다. 명시된 executable acceptance와 focused test, 프로젝트 필수 검사를 실제 올바른 작업 경로에서 실행한다. 없는 검사 명령이나 성공 결과를 만들지 않는다.
 
-## 절차
+프로젝트에 정의된 검사는 실제 command/cwd와 종료 결과로 관측한다. 실행 중인 handle, 출력에 적힌 PASS, agent report는 native check evidence가 아니다. 코드를 바꾸면 이전 검사 결과가 새 코드를 증명하지 않는다.
 
-1. plan 또는 GitHub Issue에 executable acceptance check가 있으면 추출합니다.
-2. 각 check를 올바른 package 또는 repository root에서 실행합니다.
-3. work item에 executable acceptance check가 없으면 reason과 함께
-   `acceptance_missing`을 기록합니다.
-4. acceptance check가 실패하는 동안 phase 5로 들어가지 않습니다.
-
-## Evidence
-
-다음을 기록합니다.
-
-- `acceptance_result`
-- 해당 시 `acceptance_missing`
-- focused test result
-- changed files
-
-이 phase는 prose acceptance criteria를 부분 구현한 채 넘어가는 일을 막습니다.
+`acceptance_result`는 각 인수 조건의 결과를 설명한다. 필요한 `focused_test_result`, `pre_commit_result`는 실제 check evidence를 참조한다. 실행 가능한 검사가 없는 합당한 경우에는 정의된 검증 경로와 부족한 보증을 명시한다. 사용자에게 요구한 결과 자체가 미완료이면 다음 단계로 진행하지 않는다.

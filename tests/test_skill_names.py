@@ -1,5 +1,6 @@
 """Public skill names stay concise without changing persisted workflow identities."""
 
+import json
 import subprocess
 import sys
 
@@ -33,11 +34,9 @@ def test_public_names_paths_and_calls_are_short_but_contracts_stay_compatible():
     assert set(entries) == set(EXPECTED.values())
     for internal, public in EXPECTED.items():
         assert f"\nname: {public}\n" in entries[public]
-        if internal in UNCONTRACTED:
-            assert "phase_current" not in entries[public]
-            assert f"내장 계약: `{internal}`" not in entries[public]
-        else:
-            assert f"내장 계약: `{internal}`" in entries[public]
+        catalog = json.loads(assets[".neurath/reference/core-skills.json"][0])
+        assert catalog["skills"][public]["source"] == internal
+        assert "skill_start" in entries[public]
     for path, (data, _) in assets.items():
         if path.endswith(".md"):
             for internal, public in EXPECTED.items():
@@ -47,15 +46,15 @@ def test_public_names_paths_and_calls_are_short_but_contracts_stay_compatible():
 
 
 @pytest.mark.parametrize("name", ["watch-pr", "monitor-pr"])
-def test_public_script_alias_runs_existing_bundled_script(tmp_path, name):
+def test_retired_script_gateway_is_not_exposed(tmp_path, name):
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     result = subprocess.run(
         [sys.executable, "-m", "neurath", "--root", str(tmp_path), "skill",
          name, "monitor_runtime_readback.py", "--help"],
         capture_output=True, text=True,
     )
-    assert result.returncode == 0, result.stderr
-    assert "usage:" in result.stdout
+    assert result.returncode != 0
+    assert "invalid choice" in result.stderr
 
 
 def test_names_do_not_collide_with_each_other_or_existing_contract_ids():

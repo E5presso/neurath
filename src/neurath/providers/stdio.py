@@ -30,7 +30,7 @@ class CodexStdio:
     approval_policies = ("never",)
 
     def __init__(self, worktree, *, timeout=30, experimental=False):
-        from neurath.agents.runner import child_environment
+        from neurath.providers.environment import child_environment
 
         if not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or not 0 < timeout <= 3600:
             raise ValueError("timeout must be between 0 and 3600 seconds")

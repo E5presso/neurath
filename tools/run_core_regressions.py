@@ -1,7 +1,9 @@
-"""Run kit-owned runtime tests in a disposable checkout without provenance assets."""
+"""Run new-core contracts from a disposable test directory against the package.
 
+The project-owned suite lives outside distributed assets. No retired script
+engine or source-project settings are loaded into the fixture.
+"""
 import argparse
-import json
 import os
 import shutil
 import subprocess
@@ -12,93 +14,30 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def run_fixture(target, selected_tests=(), *, workers=0):
+    target = Path(target)
+    shutil.copytree(ROOT / "tests/core", target / "tests/core", ignore=shutil.ignore_patterns("__pycache__"))
+    (target / "pyproject.toml").write_text('[tool.pytest.ini_options]\naddopts="--import-mode=importlib"\n')
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("NEURATH_", "CODEX_", "CLAUDE_", "PYTHONPATH"))}
+    print(f"Independent core contracts: {target}", flush=True)
+    return subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-n", str(workers), "--dist", "load", *selected_tests],
+        cwd=target, env=env, check=False,
+    ).returncode
+
+
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--target", type=Path)
-    parser.add_argument("--workers", type=int, default=min(8, os.cpu_count() or 1),
-                        help="pytest workers; zero runs selected contracts serially")
+    parser.add_argument("--workers", type=int, default=min(8, os.cpu_count() or 1))
     parser.add_argument("tests", nargs="*")
     args = parser.parse_args()
     if args.workers < 0:
-        parser.error("workers must be zero (serial) or positive")
-    if args.target is not None:
+        parser.error("workers must be zero or positive")
+    if args.target:
         return run_fixture(args.target, args.tests, workers=args.workers)
-    with tempfile.TemporaryDirectory(prefix="neurath-runtime-") as temporary:
-        return run_fixture(Path(temporary) / "kit", args.tests, workers=args.workers)
-
-
-def run_fixture(target, selected_tests, *, workers=None):
-    if workers is None:
-        workers = min(8, os.cpu_count() or 1)
-    shutil.copytree(
-        ROOT / "src/neurath/_assets", target, ignore=shutil.ignore_patterns("__pycache__", "*.pyc")
-    )
-    for package in ("agent_harness", "skill_harness"):
-        shutil.copytree(
-            ROOT / "tests/runtime" / package,
-            target / "scripts" / package / "tests",
-            ignore=shutil.ignore_patterns("__pycache__"),
-        )
-    (target / "conftest.py").write_text(
-        "import importlib, pathlib, pytest\nfor path in pathlib.Path(__file__).parent.joinpath('scripts').glob('*/*.py'):\n    if path.name not in ('__main__.py', '__init__.py'):\n        importlib.import_module('.'.join(path.relative_to(pathlib.Path(__file__).parent).with_suffix('').parts))\n"
-        "@pytest.fixture(autouse=True)\ndef fixture_import_root(monkeypatch):\n"
-        "    monkeypatch.syspath_prepend(str(pathlib.Path(__file__).parent))\n"
-    )
-    (target / "pyproject.toml").write_text(
-        '[tool.pytest.ini_options]\naddopts = "--import-mode=importlib"\n'
-    )
-    from neurath.install.projection import host_hooks
-
-    for host, file in (("codex", ".codex/hooks.json"), ("claude-code", ".claude/settings.json")):
-        path = target / file
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"hooks": host_hooks(target, host)}))
-    (target / ".neurath").mkdir()
-    (target / ".neurath/project.json").write_text(
-        json.dumps({"verification": {"pytest": {"argv": [sys.executable, "-m", "pytest"]}}})
-    )
-    (target / ".gitignore").write_text(
-        "__pycache__/\n.pytest_cache/\n.agents/runs/\n.agents/resources/\n.neurath/local/\n"
-    )
-    subprocess.run(["git", "init", "-q", str(target)], check=True)
-    subprocess.run(["git", "-C", str(target), "add", "."], check=True)
-    subprocess.run(
-        [
-            "git",
-            "-C",
-            str(target),
-            "-c",
-            "user.name=Neurath Test",
-            "-c",
-            "user.email=test@example.invalid",
-            "commit",
-            "-qm",
-            "Kit test fixture",
-        ],
-        check=True,
-    )
-    env = {
-        k: v
-        for k, v in os.environ.items()
-        if not k.startswith(("NEURATH_", "CODEX_", "CLAUDE_", "PYTHONPATH"))
-    }
-    env["PYTHONPATH"] = str(target.resolve())
-    print(f"Independent runtime fixture: {target}", flush=True)
-    result = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "-n", str(workers), "--dist", "load", "--durations=10",
-         *selected_tests], cwd=target, env=env,
-        capture_output=True, text=True, check=False,
-    )
-    sys.stdout.write(result.stdout)
-    sys.stderr.write(result.stderr)
-    if result.returncode:
-        directory = ROOT / ".neurath/local/verification"
-        directory.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=directory,
-                prefix="runtime-failure-", suffix=".log", delete=False) as report:
-            report.write(result.stdout + result.stderr)
-        print(f"Full runtime failure diagnostic: {report.name}", flush=True)
-    return result.returncode
+    with tempfile.TemporaryDirectory(prefix="neurath-core-") as temporary:
+        return run_fixture(Path(temporary), args.tests, workers=args.workers)
 
 
 if __name__ == "__main__":

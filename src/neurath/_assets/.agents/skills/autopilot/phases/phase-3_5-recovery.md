@@ -1,16 +1,7 @@
-# Phase 3.5: Recovery
+# recovery — 누락된 요구 회수
 
-spawned 또는 missed follow-up issue에 대해 fixed-point recovery pass를 수행합니다.
+대상 issue/Task 집합과 모든 Assignment 보고를 대조한다. 생성됐지만 실행되지 않은 follow-up, 거절된 결과의 미충족 요구, 실제 종료 결과가 없는 실행을 찾는다. 새 항목은 현재 승인 범위와 원래 인수 조건에 연결하고 metadata를 다시 읽는다.
 
-## 절차
+필수 작업이 추가되면 결과·취소가 정리되지 않은 bounded Assignment부터 처리한 뒤 `phase_restart`로 수집 단계부터 다시 확인한다. 같은 Task의 새 attempt에 변경 입력을 기록하며 과거 결과는 보존한다. 실패한 결과를 skipped 또는 완료로 바꾸지 않는다. 이미 성공한 결과는 같은 조건과 입력일 때 재사용할 수 있다.
 
-1. 모든 worker report를 issue set과 비교합니다.
-2. 생성됐지만 spawn되지 않은 follow-up issue를 찾습니다.
-3. 모든 follow-up issue가 같은 milestone 또는 parent scope에 속하는지 검증합니다.
-4. 검증된 blocker를 DAG에 추가합니다.
-5. 새 blocking issue가 없어질 때까지 phase 2 또는 phase 3으로 돌아갑니다.
-
-## 통과 조건
-
-blocking follow-up issue가 note에 언급되기만 한 상태로 run을 끝내지 않습니다.
-spawn하거나, reason과 함께 skipped 처리하거나, blocked로 보고해야 합니다.
+`recovery_result`에는 대조한 전체 집합, 회수한 요구와 실제 결과, 남은 차단 요인을 기록한다. 필수 gap이 없을 때 이 phase를 완료한다. 외부 답변이 필요하면 Task를 대기로 남기고 읽기·보고·복구는 계속 허용한다.

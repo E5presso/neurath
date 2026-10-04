@@ -8,6 +8,9 @@ argument-hint: "<symbol | path[:line] | feature | diff> [brief|standard|deep|int
 user-invocable: true
 ---
 
+실제 스킬 작업에는 같은 Task에 `skill_start(skill="explain-code")`합니다. scope → inspect → explain 순서로 `phase_read`의 조건을 충족합니다. 모드에 맞는 실제 근거를 기록하며 phase를 건너뛰지 않습니다. Help-only는 읽기와 설명만 수행하고 파일을 생성하지 않습니다.
+
+
 # Explain Code
 
 현재 checkout을 source of truth로 삼아, 코드를 낭독하지 말고 역할, 실행 흐름,

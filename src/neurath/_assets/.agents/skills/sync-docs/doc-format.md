@@ -16,6 +16,6 @@ Neurath docs는 간결하고, source-backed이며, 안정적이어야 합니다.
 검증이 중요하면 정확한 command를 포함합니다.
 
 ```bash
-uv run python -m scripts.agent_harness.verification_runner pre-commit
-.neurath/run verify typecheck
+{대상 저장소에 등록된 필수 검사 명령}
+{대상 저장소에 등록된 타입 검사 명령}
 ```

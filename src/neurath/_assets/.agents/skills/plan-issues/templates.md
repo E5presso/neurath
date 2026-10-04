@@ -194,8 +194,8 @@ Given {상태}, when {행동}, then {관찰 가능한 결과}.
 ## 검증
 
 - 먼저 작성 또는 수정: `{failing 또는 characterizing test path}`.
-- `uv run python -m scripts.agent_harness.verification_runner pytest --node {exact public pytest node}`
-- `.neurath/run verify typecheck`
+- `{대상 저장소에 등록된 집중 검사 명령과 실제 테스트 대상}`
+- `{대상 저장소에 등록된 타입 검사 명령}`
 
 ## 선행 이슈
 
@@ -360,9 +360,9 @@ Given {상태}, when {행동}, then {관찰 가능한 결과}.
 
 ## 검증
 
-- `uv run python -m scripts.agent_harness.verification_runner pytest --node {exact public pytest node}`
-- `.neurath/run verify typecheck`
-- `uv run python -m scripts.agent_harness.verification_runner pre-commit`
+- `{대상 저장소에 등록된 집중 검사 명령과 실제 테스트 대상}`
+- `{대상 저장소에 등록된 타입 검사 명령}`
+- `{대상 저장소에 등록된 필수 검사 명령}`
 
 ## 선행 이슈
 

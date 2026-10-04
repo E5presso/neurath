@@ -17,12 +17,6 @@ def add_commands(commands):
 
 
 def run(root, args):
-    if args.release_command != "status":
-        from neurath.cli import _native_or_terminal
-        from neurath.runtime.admission import _verification_owner
-        identity = _native_or_terminal(root)
-        if identity is not None:
-            _verification_owner(root, identity)
     service = Updates(root)
     match args.release_command:
         case "check":

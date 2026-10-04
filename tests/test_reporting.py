@@ -227,11 +227,10 @@ def test_read_only_status_has_no_writes_and_corruption_fails_closed(project):
     service.status()
     assert not service.directory.exists()
     service.consent(True)
-    import hashlib
-    raw = b'{"schema":1,"auto_report":"yes","reports":{}}'
-    with service.state_store._database().connection() as db:
-        db.execute("UPDATE runtime_records SET payload=?,digest=? WHERE namespace=? AND key=?",
-                   (raw, hashlib.sha256(raw).hexdigest(), "reporting", service.state_store.key))
+    raw = '{"schema":1,"auto_report":"yes","reports":{}}'
+    with service.state_store._database().sql_transaction() as db:
+        db.execute("UPDATE records SET document=? WHERE kind=? AND id=?",
+                   (raw, "service:reporting", service.state_store.key))
     with pytest.raises(ValueError, match="invalid"):
         service.status()
 
@@ -282,7 +281,7 @@ def test_remote_identifier_is_rejected_without_echoing_it(project):
 def test_real_hook_entrypoint_displays_consent_and_scope(installed_project, host):
     project = installed_project
     from neurath.reporting import Reporting
-    from tests.test_memory_hooks import invoke
+    from tests.native_hook_fixture import invoke
     pending = invoke(project, host, "report-onboarding", "SessionStart", source="startup")
     assert pending.returncode == 0, pending.stderr
     assert "reporting consent is pending" in pending.stdout

@@ -1,16 +1,7 @@
-# Phase 5: Sync Docs
+# sync_docs — 검증된 동작 문서화
 
-가능한 구현 work가 모두 terminal 상태가 된 뒤 documentation을 동기화합니다.
+구현 결과가 지속되는 동작·사용법·아키텍처를 바꿨으면 같은 Task에서 선언된 `sync-docs` 하위 스킬을 수행한다. 작성은 실제 소스와 승인된 제품 의미에 근거하고, 언어·문서 위치·검증 규칙은 대상 저장소 지침을 따른다.
 
-## 절차
+문서 변경이 필요하지 않으면 대조한 변경 범위와 그 이유를 `sync_docs_result`로 기록한다. 필요한 문서를 생략하는 선택으로 사용하지 않는다. 제품 의미가 미확정이면 이를 꾸며 쓰지 않고 Task를 대기로 보존한다.
 
-1. 구현이 durable behavior 또는 architecture를 바꿨으면 `/sync-docs all`을
-   실행합니다.
-2. Neurath 제품 의미가 unresolved이면 user-facing docs는 blocked 상태로 둡니다.
-3. docs 변경이 merged 또는 approved behavior를 근거로 하는지 확인합니다.
-4. phase runner state에 `sync_docs_result`를 기록합니다.
-
-## 통과 조건
-
-제품 의미가 unresolved라서 docs를 갱신할 수 없으면 behavior를 꾸며내지 말고
-blocker를 명확히 보고합니다.
+문서의 작성·독립 검증·필요한 수정·요청된 전달을 마친 결과를 연결한다. 하위 스킬 완료는 상위 phase를 자동 완료하지 않는다. `phase_complete`로 실제 결과를 확인한 뒤 다음 단계로 간다.

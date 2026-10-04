@@ -8,22 +8,16 @@ argument-hint: "<issue-number>"
 user-invocable: false
 ---
 
-# Create Worktree
+# create-worktree
 
-Operational phase는 `.neurath/run engine scripts.skill_harness.phase_runner` 실행 결과를 잇습니다.
-`current`는 recovery 전용이며 마지막 `complete --terminal-state`가 terminal CAS를 닫습니다.
+현재 root와 저장된 worktree를 확인하고 적절한 기존 checkout을 재사용한다. 새 격리가 필요하면 실제 base/ref·branch·경로를 선택한다. Native Git 생성은 새 경로의 lease를 먼저 예약하고 실행한다. Native app이 고유한 경로를 생성했다면 반환된 경로를 확인하고 source 수정 전에 claim한다. 같은 actor가 다른 linked checkout을 사용할 수 있다. Workspace 생성은 새 세션·새 앱 프로젝트 생성을 뜻하지 않는다. 기존 사용자 파일과 다른 writer를 보존한다.
 
-1. 요청된 작업과 대상 저장소의 branch·worktree 규칙, 현재 Git 상태를 확인합니다.
-2. Source checkout native CWD에서 현재 runtime actor로 typed worktree claim을 얻습니다.
-3. 사용자 지정 base가 있으면 그것을 확인합니다. 없으면 remote HEAD 또는 저장소의 현재 기본 branch를 확인합니다. 특정 branch 이름을 가정하지 않습니다.
-4. 대상 프로젝트의 규칙에 따라 새 branch와 분리된 worktree 경로를 정합니다. 규칙이 없으면 작업을 식별할 수 있는 충돌 없는 이름을 사용합니다.
-5. 동일 경로·branch가 존재하면 소유권과 작업을 확인하고, 다른 작업의 자산을 재사용하거나 삭제하지 않습니다.
-6. `git worktree add -b <branch> <path> <base>`를 실제 확인한 값으로 실행합니다.
-7. 새 worktree에 Neurath 설치가 필요한지 확인합니다. `.neurath/run`은 Git으로 복사되지 않으므로
-   provider worker를 시작하기 전에 대상에 설치하고 설치 진단을 읽습니다. 새 worktree에
-   실제로 결속된 native actor가 시작된 뒤 그 actor로 typed claim을 얻고 Git identity·branch·path를 다시 확인합니다.
-8. process-ticket에서는 target claim 뒤 `.neurath/run skill process-ticket assert_worktree_isolation.sh --init ISSUE_NUMBER`로 격리를 확인합니다.
-9. 작업에 필요한 프로젝트별 런처·문서 바인딩과 이미 존재하는 지식 그래프의 사용 가능 여부를 확인합니다.
-10. worktree의 절대 경로, branch, base, 소유권 결과를 반환합니다.
+## 실행
 
-Claim 충돌과 경로 충돌을 강제로 우회하지 않습니다. 다른 worktree의 미커밋 변경을 보존합니다.
+현재 사용자 지시와 `.neurath/policy.md`, `.neurath/project.json`을 따른다. 기존 Task/Assignment를 먼저 읽고, 이 스킬을 실행할 때 같은 Task에 `skill_start`한다. `phase_read`가 반환하는 다음 단계와 조건을 따르며 모든 단계 뒤에만 사용자 Task 인수를 판단한다. 별도 workflow/adaptive 원장을 만들거나 phase를 skip하지 않는다. 실패·대기는 실제 상태로 보존한다.
+
+| 단계 ID | 완료할 결과 |
+| --- | --- |
+| execute | base_branch, worktree_absolute_path, branch_name, isolation_check |
+
+원문·실제 tool 결과·agent report를 구분하고 필요한 근거를 `phase_complete`로 연결한다. Task의 인수 조건도 충족해야 `task_complete`할 수 있다.
