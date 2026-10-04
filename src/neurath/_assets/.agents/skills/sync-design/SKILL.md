@@ -8,30 +8,16 @@ argument-hint: "<design file 또는 mirror 범위>"
 user-invocable: true
 ---
 
-# Sync Design
+# sync-design
 
-task 목록 없이 기존 phase workflow를 실행·복구할 때만 `uv run python -m scripts.skill_harness.phase_runner`로 initialize, evaluate,
-advance, finalize합니다.
+Repository token과 component mapping을 현재 source로 삼아 design canvas에 한 방향으로 동기화한다. 적용된 node와 mapping을 read-back한다. 동기화 요청을 새로운 UI 탐색이나 구현 승인으로 해석하지 않는다.
 
-`.agents/design-collaboration-policy.json`을 먼저 읽고, `.agents/rules/tool-runtime-map.md`의
-`tool:design_canvas`를 사용하며 native provider tool이 없으면 `blocked`입니다.
+## 실행
 
-## 경계
+현재 사용자 지시와 `.neurath/policy.md`, `.neurath/project.json`을 따른다. 기존 Task/Assignment를 먼저 읽고, 이 스킬을 실행할 때 같은 Task에 `skill_start`한다. `phase_read`가 반환하는 다음 단계와 조건을 따르며 모든 단계 뒤에만 사용자 Task 인수를 판단한다. 별도 workflow/adaptive 원장을 만들거나 phase를 skip하지 않는다. 실패·대기는 실제 상태로 보존한다.
 
-- 자동 흐름은 **repository → canvas** 한 방향입니다.
-- Token·component source가 repository에 실제로 존재할 때만 읽습니다. 아직 없으면
-  `repository_sources=clean-slate`로 기록하고 `no-change`로 끝냅니다.
-- Canvas에서 발견한 새 값은 proposal로만 보고합니다. `explicit-user-approved-proposal-only`
-  근거 없이 repository를 수정하지 않습니다.
-- Existing canvas variable·component mapping을 먼저 읽고 필요한 delta만 적용합니다.
-- Provider-native token·component·library mapping을 사용합니다.
-- 임의 hex, spacing, type style, component를 mirror에 만들지 않습니다.
-- Canvas artifact 삭제는 connector 등록 삭제 권한이 아닙니다. Connector retirement는
-  별도의 명시적 사용자 결정을 요구합니다.
+| 단계 ID | 완료할 결과 |
+| --- | --- |
+| execute | repository_sources, canvas_mirror_delta, read_back |
 
-## 검증과 종료
-
-동기화 뒤 canvas를 다시 읽어 repository source와 name·type·value·component identity를
-대조합니다. Evidence는 `repository_sources`, `canvas_mirror_delta`, `read_back`입니다.
-변경이 적용되고 read-back이 맞으면 `synced`, 차이가 없으면 `no-change`, provider나 권한이 없으면
-`blocked`, mutation 또는 read-back이 실패하면 `failed`입니다.
+원문·실제 tool 결과·agent report를 구분하고 필요한 근거를 `phase_complete`로 연결한다. Task의 인수 조건도 충족해야 `task_complete`할 수 있다.

@@ -1,51 +1,9 @@
-# Phase 3: Worktree
+# Checkout 선택
 
-구현 전에 isolated working context를 만들거나 확인합니다.
+기존 적절한 worktree가 있으면 재사용한다. 동시 작업이 같은 파일에 쓰거나 별도 branch/PR 격리가 필요한 경우 새 worktree를 만든다. 이미 승인된 현재 checkout에서 안전하게 작업할 수 있으면 그 이유를 기록한다.
 
-## 절차
+새 경로를 native Git로 만들 때는 `worktree_claim(create=true)`로 없는 대상 경로를 먼저 예약하고 실제 생성 결과를 확인한다. Native app이 자체적으로 고유한 worktree를 만들면 반환된 실제 경로를 확인한 뒤 수정 전에 claim한다. 다른 writer의 경로를 강제로 회수하지 않는다.
 
-1. workflow가 branch 또는 PR을 요구하면 `tool:create_worktree`를 사용합니다.
-   이때 worktree path는 반드시 `<대상 프로젝트의 분리된 worktree 경로>`입니다.
-   Repository root에서 시작한 경우에는 skill의 root preflight가 별도 native worker를
-   해당 worktree에 먼저 시작해야 합니다. CWD 변경만으로 actor binding이 이동하지 않습니다.
-2. 이후 모든 command에 사용할 absolute worktree path를 보존합니다.
-3. Runtime identity가 시작한 exact session에 required `workflow_id`가 active인지 phase runner
-   `current`로 확인합니다. 경로나 issue 번호로 다른 workflow를 찾지 않습니다.
-4. Target에 실제로 결속된 worker의 native session에서 shared resource를 claim합니다.
+현재 actor가 다른 linked checkout을 claim할 수 있다. 모든 수정·검사는 native 도구의 실제 workdir/파일 경로를 사용한다. 세션 신원, 환경 변수, 프로젝트 소속을 꾸미지 않는다. Workspace 선택과 에이전트 실행 선택은 별개다.
 
-   ```bash
-   python3 -m scripts.agent_harness.state_cli worktree claim
-   ```
-
-   `WorktreeRegistry`가 Git common directory와 top-level에서 `worktree_id`를 계산하고 current
-   `(session_id, actor_id)`를 owner로 기록합니다. 동일 owner retry는 idempotent하며 다른
-   owner의 claim은 기존 값을 덮어쓰지 않고 거부합니다.
-5. session actor가 worktree를 claim한 뒤에는 sibling worktree, repository root,
-   repository 밖 temporary path를 편집하지 않습니다.
-   `.agents/skills/process-ticket/scripts/assert_worktree_isolation.sh`로 exact root/worktree
-   경계를 read-back합니다.
-6. 현재 local-only task에 worktree가 필요 없으면 이유를 기록합니다.
-
-## State
-
-Canonical process state는 runtime-owned session aggregate입니다. Phase state와 operational
-skill state는 exact `workflow_id` 아래 분리되고, worktree claim은 repository-wide resource
-registry에 분리됩니다. Agent는 persistence 파일을 만들거나 수정하지 않습니다.
-
-- Phase transition: `scripts.skill_harness.phase_runner --workflow-id ...`
-- Operational evidence: `process_state_evidence.py --workflow-id ...`
-- Worktree ownership: `state_cli worktree claim|release`
-- Delegation, incident, monitor: 각 identity-keyed typed application
-
-Workflow-local mutation은 original revision을 compare key로 사용하는 optimistic CAS입니다.
-Conflict가 발생하면 latest state를 다시 읽어 pure transform을 재계산하며 stale replacement를
-그대로 반복하지 않습니다. Worktree release와 handoff는 current lease epoch와 fencing token이
-일치해야 합니다.
-
-## Evidence
-
-- `worktree_decision`
-- `workflow_state_initialized`
-- `worktree_absolute_path`
-- `session_workflow_ownership`
-- `root_worktree_isolation_check`
+`worktree_decision`, `worktree_absolute_path`에는 선택 이유와 실제 canonical 경로를 기록한다. 작업 기록은 공통 저장소에 있으므로 checkout 제거 뒤에도 원래 Task를 읽고 보고할 수 있어야 한다.

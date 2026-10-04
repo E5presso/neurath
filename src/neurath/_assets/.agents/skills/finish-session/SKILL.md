@@ -8,53 +8,21 @@ argument-hint: "<commit message intent>"
 user-invocable: true
 ---
 
-# Finish Session
+# finish-session
 
-현재 coding-agent session의 작업을 원격 branch와 지식 그래프에 보존하고 다른 session이
-worktree를 claim할 수 있게 반환합니다. Native client process 자체를 종료하는 skill은 아닙니다.
-여기서 `release`는 `Neurath root worktree`의 typed claim 해제이며 제품 version release가 아닙니다.
+사용자가 승인한 종료 범위를 확인한다. 실제 status/diff와 필수 검사를 확인하고 선택된 변경을 commit·현재 branch push한다. 기존 승인은 범위가 같으면 반복해서 묻지 않는다. 실제 local/remote HEAD가 일치하는지 `publication_read`로 확인한다. 필요한 Graphify 갱신은 실제 실행 결과로 기록한다. 보유한 writer lease를 정확한 checkout/generation으로 반환하고 모든 사용자 요구가 충족된 때 Task를 완료한다. 체크포인트나 claim 반환만으로 요구를 완료하지 않는다.
 
-## 결정적 phase 실행
+## 실행
 
-Operational phase는 `uv run python -m scripts.skill_harness.phase_runner` 실행 결과를 잇습니다.
-`current`는 recovery 전용이고 마지막 `complete --terminal-state`가 terminal CAS를 닫습니다.
+현재 사용자 지시와 `.neurath/policy.md`, `.neurath/project.json`을 따른다. 기존 Task/Assignment를 먼저 읽고, 이 스킬을 실행할 때 같은 Task에 `skill_start`한다. `phase_read`가 반환하는 다음 단계와 조건을 따르며 모든 단계 뒤에만 사용자 Task 인수를 판단한다. 별도 workflow/adaptive 원장을 만들거나 phase를 skip하지 않는다. 실패·대기는 실제 상태로 보존한다.
 
-## Tool runtime 호환성
+| 단계 ID | 완료할 결과 |
+| --- | --- |
+| status_and_diff | session_finish_approval, git_status, diff_review |
+| stage_scope | staged_files |
+| commit | commit_sha |
+| push_readback | push_head_match |
+| graphify_update | graphify_receipt |
+| worktree_release | worktree_release_receipt |
 
-`.agents/rules/tool-runtime-map.md`를 사용합니다. Commit은 `/commit`, 그래프 갱신은
-`/graphify`의 현재 계약을 따릅니다.
-
-## 승인 경계
-
-사용자가 이 session finish bundle을 한 번의 명시적 사용자 승인으로 요청하면 아래 전체
-순서를 승인한 것으로 봅니다. 단계별 추가 승인을 다시 묻지 않습니다. Credential 부재,
-non-fast-forward, 검증 실패, Graphify 실패, typed release 실패처럼 다음 단계를 안전하게
-수행할 수 없는 경우에만 중단하고 이미 끝난 단계와 외부 상태를 정확히 보고합니다.
-
-일반 `/commit`이나 `process-ticket`의 중간 commit은 이 skill을 암시하지 않습니다.
-
-## 실행 순서
-
-1. `git status --short --branch` 실행으로 현재 branch와 변경 범위를 고정합니다.
-2. staged와 unstaged diff 검사로 사용자 변경과 무관한 파일이 섞이지 않았는지 확인합니다.
-3. 변경 파일이 있으면 관련 파일만 stage합니다. 변경이 전혀 없으면 `phase_evidence_prepare`의
-   `clean_tree` Git 원본 근거로 `stage_scope`를 `skipped` 처리합니다. 이전 phase의 상태
-   보고나 agent 메모를 빈 index의 근거로 대신하지 않습니다.
-4. 변경 파일을 stage했다면 `/commit` 계약에 따라 대상 저장소의 commit 규칙에 맞게 commit하고
-   exact commit SHA를 읽습니다. `stage_scope`를 건너뛰었다면 새 revision에서
-   `clean_tree` 근거를 다시 준비해 `commit`도 `skipped` 처리하며 빈 commit을 만들지 않습니다.
-5. 현재 branch를 push하고 remote HEAD를 다시 읽습니다. Local HEAD와 remote HEAD가 exact하게
-   같지 않으면 claim을 유지한 채 중단합니다.
-6. Claim을 유지한 상태에서 `/graphify` 계약에 따라 `graphify update .` 실행을 완료하고
-   `graphify-out/graph.json`과 report 갱신 결과를 읽습니다. 실패하면 claim을 release하지 않습니다.
-7. 모든 선행 evidence가 유효할 때만 다음 typed CLI로 worktree claim을 release하고 구조화된 처리 결과를 다시 읽습니다.
-
-```bash
-python3 -m scripts.agent_harness.state_cli worktree release
-```
-
-처리 결과의 `released`가 `true`이고 반환된 claim이 직전에 소유한 exact worktree, session,
-actor를 가리킬 때만 terminal state `finished`를 사용합니다.
-
-`--no-verify`, force push, 제품 version workflow, tag 생성, `main` 승격은 이 skill의 범위가
-아닙니다.
+원문·실제 tool 결과·agent report를 구분하고 필요한 근거를 `phase_complete`로 연결한다. Task의 인수 조건도 충족해야 `task_complete`할 수 있다.

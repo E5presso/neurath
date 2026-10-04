@@ -8,26 +8,16 @@ argument-hint: "<milestone, project, issue list, or plan path>"
 user-invocable: true
 ---
 
-# Audit Spec
+# review-spec
 
-task 목록 없이 기존 phase workflow를 실행·복구할 때만 `uv run python -m scripts.skill_harness.phase_runner`로 계약을 initialize, evaluate, advance, finalize합니다.
+구현 전에 실제 spec/issue/project/plan 원문을 기준으로 모호성·모순·누락·정책 이탈을 검토한다. 기존 정의·코드·인수 조건과 대조하고 구체적인 질문과 수정안을 만든다. 확인되지 않은 요구를 확정하거나 감사 요청을 구현으로 바꾸지 않는다.
 
-plan, milestone, GitHub Issue set에 spec-only review가 필요할 때 사용합니다. 이
-skill에서는 production code를 편집하지 않습니다.
+## 실행
 
-1. `AGENTS.md`, `.agents/rules/charter.md`, 참조 artifact를 읽습니다.
-2. GitHub Issues, `docs/plans/`, `docs/context/`에서 authoritative spec text를
-   수집합니다.
-3. 다음을 확인합니다.
-   - unresolved product intent
-   - conflicting acceptance criteria
-   - missing test expectation
-   - `.neurath/project.json (documents 슬롯)`와 충돌하는 terminology drift
-   - web, mobile, backend, database, required infrastructure를 모두 포함하지 않는
-     e2e claim
-   - 대상 프로젝트에서 승인된 기술 결정과 실제 구현 사이의 차이
-4. finding은 severity 순서로 file 또는 issue reference와 함께 보고합니다.
-5. 필요한 correction마다 docs patch 또는 GitHub Issue body update를 제안합니다.
-   product intent를 조용히 rewrite하지 않습니다.
+현재 사용자 지시와 `.neurath/policy.md`, `.neurath/project.json`을 따른다. 기존 Task/Assignment를 먼저 읽고, 이 스킬을 실행할 때 같은 Task에 `skill_start`한다. `phase_read`가 반환하는 다음 단계와 조건을 따르며 모든 단계 뒤에만 사용자 Task 인수를 판단한다. 별도 workflow/adaptive 원장을 만들거나 phase를 skip하지 않는다. 실패·대기는 실제 상태로 보존한다.
 
-진짜 intent gap을 발견하면 `/plan-issues`로 되돌립니다.
+| 단계 ID | 완료할 결과 |
+| --- | --- |
+| execute | spec_sources, audit_findings, correction_plan |
+
+원문·실제 tool 결과·agent report를 구분하고 필요한 근거를 `phase_complete`로 연결한다. Task의 인수 조건도 충족해야 `task_complete`할 수 있다.

@@ -87,11 +87,10 @@ def protocol_smoke():
                 sys.executable,
                 "-I",
                 "-m",
-                "neurath",
+                "neurath.core.hooks",
                 "--root",
                 str(root),
-                "hook",
-                "--host",
+                "--provider",
                 host,
             ]
             process = subprocess.run(

@@ -27,7 +27,7 @@ def legacy_upgrade(tmp_path, monkeypatch):
         installer._write(root, entry["path"], entry["after"])
     installer._save_json(installer.git_dir(root) / "neurath-receipts" / (legacy["id"] + ".json"), legacy)
     assert installer.read_state(root) == original_state
-    monkeypatch.setattr(installer, "__version__", "0.2.0")
+    monkeypatch.setattr(installer, "__version__", "0.3.0")
     update = installer.make_plan(root, action="update")
     directory = tmp_path / "updates"
     stage = directory / "candidate-fixture"
@@ -112,5 +112,5 @@ def test_release_detects_changed_canonical_contribution_approval(legacy_upgrade,
         return {}
     monkeypatch.setattr(release_install, "runtime_command", runtime)
     with pytest.raises(ValueError, match="reporting preferences changed"):
-        release_install.apply(root, directory, {"version": "0.2.0"}, operation)
+        release_install.apply(root, directory, {"version": "0.3.0"}, operation)
     assert (reporting.path.read_bytes() if reporting.path.exists() else None) == legacy_before

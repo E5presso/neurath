@@ -90,7 +90,7 @@ def test_restore_rejects_modified_saved_record(repo, field, value):
     apply_plan(repo, make_plan(repo, skill_prefix="neurath-"))
     removed = apply_plan(repo, make_plan(repo, action="uninstall"))
     from neurath.install.state_store import InstallStateStore, canonical
-    store = InstallStateStore(repo)
+    store = InstallStateStore(repo, create=True)
     record = store.receipt(removed["id"])
     record[field] = value
     with store.database.connection() as db:
@@ -123,7 +123,7 @@ def test_legacy_record_without_prefix_keeps_default_names(repo):
     apply_plan(repo, make_plan(repo))
     from neurath.install.state_store import InstallStateStore, canonical
     path = repo / ".neurath/install.json"
-    store = InstallStateStore(repo)
+    store = InstallStateStore(repo, create=True)
     state = store.state()
     state.pop("skill_prefix", None)
     with store.database.connection() as db:
@@ -182,22 +182,22 @@ def test_prefix_projects_calls_links_policy_and_preserves_contract_ids():
     default = asset_files("generic", ["codex", "claude-code"])
     entries = {path.split("/")[2]: data.decode() for path, (data, _) in projected.items()
                if path.startswith(".agents/skills/") and path.endswith("/SKILL.md")}
-    contracted = set(json.loads(projected[".neurath/reference/contracts.json"][0])["skills"])
+    contracted = set(json.loads(projected[".neurath/reference/core-skills.json"][0])["skills"])
     assert set(entries) == {public_name(name, prefix) for name in skills()}
     for internal in skills():
         name = public_name(internal, prefix)
         assert f"\nname: {name}\n" in entries[name]
-        if internal in contracted:
-            assert f"내장 계약: `{internal}`" in entries[name]
+        if public_name(internal) in contracted:
+            assert f"내장 계약: `{public_name(internal)}`" in entries[name]
         else:
             assert "phase_current" not in entries[name]
         assert "명명 MCP 도구" in entries[name]
         assert ".neurath/run skill" not in entries[name]
     policy = projected[".neurath/policy.md"][0].decode()
-    assert "/neurath-debug" in policy and "/neurath-qa" in policy
+    assert "task_complete" in policy and "phase_complete" in policy
     assert "/debug`" not in policy
-    before = json.loads(default[".neurath/reference/contracts.json"][0])
-    after = json.loads(projected[".neurath/reference/contracts.json"][0])
+    before = json.loads(default[".neurath/reference/core-skills.json"][0])
+    after = json.loads(projected[".neurath/reference/core-skills.json"][0])
     assert before["skills"].keys() == after["skills"].keys()
     sample = "/review-code `review-code` .agents/skills/review-code/SKILL.md ../sync-docs/doc-format.md .neurath/run skill watch-pr x.py"
     assert project_text(sample, "generic", prefix) == (
@@ -218,7 +218,7 @@ def run_skill(root, name):
     )
 
 
-def test_engine_uses_recorded_alias_and_bundled_contract(repo):
+def test_retired_engine_gateway_cannot_execute_user_scripts(repo):
     assert run_skill(repo, "neurath-watch-pr").returncode == 2
     user = repo / ".agents/skills/watch-pr/scripts/monitor_runtime_readback.py"
     user.parent.mkdir(parents=True)
@@ -226,8 +226,8 @@ def test_engine_uses_recorded_alias_and_bundled_contract(repo):
     apply_plan(repo, make_plan(repo, skill_prefix="neurath-"))
     for name in ("neurath-watch-pr", "watch-pr", "monitor-pr"):
         result = run_skill(repo, name)
-        assert result.returncode == 0, result.stderr
-        assert "usage:" in result.stdout
+        assert result.returncode == 2, result.stderr
+        assert "invalid choice" in result.stderr
         assert "USER_SCRIPT_MUST_NOT_RUN" not in result.stderr
     assert run_skill(repo, "other-watch-pr").returncode == 2
     assert run_skill(repo, "neurath-monitor-pr").returncode == 2

@@ -1,5 +1,18 @@
 # graphify reference: query, path, explain
 
+## Read-only requests
+
+When the request permits inspection only (including a code explanation), use native Read/Grep
+on the existing graph and the linked source files, then answer with those sources. Do not create
+`.vocab.txt`, initialize interpreter markers, run `save-result`/`reflect`, refresh the graph, or
+save an answer. If this read-only path cannot answer the question, state the missing evidence.
+A writer lease is unnecessary for these native file reads.
+
+The CLI/traversal workflow below can create query artifacts and caches. It is a writing workflow:
+use it only within an authorized graph-work Task, after claiming the actual checkout. Do not
+infer that every command named query/path/explain is a pure read.
+
+
 Load this when the user asks a question against an existing graph, or runs `/graphify path` or `/graphify explain`. The core's query stub points here for the full traversal flow. These flows use the `graphify query` CLI when it is available and fall back to an inline NetworkX traversal otherwise.
 
 Two traversal modes - choose based on the question:

@@ -8,16 +8,16 @@ argument-hint: "[component]"
 user-invocable: false
 ---
 
-# Sync Dev Docs
+# dev-docs
 
-task 목록 없이 기존 phase workflow를 실행·복구할 때만 `uv run python -m scripts.skill_harness.phase_runner`로 계약을 initialize, evaluate, advance, finalize합니다.
+현재 대상 프로젝트의 실제 코드·설정·검사·운영 경계를 developer 문서와 맞춘다. 문서 지도와 기존 구조를 유지하고 명령 예제는 실제 지원되는 도구/옵션인지 확인한다. 구현되지 않은 기능이나 미검증 활성화를 완료로 쓰지 않는다. 번역 쌍과 링크 정책을 지키고 관련 변경만 동기화한다.
 
-developer docs에는 `README.md`, package README, `docs/context/`,
-`docs/decisions/`, `docs/plans/`, harness docs가 포함됩니다.
+## 실행
 
-1. 편집 전 code, package metadata, test, deployment manifest를 검사합니다.
-2. intent가 아니라 evidence에 맞춰 docs를 갱신합니다.
-3. 되돌리기 어려운 technical choice는 ADR candidate로 포착합니다.
-4. `/plan-issues`가 제품 목적을 확정하기 전에는 product purpose neutral하게
-   유지합니다.
-5. 관련 docs 또는 harness check를 실행합니다.
+현재 사용자 지시와 `.neurath/policy.md`, `.neurath/project.json`을 따른다. 기존 Task/Assignment를 먼저 읽고, 이 스킬을 실행할 때 같은 Task에 `skill_start`한다. `phase_read`가 반환하는 다음 단계와 조건을 따르며 모든 단계 뒤에만 사용자 Task 인수를 판단한다. 별도 workflow/adaptive 원장을 만들거나 phase를 skip하지 않는다. 실패·대기는 실제 상태로 보존한다.
+
+| 단계 ID | 완료할 결과 |
+| --- | --- |
+| execute | source_evidence, doc_update, verification_result |
+
+원문·실제 tool 결과·agent report를 구분하고 필요한 근거를 `phase_complete`로 연결한다. Task의 인수 조건도 충족해야 `task_complete`할 수 있다.

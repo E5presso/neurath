@@ -34,7 +34,7 @@ from neurath.skill_names import validate_skill_prefix
 
 def make_plan(root, *, action="install", profile=None, hosts=None, receipt=None, skill_prefix=None):
     root = repository(root)
-    from neurath.install.cutover import require_cutover
+    from neurath.install.transition import require_cutover, transition_plan
     require_cutover(root)
     if (InstallStateStore(root).journal() is not None
             or (git_dir(root) / "neurath-journal.json").exists()):
@@ -162,6 +162,7 @@ def make_plan(root, *, action="install", profile=None, hosts=None, receipt=None,
         "after_state": after_state,
         "checks": checks,
         "changes": changes,
+        "core_transition": transition_plan(root),
     }
     plan["id"] = hashlib.sha256(canonical(plan).encode()).hexdigest()
     return plan
@@ -229,7 +230,7 @@ def _prune_skill_directories(root, changes):
 
 def apply_plan(root, plan):
     root = repository(root)
-    from neurath.install.cutover import require_cutover
+    from neurath.install.transition import require_cutover
     require_cutover(root)
     if plan.get("root") != str(root):
         raise InstallError("plan belongs to another repository")
@@ -253,38 +254,40 @@ def apply_plan(root, plan):
         )
         if expected != plan:
             raise InstallError("stale or modified plan: regenerate with this distribution")
-        if not plan["changes"]:
-            return {"id": plan["id"], "changed": 0}
-        store = InstallStateStore(root, create=True)
-        try:
-            store.import_legacy_files(control)
-            store.ensure_state(plan["before_state"])
-            store.begin(plan)
-        except ValueError as error:
-            raise InstallError(str(error)) from error
-        applied = []
-        try:
-            for item in plan["changes"]:
-                if snapshot(root, item["path"]) != item["before"]:
-                    raise InstallError(f"concurrent change: {item['path']}")
-                _write(root, item["path"], item["after"])
-                applied.append(item)
-        except BaseException:
-            rollback_conflict = False
-            for item in reversed(applied):
-                if snapshot(root, item["path"]) == item["after"]:
-                    _write(root, item["path"], item["before"])
-                elif snapshot(root, item["path"]) != item["before"]:
-                    rollback_conflict = True
-            if not rollback_conflict:
-                store.discard(plan["id"])
-            raise
-        try:
-            store.finish(plan, plan["after_state"])
-        except ValueError as error:
-            raise InstallError(str(error)) from error
-        _prune_skill_directories(root, plan["changes"])
-        return {"id": plan["id"], "changed": len(plan["changes"])}
+        from neurath.install.transition import apply_transition
+        with apply_transition(root, plan.get("core_transition")):
+            if not plan["changes"]:
+                return {"id": plan["id"], "changed": 0}
+            store = InstallStateStore(root, create=True)
+            try:
+                store.import_legacy_files(control)
+                store.ensure_state(plan["before_state"])
+                store.begin(plan)
+            except ValueError as error:
+                raise InstallError(str(error)) from error
+            applied = []
+            try:
+                for item in plan["changes"]:
+                    if snapshot(root, item["path"]) != item["before"]:
+                        raise InstallError(f"concurrent change: {item['path']}")
+                    _write(root, item["path"], item["after"])
+                    applied.append(item)
+            except BaseException:
+                rollback_conflict = False
+                for item in reversed(applied):
+                    if snapshot(root, item["path"]) == item["after"]:
+                        _write(root, item["path"], item["before"])
+                    elif snapshot(root, item["path"]) != item["before"]:
+                        rollback_conflict = True
+                if not rollback_conflict:
+                    store.discard(plan["id"])
+                raise
+            try:
+                store.finish(plan, plan["after_state"])
+            except ValueError as error:
+                raise InstallError(str(error)) from error
+            _prune_skill_directories(root, plan["changes"])
+            return {"id": plan["id"], "changed": len(plan["changes"])}
 
 def recover(root):
     root = repository(root)

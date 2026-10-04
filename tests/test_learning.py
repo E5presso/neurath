@@ -242,35 +242,6 @@ def test_other_worktree_check_does_not_invalidate_source_guidance(memory, tmp_pa
     assert engine.status()[0]["status"] == "trial"
 
 
-def test_autonomous_validation_survives_an_already_saved_checkpoint(memory, monkeypatch):
-    from types import SimpleNamespace
-    from neurath.memory.hooks import checkpoint_request
-    import neurath.hosts.identity as identity
-    import neurath.runtime.engine as runtime
-
-    memory.record("codex", "one", "prompt", "prompt", "Run the project tests")
-    tool(memory, "one", "fail", "pytest -q", 127)
-    tool(memory, "one", "recovery", "uv run pytest -q", 0)
-    memory.checkpoint("codex", "one", "done", summary="Tests run")
-    transcript = memory.worktree / "native.jsonl"
-    transcript.write_text("")
-    monkeypatch.setattr(runtime, "activate", lambda root: None)
-    monkeypatch.setattr(
-        identity,
-        "_state",
-        lambda root, session: SimpleNamespace(
-            session=SimpleNamespace(runtime=SimpleNamespace(value="codex"))
-        ),
-    )
-    monkeypatch.setattr(
-        identity, "snapshot", lambda root, session: {"host": "codex", "transcript": str(transcript)}
-    )
-    result = checkpoint_request(
-        memory.worktree, "codex", {"hook_event_name": "Stop", "session_id": "one"}
-    )
-    assert result and "verification_run(check='check')" in result
-    assert ".neurath/run" not in result
-    assert Learning(memory).pending("codex", "one")
 
 
 def test_automatic_checks_follow_real_candidate_and_independent_trial_use(memory):

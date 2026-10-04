@@ -8,45 +8,16 @@ argument-hint: "<symptom, failing command, issue number, or log excerpt>"
 user-invocable: true
 ---
 
-# Investigate
+# debug
 
-## 적용 경계
+수정 전에 관측한 증상과 재현 조건을 정한다. 가장 작은 판별 가능한 재현으로 원인을 격리하고 실제 원인과 추측을 구분한다. 승인된 scope 안에서 수정·검증으로 이어가며 실패한 시도를 사용자 목표의 취소로 바꾸지 않는다. 검사 결과·원인·다음 행동을 실제 source와 연결한다.
 
-이 skill은 code, runtime, failing check의 기술적 원인을 조사할 때만 사용합니다. Agent의
-행동, 대화 방식, 자기 비판, process 성찰을 요구하는 질문에는 적용하지 않습니다. 그런
-요청은 도구나 phase를 시작하기 전에 직접 답합니다. 사용자가 이 skill 또는 skill 사용
-자체를 거부하면 keyword가 겹쳐도 초기화하지 않습니다.
+## 실행
 
-task 목록 없이 기존 phase workflow를 실행·복구할 때만 `uv run python -m scripts.skill_harness.phase_runner`로 계약을 initialize, evaluate, advance, finalize합니다.
+현재 사용자 지시와 `.neurath/policy.md`, `.neurath/project.json`을 따른다. 기존 Task/Assignment를 먼저 읽고, 이 스킬을 실행할 때 같은 Task에 `skill_start`한다. `phase_read`가 반환하는 다음 단계와 조건을 따르며 모든 단계 뒤에만 사용자 Task 인수를 판단한다. 별도 workflow/adaptive 원장을 만들거나 phase를 skip하지 않는다. 실패·대기는 실제 상태로 보존한다.
 
-1. 정확한 symptom과 source of truth를 포착합니다.
-2. 가장 작은 command 또는 runtime setup으로 재현합니다.
-3. 최근 diff와 owning component를 검사합니다.
-4. evidence에서 hypothesis를 세우고 cheap하게 반증합니다.
-5. root cause, blast radius, candidate fix를 식별합니다.
-   이미 해결됐다고 주장한 동일 symptom이 사용자 evidence에서 재현되면 직전 hypothesis를
-   falsified로 기록하고 그 실험 변경의 rollback 경계를 먼저 식별합니다. 그 위에 새 fix를
-   제안하지 않습니다.
-6. investigation이 bug 또는 follow-up work item을 확인하면
-   `.agents/rules/behavioral.md`의 Gap Triage를 먼저 적용합니다.
-   - 현재 승인된 `/process-ticket` scope의 acceptance, Definition of Done, merge
-     safety를 깨면 새 ticket으로 미루지 말고 현재 fix path에 포함합니다.
-   - 스펙이나 제품 의도가 불명확하면 새 구현 ticket을 만들지 말고
-     `/plan-issues`로 되돌립니다.
-   - 현재 scope 밖의 독립 work item이고 지금 처리하면 WIP를 망가뜨릴 때만
-     `/create-ticket`을 호출합니다.
-   - 가치가 낮거나 중복이면 ticket을 만들지 않고 닫습니다.
-   `/create-ticket` 호출 시에는 reproduction, expected behavior, observed
-   behavior, root cause, labels, assignee policy, milestone, dependency metadata와
-   triage decision을 포함합니다. 이 skill에서 issue를 직접 만들지 않습니다.
-7. 다음을 보고합니다.
-   - reproduction command
-   - root cause
-   - affected file/component
-   - recommended fix
-   - 필요한 test
-   - Gap Triage decision
-   - `/create-ticket` 호출 시 created 또는 blocked ticket result
+| 단계 ID | 완료할 결과 |
+| --- | --- |
+| execute | symptom_source, reproduction_result, root_cause, gap_triage_decision |
 
-사용자가 이어서 fix하라고 하거나 이미 승인된 `/process-ticket` scope 안이 아니면
-이 skill에서 fix하지 않습니다.
+원문·실제 tool 결과·agent report를 구분하고 필요한 근거를 `phase_complete`로 연결한다. Task의 인수 조건도 충족해야 `task_complete`할 수 있다.

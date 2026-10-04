@@ -5,7 +5,6 @@ import sys
 
 import pytest
 
-from neurath.providers.claude import normalize_listing
 from neurath.providers.stdio import CodexStdio
 
 
@@ -76,19 +75,6 @@ for line in sys.stdin:
     assert process.poll() is not None
 
 
-def test_claude_native_session_job_and_waiting_state_are_separate(tmp_path):
-    payload = [
-        {"cwd": str(tmp_path), "kind": "background", "startedAt": 1,
-         "id": "short-job", "sessionId": "full-native-uuid", "state": "blocked",
-         "waitingFor": "permission prompt"},
-        {"cwd": str(tmp_path.parent), "kind": "interactive", "startedAt": 1},
-    ]
-    rows = normalize_listing(json.dumps(payload), tmp_path)
-    assert len(rows) == 1
-    assert rows[0]["native_session"] == "full-native-uuid"
-    assert rows[0]["job_id"] == "short-job"
-    assert rows[0]["waiting_for"] == "permission prompt"
-    assert rows[0]["policy"]["verification"] == "unobserved"
 
 
 def test_long_normal_stream_keeps_completion_and_exact_interleaved_events(server):

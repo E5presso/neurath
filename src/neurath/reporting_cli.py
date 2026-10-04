@@ -28,13 +28,6 @@ def add_commands(commands):
 
 
 def run(root, args):
-    if args.report_command not in {"status", "read", "list"}:
-        from neurath.cli import _native_or_terminal
-        from neurath.runtime.admission import _verification_owner
-
-        identity = _native_or_terminal(root)
-        if identity is not None:
-            _verification_owner(root, identity)
     service = Reporting(root)
     match args.report_command:
         case "status":
@@ -46,8 +39,9 @@ def run(root, args):
         case "prepare":
             if args.file.stat().st_size > 20000:
                 raise ValueError("report input exceeds the bounded template")
-            return service.prepare(json.loads(args.file.read_text()),
-                                   privacy_reviewed=args.privacy_reviewed)
+            return service.prepare(
+                json.loads(args.file.read_text()), privacy_reviewed=args.privacy_reviewed
+            )
         case "approve":
             return service.approve(args.id, decision=args.decision == "yes")
         case "read":

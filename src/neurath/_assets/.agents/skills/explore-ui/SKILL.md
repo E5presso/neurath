@@ -8,49 +8,19 @@ argument-hint: "<화면 또는 실제 사용 장면> [reference·제약]"
 user-invocable: true
 ---
 
-# Explore UI
+# design-ui
 
-Reference와 후보를 같은 editable canvas에 두고 사용자가 직접 수정·선택하게 합니다.
-선택 전에는 production component나 token을 구현하지 않습니다.
+구현 전에 화면의 의도·source·runtime 권위와 참고 자료를 확인한다. Editable canvas에서 실제 surface/state 대안을 비교하고 사용자의 exact node 선택을 받는다. 선택 전에 code 구현으로 넘어가지 않는다. 승인된 node·수정사항·다음 구현 범위를 인계한다.
 
-`uv run python -m scripts.skill_harness.phase_runner`로 phase를 실행하고, 진입한 phase 파일만
-읽습니다.
+## 실행
 
-| Phase | 목적 | 파일 |
-|---|---|---|
-| 1 | 제품·reference 권위 | [phases/phase-1-authority.md](phases/phase-1-authority.md) |
-| 2 | Canvas 탐색 | [phases/phase-2-exploration.md](phases/phase-2-exploration.md) |
-| 3 | 사용자 선택 | [phases/phase-3-user-selection.md](phases/phase-3-user-selection.md) |
-| 4 | 구현 handoff | [phases/phase-4-handoff.md](phases/phase-4-handoff.md) |
+현재 사용자 지시와 `.neurath/policy.md`, `.neurath/project.json`을 따른다. 기존 Task/Assignment를 먼저 읽고, 이 스킬을 실행할 때 같은 Task에 `skill_start`한다. `phase_read`가 반환하는 다음 단계와 조건을 따르며 모든 단계 뒤에만 사용자 Task 인수를 판단한다. 별도 workflow/adaptive 원장을 만들거나 phase를 skip하지 않는다. 실패·대기는 실제 상태로 보존한다.
 
-`.agents/design-collaboration-policy.json`과 다음 reference를 먼저 읽습니다.
+| 단계 ID | 완료할 결과 |
+| --- | --- |
+| authority_and_references | screen_authority, reference_inventory, design_source_and_runtime_authority |
+| canvas_exploration | canvas_artifact, surface_frames, reference_comparison |
+| user_selection | user_decision, approved_node_or_iteration |
+| implementation_handoff | handoff_record |
 
-새 방향에서는 다음 reference를 읽습니다.
-
-- [제품·화면 정본](references/product-authority.md)
-- [Reference evidence](references/reference-evidence.md)
-- [Canvas와 review](references/render-and-review.md)
-
-## Native canvas만 사용
-
-`.agents/rules/tool-runtime-map.md`의 `tool:design_canvas`와 policy가 정한 provider를 사용합니다.
-Native tool이나 file authority가 없으면 `blocked`입니다.
-
-제품 UI 방향을 `visualize`로 대체하지 않습니다. HTML mockup, raster 합성물, screenshot 위
-transparent control, 자연어 mood board를 editable canvas의 대체물로 만들지 않습니다.
-
-- Reference 원본은 `References` 영역에 보존하고 후보와 나란히 봅니다.
-- 태블릿과 모바일은 별도 node이며 겹치지 않습니다.
-- Runtime-owned visual은 runtime capture·static export 또는 slot만 사용합니다.
-- Canvas token은 mirror 또는 proposal이며 이 skill에서 repository를 수정하지 않습니다.
-- Agent 평가나 score는 사용자 선택을 대신하지 않습니다.
-- Design content reset은 token·brand·기존 visual·논의·canvas artifact만 지울 수 있습니다.
-  Policy, 이 skill과 나머지 collaboration skill, connector 등록과 regression oracle은
-  capability이므로 함께 삭제하지 않습니다.
-- Repository design source가 아직 없으면 `clean-slate`로 기록하고 임의 값을 정본으로
-  만들지 않습니다.
-
-## 종료
-
-사용자가 exact canvas node를 선택하면 `direction-selected`, 추가 탐색이면 `needs-more-exploration`, native
-canvas가 없으면 `blocked`입니다. 선택을 추론하지 않습니다.
+원문·실제 tool 결과·agent report를 구분하고 필요한 근거를 `phase_complete`로 연결한다. Task의 인수 조건도 충족해야 `task_complete`할 수 있다.

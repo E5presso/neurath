@@ -38,7 +38,9 @@ plan, ADR, package metadata, deployment manifest, harness file에서 사실을 �
   behavior, 깨진 command를 사실처럼 말함
 - Warning: 표현 불명확, DD drift, 포맷/가독성 문제, source metadata 누락 또는 약함
 
-Critical이 하나라도 있으면 Phase 3 reconcile 전에 수정해야 합니다. Warning은
+Critical이 하나라도 있으면 실제 reviewer의 실패 보고를 읽고 거절 결과를 정리한 뒤
+`phase_restart`로 write 단계에 돌아가 수정하고 다시 검토받습니다. 검증 phase에서
+직접 문서를 수정하거나 실패 보고를 통과 근거로 쓰지 않습니다. Warning은
 reconcile에서 수용/반론/보류를 결정합니다.
 
 ## 보고 형식

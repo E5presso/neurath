@@ -8,41 +8,16 @@ argument-hint: "<exact canvas node URL> <상주형·모바일·웹> <state>"
 user-invocable: true
 ---
 
-# Implement UI
+# implement-ui
 
-task 목록 없이 기존 phase workflow를 실행·복구할 때만 `uv run python -m scripts.skill_harness.phase_runner`로 initialize, evaluate,
-advance, finalize합니다.
+승인된 exact canvas node와 한 surface/state를 확인한다. Source mapping과 runtime 문맥에 맞춰 구현하고 실제 결과를 검증한다. 사용자의 선택이 바뀌면 원래 node의 승인을 다른 설계에 재사용하지 않는다. 승인 전 탐색에는 design-ui를 사용한다.
 
-다음 세 값이 모두 필요합니다.
+## 실행
 
-1. 사용자가 승인한 **exact canvas node** URL 또는 provider file/node identity
-2. 구현할 surface: 상주형, 모바일 또는 웹
-3. 구현할 실제 screen state와 sample data
+현재 사용자 지시와 `.neurath/policy.md`, `.neurath/project.json`을 따른다. 기존 Task/Assignment를 먼저 읽고, 이 스킬을 실행할 때 같은 Task에 `skill_start`한다. `phase_read`가 반환하는 다음 단계와 조건을 따르며 모든 단계 뒤에만 사용자 Task 인수를 판단한다. 별도 workflow/adaptive 원장을 만들거나 phase를 skip하지 않는다. 실패·대기는 실제 상태로 보존한다.
 
-하나라도 없거나 native `tool:design_canvas`가 없으면 `blocked`입니다. `visualize`, 자연어 mood,
-reference screenshot 재구성 또는 다른 node로 대체하지 않습니다.
+| 단계 ID | 완료할 결과 |
+| --- | --- |
+| execute | approved_node, surface_and_state, design_context, implementation_delta, verification_result |
 
-도구 선택과 runtime 변환은 `.agents/rules/tool-runtime-map.md`를 사용합니다.
-
-`.agents/design-collaboration-policy.json`과 제품 정본을 읽습니다. Canvas에서는 exact node의 structured
-design context, screenshot, variable/style와 component mapping을 가져옵니다. Repository에서는
-실제로 존재하는 design source와 component contract를 읽습니다. Design source가
-`clean-slate`이면 임의 token 체계를 발명하지 않고 필요한 source proposal을 gap으로 보고합니다.
-
-Runtime-owned visual은 실제 component를 사용합니다. Canvas capture는 배치 근거일 뿐
-renderer source가 아닙니다.
-
-## 구현
-
-- 한 번에 승인된 node·surface·state 하나를 구현합니다.
-- 실제 component와 semantic token을 재사용하고 hardcoded visual value를 만들지 않습니다.
-- Canvas-only proposal과 아직 없는 component가 있으면 조용히 대체하지 않고 gap을 보고합니다.
-- Behavior change는 production code보다 먼저 failing 또는 characterizing test를 작성합니다.
-- Browser는 `tool:browser`, mobile simulator는 `tool:native_mobile`을 사용합니다.
-- Design content reset은 이 skill, collaboration policy, connector 등록과 regression
-  oracle을 삭제하는 권한이 아닙니다.
-
-Evidence는 `approved_node`, `surface_and_state`, `design_context`, `implementation_delta`,
-`verification_result`입니다. 구현과 deterministic verification이 끝나면 `implemented`, 진입 조건이나
-authority가 없으면 `blocked`, 구현 또는 검증이 실패하면 `failed`입니다. Visual acceptance는
-이 skill의 terminal authority가 아니며 `/review-ui`로 이어집니다.
+원문·실제 tool 결과·agent report를 구분하고 필요한 근거를 `phase_complete`로 연결한다. Task의 인수 조건도 충족해야 `task_complete`할 수 있다.

@@ -1,139 +1,61 @@
-<!-- last_updated: 2026-09-14; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
-# 이름이 정해진 Neurath 도구 호출하기
+# 코어 명령 참조
 
 [English](../../en/contributing/task-tools.md)
 
-프로젝트 코드를 바꾸고 검사할 때는 호스트의 기본 편집·명령 도구를 사용합니다. Neurath의 MCP 도구는 태스크를 기록하고 승인된 참여자를 조정하며 근거와 런타임 상태를 관리합니다. 이 역할 분담으로 일반 코딩 작업은 직접 수행하면서 이어갈 작업의 기록을 남길 수 있습니다.
+실행 중인 MCP 연결의 `tools/list`를 사용한다. `core/tool_schema.py`가 schema를, `core/service.py`가 routing을 정의한다. 네이티브 호출마다 새 `_call_id`를 쓰고 동일 mutation 재시도에는 같은 `key`를 쓴다. 네이티브 훅이 실제 실행자와 정확한 요청을 결속한다. 두 값 모두 호스트 권한을 부여하지 않는다. Task 변경에는 반환된 Task revision을 사용한다. 읽기에는 쓰기 소유권이 필요 없다.
 
-**태스크**는 범위가 정해진 사용자 목표와 관찰 가능한 **완료 조건**을 기록합니다. 호스트 세션의 **루트 에이전트**가 목록을 소유합니다. **워크트리 claim**은 체크아웃의 작업 소유자를 식별합니다. **receipt**는 특정 이벤트나 보고의 기록입니다. 워크플로의 **phase**는 절차를 나누고 **리뷰**는 정해진 범위를 평가합니다. 처음 접하는 개념이라면 [아키텍처](architecture.md)를 먼저 읽으세요.
+| Command | Required fields | Optional fields |
+| --- | --- | --- |
+| `approval_record` | `action`, `digest`, `end`, `key`, `reason`, `source_id`, `start`, `target`, `task_id` |  |
+| `assignment_accept` | `assignment_id`, `key`, `source_id`, `subject`, `task_id` |  |
+| `assignment_cancel` | `assignment_id`, `key`, `reason`, `task_id` |  |
+| `assignment_prepare` | `execution`, `expected_revision`, `key`, `reason`, `role`, `scope`, `subject`, `task_id` | `checkout`, `provider`, `recipient` |
+| `assignment_read` | `assignment_id`, `task_id` |  |
+| `assignment_reject` | `assignment_id`, `key`, `source_id`, `task_id` |  |
+| `assignment_report` | `assignment_id`, `body`, `key`, `subject`, `task_id`, `verdict` |  |
+| `assignment_start` | `assignment_id`, `key`, `task_id` |  |
+| `collaboration_ack` | `key`, `message_ids` |  |
+| `collaboration_discover` |  |  |
+| `collaboration_inbox` |  | `include_read`, `limit` |
+| `collaboration_reply` | `body`, `key`, `message_id` |  |
+| `collaboration_send` | `body`, `key`, `recipient` | `task_id` |
+| `evidence_list` | `task_id` |  |
+| `harness_bypass` | `key` | `enabled`, `reason` |
+| `learning_pending` |  |  |
+| `learning_status` |  |  |
+| `memory_checkpoint` | `key`, `summary` | `decisions`, `lessons`, `next_steps`, `status` |
+| `memory_pull` | `source_actor` |  |
+| `memory_recall` |  | `limit`, `query` |
+| `newsroom_headlines` |  | `limit` |
+| `newsroom_publish` | `body`, `key`, `title` |  |
+| `newsroom_read` | `article_id` |  |
+| `phase_complete` | `expected_revision`, `inputs`, `key`, `outcomes`, `phase_id`, `task_id` |  |
+| `phase_read` | `task_id` |  |
+| `phase_restart` | `expected_revision`, `key`, `source_id`, `task_id` | `changed_inputs` |
+| `provider_prepare` | `assignment_id`, `checkout`, `key`, `task_id` | `model` |
+| `provider_read` | `run_id` |  |
+| `publication_read` | `checkout`, `publication_kind`, `reference`, `task_id` | `asset_sha256`, `head` |
+| `report_record` | `body`, `key`, `passed`, `task_id` | `subject` |
+| `session_status` |  |  |
+| `skill_start` | `expected_revision`, `key`, `skill`, `task_id` |  |
+| `source_list` |  | `kind`, `limit` |
+| `source_quote` | `digest`, `end`, `source_id`, `start` |  |
+| `source_read` | `source_id` | `limit`, `start` |
+| `source_restore` | `body`, `key`, `source_id`, `task_id` |  |
+| `task_adopt` | `digest`, `end`, `expected_revision`, `key`, `reason`, `source_id`, `start`, `task_id` |  |
+| `task_complete` | `expected_revision`, `key`, `outcomes`, `task_id` |  |
+| `task_define` | `acceptance`, `goal`, `key`, `source_ids` | `dependencies` |
+| `task_focus` | `key`, `task_id` |  |
+| `task_list` |  | `all_project` |
+| `task_read` | `task_id` |  |
+| `task_resume` | `expected_revision`, `key`, `task_id` |  |
+| `task_start` | `expected_revision`, `key`, `task_id` |  |
+| `task_wait` | `expected_revision`, `key`, `reason`, `source_id`, `task_id` |  |
+| `task_withdraw` | `digest`, `end`, `expected_revision`, `key`, `reason`, `source_id`, `start`, `task_id` |  |
+| `verification_prepare` | `check_name`, `checkout`, `key`, `task_id` |  |
+| `verification_read` | `execution_id` |  |
+| `worktree_claim` | `checkout`, `key`, `task_id` | `create` |
+| `worktree_read` | `checkout` |  |
+| `worktree_release` | `checkout`, `generation`, `key` |  |
 
-## 현재 계약 발견하기
-
-MCP 서버는 `tools/list`로 이름이 정해진 도구를 공개합니다. 현재 소스는 내부 작업 138개 중 공개 도구 128개를 제공합니다. 설치된 버전에서 발견한 입력 스키마를 사용합니다. [기능별 도구 안내](capability-map.md)는 모든 공개 이름을 목적에 따라 정리합니다.
-
-각 작업은 닫힌 JSON 객체를 받으며 알 수 없는 필드는 거부합니다. 호스트 훅이 현재 호출에 대한 `_neurath_binding`을 제공합니다. 에이전트는 actor·session·turn·binding을 만들어 넣으면 안 됩니다. 명시적인 예외는 `harness_bypass`로, 호스트 binding 없이 우회 스위치를 읽거나 복원할 수 있습니다. 우회 중에도 현재 호스트가 확인한 `PreToolUse`가 명명 MCP 호출을 결속해 태스크 원장을 사용할 수 있으며, 다른 Neurath 훅 제약은 우회합니다.
-
-`harness_bypass`에서 `enabled`를 생략하거나 `null`로 보내면 현재 워크트리의 스위치를 조회합니다. `true`는 우회를 켜고 `false`는 Neurath 훅 제약을 복원합니다. 설정된 MCP 연결은 호스트 binding이나 사용 가능한 호출 worker 슬롯 없이 이 비상 조회·변경을 처리합니다. 커널 저장소가 정상 호출 허용 근거를 제공하지 못하는 경우에도 쓸 수 있습니다. 이 스위치는 호스트 권한과 기존 기록을 유지하며 다른 태스크나 도구의 권한을 부여하지 않습니다. 우회 중 명명 도구도 현재 네이티브 신원·전경 턴과 각 도메인의 정상 호출 허용 조건이 필요합니다. 우회 중 건너뛴 사용자 프롬프트를 도구 인자로 대신할 수 없습니다.
-
-소스 스키마는 `src/neurath/runtime/task_schema.py`, 가져온 정의 모듈, `definitions()` / `arguments()`에서 확인합니다. 현재 발견 경로는 `phase_*`를 사용합니다. `workflow_start`, `workflow_advance`, `workflow_finalize`는 저장된 호출의 호환 경로로 남아 있습니다. `material_*`, `verification_*`, 일반 `agent(argv)` 기반 경로는 공개 목록 밖에 있습니다. 일반 편집과 테스트에 material 또는 verification 상태를 중복 기록할 필요는 없습니다.
-
-`session_status(detail="full")`은 진단 목록에 내부 연산 이름을 유지하지만, 서버의 `tools/list`에서 제외된 연산은 `implemented: true`, `available: false`, `reason: "not-exposed-by-task-mcp"`와 실행 가능한 다음 경로인 `next_action`을 반환합니다. 숨겨진 verification·material 연산은 현재 호스트 권한 안에서 승인된 편집·검사를 기본 편집·명령 도구로 수행하도록 안내하며, 호환용 workflow 연산은 대응하는 공개 `phase_*` 도구를 안내합니다. 이는 내부 연산을 다른 전송 경로로 재실행할 권한이 아닙니다. 사용 가능 여부에는 기존 네이티브 활성화·소유권·실행 정책 검사도 유지됩니다. 진단 결과는 권한을 부여하거나 클라이언트가 서버의 도구 목록을 불러왔음을 증명하지 않으므로 호출 전 실제 호스트의 현재 도구 목록을 확인합니다. 저장된 호출의 스키마·실행 경로·허용 조건은 바뀌지 않습니다.
-
-## 결과 봉투를 읽고 다음 작업 결정
-
-성공 응답에는 `ok`, `operation`, `result`가 있습니다. 실패 응답에는 `ok`, `operation`과 아래 필드를 가진 `error`가 있습니다.
-
-| 필드 | 사용 방법 |
-| --- | --- |
-| `code` | 입력·신원·리비전·도메인 중 어떤 선행 조건을 어겼는지 식별 |
-| `message` | 구체적인 원인 확인 |
-| `state` | 실행이 시작됐는지 또는 다른 기록 상태에 도달했는지 확인 |
-| `retryable` | 해당 작업이 재시도를 지원한다고 보고하는지 확인 |
-| `next_action` | 지원되는 수정·복구 경로 수행 |
-
-실패한 호출은 신원을 추측하거나 실행 정책을 넓힐 권한을 주지 않습니다. 응답이 불확실하고 해당 작업이 재현을 지원한다면 원래 논리 작업의 키와 동일 내용을 유지합니다. 의도한 요청이 달라졌다면 새 작업입니다.
-
-전송은 stdout의 JSON-RPC와 stderr의 진단 출력을 사용합니다. 이름이 정해진 요청은 64 KiB까지 허용합니다. JSON 문서 인자에도 별도 제한이 있습니다. 64 KiB, 중첩 깊이 16, 객체당 속성 128개, 배열당 항목 1,024개이며 null 바이트와 유한하지 않은 수는 거부합니다.
-
-## 호출 예시: 새로고침 후 저장 필터 유지
-
-아래는 사용자 웹앱의 문제를 다루는 예시이며 Neurath 기능이 아닙니다. 꺾쇠 안의 값은 실제 반환값으로 바꿔야 합니다. 리비전 숫자는 입력 형식을 보여 주므로 새 원장이라고 가정하지 말고 실제 값을 읽습니다.
-
-현재 작업에 필요한 `session_status`, `worktree_inspect`, `task_list`를 먼저 확인합니다. 승인된 작업에 소유권이 필요하고 현재 상태가 허용할 때만 워크트리 claim을 얻습니다. 태스크 목록에는 지시 출처와 재사용할 기존 작업이 있습니다.
-
-`task_define`으로 관찰 가능한 목표를 정의합니다.
-
-```json
-{
-  "tasks": [
-    {
-      "key": "persist-saved-filter",
-      "title": "새로고침 후 저장 필터 유지",
-      "goal": "저장하고 다시 불러와도 선택한 필터를 유지한다.",
-      "sources": [
-        {
-          "kind": "prompt",
-          "reference": "<반환된 지시 참조>",
-          "revision": "<반환된 지시 리비전>"
-        }
-      ],
-      "acceptance": [
-        "저장하고 페이지를 새로고침한 뒤에도 선택한 필터가 유지된다.",
-        "복원된 값이 화면에 표시되고 조회 결과에 적용된다.",
-        "기존 기본 필터 동작을 계속 검증한다."
-      ],
-      "dependencies": []
-    }
-  ],
-  "expected_revision": 0,
-  "key": "define-persist-saved-filter"
-}
-```
-
-`tasks`에는 정의 1~64개를 넣으며 각 정의에 위 여섯 필드가 모두 필요합니다. 정의마다 호출자가 제공하는 출처는 최대 31개, 완료 조건은 1~32개, 의존 태스크는 최대 64개입니다. 런타임이 실제 호스트 지시 출처를 검증하고 기준 근거 메타데이터를 추가합니다.
-
-반환된 태스크를 `task_start`로 시작합니다.
-
-```json
-{
-  "task_id": "<반환된 태스크 ID>",
-  "expected_revision": 1,
-  "expected_task_revision": 1,
-  "key": "start-persist-saved-filter"
-}
-```
-
-앞선 결과에서 실제 목록·태스크 리비전을 가져옵니다. 호스트 도구로 저장·새로고침을 재현하고 필요한 코드를 수정한 뒤 적절한 프로젝트 검사를 실행합니다. 승인된 범위에서 도움이 된다면 제한된 질문으로 API 리뷰를 위임하고 결과를 받은 후 활용합니다.
-
-별도의 필요한 수정이 드러나면 현재 태스크를 마치기 전에 `task_define`으로 후속 작업을 등록합니다. 원래 요구의 출처를 유지합니다. 나중에 들어온 상태 질문은 추가 범위의 출처가 자동으로 되지 않습니다.
-
-관찰한 결과를 `task_resolve`로 기록합니다.
-
-```json
-{
-  "task_id": "<반환된 태스크 ID>",
-  "expected_revision": 2,
-  "expected_task_revision": 2,
-  "key": "resolve-persist-saved-filter",
-  "status": "succeeded",
-  "references": ["<실제 재현 또는 회귀 근거 참조>"],
-  "summary": "저장 후 새로고침해도 선택한 필터가 유지되고 복원된 값이 화면과 결과에 적용된다. 기본 동작 검사도 통과했다."
-}
-```
-
-이 요약은 해당 관찰이 실제로 있을 때만 적절합니다. `references`에는 비어 있지 않은 서로 다른 참조 1~32개가 필요합니다. 서비스는 `agent-report` 수준의 소유자 보고를 보존합니다. `failed`나 `invalidated`를 기록할 때는 실제 결과와 그 근거를 설명합니다. Stop을 통과하려고 실패 상태를 사용하면 안 됩니다.
-
-## 호스트 계획 표시 맞추기
-
-반환된 `native_todo`를 읽고 정확한 전체 인자 객체를 호스트의 `update_plan` 또는 `TodoWrite`로 제출합니다. 호스트 완료 표시가 모든 종료 결과를 포함하므로 표시값 본문에는 실제 결과가 들어갑니다. 화면용 receipt는 호스트 도구 제출만 입증합니다. 자세한 내용은 [태스크와 TODO 계약](task-todo-contract.md)을 참고하세요.
-
-## 추가 확인이 필요한 호출
-
-| 상황 | 호출 계약과 다음 관찰 |
-| --- | --- |
-| 태스크 리비전 충돌 | `task_list`를 다시 읽고 현재 작업을 대조한 뒤 반환 리비전으로 다음 작업 수행 |
-| 호스트 지시 누락 또는 턴 변경 | 현재 호스트 상태 확인 후 실제 현재 또는 기존 지시 출처로 새 호출 |
-| 워크트리 해제 | 소유 claim에서 받은 실제 `expected_lease_epoch`, `fencing_token` 사용. 토큰은 비공개 런타임 데이터로 취급 |
-| 명시적 phase 진행 | `phase_current`를 읽고 정확한 리비전에 대한 근거 준비 후 해당 단계 완료 |
-| 리뷰 결과 | 활용 전 정확한 리뷰·평가 대상의 인증된 결과를 수용. 게시에는 별도 범위·현재 커밋 검사 |
-| 독립 제공자 실행 | 실제 모델 조회 → 리비전 계획 → 해당 계획 실행 → 준비 상태 확인. 접수는 완료가 아님 |
-| 메모리 adopt | 미리보기와 필요한 읽기 후 원본이 정지한 상태에서 반환된 불변 참조·별도 키·실제 수신 리비전으로 이전 |
-| 전송 불확실 | 이벤트·실패 뒤 참여 메시지나 소유 실행을 확인하고 ID를 바꾸지 않은 채 복구 경로 수행 |
-
-`phase_start`에는 `workflow_id`, `key`, `skill`, `run_id`, `north_star`가 필요합니다. `phase_complete`에는 `workflow_id`, `expected_revision`, `key`, `phase_id`, `status`, `summary`가 필요하며 상태는 `completed`, `skipped`, `failed`, `blocked` 중 하나입니다. 선택적 근거·종료 필드도 선택한 phase 계약을 따릅니다. 운영 워크플로의 마지막 phase는 `terminal_state`로 동시에 종료될 수 있으므로 두 번 finalize하지 않습니다.
-
-## 실패한 경계에서 복구
-
-`invalid-input`은 스키마를 고쳐야 하는 오류입니다. `revision-conflict`는 새 조회와 대조가 필요합니다. `task-contract-rejected`는 태스크 정의·출처·의존성·결과 중 실제 위반한 규칙을 확인해야 합니다. 호스트 binding·지시·소유권 오류는 해당 선행 조건을 복구해야 하며 태스크 JSON을 바꿔 허용된 참여자를 사칭해서는 안 됩니다.
-
-정상 Stop은 마지막 도메인 검사이며 이러한 오류를 우회하는 방법이 아닙니다. 미충족 선행 조건은 커널의 완료 처리를 계속 거부하지만, 호스트에는 모델 자동 재호출 대신 종료를 막지 않는 진단을 반환합니다. 답변 반환이 태스크 완료 처리는 아닙니다. [실행 생명주기](runtime-lifecycle.md)에서 남아 있는 작업이나 receipt를 확인하세요.
-
-## 불변 적응형 상태 재사용
-
-완전한 적응형 상태를 `artifact_put(document, key)`로 한 번 저장합니다. 반환된 `sha256:` 참조를 `adaptive_replace`, `adaptive_override_goal`, `evaluation_prepare`, `evaluation_execute`의 `state_ref`로 전달합니다. 광고되는 입력에서 전체 중첩 상태 스키마를 반복하지 않습니다. 저장된 기존 호출의 인라인 `state` 입력도 계속 지원하며, `state`와 `state_ref` 중 정확히 하나만 전달합니다.
-
-참조는 데이터이며 권한이 아닙니다. 사용할 때 같은 세션의 artifact 해시, 전체 상태 스키마, typed state, 현재 네이티브 호출자, 워크플로 리비전과 해당 독립 평가·실행 receipt를 확인합니다. 잘못된 참조나 상태는 변경 요청 키를 예약하기 전에 거부합니다. 재호출은 원래 입력 방식에 결속되므로 같은 키에 다른 참조를 넣을 수 없습니다. `evaluation_read`는 계속 인증된 평가 후보를 읽으며 일반 artifact 조회로 대체하지 않습니다.
-
-## 이상동작 시 자율 복구
-
-에이전트가 Neurath의 이상동작을 감지하면 사용자에게 별도 허가를 구하지 않고 `harness_bypass(enabled=true)`를 호출할 수 있습니다. 특정 오류나 Stop 루프에 한정하지 않습니다. 모순된 제약, 무진전 반복, 종료 방해는 예시이며 필수 체크리스트가 아닙니다. 추가 검사, 태스크 등록, 보고, 사용자의 재촉을 기다리느라 이상동작을 지속시키지 않습니다. 전환 이유를 알리고 미완료 목표와 근거를 보존하며, 정상 동작을 확인한 뒤 Neurath를 복원합니다. 호스트 보안, 샌드박스 권한, 사용자 제한은 바꾸지 않습니다.
+[코어 명세](core-v2-spec.md)

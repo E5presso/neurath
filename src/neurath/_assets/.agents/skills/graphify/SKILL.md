@@ -8,6 +8,9 @@ argument-hint: "<경로 또는 query \"질문\">"
 user-invocable: true
 ---
 
+실제 스킬 작업에는 같은 Task에 `skill_start(skill="graphify")`합니다. scope → graph_work → report 순서로 `phase_read`의 조건을 충족합니다. 모드에 맞는 실제 근거를 기록하며 phase를 건너뛰지 않습니다. Help-only는 읽기와 설명만 수행하고 파일을 생성하지 않습니다.
+
+
 # /graphify
 
 Turn any folder of files into a navigable knowledge graph with community detection, an honest audit trail, and three outputs: interactive HTML, GraphRAG-ready JSON, and a plain-language GRAPH_REPORT.md.
@@ -66,8 +69,9 @@ Follow these steps in order. Do not skip steps.
 ### Neurath runtime admission
 
 `graphify-out`을 쓰는 build, update, cluster, add 작업은 current runtime actor가 native
-worktree CWD에서 typed claim을 먼저 소유해야 합니다. Query/path/explain 같은 read-only
-호출은 claim을 만들지 않습니다.
+대상 checkout의 `worktree_claim`으로 writer lease를 먼저 소유해야 합니다. 기존 graph 파일을 native Read/Grep으로 조회하기만 하는 경로는 claim을 만들지 않습니다.
+Graphify CLI나 traversal helper가 cache·query 결과·vocabulary·interpreter marker를 쓰는
+경로는 읽기 전용이라고 부르지 않고 실제 쓰기 전에 lease를 획득합니다.
 
 `graphify-out` must be a real directory inside the claimed worktree and must not be a symlink.
 Do not redirect it into Git metadata, another worktree, or an external shared directory. If an
@@ -76,9 +80,8 @@ must be rebuilt in a worktree-local directory. This keeps Graphify scratch files
 fenced resource without granting access to Git configuration, hooks, the index, or foreign
 worktrees.
 
-```bash
-python3 -m scripts.agent_harness.state_cli worktree claim
-```
+실제 Task와 절대 checkout 경로를 `worktree_claim`에 전달한다. 현재 actor는 linked
+worktree에서도 같은 세션으로 작업할 수 있다. 원장 파일이나 actor 신원을 직접 수정하지 않는다.
 
 Slash-skill flag와 installed CLI argv를 혼동하지 않습니다. Current CLI의 exact maintenance
 entrypoint는 `graphify update .`와 `graphify cluster-only .`입니다. Shell에서

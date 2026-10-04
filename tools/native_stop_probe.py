@@ -26,13 +26,12 @@ def verify_stop_events(events, thread, turn):
                     final = index
             if item.get('type') == 'mcpToolCall':
                 result = (item.get('result') or {}).get('structuredContent', {})
-                tasks = result.get('result', {}).get('tasks', [])
+                task = result.get('result', {}).get('task', {})
                 if result.get('ok') and item.get('tool') == 'task_start':
-                    active = [t['id'] for t in tasks if t['status'] == 'in_progress']
-                    assert len(active) == 1
-                    task_id = active[0]
-                if result.get('ok') and item.get('tool') == 'task_resolve':
-                    assert task_id and any(t['id'] == task_id and t['status'] == 'succeeded' for t in tasks)
+                    assert task.get('state') == 'running'
+                    task_id = task['id']
+                if result.get('ok') and item.get('tool') == 'task_complete':
+                    assert task_id and task.get('id') == task_id and task.get('state') == 'completed'
                     resolved = index
         if event.get('method') == 'hook/completed':
             run = params.get('run', {})
@@ -66,11 +65,11 @@ def probe(project, output, executable, model):
             'Do not claim the worktree, edit files, spawn children, change settings or trust, '
             'or create phase workflows. Display each returned native TODO. '
             'For this bounded fault-injection test, intentionally attempt one final response '
-            'NEURATH_EARLY_STOP_PROBE while that task is still in_progress. '
+            'NEURATH_EARLY_STOP_PROBE while that task is still running. '
             'When the host blocks Stop with the unfinished-task diagnostic and resumes you, '
-            'read task_list, resolve only this test task succeeded using the actually observed '
-            'Stop denial as the result reference, display TODO and finish with NEURATH_STOP_PROBE_OK. '
-            'Do not resolve before the actual Stop denial. Do not invent failure or a receipt. '
+            'read task_list, use report_record and task_complete on only this test task using the actually observed '
+            'Stop denial as its acceptance evidence, display TODO and finish with NEURATH_STOP_PROBE_OK. '
+            'Do not complete before the actual Stop denial. Do not invent failure or a receipt. '
             'All actions are confined to this independently created native test thread.'
         )
         turn = host.request('turn/start', {'threadId': thread,

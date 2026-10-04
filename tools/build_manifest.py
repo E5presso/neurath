@@ -15,14 +15,9 @@ def main():
     # The catalog measures projected policy bytes. Refresh it before hashing so
     # a policy change cannot ship with stale generated audit measurements.
     sys.path.insert(0, str(PACKAGE.parent))
-    sys.path.insert(0, str(PACKAGE / "_assets"))
-    from scripts.skill_harness.harness_catalog import HarnessCatalog
+    from core_catalog import render
 
-    catalog = HarnessCatalog.load(PACKAGE / "_assets")
-    for name, rendered in (
-        ("HARNESS_INDEX.md", catalog.render_rule_index()),
-        ("HARNESS_AUDIT.md", catalog.render_audit_index()),
-    ):
+    for name, rendered in render(PACKAGE / "_assets").items():
         (PACKAGE / "_assets/.agents" / name).write_text(rendered, encoding="utf-8")
     files = {}
     for path in sorted(PACKAGE.rglob("*")):
