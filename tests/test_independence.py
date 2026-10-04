@@ -63,26 +63,6 @@ def test_review_personas_do_not_supply_unbound_python_policies():
         assert "TypedDict` 사용 (BaseModel로 대체" not in text
 
 
-def test_runtime_emits_only_kit_namespace(tmp_path):
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
-    apply_plan(tmp_path, make_plan(tmp_path))
-    result = subprocess.run(
-        [sys.executable, "-I", "-m", "neurath", "--root", str(tmp_path), "hook", "--host", "codex"],
-        input=json.dumps(
-            {
-                "session_id": "independent-test",
-                "hook_event_name": "SessionStart",
-                "source": "startup",
-                "cwd": str(tmp_path),
-            }
-        ),
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr
-    assert "private_project" not in (result.stdout + result.stderr).lower()
-    assert "neurath" in result.stdout.lower()
 
 
 def test_integrity_detects_added_and_modified_kit_code(tmp_path):
@@ -120,164 +100,16 @@ def test_unknown_project_profile_is_rejected_before_changes(tmp_path):
     assert not (tmp_path / ".neurath").exists()
 
 
-def test_configured_verifier_uses_target_command_and_checks_real_execution(tmp_path):
-    from neurath.runtime.engine import activate
-
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
-    (tmp_path / "check.py").write_text("print('check actually ran')\n")
-    (tmp_path / ".neurath").mkdir()
-    (tmp_path / ".neurath/project.json").write_text(
-        json.dumps({"verification": {"check": {"argv": [sys.executable, "check.py"]}}})
-    )
-    activate(tmp_path)
-    from scripts.agent_harness.harness_incident import _execute_regression_command
-    from scripts.agent_harness.verification_runner import VerificationKind, VerificationRequest
-
-    request = VerificationRequest(VerificationKind.CHECK)
-    assert request.commands == (".neurath/run verify check",)
-    process, _ = _execute_regression_command(tmp_path, request.commands[0])
-    assert process.stdout.strip() == b"check actually ran"
 
 
-def test_metadata_conventions_are_opt_in():
-    from neurath.runtime.engine import activate
-
-    activate()
-    from scripts.skill_harness.github_metadata_language import GitHubMetadataLanguageAuditor
-
-    auditor = GitHubMetadataLanguageAuditor()
-    english = auditor.audit("Fix the installer", "## Summary\nPreserve settings.")
-    assert english.passes(
-        require_title_issue_prefix=False, require_commit_subject_issue_prefix=False
-    )
-    assert "policy_passed=true" in english.evidence()
-    korean_policy = auditor.audit("Fix the installer", "English body", language_policy="ko")
-    assert not korean_policy.passes(
-        require_title_issue_prefix=False, require_commit_subject_issue_prefix=False
-    )
-    assert "policy_passed=false" in korean_policy.evidence()
 
 
-def test_portable_static_checks_accept_installed_target_and_detect_drift(tmp_path):
-    from neurath.runtime.engine import activate
-
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
-    (tmp_path / "AGENTS.md").write_text("Use the project's own conventions.\n")
-    apply_plan(tmp_path, make_plan(tmp_path))
-    activate(tmp_path)
-    from scripts.agent_harness.checker import AgentHarnessChecker
-    from scripts.skill_harness.checker import SkillHarnessChecker
-
-    assert not AgentHarnessChecker(tmp_path).check()
-    assert not SkillHarnessChecker(tmp_path).check()
-    asset = tmp_path / ".neurath/policy.md"
-    asset.write_text("corrupt policy\n")
-    assert AgentHarnessChecker(tmp_path).check()
-    assert SkillHarnessChecker(tmp_path).check()
 
 
-def test_typed_pytest_binding_cannot_substitute_unrelated_pass_or_skip(tmp_path):
-    import pytest
-
-    from neurath.runtime.engine import activate
-
-    activate(tmp_path)
-    from scripts.agent_harness.harness_incident import (
-        HarnessIncidentValidationError,
-        _execute_regression_command,
-    )
-
-    (tmp_path / ".neurath").mkdir()
-    source = tmp_path / "test_bound.py"
-    source.write_text(
-        'import pytest\ndef test_required(): pytest.skip("not executed")\ndef test_other(): pass\n'
-    )
-    config = tmp_path / ".neurath/project.json"
-
-    def bind(extra=()):
-        config.write_text(
-            json.dumps(
-                {"verification": {"pytest": {"argv": [sys.executable, "-m", "pytest", *extra]}}}
-            )
-        )
-
-    bind(["-k", "test_other", "test_bound.py"])
-    with pytest.raises(HarnessIncidentValidationError):
-        _execute_regression_command(
-            tmp_path, ".neurath/run verify pytest --node test_bound.py::test_required"
-        )
-    bind()
-    with pytest.raises(HarnessIncidentValidationError):
-        _execute_regression_command(
-            tmp_path,
-            ".neurath/run verify pytest --node test_bound.py::test_required --node test_bound.py::test_other",
-        )
-    source.write_text("def test_required(): pass\ndef test_other(): pass\n")
-    result, _ = _execute_regression_command(
-        tmp_path, ".neurath/run verify pytest --node test_bound.py::test_required"
-    )
-    assert result.returncode == 0
 
 
-def test_typed_binding_honors_output_requirement_and_timeout(tmp_path):
-    import pytest
-
-    from neurath.runtime.engine import activate
-
-    activate(tmp_path)
-    from scripts.agent_harness.harness_incident import (
-        HarnessIncidentValidationError,
-        _execute_regression_command,
-    )
-
-    (tmp_path / ".neurath").mkdir()
-    config = tmp_path / ".neurath/project.json"
-    config.write_text(
-        json.dumps(
-            {
-                "verification": {
-                    "check": {
-                        "argv": [sys.executable, "-c", 'print("wrong")'],
-                        "stdout_contains": "required",
-                    }
-                }
-            }
-        )
-    )
-    with pytest.raises(HarnessIncidentValidationError):
-        _execute_regression_command(tmp_path, ".neurath/run verify check")
-    config.write_text(
-        json.dumps(
-            {
-                "verification": {
-                    "check": {
-                        "argv": [sys.executable, "-c", "import time; time.sleep(5)"],
-                        "timeout_seconds": 0.05,
-                    }
-                }
-            }
-        )
-    )
-    with pytest.raises(HarnessIncidentValidationError):
-        _execute_regression_command(tmp_path, ".neurath/run verify check")
 
 
-def test_harness_inventory_tracks_kit_configuration_and_uses_local_artifacts(tmp_path):
-    from neurath.runtime.engine import activate
-
-    activate(tmp_path)
-    from scripts.skill_harness.harness_source_inventory import HarnessSourceInventory
-
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
-    (tmp_path / ".neurath/local/runs/test").mkdir(parents=True)
-    (tmp_path / ".neurath/project.json").write_text("{}")
-    artifact = tmp_path / ".neurath/local/runs/test/inventory.json"
-    artifact.write_text("{}")
-    inventory = HarnessSourceInventory(tmp_path)
-    files = {item["path"] for item in inventory.build(())["files"]}
-    assert ".neurath/project.json" in files
-    assert ".neurath/local/runs/test/inventory.json" not in files
-    assert inventory._manifest_path(".neurath/local/runs/test/inventory.json") == artifact
 
 
 def test_installed_catalog_links_resolve_to_managed_assets():
@@ -292,12 +124,3 @@ def test_installed_catalog_links_resolve_to_managed_assets():
                 continue
             target = posixpath.normpath(posixpath.join(posixpath.dirname(name), link))
             assert target in assets, f"{name}: broken catalog link {link}"
-
-
-def test_direct_capability_entrypoint_has_no_product_defaults(tmp_path):
-    from neurath.runtime.engine import activate
-    activate(tmp_path)
-    from scripts.agent_harness.capability_retirement_hook import CapabilityRetirementHookApplication
-    policy = CapabilityRetirementHookApplication()
-    assert not policy._PROTECTED_CONNECTORS
-    assert policy._PROTECTED_PATHS == ('.neurath',)

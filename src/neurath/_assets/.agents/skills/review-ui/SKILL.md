@@ -8,27 +8,17 @@ argument-hint: "<approved node URL> <runtime surface·state>"
 user-invocable: true
 ---
 
-# Review UI
+# review-ui
 
-`uv run python -m scripts.skill_harness.phase_runner`로 phase를 initialize, evaluate, advance,
-finalize합니다.
+승인된 exact node와 실제 runtime capture를 나란히 비교한다. 차이와 미확인 부분을 숨기지 않고 사용자의 최종 시각 결정을 받는다. 자동 유사도나 모델의 선호를 사용자 수락으로 대체하지 않는다.
 
-| Phase | 목적 | 파일 |
-|---|---|---|
-| 1 | Runtime capture와 병치 | [phases/phase-1-capture-compare.md](phases/phase-1-capture-compare.md) |
-| 2 | 사용자 시각 결정 | [phases/phase-2-user-decision.md](phases/phase-2-user-decision.md) |
+## 실행
 
-`.agents/design-collaboration-policy.json`을 읽고, `.agents/rules/tool-runtime-map.md`의
-`tool:design_canvas`, `tool:browser`와 필요한 경우
-`tool:native_mobile`을 사용합니다.
+현재 사용자 지시와 `.neurath/policy.md`, `.neurath/project.json`을 따른다. 기존 Task/Assignment를 먼저 읽고, 이 스킬을 실행할 때 같은 Task에 `skill_start`한다. `phase_read`가 반환하는 다음 단계와 조건을 따르며 모든 단계 뒤에만 사용자 Task 인수를 판단한다. 별도 workflow/adaptive 원장을 만들거나 phase를 skip하지 않는다. 실패·대기는 실제 상태로 보존한다.
 
-Approved node와 runtime capture는 같은 surface, viewport, state와 sample data여야 합니다.
-Runtime-owned visual은 실제 runtime capture만 비교합니다.
+| 단계 ID | 완료할 결과 |
+| --- | --- |
+| capture_and_compare | approved_node, runtime_capture, side_by_side_artifact, difference_record |
+| user_visual_decision | user_acceptance |
 
-사용자만 최종 시각 승인을 내립니다. Agent critique, screenshot 존재, pixel metric, token parity,
-accessibility와 browser green은 승인 근거가 아닙니다. 사용자가 아직 결정하지 않았으면
-`review-ready`, 승인하면 `accepted`, 수정 요청이면 `revision-requested`, native tool이나 exact
-comparison authority가 없으면 `blocked`, capture·canvas write가 실패하면 `failed`입니다.
-
-Canvas artifact를 삭제해도 collaboration capability와 connector 등록은 유지합니다. 둘의
-retirement는 별도 사용자 결정입니다.
+원문·실제 tool 결과·agent report를 구분하고 필요한 근거를 `phase_complete`로 연결한다. Task의 인수 조건도 충족해야 `task_complete`할 수 있다.

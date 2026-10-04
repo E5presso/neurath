@@ -11,8 +11,12 @@ import tomllib
 from neurath.install.configuration import MARKER, _checkout_bootstrap, _shared_span
 from neurath.install.file_values import InstallError, bytes_of, file_value
 from neurath.install.projection import (
-    AGENT_TOOL_GUIDANCE, CODEX_TODO_DEFAULT, asset_files, host_hooks,
-    native_todo_defaults, skills,
+    AGENT_TOOL_GUIDANCE,
+    CODEX_TODO_DEFAULT,
+    asset_files,
+    host_hooks,
+    native_todo_defaults,
+    skills,
 )
 from neurath.skill_names import public_name
 
@@ -74,21 +78,26 @@ class InstallationProjection:
         )
         return self.desired
 
-
     def _instructions(self, profile, hosts, skill_prefix):
         root = self.root
         desired = self.desired
         block = f"\n{MARKER}\n## Neurath\n\nRead `.neurath/policy.md` and `.neurath/project.json` for the {profile} profile.\nUse the skills in `.agents/skills`; execute through `.neurath/run`.\n<!-- /neurath:managed -->\n"
         old_block = block
         legacy_block = block.replace("Use the skills", "Use the `neurath-` skills")
-        block = block.replace("execute through `.neurath/run`.",
-            "use the named MCP task tools. Consult `.neurath/policy.md` for explicit native execution exceptions.")
+        block = block.replace(
+            "execute through `.neurath/run`.",
+            "use the named MCP task tools. Consult `.neurath/policy.md` for explicit native execution exceptions.",
+        )
         legacy_blocks = [old_block, legacy_block]
         if skill_prefix:
             block = block.replace("Use the skills", f"Use the `{skill_prefix}` skills")
-            legacy_blocks.append(old_block.replace("Use the skills", f"Use the `{skill_prefix}` skills"))
+            legacy_blocks.append(
+                old_block.replace("Use the skills", f"Use the `{skill_prefix}` skills")
+            )
         legacy_blocks.append(block)
-        block = block.replace("<!-- /neurath:managed -->", AGENT_TOOL_GUIDANCE + "<!-- /neurath:managed -->")
+        block = block.replace(
+            "<!-- /neurath:managed -->", AGENT_TOOL_GUIDANCE + "<!-- /neurath:managed -->"
+        )
         self.managed_text("AGENTS.md", block, legacy=tuple(legacy_blocks))
         if "claude-code" in hosts:
             claude = self.original("CLAUDE.md")
@@ -98,7 +107,9 @@ class InstallationProjection:
             elif claude is None:
                 desired["CLAUDE.md"] = {"kind": "symlink", "target": "AGENTS.md"}
             else:
-                self.managed_text("CLAUDE.md", f"\n{MARKER}\n@AGENTS.md\n<!-- /neurath:managed -->\n")
+                self.managed_text(
+                    "CLAUDE.md", f"\n{MARKER}\n@AGENTS.md\n<!-- /neurath:managed -->\n"
+                )
 
     def _assets(self, profile, hosts, skill_prefix):
         root = self.root
@@ -108,11 +119,15 @@ class InstallationProjection:
         for name in skills():
             directory = f".agents/skills/{public_name(name, skill_prefix)}"
             current = observe(directory)
-            if current is not None and not any(p.startswith(directory + "/") for p in owned):
-                if current["kind"] != "directory" or any(
-                    not p.is_dir() or p.is_symlink() for p in (root / directory).rglob("*")
-                ):
-                    raise InstallError(f"unowned skill directory conflict: {directory}")
+            if (
+                current is not None
+                and not any(p.startswith(directory + "/") for p in owned)
+                and (
+                    current["kind"] != "directory"
+                    or any(not p.is_dir() or p.is_symlink() for p in (root / directory).rglob("*"))
+                )
+            ):
+                raise InstallError(f"unowned skill directory conflict: {directory}")
         for path, (data, mode) in asset_files(profile, hosts, skill_prefix).items():
             value = self.original(path)
             if path not in owned and value is not None:
@@ -187,11 +202,11 @@ class InstallationProjection:
     def _mcp_settings(self, hosts):
         root = self.root
         desired = self.desired
-        from neurath.agents.mcp import server_config
-        from neurath.runtime.task_schema import TASKS
+        from neurath.core.mcp import server_config
+        from neurath.core.service import COMMANDS
 
-        server = server_config(root)
         if "codex" in hosts:
+            server = server_config(root, "codex")
             path = ".codex/config.toml"
             old = self.original(path)
             if _checkout_bootstrap(root, path, old):
@@ -202,21 +217,27 @@ class InstallationProjection:
                     config = tomllib.loads(content)
                     if "neurath_collaboration" in config.get("mcp_servers", {}):
                         raise ValueError("reserved server name already configured")
-                    if "update_plan" not in config.get("tools", {}) and native_todo_defaults("codex"):
+                    if "update_plan" not in config.get("tools", {}) and native_todo_defaults(
+                        "codex"
+                    ):
                         content += CODEX_TODO_DEFAULT
-                    addition = ("\n[mcp_servers.neurath_collaboration]\ncommand = "
-                                + json.dumps(server["command"], ensure_ascii=False) + "\nargs = "
-                                + json.dumps(server["args"], ensure_ascii=False)
-                                # The verifier allows up to 3600s, plus response/readback time.
-                                + "\ntool_timeout_sec = 3660"
-                                + "\nenabled_tools = " + json.dumps([*TASKS, "agent"]) + "\n"
-                                + "".join(f"[mcp_servers.neurath_collaboration.tools.{name}]\napproval_mode = \"approve\"\n"
-                                          for name in (*TASKS, "agent")))
+                    addition = (
+                        "\n[mcp_servers.neurath_collaboration]\ncommand = "
+                        + json.dumps(server["command"], ensure_ascii=False)
+                        + "\nargs = "
+                        + json.dumps(server["args"], ensure_ascii=False)
+                        + "\nenabled_tools = "
+                        + json.dumps(sorted(COMMANDS))
+                        + "\n"
+                    )
                     tomllib.loads(content + addition)
                 except (ValueError, TypeError) as error:
                     raise InstallError(f"MCP settings conflict: {path}") from error
-                desired[path] = file_value((content + addition).encode(), old["mode"] if old else 0o644)
+                desired[path] = file_value(
+                    (content + addition).encode(), old["mode"] if old else 0o644
+                )
         if "claude-code" in hosts:
+            server = server_config(root, "claude-code")
             path = ".mcp.json"
             old = self.original(path)
             if _checkout_bootstrap(root, path, old):
@@ -224,12 +245,16 @@ class InstallationProjection:
             else:
                 try:
                     config = json.loads(bytes_of(old)) if old else {}
-                    if not isinstance(config, dict) or not isinstance(config.setdefault("mcpServers", {}), dict):
-                        raise ValueError("MCP settings must be objects")
+                    if not isinstance(config, dict) or not isinstance(
+                        config.setdefault("mcpServers", {}), dict
+                    ):
+                        raise TypeError("MCP settings must be objects")
                     if "neurath_collaboration" in config["mcpServers"]:
                         raise ValueError("reserved server name already configured")
                     config["mcpServers"]["neurath_collaboration"] = server
                 except (ValueError, TypeError) as error:
                     raise InstallError(f"MCP settings conflict: {path}") from error
-                desired[path] = file_value((json.dumps(config, indent=2, ensure_ascii=False) + "\n").encode(),
-                                           old["mode"] if old else 0o644)
+                desired[path] = file_value(
+                    (json.dumps(config, indent=2, ensure_ascii=False) + "\n").encode(),
+                    old["mode"] if old else 0o644,
+                )

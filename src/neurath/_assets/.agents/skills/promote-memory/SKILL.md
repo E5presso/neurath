@@ -8,44 +8,16 @@ argument-hint: "[feedback|project|reference]"
 user-invocable: true
 ---
 
-# Promote Memory
+# memory-to-rules
 
-task 목록 없이 기존 phase workflow를 실행·복구할 때만 `uv run python -m scripts.skill_harness.phase_runner`로 계약을 initialize, evaluate, advance, finalize합니다.
+여러 작업에서 반복 확인한 선호·패턴만 적절한 durable owner 후보로 제안한다. 개인·비공개 정보와 일회성 사건을 일반 규칙으로 승격하지 않는다. proposal-only 요청에서는 저장소를 수정하지 않는다. 승인된 반영은 기존 규칙과 중복·충돌을 검토하고 실제 적용 범위와 검증 결과를 남긴다.
 
-`private/personal memory만 input authority`로 삼아 반복된 session lesson을 shared
-project behavior로 승격해야 할 때 사용합니다. 현재 repository 분석, prompt token
-최적화, 일반 docs 동기화는 결과가 비슷해 보여도 이 skill의 입력이 아닙니다.
-사용자가 후보 분류와 owner 제안만 요청하면 read-only로 정지하고 contracted
-promotion phase를 초기화하지 않습니다. Durable surface 반영을 승인한 범위에서만
-아래 evidence와 phase contract를 적용합니다.
+## 실행
 
-1. 개인 식별자나 session 전문을 포함하지 않는 `privacy_safe_memory_source`와
-   둘 이상의 독립 관찰을 연결한 `recurrence_evidence`로 memory-derived pattern을
-   식별합니다.
-2. 어디에 속하는지 결정합니다.
-   - `.agents/rules`
-   - `.agents/skills`
-   - `AGENTS.md`
-   - scripts/static 또는 e2e harness
-   - docs 또는 ADR
-3. 새 prose를 추가하기 전에 `existing_repository_coverage`로 기존 owner와 중복을
-   확인합니다.
-4. 가능하면 executable gate를 추가합니다.
-5. 승격할 owner와 변경 범위를 `promotion_target`, `harness_update_plan`으로
-   명시하고, private detail이 durable surface로 새지 않았음을
-   `private_detail_removal_check`로 확인합니다.
-6. 승격한 behavior에 `/evaluate-harness`를 실행하고
-   `evaluate_harness_result`를 남깁니다.
+현재 사용자 지시와 `.neurath/policy.md`, `.neurath/project.json`을 따른다. 기존 Task/Assignment를 먼저 읽고, 이 스킬을 실행할 때 같은 Task에 `skill_start`한다. `phase_read`가 반환하는 다음 단계와 조건을 따르며 모든 단계 뒤에만 사용자 Task 인수를 판단한다. 별도 workflow/adaptive 원장을 만들거나 phase를 skip하지 않는다. 실패·대기는 실제 상태로 보존한다.
 
-## 필수 evidence
+| 단계 ID | 완료할 결과 |
+| --- | --- |
+| execute | privacy_safe_memory_source, recurrence_evidence, existing_repository_coverage, promotion_target, private_detail_removal_check, harness_update_plan, evaluate_harness_result |
 
-- `privacy_safe_memory_source`
-- `recurrence_evidence`
-- `existing_repository_coverage`
-- `promotion_target`
-- `private_detail_removal_check`
-- `harness_update_plan`
-- `evaluate_harness_result`
-
-private session history를 durable rule에 붙여 넣지 않습니다. 일반 behavior로
-증류합니다.
+원문·실제 tool 결과·agent report를 구분하고 필요한 근거를 `phase_complete`로 연결한다. Task의 인수 조건도 충족해야 `task_complete`할 수 있다.

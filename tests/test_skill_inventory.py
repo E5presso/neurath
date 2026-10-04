@@ -75,8 +75,8 @@ def contents(repo):
 
 def test_inventory_retires_only_the_seven_approved_skills():
     assert set(skills()) == RETAINED
-    contracts = json.loads((BUNDLE / ".agents/skills/contracts.json").read_text())["skills"]
-    assert set(contracts) == RETAINED - {"explain-code", "graphify", "reconnect-host", "update-neurath"}
+    contracts = json.loads((BUNDLE / ".agents/skills/core-skills.json").read_text())["skills"]
+    assert {value["source"] for value in contracts.values()} == RETAINED
     cases = json.loads((BUNDLE / ".agents/skills/intent-routing-evals.json").read_text())["cases"]
     for case in cases:
         assert case.get("expected_selected_skill") not in RETIRED
@@ -86,11 +86,9 @@ def test_inventory_retires_only_the_seven_approved_skills():
 def test_neurath_update_skill_uses_exact_release_offer_and_native_choice(repo):
     installer.apply_plan(repo, installer.make_plan(repo, hosts=["codex", "claude-code"]))
     skill = (repo / ".agents/skills/update-neurath/SKILL.md").read_text()
-    assert "releases_check" in skill
-    assert "releases_prepare" in skill
-    assert "maintenance_choice_prepare" in skill
-    assert "releases_choose" in skill
-    assert "releases_apply" in skill
+    for operation in ("releases check", "releases prepare", "releases choose", "releases apply"):
+        assert operation in skill
+    assert "approval_record" in skill
     assert (repo / ".claude/skills/update-neurath").resolve() == repo / ".agents/skills/update-neurath"
 
 
@@ -123,9 +121,9 @@ def test_install_uses_unprefixed_names_paths_and_references(repo, hosts):
 
 
 def test_script_and_catalog_references_keep_canonical_names():
-    text = "bash .agents/skills/process-ticket/scripts/assert_worktree_isolation.sh --init 1\n/commit"
+    text = ".agents/skills/process-ticket/SKILL.md\n/commit"
     assert project_text(text, "generic") == (
-        ".neurath/run skill implement-issue assert_worktree_isolation.sh --init 1\n/commit"
+        ".agents/skills/implement-issue/SKILL.md\n/commit"
     )
     audit = asset_files("generic", ["codex"])[".neurath/reference/HARNESS_AUDIT.md"][0].decode()
     assert "../../.agents/skills/debug/SKILL.md" in audit

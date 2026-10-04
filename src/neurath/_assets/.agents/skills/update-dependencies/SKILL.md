@@ -8,27 +8,16 @@ argument-hint: "[package or dependency]"
 user-invocable: true
 ---
 
-# Update Dependencies
+# update-deps
 
-task 목록 없이 기존 phase workflow를 실행·복구할 때만 `uv run python -m scripts.skill_harness.phase_runner`로 계약을 initialize, evaluate, advance, finalize합니다.
+승인된 dependency와 버전 범위를 확인한다. 호환성·변경 원인을 읽고 package와 lockfile을 일관되게 갱신한다. 필요한 최소 검사부터 필수 project check까지 실제 실행한다. 무관한 dependency·설정·권한을 변경하지 않는다. 기존 코드와 provider 동작의 차이를 확인한다.
 
-1. 사용자가 정확한 dependency를 지목하지 않았다면 먼저 `/dependency-audit`를
-   실행합니다.
-2. Current runtime actor와 native CWD가 확정된 뒤 typed claim을 실행합니다.
+## 실행
 
-   ```bash
-   python3 -m scripts.agent_harness.state_cli worktree claim
-   ```
+현재 사용자 지시와 `.neurath/policy.md`, `.neurath/project.json`을 따른다. 기존 Task/Assignment를 먼저 읽고, 이 스킬을 실행할 때 같은 Task에 `skill_start`한다. `phase_read`가 반환하는 다음 단계와 조건을 따르며 모든 단계 뒤에만 사용자 Task 인수를 판단한다. 별도 workflow/adaptive 원장을 만들거나 phase를 skip하지 않는다. 실패·대기는 실제 상태로 보존한다.
 
-   다른 owner와 충돌하거나 runtime identity가 없으면 dependency mutation을 시작하지 않습니다.
-3. 요청을 만족하는 가장 작은 dependency set만 update합니다.
-4. Exact `uv.lock` observable을 material-action intent에 준비한 뒤 한 physical line의
-   `uv lock`을 실행합니다.
-5. lockfile change에서 unexpected major upgrade를 검사합니다.
-6. `uv run python -m scripts.agent_harness.verification_runner package-check`,
-   `uv run python -m scripts.agent_harness.verification_runner pre-commit`, 필요한 package-specific runtime smoke test를
-   실행합니다.
-7. 변경된 package, notable transitive change, residual risk를 보고합니다.
+| 단계 ID | 완료할 결과 |
+| --- | --- |
+| execute | dependency_scope, lock_update, verification_result |
 
-사용자가 명시적으로 platform decision을 바꾸지 않는 한 Python minimum version,
-대상 프로젝트의 타입 검사·프레임워크 정책을 임의로 바꾸지 않습니다.
+원문·실제 tool 결과·agent report를 구분하고 필요한 근거를 `phase_complete`로 연결한다. Task의 인수 조건도 충족해야 `task_complete`할 수 있다.

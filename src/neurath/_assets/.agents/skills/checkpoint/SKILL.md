@@ -8,23 +8,16 @@ argument-hint: "[short reason]"
 user-invocable: true
 ---
 
-# Checkpoint
+# checkpoint
 
-Operational phase는 `uv run python -m scripts.skill_harness.phase_runner` 실행 결과를 잇습니다.
-`current`는 recovery 전용이고 마지막 `complete --terminal-state`가 terminal CAS를 닫습니다.
+사용자가 요청한 범위의 되돌릴 수 있는 WIP checkpoint를 만든다. 실제 diff/status와 필요 검사를 확인하고 checkpoint가 보존하는 commit·파일·남은 요구를 명시한다. Checkpoint는 사용자 Task의 완료나 push/배포의 증명이 아니다.
 
-risky refactor, 큰 harness edit, 긴 autonomous run 전에 사용합니다.
+## 실행
 
-1. `git status --short --branch`를 실행합니다.
-2. changed file list를 검사하고 unrelated user work가 실수로 포함되지 않게 합니다.
-3. 현재 순간에 충분히 저렴한 가장 좁은 관련 verification을 실행합니다.
-4. 사용자가 checkpoint를 요청했거나 현재 run에 rollback point가 명시적으로
-   필요할 때만 WIP commit을 만듭니다.
-5. subject는 명확히 temporary로 작성합니다.
+현재 사용자 지시와 `.neurath/policy.md`, `.neurath/project.json`을 따른다. 기존 Task/Assignment를 먼저 읽고, 이 스킬을 실행할 때 같은 Task에 `skill_start`한다. `phase_read`가 반환하는 다음 단계와 조건을 따르며 모든 단계 뒤에만 사용자 Task 인수를 판단한다. 별도 workflow/adaptive 원장을 만들거나 phase를 skip하지 않는다. 실패·대기는 실제 상태로 보존한다.
 
-```text
-chore: checkpoint <reason>
-```
+| 단계 ID | 완료할 결과 |
+| --- | --- |
+| execute | git_status, verification_result, checkpoint_result |
 
-failing gate를 피하려고 checkpoint commit을 사용하지 않습니다. verification gap은
-분명히 보고합니다.
+원문·실제 tool 결과·agent report를 구분하고 필요한 근거를 `phase_complete`로 연결한다. Task의 인수 조건도 충족해야 `task_complete`할 수 있다.

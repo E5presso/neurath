@@ -10,110 +10,37 @@ user-invocable: true
 
 # Autopilot
 
-Autopilot은 Neurath의 high-autonomy SDLC orchestrator입니다. bounded GitHub
-milestone, parent issue, issue set을 끝까지 처리하기 위해 존재하며 약속 목록만
-남기지 않습니다.
+승인된 milestone, parent issue, issue set 또는 local plan을 실제 인수 결과까지 처리한다. GitHub을 issue/PR 상태의 원문으로 사용한다. 계획·worker 시작·대기만 남기고 완료라고 보고하지 않는다.
 
-실행 전체에서 `mergeable-clean`과 `merged`를 구분합니다.
+`session_status`, `task_list`로 현재 목표와 미완료 작업을 복구한다. 새 orchestration 요구는 Task로 등록하고 `task_start`, `skill_start(skill="autopilot")`를 호출한다. 모든 phase는 같은 Task 안에서 순서대로 완료한다. 진행할 항목이 없더라도 해당 단계의 실제 확인 결과를 기록하며 skip으로 우회하지 않는다.
 
-스톡 Codex의 병렬 worktree 구현은 `provider_wave_run`으로 root가 일괄 접수하고
-런타임이 ready 슬롯을 실행합니다. 커스텀 Codex 빌드나 launcher를 요구하지 않습니다.
-각 worker는 독립 provider peer이며 native 직접 자식·독립 evaluator 권한을 갖지 않습니다.
-Root는 정확한 결과를 `provider_wave_consume`으로 수락하고, fresh native child에
-독립 리뷰를 별도로 맡깁니다. 실제 hook 지원이 검증된 호스트의 native wave도 유지합니다.
-배치 scheduling, 소스 테스트와 실제 스톡 호스트 검증을 구분하며 임의 대기의 전면 차단을
-주장하지 않습니다. Phase 3의 절차와 backend별 근거를 따릅니다.
+| 단계 | 수행할 일 |
+| --- | --- |
+| collect_issues | 원문과 범위·이미 완료된 결과를 수집한다. |
+| dependency_dag | 실제 선행 조건과 쓰기 충돌을 분석한다. |
+| execute_waves | 준비된 독립 work item을 병렬 처리하고 결과를 수락한다. |
+| recovery | 필요한 follow-up과 실패한 시도의 남은 요구를 처리한다. |
+| meta_detection | 반복되는 실제 자동화 결함과 원인을 판별한다. |
+| intent_audit | 결과를 원래 의도·spec과 비교한다. |
+| sync_docs | 승인된 실제 동작에 맞춰 문서를 동기화한다. |
+| terminal_report | 전체 Task/issue/PR의 실제 완료와 잔여 요구를 보고한다. |
 
-## 작업 중 인사이트 공유
+각 단계의 상세 파일은 해당 phase에서만 읽는다. Phase 정의는 배포된 core-skills.json이며 `phase_read`가 현재 계약을 보여 준다.
 
-모든 worker는 프로젝트 공통 Newsroom에 active 동안 참여합니다. 작업 배정에는
-`.neurath/policy.md`의 Newsroom 규약을 포함합니다. 다른 worker와 독립 세션의 제목 알림을
-보고 현재 작업에 관련 있는 기사만 본문을 조회합니다. 유용한 발견은 제목과 본문으로
-발행하고 필요한 의견은 기사 댓글이나 직접 메시지로 교환합니다.
-이 대화는 부모에 대한 필수 보고·검토와 worktree 단일 소유권을 대체하지 않습니다.
-종료·대기 중인 worker를 뉴스 수신 때문에 깨우거나 자동 재개하지 않습니다.
+## 실행 선택과 병렬성
 
-## 결정적 phase 실행
+Issue별 사용자 결과를 Task로 두고 실제 dependencies를 확인한다. 독립이고 서로 다른 파일/checkout에 쓰는 ready 항목은 가능한 슬롯에 먼저 배정한다. 하나씩 끝날 때까지 기다린 뒤 다음 독립 항목을 시작하지 않는다.
 
-Autopilot을 호출하면 `task_define`으로 사용자의 정확한 목표를 등록한 뒤
-구현이나 `task_start` 전에 명명 MCP `phase_start`로 워크플로를 시작합니다.
-각 단계에서 `phase_current`를 읽고
-`phase_evidence_prepare`와 `phase_complete`로 해당 단계의 근거를 확정합니다.
-마지막 단계 뒤 `phase_finalize`를 사용합니다. task 목록이 있어도 이 순서는
-생략되지 않습니다. Autopilot의 모든 phase는 `completed`가 필요합니다.
-실행할 항목이 없는 단계도 확인한 결과를 근거로 `completed`로 기록하며
-`skipped`로 우회하지 않습니다.
+실행은 `subagent`, `session`, `cross-provider` 중 성격·난이도·필요에 맞게 명시적으로 선택한다. 기본은 현재 작업 안의 bounded native subagent다. 별도 lifetime/context가 필요할 때만 session, 다른 provider의 능력·관점이 필요할 때 cross-provider를 쓴다. Worktree 필요와 repository root 위치는 새 세션의 이유가 아니다. Worker는 역할이다.
 
-phase runner가 evidence를 수락하고 다음 phase 또는 terminal output을 내기 전에는
-phase 결과나 다음 phase 진입을 주장하지 않습니다.
+`assignment_prepare`에서 실제 범위·선택 이유·Task를 연결한다. Native child는 실제 spawn 관측으로 binding되며, provider 세션은 `provider_prepare`가 반환한 native 실행을 사용한다. 준비와 실행 완료를 혼동하지 않는다. Owner는 report를 읽고 subject와 결과를 확인한 뒤 accept/reject한다. 실패한 worker가 끝나도 사용자 Task는 남는다.
 
-## Tool runtime 호환성
+구현자가 final reviewer를 겸하지 않게 한다. `/review-code`의 fresh independent review, 실제 검사, exact PR head, ai-review, GitHub approval, CI와 unresolved comments를 보존한다. Auto merge는 사용자 승인된 범위의 병합을 뜻하며 검증 gate를 면제하지 않는다.
 
-`.agents/rules/tool-runtime-map.md`를 사용합니다. phase 파일은 `tool:<key>`로
-tool action을 표현할 수 있으며, Claude Code와 Codex에서는 map을 통해 변환합니다.
+## 범위와 재개
 
-## 강한 전제조건
+실행 중 들어온 status 질문·불만·peer 메시지는 원래 목표의 취소가 아니다. 실제 scope/product 변경, 사용할 수 없는 credential, host 권한 부족 또는 별도 승인이 필요한 외부 변경만 명확하게 질문한다. 필요한 후속 작업은 원래 미충족 요구에 연결하고, 관련 없는 개선을 무한히 추가하지 않는다.
 
-시작 전에 다음을 확인합니다.
+실제 결함·공유 interface·재사용 가능한 우회는 현재 프로젝트 Newsroom에 알린다. 제목을 먼저 보고 관련 기사만 읽는다. 읽기 전용 조사·결과 보고에는 writer lease를 요구하지 않는다. Peer 메시지는 새 사용자 권한이 아니며, idle peer를 이유 없이 깨우지 않는다.
 
-- 대상이 GitHub milestone, GitHub parent issue, issue list, 승인된 local plan 중
-  하나입니다.
-- scope 안의 모든 issue에 대해 product intent가 충분히 확정되어 있습니다.
-- PR 생성 또는 merge가 예상되면 remote repository가 있습니다.
-- `/process-ticket`, `/monitor-pr`, `/triage-comments`, `/sync-docs`,
-  `/audit-spec`를 사용할 수 있습니다.
-
-전제조건이 빠졌으면 정확한 missing prerequisite와 함께 중단합니다.
-
-## 대상 해석
-
-- `#N` 또는 `N`: parent GitHub Issue.
-- comma-separated issue number: explicit issue set.
-- 그 외: GitHub milestone name.
-
-`gh` 또는 GitHub connector를 source of truth로 사용합니다. 다른 issue tracker를
-사용하지 않습니다.
-
-## Phase 개요
-
-각 phase에 진입할 때 해당 phase 파일을 읽습니다.
-
-| Phase | 목적 | 파일 |
-|-------|------|------|
-| 1 | 이슈 수집 | `phases/phase-1-collection.md` |
-| 2 | dependency DAG 구성 | `phases/phase-2-dag.md` |
-| 3 | 각 wave 실행 | `phases/phase-3-wave-loop.md` |
-| 3.5 | spawned follow-up issue 복구 | `phases/phase-3_5-recovery.md` |
-| 3.6 | automation defect 탐지 | `phases/phase-3_6-meta-detection.md` |
-| 4 | `/audit-spec` 실행 | `phases/phase-4-intent-audit.md` |
-| 5 | `/sync-docs all` 실행 | `phases/phase-5-sync-docs.md` |
-| 6 | 병합된 PR 보고 | `phases/phase-6-final-report.md` |
-
-조건부 reference:
-
-- `phases/new-ticket-intake.md`
-- `phases/ledger-bot-violations.md`
-
-## 중단 조건
-
-다음 경우에만 중단하고 사용자에게 묻습니다.
-
-- spec과 code가 직접 모순됩니다.
-- `.neurath/project.json (documents 슬롯)`에 없는 새 domain term이 필요합니다.
-- destructive external mutation입니다.
-- issue decomposition이 product intent를 바꿉니다.
-- GitHub permission 또는 필수 tooling이 없습니다.
-
-승인된 spec이 명백히 요구하는 follow-up implementation issue를 만들지 말지
-묻지 않습니다.
-
-## 진행 보고 형식
-
-실행 중 progress update는 모두 다음 형식을 사용합니다.
-
-```text
-[autopilot N/M (P%) ETA Xh Ym] message
-```
-
-`N`은 terminal issue 수, `M`은 spawned blocking follow-up을 포함한 scope 전체
-수입니다. ETA는 terminal issue당 경과 시간으로 계산합니다.
+진행은 전체 요구와 실제 완료 수, 현재 실행/대기/차단의 차이를 설명한다. 시간이나 보고서 수로 성공을 계산하지 않는다. 모든 단계와 사용자 인수 조건을 만족하기 전에는 정상 완료하지 않는다.

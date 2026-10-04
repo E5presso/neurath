@@ -1,33 +1,7 @@
-# Phase 2: 구현 계획
+# 의도와 구현 계획
 
-편집 전에 작은 구현 계획을 작성합니다.
+사용자 의도를 간결하게 재진술하고 변경할 코드·테스트·문서를 연결한다. 기존 구현과 import/service 경계를 확인하고, 적용되는 failing/characterization test와 focused/project check를 선택한다.
 
-## 절차
+계획은 파일·검증·위험·복구 방법을 판단할 만큼만 구체적으로 작성한다. 단순 구현 선택 때문에 새 승인 절차를 만들지 않는다. 사용자가 `--require-approval`을 명시했다면 해당 계획을 제시하고 그 응답을 기다린다.
 
-1. scope를 file, package, test, docs에 mapping합니다.
-2. 먼저 작성할 failing 또는 characterizing test를 지목합니다.
-3. 새 class name, public method name, domain term이 DD와 naming rule을 따르는지
-   확인합니다.
-4. import boundary, service boundary, shared package constraint를 식별합니다.
-5. focused test와 pre-commit을 포함한 verification command를 나열합니다.
-6. `--require-approval`이 설정됐으면 phase 3 전에 approval을 요청합니다.
-
-## 출력
-
-나중에 PR body에 들어갈 수 있을 만큼 짧게 유지합니다.
-
-- intent
-- 변경 예상 file
-- test-first path
-- domain dictionary lookup과 naming plan
-- verification command
-- risk와 rollback note
-
-## Blocker
-
-scope를 정의하기 위해 product decision이 필요하면 `/plan-issues`로 돌아갑니다.
-
-실행 요청된 ticket이 parent급이거나 단일 session에서 안전하게 완료할 수 없는
-scope이면 임의로 child issue를 생성하지 않습니다. 이 경우 phase를 `blocked`로
-닫고, 사용자가 decomposition을 명시적으로 승인할 때까지 `/create-ticket`을 호출하지
-않습니다.
+`intent_restatement`, `code_inspection` 근거를 기록한다. 구현 범위를 바꾸는 새 결정이 없으면 다음 단계로 진행한다.

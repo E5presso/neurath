@@ -1,35 +1,9 @@
-# Phase 1: 이슈 수집
+# collect_issues — 대상과 현재 결과 확인
 
-target을 normalized GitHub issue set으로 해석합니다.
+승인된 milestone, parent issue, 명시적 issue 집합 또는 local plan을 읽는다. GitHub 항목의 번호·제목·상태·labels·milestone·parent·blocked-by·인수 조건과 원문 위치를 보존한다. 목표가 같은 문자열이라는 이유로 다른 Task를 합치지 않는다.
 
-## 절차
+이미 닫힌 항목은 사용자가 재감사를 요청하지 않았다면 새 구현에서 제외한다. 열린 항목도 현재 소스와 병합·검증 결과를 대조한다. 이미 충족된 항목을 종료할 때는 승인된 GitHub 변경 범위와 실제 근거를 확인하고 변경 뒤 다시 읽는다. 중복 후보라는 추측만으로 종료하지 않는다.
 
-1. target을 parent issue, explicit issue list, milestone, approved local plan 중
-   하나로 parse합니다.
-2. `gh` 또는 GitHub connector를 source of truth로 사용합니다.
-3. 각 item을 다음 형태로 normalize합니다.
-   - number
-   - title
-   - state
-   - labels
-   - milestone
-   - parent
-   - blocked-by edge
-   - acceptance summary
-4. 사용자가 audit을 명시하지 않았다면 이미 closed인 티켓은 구현 wave에서 제외합니다.
-   열린 티켓은 acceptance를 현재 소스와 병합된 변경·검증 근거에 대조합니다. 이미 충족된
-   티켓은 승인된 범위 안에서 실제로 duplicate로 닫고, 근거와 종료 상태를 다시 확인합니다.
-   단순히 구현된 것 같다는 추정이나 중복 후보 표시로 수집을 끝내지 않습니다.
-5. `source_of_truth`, `normalized_items`, `total_issue_count`를 기록합니다. 중복 종료는 전체
-   처리 티켓 수에 포함하되 새 구현·수정 수와 별도로 집계합니다.
-   `normalized_items`의 phase 근거는 `{"issues":[89,90,91]}`처럼 구현 wave에서
-   처리할 이슈 번호를 중복 없이 담은 JSON이어야 합니다. 이미 완료된 항목은 별도
-   종료 근거에 기록하고 이 배열에 넣지 않습니다.
-6. 남은 작업과 새로 발견한 필수 수정을 명명 MCP task_define으로 측정 가능한 태스크에
-   보존합니다. task_list의 안정된 ID로 추적하고 완료 조건과 출처를 연결합니다. 중복 무효
-   처리에는 이미 충족한 결과 참조와 무효 사유를 사용합니다. 별도 태스크 검토는
-   선택 사항이며 해당 워크플로의 기존 검토 요건은 유지합니다.
+`source_of_truth`에는 조회한 원문과 범위를, `normalized_items`에는 전체 항목·새 구현 대상·이미 충족된 항목을 구분한 보고를 기록한다. 각 미충족 사용자 결과를 원래 source와 연결하고 기존 Task를 확인한다. 선행 조건까지 확정된 항목은 즉시 Task로 등록한다. 선행 Task ID가 아직 없으면 수집 결과에 보존하고 다음 dependency_dag 단계에서 선행 항목부터 정의한다. 이미 완료된 작업을 다시 만들지 않는다. 전체 처리 수와 실제 새 구현 수를 구분한다.
 
-## 통과 조건
-
-target을 모호하지 않게 해석할 수 없으면 `blocked`로 중단합니다.
+범위나 인수 조건을 결정할 수 없으면 구체적인 질문을 남기고 Task를 대기로 보존한다. 다음 phase를 완료한 것으로 기록하지 않는다.

@@ -43,7 +43,7 @@ class Reporting:
         )
         self.directory = Path(common.stdout.strip()) / "neurath-reporting"
         self.path = self.directory / "state.json"
-        from neurath.runtime.local_state import LocalState
+        from neurath.core.local_state import LocalState
         self.state_store = LocalState(self.root, "reporting", self.path, self._decode,
                                       lambda: {"schema": 1, "auto_report": None, "reports": {}})
 
@@ -282,7 +282,7 @@ def reporting_event(root, host, request, output):
     elif status["auto_report"]:
         notice = (
             "Neurath upstream reporting is enabled by the user. When a common harness defect or "
-            "improvement is identified, use reporting_prepare then reporting_submit after a "
+            "improvement is identified, use the native `report prepare` then `report submit` commands after a "
             "harness-only privacy review. Local fixes do not replace the upstream report. "
             "Project-specific work requires an exact contribution draft and separate user approval."
         )

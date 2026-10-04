@@ -8,55 +8,18 @@ argument-hint: "[target path]"
 user-invocable: true
 ---
 
-# Optimize Harness
+# optimize-harness
 
-Repository prompt surface의 token을 줄이는 것이 주요 의도고, 현재 capability와
-enforcement를 동일하게 보존해야 할 때만 사용합니다. Correctness repair나
-일반 harness behavior 변경에는 사용하지 않습니다.
+Prompt surface와 실제 token/능력 기준을 먼저 관찰한다. 중복 설명과 무관한 주입을 줄이되 기능·사용자 의도·Task/phase 강제와 실제 권한 경계를 유지한다. 단순히 enforcement를 없애서 token을 줄이지 않는다. 변경 전후의 같은 behavior 시나리오로 차이를 판별하고 필요한 독립 test-harness 검토를 수행한다.
 
-task 목록 없이 기존 phase workflow를 실행·복구할 때만 `uv run python -m scripts.skill_harness.phase_runner`로
-계약을 initialize, evaluate, advance, finalize합니다.
+## 실행
 
-1. `AGENTS.md`, `.agents/rules`, `.agents/skills`의 실제 주입 prompt surface와
-   conditional loader pointer를 `prompt_surface_inventory`로 기록하고 token 또는
-   대응하는 byte/word `prompt_measurement_baseline`을 잡습니다.
-2. 주입 prompt의 duplication, stale platform reference, invalid pointer, 조건부로
-   늦게 읽어도 되는 상세 절차를 찾습니다. Workflow state, runtime protocol,
-   product/domain decision은 최적화 대상으로 확장하지 않습니다.
-3. source harness 또는 원본 repo가 있으면 `source_capability_inventory`와
-   `project_mapping`을 만든 뒤 최적화합니다. 축약 과정에서 capability가 사라지면
-   optimization 실패입니다.
-4. SSOT를 보존합니다.
-   - durable rule은 `.agents/rules`
-   - workflow는 `.agents/skills`
-   - compatibility는 `.claude`
-   - executable check는 `scripts/` 또는 `.codex/hooks`
-5. behavior를 약화하지 않는 가장 작은 edit로 duplication을 제거합니다.
-   늦게 읽어도 되는 내용은 `conditional_load_projection`으로 먼저 모델링하고,
-   전후 prompt 사용량은 `prompt_delta`로 기록합니다.
-6. 하네스 보강 또는 최적화가 behavior enforcement를 바꾸면 rules/skills 문구만으로
-   완료하지 않습니다. 결정론적 executable gate와 regression test를 보존하거나
-   추가합니다. rules/skills는 guidance이며 enforcement gate가 아닙니다.
-7. 최적화한 scenario에 `/evaluate-harness`를 실행하고, 그 skill이 검증한 바로 아래 자식
-   평가자의 저장·소비된 보고서(`consumed direct-child report`)만 정식 evidence로 사용합니다. 평가자 보고서가 아직 없다는
-   이유만으로 작업을 종료하지 않고 해당 평가 단계를 다시 이어갈 수 있게 남깁니다.
-8. `uv run python -m scripts.agent_harness.verification_runner pre-commit` 또는 관련 root/package harness subset을
-   실행합니다.
+현재 사용자 지시와 `.neurath/policy.md`, `.neurath/project.json`을 따른다. 기존 Task/Assignment를 먼저 읽고, 이 스킬을 실행할 때 같은 Task에 `skill_start`한다. `phase_read`가 반환하는 다음 단계와 조건을 따르며 모든 단계 뒤에만 사용자 Task 인수를 판단한다. 별도 workflow/adaptive 원장을 만들거나 phase를 skip하지 않는다. 실패·대기는 실제 상태로 보존한다.
 
-## 필수 evidence
+| 단계 ID | 완료할 결과 |
+| --- | --- |
+| inventory | prompt_surface_inventory, prompt_measurement_baseline, source_capability_inventory, project_mapping, conditional_load_projection |
+| optimize | prompt_delta, behavior_equivalence_check, deterministic_enforcement_gate, rules_skills_guidance_only, authoritative_pointer_readback |
+| evaluate | evaluate_harness_result, verification_result |
 
-- `prompt_surface_inventory`
-- `prompt_measurement_baseline`
-- `source_capability_inventory`
-- `project_mapping`
-- `conditional_load_projection`
-- `prompt_delta`
-- `behavior_equivalence_check`
-- `deterministic_enforcement_gate`
-- `rules_skills_guidance_only`
-- `authoritative_pointer_readback`
-- `evaluate_harness_result`
-- `verification_result`
-
-중복처럼 보인다는 이유만으로 rule을 삭제하지 않습니다. 남는 pointer나 gate가
-여전히 enforce한다는 것을 증명합니다.
+원문·실제 tool 결과·agent report를 구분하고 필요한 근거를 `phase_complete`로 연결한다. Task의 인수 조건도 충족해야 `task_complete`할 수 있다.

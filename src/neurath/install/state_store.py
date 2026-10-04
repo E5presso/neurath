@@ -5,11 +5,14 @@ import os
 import subprocess
 import json
 import time
+import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 
 from neurath.serialization import canonical
 from neurath.project_paths import control_root
-from neurath.runtime.database import RuntimeDatabase
+from neurath.core.store import Store
+from neurath.install.core_storage import import_installation_metadata
 
 
 def digest(value):
@@ -64,6 +67,21 @@ def _check_legacy_install_file(control, path, *, may_be_missing=False):
         raise ValueError("legacy installation record is missing")
 
 
+class ReadOnlyInstallationStore:
+    def __init__(self, path):
+        self.path = path
+
+    @contextmanager
+    def sql_transaction(self):
+        db = sqlite3.connect(self.path.as_uri() + "?mode=ro", uri=True)
+        db.row_factory = sqlite3.Row
+        try:
+            db.execute("BEGIN")
+            yield db
+        finally:
+            db.close()
+
+
 class InstallStateStore:
     def __init__(self, root, *, create=False):
         self.root = Path(root).resolve()
@@ -76,11 +94,23 @@ class InstallStateStore:
             # Absence of an installation must not turn that read into a write.
             self.control_root, self.path, self.database = None, None, None
             return
-        self.path = self.control_root / ".neurath/local/runtime.sqlite3"
+        self.path = self.control_root / ".neurath/local/core.sqlite3"
+        previous = self.control_root / ".neurath/local/runtime.sqlite3"
         self.database = None
-        if self.path.exists() or create:
-            self.database = RuntimeDatabase(self.control_root)
-            with self.database.connection() as db:
+        if not create:
+            for candidate in (self.path, previous):
+                if candidate.is_symlink():
+                    raise ValueError("installation database must not be a symlink")
+                if candidate.is_file():
+                    readonly = ReadOnlyInstallationStore(candidate)
+                    with readonly.sql_transaction() as db:
+                        if db.execute("SELECT 1 FROM sqlite_schema WHERE name='installation_states'").fetchone():
+                            self.database = readonly
+                            return
+            return
+        if create:
+            self.database = Store(self.control_root)
+            with self.database.sql_transaction() as db:
                 db.execute("""CREATE TABLE IF NOT EXISTS installation_states(
                     root TEXT PRIMARY KEY,digest TEXT NOT NULL,payload TEXT NOT NULL,
                     updated REAL NOT NULL)""")
@@ -95,11 +125,12 @@ class InstallStateStore:
                     PRIMARY KEY(root,path))""")
                 db.execute("""CREATE TABLE IF NOT EXISTS installation_json_cutovers(
                     root TEXT PRIMARY KEY,version INTEGER NOT NULL CHECK(version=1))""")
+            import_installation_metadata(self.database)
 
     def _connection(self):
         if self.database is None:
             return None
-        return self.database.connection()
+        return self.database.sql_transaction()
 
     @staticmethod
     def _payload(row, label):
@@ -116,7 +147,7 @@ class InstallStateStore:
     def state(self):
         if self.database is None:
             return None
-        with self.database.connection() as db:
+        with self.database.sql_transaction() as db:
             return self._payload(db.execute(
                 "SELECT digest,payload FROM installation_states WHERE root=?",
                 (str(self.root),)).fetchone(), "state")
@@ -124,7 +155,7 @@ class InstallStateStore:
     def ensure_state(self, expected):
         if self.database is None:
             raise ValueError("installation database is unavailable")
-        with self.database.connection() as db:
+        with self.database.sql_transaction() as db:
             row = db.execute("SELECT digest,payload FROM installation_states WHERE root=?",
                              (str(self.root),)).fetchone()
             actual = self._payload(row, "state")
@@ -137,7 +168,7 @@ class InstallStateStore:
     def receipt(self, identity):
         if self.database is None:
             return None
-        with self.database.connection() as db:
+        with self.database.sql_transaction() as db:
             row = db.execute(
                 "SELECT digest,payload FROM installation_receipts WHERE root=? AND id=?",
                 (str(self.root), identity)).fetchone()
@@ -147,7 +178,7 @@ class InstallStateStore:
     def journal(self):
         if self.database is None:
             return None
-        with self.database.connection() as db:
+        with self.database.sql_transaction() as db:
             row = db.execute(
                 "SELECT plan_id,payload FROM installation_journals WHERE root=?",
                 (str(self.root),)).fetchone()
@@ -164,7 +195,7 @@ class InstallStateStore:
     def begin(self, plan):
         validate_plan(plan, self.root)
         encoded = canonical(plan)
-        with self.database.connection() as db:
+        with self.database.sql_transaction() as db:
             old = db.execute(
                 "SELECT plan_id,payload FROM installation_journals WHERE root=?",
                 (str(self.root),)).fetchone()
@@ -176,14 +207,14 @@ class InstallStateStore:
                        (str(self.root), plan["id"], encoded))
 
     def discard(self, plan_id):
-        with self.database.connection() as db:
+        with self.database.sql_transaction() as db:
             db.execute("DELETE FROM installation_journals WHERE root=? AND plan_id=?",
                        (str(self.root), plan_id))
 
     def finish(self, plan, state):
         validate_plan(plan, self.root)
         encoded = canonical(plan)
-        with self.database.connection() as db:
+        with self.database.sql_transaction() as db:
             journal = db.execute(
                 "SELECT plan_id,payload FROM installation_journals WHERE root=?",
                 (str(self.root),)).fetchone()
@@ -240,7 +271,7 @@ class InstallStateStore:
                     hashlib.sha256(data).hexdigest(), data)
 
             root_key = str(self.root)
-            with self.database.connection() as db:
+            with self.database.sql_transaction() as db:
                 tracked = {
                     row["path"]: row
                     for row in db.execute(
@@ -325,7 +356,7 @@ class InstallStateStore:
                             "legacy installation JSON changed before removal")
                     path.unlink()
 
-            with self.database.connection() as db:
+            with self.database.sql_transaction() as db:
                 db.execute(
                     "UPDATE installation_legacy_files SET status='removed' "
                     "WHERE root=? AND status='pending'", (root_key,))

@@ -149,7 +149,7 @@ def test_hooks_are_local_nonblocking_and_only_request_check_once(project, monkey
     monkeypatch.setattr("neurath.updates.fetch_release", lambda *args: pytest.fail("network in hook"))
     event = dict(hook_event_name="SessionStart", session_id="fixture")
     output = update_event(project, host, event, {})
-    assert "releases_check" in output["hookSpecificOutput"]["additionalContext"]
+    assert "releases check" in output["hookSpecificOutput"]["additionalContext"]
     assert update_event(project, host, event, {}) == {}
     assert update_event(project, host, {**event, "agent_id": "child"}, {}) == {}
     from neurath.updates import Updates
@@ -417,14 +417,14 @@ def test_post_apply_diagnostic_failure_recovers_and_preserves_new_user_edit(prep
 
 @pytest.mark.parametrize("host", ["codex", "claude-code"])
 def test_hook_protocol_entry_emits_one_due_notice(project, host):
-    from tests.test_memory_hooks import invoke
+    from tests.native_hook_fixture import invoke
     first = invoke(project, host, "update-fixture", "SessionStart", source="startup")
     assert first.returncode == 0, first.stderr
-    assert "releases_check" in first.stdout
+    assert "releases check" in first.stdout
     second = invoke(project, host, "update-fixture", "UserPromptSubmit",
                     prompt="Continue the original task", turn_id="updates-turn")
     assert second.returncode == 0, second.stderr
-    assert "releases_check" not in second.stdout
+    assert "releases check" not in second.stdout
 
 
 def test_cli_requires_explicit_choice_flag_and_original_task_failure_is_not_hidden(project):

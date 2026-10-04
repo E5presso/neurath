@@ -8,22 +8,16 @@ argument-hint: "[package path or package name]"
 user-invocable: true
 ---
 
-# Dependency Audit
+# audit-deps
 
-task 목록 없이 기존 phase workflow를 실행·복구할 때만 `uv run python -m scripts.skill_harness.phase_runner`로 계약을 initialize, evaluate, advance, finalize합니다.
+실제 dependency/lockfile과 사용 경로를 조사한다. Security, license, freshness와 workspace drift를 구분하며 현재 사실은 공식 source에서 확인한다. 감사 요청만으로 dependency를 변경하지 않는다. 실제 영향과 근거를 우선순위와 함께 보고한다.
 
-1. root `pyproject.toml`, package `pyproject.toml`, `uv.lock`을 검사합니다.
-2. `uv lock --check`를 실행합니다.
-3. 유용하면 target scope에 `uv tree`를 실행합니다.
-4. 다음을 확인합니다.
-   - dependency version drift
-   - unused direct dependency
-   - missing workspace source
-   - dev-only package의 unexpected runtime dependency
-   - Python 3.14와 incompatible package
-   - 목적에 비해 과도하거나 누락된 선택 의존성
-5. dependency를 바꾸면 `uv lock`,
-   `uv run python -m scripts.agent_harness.verification_runner package-check`,
-   `uv run python -m scripts.agent_harness.verification_runner pre-commit`을 실행합니다.
+## 실행
 
-type checker를 pyrefly에서 다른 도구로 바꾸지 않습니다.
+현재 사용자 지시와 `.neurath/policy.md`, `.neurath/project.json`을 따른다. 기존 Task/Assignment를 먼저 읽고, 이 스킬을 실행할 때 같은 Task에 `skill_start`한다. `phase_read`가 반환하는 다음 단계와 조건을 따르며 모든 단계 뒤에만 사용자 Task 인수를 판단한다. 별도 workflow/adaptive 원장을 만들거나 phase를 skip하지 않는다. 실패·대기는 실제 상태로 보존한다.
+
+| 단계 ID | 완료할 결과 |
+| --- | --- |
+| execute | dependency_inventory, security_result, license_result, freshness_result |
+
+원문·실제 tool 결과·agent report를 구분하고 필요한 근거를 `phase_complete`로 연결한다. Task의 인수 조건도 충족해야 `task_complete`할 수 있다.
