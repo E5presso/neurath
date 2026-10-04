@@ -43,7 +43,7 @@ def _checkout_bootstrap(root, path, value):
 
 
 def _matches_checkout_bootstrap(root, path, raw):
-    from neurath.core.service import COMMANDS
+    from neurath.core.commands import COMMANDS
 
     provider = "codex" if path == ".codex/config.toml" else "claude-code"
     launcher = (

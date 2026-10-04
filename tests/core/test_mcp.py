@@ -6,8 +6,8 @@ import sys
 
 import pytest
 
+from neurath.core.commands import COMMANDS
 from neurath.core.mcp import response
-from neurath.core.service import COMMANDS
 from neurath.core.tool_schema import definitions
 
 

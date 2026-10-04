@@ -1,10 +1,13 @@
 """Writer coordination and workflow completion are separate from native permissions."""
 
 import subprocess
+
 import pytest
+
+from neurath.core.commands import Context
 from neurath.core.domain import CoreError, Phase, Skill
 from neurath.core.hook_adapter import HookAdapter
-from neurath.core.service import Context, Core
+from neurath.core.service import Core
 
 
 @pytest.fixture
@@ -16,7 +19,7 @@ def setup(tmp_path):
     hook = HookAdapter(core, "codex")
     hook.handle("SessionStart", {"session_id": "s"}, "start")
     context = Context("codex:session:s", "s", "call")
-    source = core.observe_input(context, "Deliver the requested result", "input")
+    source = core.provenance.observe_input(context, "Deliver the requested result", "input")
     task = core.call(
         context,
         "task_define",
@@ -87,24 +90,25 @@ def test_native_calls_neither_grant_permissions_nor_advance_workflow(setup, tool
                 "outcomes": {},
             },
         )
-    assert not core.stop(context)["allowed"]
+    assert not core.sessions.stop(context)["allowed"]
 
 
 def test_explicit_editor_requires_current_writer_without_phase_permission_model(setup):
     core, hook, context, task, root = setup
     with pytest.raises(CoreError, match="writer-lease-required"):
-        core.admit_write(context, checkout_path=root, generation=None)
+        core.ownership.admit_write(context, checkout_path=root, generation=None)
     lease = core.call(
         context, "worktree_claim", {"key": "claim", "task_id": task["id"], "checkout": str(root)}
     )["lease"]
     with pytest.raises(CoreError, match="stale-lease"):
-        core.admit_write(context, checkout_path=root, generation=lease["generation"] + 1)
-    assert core.admit_write(context, checkout_path=root, generation=lease["generation"])["allowed"]
+        core.ownership.admit_write(context, checkout_path=root, generation=lease["generation"] + 1)
+    assert core.ownership.admit_write(context, checkout_path=root, generation=lease["generation"])[
+        "allowed"
+    ]
     assert core.call(context, "phase_read", {"task_id": task["id"]})["phase"]["id"] == "analysis"
-    core.observe_actor("other", "other-session", "codex")
-    with pytest.raises(CoreError, match="lease-conflict"):
-        with core.store.transaction() as tx:
-            tx.claim(str(root), "other")
+    core.sessions.observe_actor("other", "other-session", "codex")
+    with pytest.raises(CoreError, match="lease-conflict"), core.store.transaction() as tx:
+        tx.claim(str(root), "other")
 
 
 def test_structured_editor_paths_are_literal_not_shell_patterns(setup):

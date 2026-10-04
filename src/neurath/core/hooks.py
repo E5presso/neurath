@@ -100,7 +100,7 @@ def main(arguments=None):
         code = error.code if isinstance(error, CoreError) else "native-hook-unavailable"
         event = payload.get("hook_event_name") if isinstance(payload, dict) else None
         if event == "PreToolUse":
-            from neurath.core.native_delegation import SPAWN, FOLLOWUP
+            from neurath.core.native_delegation import FOLLOWUP, SPAWN
 
             name = payload.get("tool_name", "")
             managed = isinstance(name, str) and (

@@ -500,7 +500,7 @@ def test_existing_install_adopts_tracked_checkout_bootstrap_without_losing_user_
         if name == ".codex/config.toml":
             # The checkout registration can predate new API definitions. Build
             # this fixture from the current catalog without changing the host.
-            from neurath.core.service import COMMANDS
+            from neurath.core.commands import COMMANDS
             launcher = 'exec "$(git rev-parse --show-toplevel)/tools/checkout_host" mcp --provider codex'
             text = ("# neurath:checkout-bootstrap\n" + codex_user
                     + '[mcp_servers.neurath_collaboration]\ncommand = "sh"\n'

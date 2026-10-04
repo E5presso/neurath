@@ -5,9 +5,10 @@ from pathlib import Path
 
 import pytest
 
+from neurath.core.commands import Context
 from neurath.core.domain import CoreError, Phase, Skill
 from neurath.core.hook_adapter import HookAdapter
-from neurath.core.service import Context, Core
+from neurath.core.service import Core
 from neurath.core.workspace import source_subject
 from tests.core.test_workspace import git
 
@@ -37,7 +38,7 @@ def test_deleted_checkout_keeps_check_evidence_only_after_observed_native_cleanu
     hook = HookAdapter(core, "codex")
     hook.handle("SessionStart", {"session_id": "s"}, "start")
     context = Context("codex:session:s", "s", "call")
-    source = core.observe_input(context, "Complete and clean up the checkout", "input")
+    source = core.provenance.observe_input(context, "Complete and clean up the checkout", "input")
     task = core.call(
         context,
         "task_define",
@@ -57,7 +58,7 @@ def test_deleted_checkout_keeps_check_evidence_only_after_observed_native_cleanu
     core.call(
         context, "worktree_claim", {"key": "claim", "checkout": str(linked), "task_id": task["id"]}
     )
-    evidence = core.observe_tool(
+    evidence = core.provenance.observe_tool(
         context,
         task["id"],
         "actual-check",

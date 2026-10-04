@@ -4,10 +4,11 @@ import subprocess
 
 import pytest
 
+from neurath.core.commands import Context
 from neurath.core.domain import CoreError, Phase, Skill
 from neurath.core.hook_adapter import HookAdapter
 from neurath.core.provider_job import Run
-from neurath.core.service import Context, Core
+from neurath.core.service import Core
 from neurath.providers.environment import child_environment
 
 
@@ -19,8 +20,8 @@ def prepared(tmp_path):
         skills={"run": Skill("run", "1", (Phase("execute", effects=frozenset({"delegate"})),))},
     )
     context = Context("codex:session:s", "s", "native")
-    core.observe_actor(context.actor_id, context.session_id, "codex")
-    source = core.observe_input(context, "Delegate the needed work", "input")
+    core.sessions.observe_actor(context.actor_id, context.session_id, "codex")
+    source = core.provenance.observe_input(context, "Delegate the needed work", "input")
     task = core.call(
         context,
         "task_define",

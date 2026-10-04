@@ -104,7 +104,8 @@ def test_changed_source_or_existing_destination_is_not_overwritten(tmp_path):
 
 
 def test_only_matching_original_text_restores_imported_prompt_provenance(tmp_path):
-    from neurath.core.service import Context, Core
+    from neurath.core.commands import Context
+    from neurath.core.service import Core
 
     path = legacy(tmp_path)
     original = "Continue the original work and release the verified result."
@@ -121,7 +122,7 @@ def test_only_matching_original_text_restores_imported_prompt_provenance(tmp_pat
         )
     core = Core(tmp_path)
     adopt(core.store, expected_digest=snapshot(tmp_path)["digest"])
-    core.observe_actor("codex:session:session", "session", "codex")
+    core.sessions.observe_actor("codex:session:session", "session", "codex")
     context = Context("codex:session:session", "session", "native-restoration")
     with core.store.transaction() as tx:
         source_id = tx.records("legacy-prompt")[0]["id"]
@@ -146,7 +147,8 @@ def test_only_matching_original_text_restores_imported_prompt_provenance(tmp_pat
 
 def test_installer_plan_is_readonly_and_apply_adopts_original_obligations(tmp_path):
     import subprocess
-    from neurath.install.transaction import make_plan, apply_plan
+
+    from neurath.install.transaction import apply_plan, make_plan
 
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     old = legacy(tmp_path)
@@ -164,8 +166,9 @@ def test_installer_plan_is_readonly_and_apply_adopts_original_obligations(tmp_pa
 
 def test_installer_blocks_live_old_host_before_adoption_or_file_changes(tmp_path, monkeypatch):
     import subprocess
-    from neurath.install.transaction import make_plan, apply_plan
+
     from neurath.install import transition
+    from neurath.install.transaction import apply_plan, make_plan
 
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     legacy(tmp_path)
@@ -186,7 +189,8 @@ def test_installer_blocks_live_old_host_before_adoption_or_file_changes(tmp_path
 
 def test_historical_v1_changes_do_not_become_a_second_progress_gate_after_adoption(tmp_path):
     import subprocess
-    from neurath.install.transaction import make_plan, apply_plan
+
+    from neurath.install.transaction import apply_plan, make_plan
 
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     old = legacy(tmp_path)
@@ -196,8 +200,9 @@ def test_historical_v1_changes_do_not_become_a_second_progress_gate_after_adopti
 
 
 def test_transition_detects_same_project_host_from_linked_checkout(tmp_path, monkeypatch):
-    from contextlib import ExitStack
     import subprocess
+    from contextlib import ExitStack
+
     from neurath.install import transition
 
     root, linked = tmp_path / "main", tmp_path / "linked checkout"

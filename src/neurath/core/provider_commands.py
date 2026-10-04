@@ -13,7 +13,7 @@ COMMANDS = {
 }
 
 
-def call(tx, core, context, name, values):
+def call(tx, store, context, name, values):
     if name == "provider_read":
         record = tx.record("provider-run", values["run_id"])
         require(record is not None, "provider-run-missing")
@@ -23,7 +23,7 @@ def call(tx, core, context, name, values):
     require(assignment is not None and assignment.issuer == context.actor_id, "assignment-issuer")
     require(assignment.execution in {"session", "cross-provider"}, "provider-not-needed")
     require(assignment.state == "issued" and not assignment.recipient, "assignment-state")
-    target = checkout(core.store.root, values["checkout"])
+    target = checkout(store.root, values["checkout"])
     dispatch = tx.record("dispatch", assignment.id)
     review_target = dispatch["value"].get("review_target")
     require(
@@ -42,7 +42,7 @@ def call(tx, core, context, name, values):
             "-m",
             "neurath.core.provider_job",
             "--root",
-            str(core.store.root),
+            str(store.root),
             "--run-id",
             identifier,
         ]
@@ -78,10 +78,10 @@ def call(tx, core, context, name, values):
     }
 
 
-def authorize_launch(core, context, payload):
+def authorize_launch(store, context, payload):
     values = payload["tool_input"]
     command = values.get("command", values.get("cmd"))
-    with core.store.transaction() as tx:
+    with store.transaction() as tx:
         candidates = [r for r in tx.records("provider-run") if r["value"]["command"] == command]
         if not candidates:
             return False
@@ -94,10 +94,7 @@ def authorize_launch(core, context, payload):
         )
         task = tx.task(value["task_id"])
         require(task.state == "running", "task-state")
-        controllers = {
-            a.recipient for a in task.assignments if a.role == "executor" and a.state == "active"
-        }
-        require(context.actor_id in (controllers or {task.owner_actor}), "assignment-issuer")
+        require(context.actor_id in task.controllers, "assignment-issuer")
         native_id = payload.get("tool_use_id")
         require(isinstance(native_id, str) and native_id, "native-tool-id-required")
         tx.put_record(
@@ -126,7 +123,7 @@ def observe_start(core, provider, context):
         if run["recipient"] is not None:
             require(run["recipient"] == context.actor_id, "recipient-rebinding")
             return
-    core.bind_recipient(run["task_id"], run["assignment_id"], context.actor_id)
+    core.assignments.bind_recipient(run["task_id"], run["assignment_id"], context.actor_id)
     core.call(
         context,
         "assignment_start",

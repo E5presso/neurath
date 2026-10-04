@@ -6,9 +6,10 @@ import sqlite3
 import subprocess
 import sys
 
+from neurath.core.commands import COMMANDS
 from neurath.core.domain import CoreError
 from neurath.core.hook_adapter import HookAdapter
-from neurath.core.service import COMMANDS, Core
+from neurath.core.service import Core
 from neurath.core.tool_schema import definitions
 
 INSTRUCTIONS = (

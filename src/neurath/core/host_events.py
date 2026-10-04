@@ -6,8 +6,8 @@ module only translates identity, completion and explicit editor destinations.
 
 from pathlib import Path
 
+from neurath.core.commands import Context
 from neurath.core.domain import require
-from neurath.core.service import Context
 
 READ_TOOLS = frozenset(
     {

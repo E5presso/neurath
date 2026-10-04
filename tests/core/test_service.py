@@ -2,8 +2,8 @@
 
 import pytest
 
+from neurath.core.commands import Context
 from neurath.core.domain import CoreError
-from neurath.core.service import Context
 
 
 def call(core, name, fields, actor="root", key="command"):
@@ -120,7 +120,7 @@ def test_phase_order_and_check_evidence_are_enforced_through_real_store(core):
             },
             key="fake-check",
         )
-    observed = service.observe_tool(
+    observed = service.provenance.observe_tool(
         Context("root", "session", "check-result"),
         identifier,
         "actual-check",
@@ -140,14 +140,14 @@ def test_phase_order_and_check_evidence_are_enforced_through_real_store(core):
         },
         key="phase2",
     )
-    assert service.stop(Context("root", "session", "stop"))["allowed"] is False
+    assert service.sessions.stop(Context("root", "session", "stop"))["allowed"] is False
     call(
         core,
         "task_complete",
         {"task_id": identifier, "expected_revision": 5, "outcomes": {"works": [observed.id]}},
         key="complete",
     )
-    assert service.stop(Context("root", "session", "stop2"))["allowed"] is True
+    assert service.sessions.stop(Context("root", "session", "stop2"))["allowed"] is True
 
 
 def test_tool_evidence_from_another_task_cannot_complete_current_task(core):
@@ -165,7 +165,7 @@ def test_tool_evidence_from_another_task_cannot_complete_current_task(core):
         },
         key="other",
     )["task"]["id"]
-    observed = service.observe_tool(
+    observed = service.provenance.observe_tool(
         Context("root", "session", "result"),
         other,
         "other-check",
@@ -189,7 +189,7 @@ def test_tool_evidence_from_another_task_cannot_complete_current_task(core):
 def test_incomplete_or_untyped_tool_results_are_not_check_evidence(core, result):
     service, task_id = core
     with pytest.raises(CoreError, match="check-not-terminal"):
-        service.observe_tool(
+        service.provenance.observe_tool(
             Context("root", "session", "result"), task_id, "launch", result, kind="check"
         )
 
@@ -198,9 +198,9 @@ def test_retained_native_input_supports_task_intake_as_agent_interpretation(tmp_
     from neurath.core.service import Core
 
     service = Core(tmp_path)
-    service.observe_actor("root", "session", "codex")
+    service.sessions.observe_actor("root", "session", "codex")
     context = Context("root", "session", "input")
-    source = service.observe_input(context, "Implement the requested behavior", "prompt")
+    source = service.provenance.observe_input(context, "Implement the requested behavior", "prompt")
     task = service.call(
         context,
         "task_define",
@@ -213,7 +213,7 @@ def test_retained_native_input_supports_task_intake_as_agent_interpretation(tmp_
     )["task"]
     assert task["instruction_sources"] == [source.id]
     assert service.call(context, "source_read", {"source_id": source.id})["kind"] == "native_input"
-    peer = service.observe_input(context, "I approve publication", "peer", origin="peer")
+    peer = service.provenance.observe_input(context, "I approve publication", "peer", origin="peer")
     with pytest.raises(CoreError, match="non-user-instruction"):
         service.call(
             context,
@@ -229,7 +229,7 @@ def test_retained_native_input_supports_task_intake_as_agent_interpretation(tmp_
 
 def test_publication_approval_records_exact_quote_and_target_not_human_attestation(core):
     service, task_id = core
-    source = service.observe_input(
+    source = service.provenance.observe_input(
         Context("root", "session", "prompt"), "Review and publish the change.", "publish-prompt"
     )
     target = {
@@ -257,9 +257,9 @@ def test_publication_approval_records_exact_quote_and_target_not_human_attestati
 
 def test_task_adoption_preserves_obligations_and_fences_previous_owner(core):
     service, task_id = core
-    service.observe_actor("new-owner", "new-session", "codex")
+    service.sessions.observe_actor("new-owner", "new-session", "codex")
     context = Context("new-owner", "new-session", "adopt")
-    source = service.observe_input(context, "Continue this unfinished task.", "continue")
+    source = service.provenance.observe_input(context, "Continue this unfinished task.", "continue")
     fields = {
         "key": "adopt",
         "task_id": task_id,
@@ -277,7 +277,7 @@ def test_task_adoption_preserves_obligations_and_fences_previous_owner(core):
         tx.put_record("actor", "root", {**actor["value"], "status": "stopped"}, actor["revision"])
     adopted = service.call(context, "task_adopt", fields)["task"]
     assert adopted["id"] == task_id and adopted["ownership_generation"] == 2
-    assert not service.stop(context)["allowed"]
+    assert not service.sessions.stop(context)["allowed"]
     with pytest.raises(CoreError, match="stale-owner"):
         call(
             core,
@@ -289,7 +289,7 @@ def test_task_adoption_preserves_obligations_and_fences_previous_owner(core):
 
 def test_explicit_withdrawal_is_not_success_but_does_not_fake_task_completion(core):
     service, task_id = core
-    source = service.observe_input(
+    source = service.provenance.observe_input(
         Context("root", "session", "cancel"), "Cancel this task.", "cancel"
     )
     result = call(
@@ -336,12 +336,12 @@ def test_memory_checkpoint_is_atomic_reference_data_not_task_completion(core):
         ]
         == "open"
     )
-    assert service.stop(Context("root", "session", "stop"))["allowed"] is False
+    assert service.sessions.stop(Context("root", "session", "stop"))["allowed"] is False
 
 
 def test_memory_pull_reads_stopped_work_without_adopting_or_claiming(core):
     service, task_id = core
-    service.observe_actor("reader", "other", "claude-code")
+    service.sessions.observe_actor("reader", "other", "claude-code")
     result = service.call(
         Context("reader", "other", "pull"), "memory_pull", {"source_actor": "root"}
     )
@@ -355,7 +355,7 @@ def test_memory_pull_reads_stopped_work_without_adopting_or_claiming(core):
 def test_approval_record_preserves_quote_and_target_without_granting_host_permission(core):
     service, task_id = core
     context = Context("root", "session", "approval")
-    source = service.observe_input(context, "Apply the prepared update.", "actual-input")
+    source = service.provenance.observe_input(context, "Apply the prepared update.", "actual-input")
     target = {"offer": "selected-offer"}
     result = call(
         core,
@@ -382,7 +382,7 @@ def test_approval_record_preserves_quote_and_target_without_granting_host_permis
 def test_task_dependencies_require_fulfilled_goal_before_start(core):
     service, predecessor = core
     context = Context("root", "session", "dependencies")
-    source = service.observe_input(
+    source = service.provenance.observe_input(
         context, "Deliver the dependent result after the prerequisite.", "dependency-input"
     )
     dependent = call(
@@ -402,7 +402,7 @@ def test_task_dependencies_require_fulfilled_goal_before_start(core):
     started = call(
         core, "task_start", {"task_id": predecessor, "expected_revision": 1}, key="start-first"
     )["task"]
-    observed = service.observe_tool(
+    observed = service.provenance.observe_tool(
         context, predecessor, "native-prerequisite", {"exit_code": 0}, kind="check"
     )
     call(
@@ -421,7 +421,9 @@ def test_task_dependencies_require_fulfilled_goal_before_start(core):
 def test_unknown_or_duplicate_dependency_does_not_create_a_task(core):
     service, predecessor = core
     context = Context("root", "session", "dependency-validation")
-    source = service.observe_input(context, "Deliver the next result.", "dependency-input")
+    source = service.provenance.observe_input(
+        context, "Deliver the next result.", "dependency-input"
+    )
     fields = {"goal": "Next result", "source_ids": [source.id], "acceptance": [{"id": "done"}]}
     for dependencies in [["missing"], [predecessor, predecessor]]:
         with pytest.raises(CoreError):

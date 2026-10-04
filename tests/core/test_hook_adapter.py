@@ -2,9 +2,10 @@
 
 import pytest
 
+from neurath.core.commands import Context
 from neurath.core.domain import CoreError
 from neurath.core.hook_adapter import HookAdapter
-from neurath.core.service import Context, Core
+from neurath.core.service import Core
 
 
 @pytest.fixture
@@ -40,7 +41,9 @@ def test_prompt_and_stop_preserve_task_across_continuation(tmp_path, provider):
     hook.handle("UserPromptSubmit", payload, "prompt-1")
     actor = provider + ":session:root"
     context = Context(actor, "root", "setup")
-    source = core.observe_user(context, "Actual authorized requirement", "verified-prompt")
+    source = core.provenance.observe_user(
+        context, "Actual authorized requirement", "verified-prompt"
+    )
     task = core.call(
         context,
         "task_define",
@@ -115,7 +118,7 @@ def test_native_edit_checks_the_file_checkout_not_just_hook_cwd(tmp_path):
     hook = HookAdapter(core, "codex")
     hook.handle("SessionStart", {"session_id": "s"}, "start")
     context = Context("codex:session:s", "s", "setup")
-    source = core.observe_user(context, "Edit the project", "authorized")
+    source = core.provenance.observe_user(context, "Edit the project", "authorized")
     task = core.call(
         context,
         "task_define",
@@ -162,7 +165,7 @@ def test_registered_check_collects_terminal_result_and_rejects_stale_source(tmp_
     hook = HookAdapter(core, "codex", checks=({"command": command, "cwd": str(tmp_path)},))
     hook.handle("SessionStart", {"session_id": "s"}, "start")
     context = Context("codex:session:s", "s", "setup")
-    source = core.observe_user(context, "Check this result", "verified-input")
+    source = core.provenance.observe_user(context, "Check this result", "verified-input")
     task = core.call(
         context,
         "task_define",
@@ -225,7 +228,7 @@ def test_registered_check_collects_terminal_result_and_rejects_stale_source(tmp_
                 "outcomes": {"works": [evidence["id"]]},
             },
         )
-    assert not core.stop(context)["allowed"]
+    assert not core.sessions.stop(context)["allowed"]
 
 
 def test_public_correlation_id_cannot_bind_another_native_actor_or_invocation(adapter):
@@ -257,7 +260,7 @@ def test_check_directory_is_distinct_from_checkout_identity(tmp_path):
     hook = HookAdapter(core, "codex", checks=({"command": "python -V", "cwd": str(directory)},))
     hook.handle("SessionStart", {"session_id": "s"}, "start")
     context = Context("codex:session:s", "s", "setup")
-    source = core.observe_input(context, "Check the subproject", "input")
+    source = core.provenance.observe_input(context, "Check the subproject", "input")
     task = core.call(
         context,
         "task_define",
@@ -355,7 +358,7 @@ def test_late_check_result_retains_execution_attempt_across_restart(tmp_path, ch
     hook = HookAdapter(core, "codex", checks=({"command": command, "cwd": str(tmp_path)},))
     hook.handle("SessionStart", {"session_id": "s"}, "start")
     context = Context("codex:session:s", "s", "setup")
-    source = core.observe_user(context, "Check the current environment", "input")
+    source = core.provenance.observe_user(context, "Check the current environment", "input")
     task = core.call(
         context,
         "task_define",
@@ -423,7 +426,7 @@ def test_late_check_result_retains_execution_attempt_across_restart(tmp_path, ch
     else:
         with pytest.raises(CoreError, match="evidence-attempt-changed"):
             core.call(context, "phase_complete", fields)
-        assert not core.stop(context)["allowed"]
+        assert not core.sessions.stop(context)["allowed"]
 
 
 def test_native_tool_discovery_is_readonly_without_task_or_writer_claim(adapter):

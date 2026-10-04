@@ -13,9 +13,10 @@ from hashlib import sha256
 from uuid import uuid4
 
 from neurath.core.codec import encode
+from neurath.core.commands import Context
 from neurath.core.domain import CoreError, Source, require
 from neurath.core.provider_commands import observe_start
-from neurath.core.service import Context, Core
+from neurath.core.service import Core
 from neurath.redaction import clean
 
 
@@ -70,7 +71,7 @@ class Run:
 
     def observed(self, session, settings):
         actor = self.value["provider"] + ":session:" + session
-        self.core.observe_actor(actor, session, self.value["provider"])
+        self.core.sessions.observe_actor(actor, session, self.value["provider"])
         self.context = Context(actor, session, "provider-start:" + self.value["id"])
         observe_start(self.core, self.value["provider"], self.context)
         self.change(state="running", native_session=session, recipient=actor, settings=settings)
@@ -135,12 +136,9 @@ class Run:
                     "provider-ended:" + self.value["id"],
                 )
                 tx.put_source(source)
-                assignment = replace(
-                    assignment,
-                    state="reported",
-                    result_source=source.id,
+                assignment = assignment.recipient_ended(
+                    source.id,
                     verdict="cancelled" if cancelled else "failed" if failed else "blocked",
-                    result_subject=assignment.subject,
                 )
                 tx.save_task(task.with_assignment(assignment), expected_revision=task.revision)
             if self.context:

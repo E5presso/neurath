@@ -294,6 +294,38 @@ class Assignment:
     phase_id: str | None = None
     attempt: int | None = None
 
+    @property
+    def awaiting_result(self):
+        return self.state in {"issued", "active", "cancel-requested"}
+
+    def bind(self, recipient):
+        require(self.state == "issued", "assignment-state")
+        require(not self.recipient or self.recipient == recipient, "recipient-rebinding")
+        require(recipient != self.issuer, "assignment-self")
+        return replace(self, recipient=recipient)
+
+    def recipient_ended(self, source, *, verdict="failed"):
+        if not self.awaiting_result:
+            return self
+        return self.report(
+            self.recipient,
+            source,
+            "cancelled" if self.state == "cancel-requested" else verdict,
+            self.subject,
+        )
+
+    def cancel_unstarted(self, source):
+        require(
+            not self.recipient and self.state in {"issued", "cancel-requested"}, "assignment-state"
+        )
+        return replace(self, state="rejected", result_source=source, verdict="cancelled")
+
+    def launch_failed(self):
+        require(
+            not self.recipient and self.state in {"issued", "cancel-requested"}, "assignment-state"
+        )
+        return replace(self, state="rejected", verdict="failed")
+
     def start(self, actor):
         require(actor == self.recipient, "actor-mismatch")
         require(self.state == "issued", "assignment-state")
@@ -382,6 +414,142 @@ class Task:
         require(
             actor == self.owner_actor and generation == self.ownership_generation, "stale-owner"
         )
+
+    def require_revision(self, revision):
+        require(
+            self.revision == revision, "revision-conflict", expected=revision, actual=self.revision
+        )
+
+    @property
+    def controllers(self):
+        executors = frozenset(
+            a.recipient for a in self.assignments if a.role == "executor" and a.state == "active"
+        )
+        return executors or frozenset({self.owner_actor})
+
+    @property
+    def acceptors(self):
+        return self.controllers | {self.owner_actor}
+
+    def require_controller(self, actor):
+        if self.controllers != {self.owner_actor}:
+            require(actor in self.controllers, "executor-controls-phase")
+        else:
+            self.require_owner(actor, self.ownership_generation)
+
+    def require_participant(self, actor):
+        assignment = next(
+            (a for a in self.assignments if a.recipient == actor and a.state == "active"), None
+        )
+        require(actor == self.owner_actor or assignment is not None, "assignment-required")
+        return assignment
+
+    def require_writer(self, actor):
+        self.require_participant(actor)
+        require(
+            not any(
+                a.recipient == actor and a.role == "reviewer" and a.state == "active"
+                for a in self.assignments
+            ),
+            "reviewer-read-only",
+        )
+
+    def require_role(self, recipient, role):
+        require(role in {"worker", "reviewer", "executor"}, "assignment-role")
+        if recipient:
+            require(
+                not any(
+                    a.recipient == recipient and (a.role == "reviewer") != (role == "reviewer")
+                    for a in self.assignments
+                ),
+                "review-role-conflict",
+            )
+
+    def assignment(self, identifier):
+        result = next((a for a in self.assignments if a.id == identifier), None)
+        require(result is not None, "assignment-missing")
+        return result
+
+    def issue_assignment(self, identifier, execution, scope, issuer, recipient, subject, role):
+        self.require_controller(issuer)
+        self.require_role(recipient, role)
+        require(not recipient or recipient != issuer, "assignment-self")
+        if role == "executor":
+            require(
+                not any(a.role == "executor" and a.awaiting_result for a in self.assignments),
+                "executor-conflict",
+            )
+        return self.with_assignment(
+            Assignment(
+                identifier,
+                execution,
+                scope,
+                issuer,
+                recipient,
+                subject,
+                role=role,
+                run_index=self.skill_index,
+                phase_id=None if self.current_phase is None else self.current_phase.id,
+                attempt=None if self.skill_run is None else self.skill_run.attempt,
+            )
+        )
+
+    def bind_recipient(self, identifier, recipient):
+        assignment = self.assignment(identifier)
+        self.require_role(recipient, assignment.role)
+        return self.with_assignment(assignment.bind(recipient))
+
+    def start_assignment(self, identifier, actor):
+        return self.with_assignment(self.assignment(identifier).start(actor))
+
+    def recipients_ended(self, sources):
+        """Apply observed terminal results together, preserving the unfinished user goal."""
+        assignments = tuple(
+            a.recipient_ended(sources[a.id]) if a.id in sources else a for a in self.assignments
+        )
+        return self if assignments == self.assignments else self.changed(assignments=assignments)
+
+    def require_assignment_canceller(self, identifier, actor):
+        assignment = self.assignment(identifier)
+        require(
+            actor in {self.owner_actor, assignment.acceptance_owner or assignment.issuer},
+            "actor-mismatch",
+        )
+
+    def report_assignment(self, identifier, actor, source, verdict, subject):
+        assignment = self.assignment(identifier)
+        require(assignment.recipient == actor, "actor-mismatch")
+        if assignment.role == "executor" and verdict == "pass":
+            require(
+                self.state == "running" and all(run.complete for run in self.skill_runs),
+                "phases-unfinished",
+            )
+        return self.with_assignment(assignment.report(actor, source, verdict, subject))
+
+    def accept_assignment(self, identifier, actor, source, subject):
+        return self.with_assignment(
+            self.assignment(identifier).accept(
+                actor,
+                source,
+                subject,
+                acceptors=self.acceptors,
+            )
+        )
+
+    def reject_assignment(self, identifier, actor, source):
+        return self.with_assignment(
+            self.assignment(identifier).reject(
+                actor,
+                source,
+                acceptors=self.acceptors,
+            )
+        )
+
+    def record_implementation(self, actor):
+        self.require_writer(actor)
+        if actor in self.implementation_actors:
+            return self
+        return self.changed(implementation_actors=(*self.implementation_actors, actor))
 
     @property
     def skill_run(self):

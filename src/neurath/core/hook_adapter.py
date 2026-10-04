@@ -5,19 +5,19 @@ permission enforcement remain the host's responsibility. No transcript parsing,
 CWD-derived actors or caller-provided provenance is used here.
 """
 
-from hashlib import sha256
 from pathlib import Path
 
-from neurath.core.codec import encode
-from neurath.core.domain import CoreError, Source, require
+from neurath.core.check_observations import CheckObservations
+from neurath.core.commands import COMMANDS
+from neurath.core.domain import CoreError, require
 from neurath.core.host_events import (
-    SHELL_TOOLS,
     EDIT_TOOLS,
+    SHELL_TOOLS,
     context_from_event,
     stop_response,
     write_targets,
 )
-from neurath.core.service import COMMANDS, Context
+from neurath.core.invocations import NativeInvocations
 
 CONTROL_TOOLS = frozenset(
     {
@@ -43,11 +43,13 @@ class HookAdapter:
         self.core = core
         self.provider = provider
         self.checks = None if checks is None else tuple(checks)
+        self.invocations = NativeInvocations(core.store, provider, core.call)
+        self.observations = CheckObservations(core.store, core.provenance, provider)
 
     def handle(self, event, payload, receipt_id):
         context = context_from_event(self.provider, payload, receipt_id)
         # A shared session ID does not reveal a nested child's direct parent.
-        self.core.observe_actor(
+        self.core.sessions.observe_actor(
             context.actor_id,
             context.session_id,
             self.provider,
@@ -65,7 +67,9 @@ class HookAdapter:
             from neurath.core.provider_commands import input_origin
 
             origin = input_origin(self.core, self.provider, context.session_id, payload["prompt"])
-            source = self.core.observe_input(context, payload["prompt"], receipt_id, origin=origin)
+            source = self.core.provenance.observe_input(
+                context, payload["prompt"], receipt_id, origin=origin
+            )
             return {
                 "hookSpecificOutput": {
                     "hookEventName": "UserPromptSubmit",
@@ -78,92 +82,21 @@ class HookAdapter:
             observe_start(self.core, self.provider, context)
             return {}
         if event in {"Stop", "SubagentStop"}:
-            return stop_response(self.core.stop(context))
+            return stop_response(self.core.sessions.stop(context))
         if event == "SessionEnd":
-            # Advisory event: preserve unfinished obligations across interruption.
-            with self.core.store.transaction() as tx:
-                ended = {context.actor_id}
-                if not payload.get("agent_id"):
-                    ended.update(
-                        record["id"]
-                        for record in tx.records("actor")
-                        if record["value"]["provider"] == self.provider
-                        and record["value"]["session_id"] == context.session_id
-                    )
-                for actor_id in ended:
-                    actor = tx.record("actor", actor_id)
-                    tx.put_record(
-                        "actor",
-                        actor_id,
-                        {**actor["value"], "status": "stopped"},
-                        actor["revision"],
-                    )
-                for task in tx.tasks():
-                    assignments = []
-                    for assignment in task.assignments:
-                        if assignment.recipient in ended and assignment.state in {
-                            "issued",
-                            "active",
-                            "cancel-requested",
-                        }:
-                            identity = (
-                                "native-end:"
-                                + context.actor_id
-                                + ":"
-                                + receipt_id
-                                + ":"
-                                + assignment.id
-                            )
-                            source = Source.create(
-                                "source-" + sha256(identity.encode()).hexdigest(),
-                                "tool",
-                                encode(
-                                    {
-                                        "event": "SessionEnd",
-                                        "actor_id": context.actor_id,
-                                        "ended_actor_id": assignment.recipient,
-                                        "assignment_id": assignment.id,
-                                    }
-                                ),
-                                identity,
-                            )
-                            tx.put_source(source)
-                            assignment = assignment.report(
-                                assignment.recipient,
-                                source.id,
-                                "cancelled" if assignment.state == "cancel-requested" else "failed",
-                                assignment.subject,
-                            )
-                        assignments.append(assignment)
-                    if tuple(assignments) != task.assignments:
-                        tx.save_task(
-                            task.changed(assignments=tuple(assignments)),
-                            expected_revision=task.revision,
-                        )
-                for record in tx.records("native-invocation"):
-                    value = record["value"]
-                    if (
-                        value["provider"] == self.provider
-                        and value["session_id"] == context.session_id
-                        and value["active"]
-                        and (not payload.get("agent_id") or value["actor_id"] == context.actor_id)
-                    ):
-                        tx.put_record(
-                            "native-invocation",
-                            record["id"],
-                            {**value, "active": False},
-                            record["revision"],
-                        )
+            self.core.sessions.end(
+                context, self.provider, receipt_id, child=bool(payload.get("agent_id"))
+            )
             return {}
         if event in {"PostToolUse", "PostToolUseFailure", "PermissionDenied"}:
             from neurath.core.native_delegation import finished
 
             finished(self.core, self.provider, context, payload, failed=event != "PostToolUse")
-            self._close(context, payload.get("tool_use_id"))
+            self.invocations.close(context, payload.get("tool_use_id"))
             if "tool_response" in payload and not str(payload.get("tool_name", "")).startswith(
                 ("mcp__neurath__", "mcp__neurath_collaboration__")
             ):
-                self.core.observe_output(
+                self.core.provenance.observe_output(
                     context,
                     payload,
                     interaction=event == "PostToolUse"
@@ -173,7 +106,7 @@ class HookAdapter:
             from neurath.core.cleanup import finish as finish_cleanup
 
             finish_cleanup(self.core, context, payload, event)
-            self._finish_check(context, payload, event)
+            self.observations.finish(context, payload, event)
             return {}
         if event != "PreToolUse":
             return {}
@@ -184,21 +117,21 @@ class HookAdapter:
             name.startswith(("mcp__neurath__", "mcp__neurath_collaboration__"))
             and command in COMMANDS
         ):
-            return self._bind(context, command, values, payload.get("tool_use_id"))
+            return self.invocations.bind(context, command, values, payload.get("tool_use_id"))
         if name in CONTROL_TOOLS:
             return {}
         try:
             if name == "SubagentHandback":
-                result = self.core.stop(context)
+                result = self.core.sessions.stop(context)
                 require(result["allowed"], "assignment-unsettled", pending=result["pending"])
                 return {}
             if name in SHELL_TOOLS:
                 from neurath.core.checks import authorize_launch as authorize_check
                 from neurath.core.provider_commands import authorize_launch
 
-                if authorize_check(self.core, context, payload):
+                if authorize_check(self.core.store, context, payload):
                     return {}
-                if authorize_launch(self.core, context, payload):
+                if authorize_launch(self.core.store, context, payload):
                     return {}
                 from neurath.core.workspace import worktree_operation
 
@@ -221,7 +154,7 @@ class HookAdapter:
                             "writer-lease-required",
                         )
                     if effect == "cleanup":
-                        admitted = self.core.admit_write(
+                        admitted = self.core.ownership.admit_write(
                             context,
                             checkout_path=operation["target"],
                             generation=lease["generation"],
@@ -267,7 +200,7 @@ class HookAdapter:
                 ):
                     with self.core.store.transaction() as tx:
                         lease = tx.lease(target)
-                    self.core.admit_write(
+                    self.core.ownership.admit_write(
                         context,
                         checkout_path=target,
                         generation=None if lease is None else lease["generation"],
@@ -283,7 +216,9 @@ class HookAdapter:
                     with self.core.store.transaction() as tx:
                         focus = tx.record("focus", context.actor_id)
                     if focus is not None:
-                        self._start_check(context, payload, focus["value"]["task_id"])
+                        self.observations.start(
+                            context, payload, focus["value"]["task_id"], self.checks
+                        )
             # No allow override: the host retains its normal permission decision.
             return {}
         except CoreError as error:
@@ -295,179 +230,5 @@ class HookAdapter:
                 }
             }
 
-    def _bind(self, context, command, values, native_tool_id):
-        require(isinstance(native_tool_id, str) and bool(native_tool_id), "native-tool-id-required")
-        call_id = values.get("_call_id")
-        require(isinstance(call_id, str) and 1 <= len(call_id) <= 128, "native-call-id-required")
-        identity = encode([self.provider, context.session_id, context.actor_id, native_tool_id])
-        identifier = sha256(call_id.encode()).hexdigest()
-        arguments = {key: value for key, value in values.items() if key != "_call_id"}
-        value = {
-            "provider": self.provider,
-            "actor_id": context.actor_id,
-            "session_id": context.session_id,
-            "invocation_id": identity,
-            "request": sha256(encode([command, arguments]).encode()).hexdigest(),
-            "active": True,
-        }
-        native_id = sha256(identity.encode()).hexdigest()
-        with self.core.store.transaction() as tx:
-            previous = tx.record("native-invocation", identifier)
-            if previous:
-                require(previous["value"] == value, "native-call-id-reused")
-            else:
-                require(tx.record("native-call", native_id) is None, "native-invocation-rebound")
-                tx.put_record("native-invocation", identifier, value)
-                tx.put_record("native-call", native_id, {"id": identifier})
-        # Correlation is already in the original input. Host permission handling
-        # is unchanged: never issue an allow override to transport identity.
-        return {}
-
     def call(self, command, values):
-        require(isinstance(values, dict), "invalid-input")
-        call_id = values.get("_call_id")
-        require(isinstance(call_id, str) and bool(call_id), "native-invocation-required")
-        identifier = sha256(call_id.encode()).hexdigest()
-        arguments = {key: value for key, value in values.items() if key != "_call_id"}
-        request = sha256(encode([command, arguments]).encode()).hexdigest()
-
-        def authenticate(tx):
-            record = tx.record("native-invocation", identifier)
-            require(record is not None, "native-invocation-required")
-            binding = record["value"]
-            require(binding["active"], "native-invocation-closed")
-            require(binding["provider"] == self.provider, "provider-binding-mismatch")
-            actor = tx.record("actor", binding["actor_id"])
-            require(
-                actor is not None and actor["value"]["status"] == "active", "native-session-stopped"
-            )
-            require(binding["request"] == request, "invocation-mismatch")
-            return Context(binding["actor_id"], binding["session_id"], binding["invocation_id"])
-
-        with self.core.store.transaction() as tx:
-            context = authenticate(tx)
-        return self.core.call(context, command, arguments, guard=authenticate)
-
-    def _close(self, context, native_tool_id):
-        if not isinstance(native_tool_id, str):
-            return
-        identity = encode([self.provider, context.session_id, context.actor_id, native_tool_id])
-        with self.core.store.transaction() as tx:
-            link = tx.record("native-call", sha256(identity.encode()).hexdigest())
-            if link:
-                identifier = link["value"]["id"]
-                record = tx.record("native-invocation", identifier)
-                if record["value"]["active"]:
-                    tx.put_record(
-                        "native-invocation",
-                        identifier,
-                        {**record["value"], "active": False},
-                        record["revision"],
-                    )
-
-    def _execution_id(self, context, tool_id):
-        require(isinstance(tool_id, str) and bool(tool_id), "native-tool-id-required")
-        return sha256(
-            encode([self.provider, context.session_id, context.actor_id, tool_id]).encode()
-        ).hexdigest()
-
-    def _start_check(self, context, payload, task_id):
-        from neurath.core.workspace import checkout, source_subject
-
-        values = payload["tool_input"]
-        directory = values.get("workdir") or values.get("cwd") or payload.get("cwd")
-        require(isinstance(directory, str), "check-directory-required")
-        directory = Path(directory).resolve()
-        target = checkout(self.core.store.root, directory)
-        identifier = self._execution_id(context, payload.get("tool_use_id"))
-        value = {
-            "task_id": task_id,
-            "actor_id": context.actor_id,
-            "checkout": target,
-            "subject": source_subject(target),
-            "tool": payload["tool_name"],
-            "input": values,
-            "state": "running",
-            "definition": next(
-                check
-                for check in self.checks
-                if check["command"] == values.get("command", values.get("cmd"))
-                and Path(check["cwd"]).resolve() == directory
-            ),
-        }
-        with self.core.store.transaction() as tx:
-            value["execution_scope"] = [list(item) for item in tx.task(task_id).observation_scope()]
-            previous = tx.record("check-execution", identifier)
-            if previous:
-                require(previous["value"] == value, "invocation-mismatch")
-            else:
-                tx.put_record("check-execution", identifier, value)
-
-    def _finish_check(self, context, payload, event):
-        from neurath.core.native_results import check_result
-
-        if not payload.get("tool_use_id"):
-            return
-        identifier = self._execution_id(context, payload["tool_use_id"])
-        with self.core.store.transaction() as tx:
-            record = tx.record("check-execution", identifier)
-        if record is None:
-            return
-        value = record["value"]
-        result = check_result(payload) if event == "PostToolUse" else None
-        if result is None:
-            with self.core.store.transaction() as tx:
-                tx.put_record(
-                    "check-execution",
-                    identifier,
-                    {
-                        **value,
-                        "state": "outcome-unavailable"
-                        if event == "PostToolUse"
-                        else "failed-to-execute",
-                        "last_response": payload.get("tool_response"),
-                        "last_event": event,
-                    },
-                    record["revision"],
-                )
-            return
-        definition = value["definition"]
-        marker = definition.get("stdout_contains")
-        output = result["native_response"].get("stdout", result["native_response"].get("output"))
-        if marker is not None and not isinstance(output, str):
-            with self.core.store.transaction() as tx:
-                tx.put_record(
-                    "check-execution",
-                    identifier,
-                    {
-                        **value,
-                        "state": "outcome-unavailable",
-                        "last_response": result,
-                        "reason": "Required check output was not observable",
-                    },
-                    record["revision"],
-                )
-            return
-        result["passed"] = result["exit_code"] in definition.get("success_codes", [0]) and (
-            marker is None or marker in output
-        )
-        evidence = self.core.observe_tool(
-            context,
-            value["task_id"],
-            "check:" + identifier,
-            result,
-            kind="check",
-            subject=value["subject"],
-            checkout_path=value["checkout"],
-            execution_scope=value["execution_scope"],
-        )
-        if value["state"] == "completed":
-            require(value["evidence_id"] == evidence.id, "native-result-changed")
-            return
-        with self.core.store.transaction() as tx:
-            tx.put_record(
-                "check-execution",
-                identifier,
-                {**value, "state": "completed", "evidence_id": evidence.id},
-                record["revision"],
-            )
+        return self.invocations.call(command, values)

@@ -4,8 +4,9 @@ import subprocess
 
 import pytest
 
+from neurath.core.commands import Context
 from neurath.core.domain import Condition, Phase, Skill
-from neurath.core.service import Context, Core
+from neurath.core.service import Core
 
 
 @pytest.fixture
@@ -28,10 +29,10 @@ def core(tmp_path):
             )
         },
     )
-    service.observe_actor("root", "session", "codex")
-    service.observe_actor("child", "session", "codex", parent="root")
+    service.sessions.observe_actor("root", "session", "codex")
+    service.sessions.observe_actor("child", "session", "codex", parent="root")
     context = Context("root", "session", "call-1")
-    source = service.observe_user(context, "Fix and check the result", "user-event")
+    source = service.provenance.observe_user(context, "Fix and check the result", "user-event")
     result = service.call(
         context,
         "task_define",

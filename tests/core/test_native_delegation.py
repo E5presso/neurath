@@ -4,9 +4,10 @@ import subprocess
 
 import pytest
 
+from neurath.core.commands import Context
 from neurath.core.domain import CoreError, Phase, Skill
 from neurath.core.hook_adapter import HookAdapter
-from neurath.core.service import Context, Core
+from neurath.core.service import Core
 
 
 def make_delegation(tmp_path, provider="codex"):
@@ -22,7 +23,7 @@ def make_delegation(tmp_path, provider="codex"):
     hook = HookAdapter(core, provider)
     hook.handle("SessionStart", {"session_id": "s"}, "start")
     context = Context(f"{provider}:session:s", "s", "input")
-    source = core.observe_input(context, "Review the requested change", "prompt")
+    source = core.provenance.observe_input(context, "Review the requested change", "prompt")
     task = core.call(
         context,
         "task_define",
@@ -231,4 +232,4 @@ def test_native_child_handback_requires_its_report_but_not_parent_acceptance(tmp
         },
     )
     assert hook.handle("PreToolUse", handback, "return-after-report") == {}
-    assert not core.stop(context)["allowed"]
+    assert not core.sessions.stop(context)["allowed"]

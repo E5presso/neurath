@@ -2,8 +2,8 @@
 
 import pytest
 
+from neurath.core.commands import Context
 from neurath.core.domain import CoreError
-from neurath.core.service import Context
 from tests.core.test_service import call
 
 
@@ -56,8 +56,8 @@ def test_child_reports_without_writer_lease_and_owner_accepts_actual_result(core
     )
     assert report["assignment"]["state"] == "reported"
     assert report["evidence"]["kind"] == "review"
-    assert service.stop(Context("child", "session", "child-stop"))["allowed"]
-    assert not service.stop(Context("root", "session", "root-stop"))["allowed"]
+    assert service.sessions.stop(Context("child", "session", "child-stop"))["allowed"]
+    assert not service.sessions.stop(Context("root", "session", "root-stop"))["allowed"]
     accepted = call(
         core,
         "assignment_accept",
@@ -70,12 +70,12 @@ def test_child_reports_without_writer_lease_and_owner_accepts_actual_result(core
         key="accept",
     )
     assert accepted["assignment"]["state"] == "accepted"
-    assert not service.stop(Context("root", "session", "still-unfinished"))["allowed"]
+    assert not service.sessions.stop(Context("root", "session", "still-unfinished"))["allowed"]
 
 
 def test_another_provider_is_an_assignment_not_another_task_ledger(core):
     service, task_id = core
-    service.observe_actor("claude-peer", "claude-session", "claude-code")
+    service.sessions.observe_actor("claude-peer", "claude-session", "claude-code")
     prepared = prepare(core, actor="claude-peer", execution="cross-provider")
     identifier = prepared["assignment"]["id"]
     service.call(
@@ -102,7 +102,7 @@ def test_another_provider_is_an_assignment_not_another_task_ledger(core):
 def test_only_one_executor_can_control_a_task(core):
     service, _ = core
     prepare(core, role="executor")
-    service.observe_actor("other-child", "session", "codex", parent="root")
+    service.sessions.observe_actor("other-child", "session", "codex", parent="root")
     with pytest.raises(CoreError, match="executor-conflict"):
         prepare(core, role="executor", actor="other-child")
 
@@ -158,7 +158,7 @@ def test_owner_cannot_impersonate_review_recipient(core):
 
 def test_session_and_subagent_choices_must_match_observed_execution(core):
     service, _ = core
-    service.observe_actor("separate", "other-session", "codex")
+    service.sessions.observe_actor("separate", "other-session", "codex")
     with pytest.raises(CoreError, match="execution-target-mismatch"):
         prepare(core, actor="separate", execution="subagent")
     with pytest.raises(CoreError, match="execution-target-mismatch"):
@@ -184,7 +184,7 @@ def test_owner_can_settle_executor_issued_review_after_executor_returns(core):
         actor="child",
         key="start-executor",
     )
-    service.observe_actor("reviewer", "session", "codex", parent="child")
+    service.sessions.observe_actor("reviewer", "session", "codex", parent="child")
     task = service.call(Context("root", "session", "read"), "task_read", {"task_id": task_id})[
         "task"
     ]
@@ -255,7 +255,9 @@ def test_implementation_context_is_not_reset_by_defining_another_task(core):
             previous.changed(implementation_actors=("child",)), expected_revision=previous.revision
         )
     context = Context("root", "session", "next-task")
-    source = service.observe_input(context, "Review the delivered change.", "review-input")
+    source = service.provenance.observe_input(
+        context, "Review the delivered change.", "review-input"
+    )
     review_task = call(
         core,
         "task_define",
@@ -301,7 +303,7 @@ def test_accepted_review_cannot_be_reused_after_reviewed_source_changes(core):
     (service.store.root / "source.py").write_text("changed after review\n")
     with service.store.transaction() as tx:
         with pytest.raises(CoreError, match="evidence-subject-changed"):
-            service._outcomes(tx, task_id, {"reviewed": [report["evidence"]["id"]]})
+            service.provenance.outcomes(tx, task_id, {"reviewed": [report["evidence"]["id"]]})
 
 
 def test_worker_history_cannot_be_relabelled_as_independent_review(core):

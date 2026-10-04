@@ -203,7 +203,7 @@ class InstallationProjection:
         root = self.root
         desired = self.desired
         from neurath.core.mcp import server_config
-        from neurath.core.service import COMMANDS
+        from neurath.core.commands import COMMANDS
 
         if "codex" in hosts:
             server = server_config(root, "codex")

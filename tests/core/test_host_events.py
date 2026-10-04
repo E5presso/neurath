@@ -30,17 +30,21 @@ def test_stop_blocks_unfinished_task_without_claiming_host_shutdown_control():
 
 
 def test_native_input_is_not_a_human_attestation(tmp_path):
-    from neurath.core.service import Context, Core
+    from neurath.core.commands import Context
+    from neurath.core.service import Core
 
     core = Core(tmp_path)
-    core.observe_actor("root", "session", "codex")
+    core.sessions.observe_actor("root", "session", "codex")
     context = Context("root", "session", "event")
-    first = core.observe_input(context, "Continue", "event-1", origin="continuation")
-    second = core.observe_input(context, "Continue", "event-2")
+    first = core.provenance.observe_input(context, "Continue", "event-1", origin="continuation")
+    second = core.provenance.observe_input(context, "Continue", "event-2")
     assert first.kind == "native_input"
     assert first.id != second.id
-    assert core.observe_input(context, "Continue", "event-1", origin="continuation") == first
+    assert (
+        core.provenance.observe_input(context, "Continue", "event-1", origin="continuation")
+        == first
+    )
     with pytest.raises(CoreError, match="human-attestation-required"):
-        core.observe_input(context, "Approved", "event-3", origin="human")
+        core.provenance.observe_input(context, "Approved", "event-3", origin="human")
     with pytest.raises(CoreError, match="source-conflict"):
-        core.observe_input(context, "Changed", "event-1")
+        core.provenance.observe_input(context, "Changed", "event-1")

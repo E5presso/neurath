@@ -73,7 +73,7 @@ def validate(wheel, output):
         code = """import importlib, json, sys
 from pathlib import Path
 import neurath.core
-from neurath.core.service import COMMANDS
+from neurath.core.commands import COMMANDS
 from neurath.resources import BUNDLE
 source_root = Path(sys.argv[1]).resolve()
 def guard(event, args):

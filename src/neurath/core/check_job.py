@@ -7,8 +7,9 @@ import subprocess
 from hashlib import sha256
 
 from neurath.core.codec import encode
+from neurath.core.commands import Context
 from neurath.core.domain import require
-from neurath.core.service import Context, Core
+from neurath.core.service import Core
 
 
 def execute(definition):
@@ -61,7 +62,7 @@ def run(core, identifier):
         task = tx.task(value["task_id"])
         require(task.state == "running", "task-state")
         task.validate_observation_scope(value["execution_scope"])
-        core._participant(task, value["actor_id"])
+        task.require_participant(value["actor_id"])
         tx.put_record(
             "check-execution", identifier, {**value, "state": "running"}, record["revision"]
         )
@@ -79,7 +80,7 @@ def run(core, identifier):
             )
         return {"state": "failed-to-execute", "error": type(error).__name__}
     context = Context(value["actor_id"], value["session_id"], "check-result:" + identifier)
-    evidence = core.observe_tool(
+    evidence = core.provenance.observe_tool(
         context,
         value["task_id"],
         "owned-check:" + identifier,

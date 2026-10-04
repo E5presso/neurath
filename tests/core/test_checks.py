@@ -7,9 +7,10 @@ import sys
 import pytest
 
 from neurath.core.check_job import run
+from neurath.core.commands import Context
 from neurath.core.domain import Condition, CoreError, Phase, Skill
 from neurath.core.hook_adapter import HookAdapter
-from neurath.core.service import Context, Core
+from neurath.core.service import Core
 
 
 @pytest.mark.parametrize("exit_code", [0, 7])
@@ -51,8 +52,8 @@ def test_prepared_native_check_records_real_exit_not_printed_json(tmp_path, exit
         },
     )
     context = Context("codex:session:s", "s", "fixture")
-    core.observe_actor(context.actor_id, context.session_id, "codex")
-    source = core.observe_input(context, "Check the declared result", "input")
+    core.sessions.observe_actor(context.actor_id, context.session_id, "codex")
+    source = core.provenance.observe_input(context, "Check the declared result", "input")
     task = core.call(
         context,
         "task_define",

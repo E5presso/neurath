@@ -13,7 +13,7 @@ COMMANDS = {
 }
 
 
-def call(tx, core, context, name, values):
+def call(tx, store, context, actor, name, values):
     if name == "verification_read":
         record = tx.record("check-execution", values["execution_id"])
         require(record is not None, "check-execution-missing")
@@ -21,9 +21,9 @@ def call(tx, core, context, name, values):
     from neurath.core.hooks import configured_checks
 
     task = tx.task(values["task_id"])
-    core._participant(task, context.actor_id)
+    task.require_participant(context.actor_id)
     require(task.state == "running", "task-state")
-    target = checkout(core.store.root, values["checkout"])
+    target = checkout(store.root, values["checkout"])
     definition = next(
         (item for item in configured_checks(target) if item["name"] == values["check_name"]), None
     )
@@ -36,7 +36,7 @@ def call(tx, core, context, name, values):
             "-m",
             "neurath.core.check_job",
             "--root",
-            str(core.store.root),
+            str(store.root),
             "--execution-id",
             identifier,
         ]
@@ -52,7 +52,7 @@ def call(tx, core, context, name, values):
         "state": "prepared",
     }
     tx.put_record("check-execution", identifier, value)
-    provider = core._actor(tx, context)["provider"]
+    provider = actor["provider"]
     return {
         "execution": value,
         "native_action": {
@@ -65,10 +65,10 @@ def call(tx, core, context, name, values):
     }
 
 
-def authorize_launch(core, context, payload):
+def authorize_launch(store, context, payload):
     values = payload["tool_input"]
     command = values.get("command", values.get("cmd"))
-    with core.store.transaction() as tx:
+    with store.transaction() as tx:
         candidates = [
             r for r in tx.records("check-execution") if r["value"].get("command") == command
         ]
@@ -84,7 +84,7 @@ def authorize_launch(core, context, payload):
             "check-launch-state",
         )
         task = tx.task(value["task_id"])
-        core._participant(task, context.actor_id)
+        task.require_participant(context.actor_id)
         require(task.state == "running", "task-state")
         from neurath.core.hooks import configured_checks
 

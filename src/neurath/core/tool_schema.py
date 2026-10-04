@@ -1,6 +1,6 @@
 """One closed MCP schema projection of core commands."""
 
-from neurath.core.service import COMMANDS
+from neurath.core.commands import COMMANDS
 
 STRING = {"type": "string", "minLength": 1}
 STRINGS = {"type": "array", "items": STRING}

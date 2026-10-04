@@ -5,8 +5,9 @@ from pathlib import Path
 
 import pytest
 
+from neurath.core.commands import Context
 from neurath.core.domain import CoreError
-from neurath.core.service import Context, Core
+from neurath.core.service import Core
 
 
 def git(root, *args):
@@ -32,10 +33,12 @@ def test_same_actor_claims_linked_checkout_without_new_session(tmp_path):
     )
     git(root, "worktree", "add", "-qb", "task", str(linked))
     service = Core(root)
-    service.observe_actor("root", "same-session", "codex")
-    service.observe_actor("reader", "same-session", "codex", parent="root")
+    service.sessions.observe_actor("root", "same-session", "codex")
+    service.sessions.observe_actor("reader", "same-session", "codex", parent="root")
     context = Context("root", "same-session", "native-call")
-    source = service.observe_user(context, "Work in the selected checkout", "original-user-event")
+    source = service.provenance.observe_user(
+        context, "Work in the selected checkout", "original-user-event"
+    )
     task = service.call(
         context,
         "task_define",
@@ -76,7 +79,7 @@ def test_an_unrelated_checkout_does_not_gain_write_membership(tmp_path):
     git(root, "init", "-q")
     git(foreign, "init", "-q")
     service = Core(root)
-    service.observe_actor("root", "session", "codex")
+    service.sessions.observe_actor("root", "session", "codex")
     with pytest.raises(CoreError, match="foreign-project-checkout"):
         service.call(
             Context("root", "session", "read"), "worktree_read", {"checkout": str(foreign)}
@@ -138,9 +141,9 @@ def test_future_worktree_can_be_reserved_and_released_without_existing_git_direc
     root.mkdir()
     git(root, "init", "-q")
     core = Core(root)
-    core.observe_actor("root", "session", "codex")
+    core.sessions.observe_actor("root", "session", "codex")
     context = Context("root", "session", "call")
-    source = core.observe_input(context, "Use an isolated checkout", "input")
+    source = core.provenance.observe_input(context, "Use an isolated checkout", "input")
     task = core.call(
         context,
         "task_define",
@@ -165,7 +168,7 @@ def test_future_worktree_can_be_reserved_and_released_without_existing_git_direc
         "worktree_release",
         {"key": "release", "checkout": str(target), "generation": lease["generation"]},
     )
-    assert core.stop(context)["allowed"] is False
+    assert core.sessions.stop(context)["allowed"] is False
 
 
 def test_linked_checkout_uses_its_own_registered_check_profile(tmp_path):
@@ -200,8 +203,10 @@ def test_linked_checkout_uses_its_own_registered_check_profile(tmp_path):
         root, skills={"check": Skill("check", "1", (Phase("check", effects=frozenset({"check"})),))}
     )
     context = Context("codex:session:actual", "actual", "setup")
-    core.observe_actor(context.actor_id, context.session_id, "codex")
-    source = core.observe_input(context, "Run the registered linked-checkout check", "input")
+    core.sessions.observe_actor(context.actor_id, context.session_id, "codex")
+    source = core.provenance.observe_input(
+        context, "Run the registered linked-checkout check", "input"
+    )
     task = core.call(
         context,
         "task_define",

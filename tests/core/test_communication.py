@@ -2,8 +2,8 @@
 
 import pytest
 
+from neurath.core.commands import Context
 from neurath.core.domain import CoreError
-from neurath.core.service import Context
 from tests.core.test_service import call
 
 

@@ -5,9 +5,10 @@ from uuid import uuid4
 
 import pytest
 
+from neurath.core.commands import Context
 from neurath.core.domain import Phase, Skill
 from neurath.core.hook_adapter import HookAdapter
-from neurath.core.service import Context, Core
+from neurath.core.service import Core
 
 
 def setup(root, effects):
@@ -22,7 +23,7 @@ def setup(root, effects):
     def call(name, **values):
         return core.call(context, name, {"key": uuid4().hex, **values})
 
-    source = core.observe_input(context, "Perform the requested work.", "input")
+    source = core.provenance.observe_input(context, "Perform the requested work.", "input")
     task = call(
         "task_define", goal="Deliver result", source_ids=[source.id], acceptance=[{"id": "done"}]
     )["task"]
@@ -74,7 +75,7 @@ def test_terminated_cancelled_recipient_can_be_settled_without_completing_goal(t
         source_id=result["result_source"],
     )
     assert core.call(owner, "task_read", {"task_id": task["id"]})["task"]["state"] == "running"
-    assert core.stop(owner)["pending"][0]["reason"] == "task-unfinished"
+    assert core.sessions.stop(owner)["pending"][0]["reason"] == "task-unfinished"
 
 
 def test_session_end_returns_same_session_executor_responsibility_for_adoption(tmp_path):
@@ -105,7 +106,7 @@ def test_session_end_returns_same_session_executor_responsibility_for_adoption(t
         assert tx.record("actor", "claude-code:session:owner")["value"]["status"] == "active"
     hook.handle("SessionStart", {"session_id": "replacement"}, "replacement-start")
     replacement = Context("codex:session:replacement", "replacement", "resume")
-    source = core.observe_input(
+    source = core.provenance.observe_input(
         replacement, "Continue the interrupted Task.", "continuation-instruction"
     )
     retained = core.call(replacement, "task_read", {"task_id": task["id"]})["task"]
@@ -148,4 +149,4 @@ def test_session_end_returns_same_session_executor_responsibility_for_adoption(t
             "inputs": {},
         },
     )
-    assert not core.stop(replacement)["allowed"]
+    assert not core.sessions.stop(replacement)["allowed"]

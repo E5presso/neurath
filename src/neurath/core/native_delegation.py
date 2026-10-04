@@ -6,7 +6,6 @@ observed; the assigned work remains parallel.
 """
 
 import re
-from dataclasses import replace
 
 from neurath.core.codec import encode
 from neurath.core.domain import require
@@ -37,10 +36,7 @@ def prepare(core, provider, context, payload):
             "assignment-issuer",
         )
         task = tx.task(dispatch["value"]["task_id"])
-        controllers = {
-            a.recipient for a in task.assignments if a.role == "executor" and a.state == "active"
-        }
-        require(context.actor_id in (controllers or {task.owner_actor}), "assignment-issuer")
+        require(context.actor_id in task.controllers, "assignment-issuer")
         require(task.state == "running", "task-state")
         assignment = next(a for a in task.assignments if a.id == identifier)
         require(
@@ -104,7 +100,7 @@ def child_started(core, provider, context):
         # A resumed known child must not consume another pending fresh spawn.
         if tx.record("native-handle", context.actor_id) is not None:
             return
-    core.bind_recipient(value["task_id"], value["assignment_id"], context.actor_id)
+    core.assignments.bind_recipient(value["task_id"], value["assignment_id"], context.actor_id)
     with core.store.transaction() as tx:
         latest = tx.record("native-spawn", slot)
         require(latest["value"] == value, "native-spawn-changed")
@@ -155,5 +151,5 @@ def finished(core, provider, context, payload, *, failed=False):
                     {**pending["value"], "state": "observed", "failed": True},
                     pending["revision"],
                 )
-            updated = task.with_assignment(replace(assignment, state="rejected", verdict="failed"))
+            updated = task.with_assignment(assignment.launch_failed())
             tx.save_task(updated, expected_revision=task.revision)
