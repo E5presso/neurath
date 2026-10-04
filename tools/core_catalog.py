@@ -42,7 +42,7 @@ def render(bundle: Path):
         )
     audit += [
         "",
-        "Nested skills must be declared and remain within their parent phase effects. Normal task completion requires all attached phases and user acceptance.",
+        "Nested skills must be declared and return to the unfinished parent phase. Normal task completion requires all attached phases and user acceptance.",
         "",
     ]
     return {"HARNESS_INDEX.md": "\n".join(index) + "\n", "HARNESS_AUDIT.md": "\n".join(audit)}

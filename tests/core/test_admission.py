@@ -1,10 +1,9 @@
-"""Effects are checked against the current skill phase at the host boundary."""
+"""Writer coordination and workflow completion are separate from native permissions."""
 
 import subprocess
-
 import pytest
-
-from neurath.core.domain import Condition, CoreError, Phase, Skill
+from neurath.core.domain import CoreError, Phase, Skill
+from neurath.core.hook_adapter import HookAdapter
 from neurath.core.service import Context, Core
 
 
@@ -12,159 +11,118 @@ from neurath.core.service import Context, Core
 def setup(tmp_path):
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     core = Core(
-        tmp_path,
-        skills={
-            "work": Skill(
-                "work",
-                "1",
-                (
-                    Phase("read", (Condition("understood"),)),
-                    Phase("edit", (), frozenset({"read", "edit", "check"})),
-                ),
-            )
-        },
+        tmp_path, skills={"work": Skill("work", "1", (Phase("analysis"), Phase("delivery")))}
     )
-    core.observe_actor("root", "session", "codex")
-    context = Context("root", "session", "event")
-    source = core.observe_user(context, "Implement the requirement", "prompt")
+    hook = HookAdapter(core, "codex")
+    hook.handle("SessionStart", {"session_id": "s"}, "start")
+    context = Context("codex:session:s", "s", "call")
+    source = core.observe_input(context, "Deliver the requested result", "input")
     task = core.call(
         context,
         "task_define",
         {
             "key": "define",
-            "goal": "Requirement works",
+            "goal": "Delivered",
             "source_ids": [source.id],
-            "acceptance": [{"id": "works"}],
+            "acceptance": [{"id": "done"}],
         },
     )["task"]
-    for name, data in [("task_start", {}), ("skill_start", {"skill": "work"})]:
+    for name, extra in [("task_start", {}), ("skill_start", {"skill": "work"})]:
         task = core.call(
             context,
             name,
-            {"key": name, "task_id": task["id"], "expected_revision": task["revision"], **data},
+            {"key": name, "task_id": task["id"], "expected_revision": task["revision"], **extra},
         )["task"]
-    return core, context, task, tmp_path
+    return core, hook, context, task, tmp_path
 
 
-def advance(core, context, task):
-    evidence = core.call(
-        context,
-        "report_record",
-        {"key": "report", "task_id": task["id"], "body": "Scope checked", "passed": True},
-    )["evidence"]
-    return core.call(
-        context,
-        "phase_complete",
-        {
-            "key": "phase",
-            "task_id": task["id"],
-            "expected_revision": task["revision"],
-            "phase_id": "read",
-            "outcomes": {"understood": [evidence["id"]]},
-            "inputs": {},
-        },
-    )["task"]
+@pytest.mark.parametrize(
+    "tool,values",
+    [
+        ("exec_command", {"cmd": "git status\ntouch file"}),
+        ("Bash", {"command": "git push origin branch"}),
+        ("write_stdin", {"session_id": 123, "chars": "next input\n"}),
+        ("unknown_native_tool", {}),
+    ],
+)
+def test_native_calls_neither_grant_permissions_nor_advance_workflow(setup, tool, values):
+    core, hook, context, task, root = setup
+    assert (
+        hook.handle(
+            "PreToolUse",
+            {
+                "session_id": "s",
+                "tool_name": tool,
+                "tool_use_id": "call",
+                "cwd": str(root),
+                "tool_input": values,
+            },
+            "pre",
+        )
+        == {}
+    )
+    current = core.call(context, "task_read", {"task_id": task["id"]})["task"]
+    assert current["revision"] == task["revision"]
+    with pytest.raises(CoreError, match="phase-order"):
+        core.call(
+            context,
+            "phase_complete",
+            {
+                "key": "skip",
+                "task_id": task["id"],
+                "expected_revision": task["revision"],
+                "phase_id": "delivery",
+                "outcomes": {},
+                "inputs": {},
+            },
+        )
+    with pytest.raises(CoreError, match="phases-unfinished"):
+        core.call(
+            context,
+            "task_complete",
+            {
+                "key": "early",
+                "task_id": task["id"],
+                "expected_revision": task["revision"],
+                "outcomes": {},
+            },
+        )
+    assert not core.stop(context)["allowed"]
 
 
-def test_read_does_not_require_task_focus_claim_or_policy(setup):
-    core, _, _, _ = setup
-    core.observe_actor("reader", "child-session", "claude-code")
-    assert core.admit(Context("reader", "child-session", "read"), {"read"})["allowed"]
-
-
-def test_phase_denies_edit_even_when_writer_owns_checkout(setup):
-    core, context, task, root = setup
-    lease = core.call(
-        context, "worktree_claim", {"key": "claim", "task_id": task["id"], "checkout": str(root)}
-    )["lease"]
-    with pytest.raises(CoreError, match="effect-out-of-phase"):
-        core.admit(context, {"edit"}, checkout_path=root, generation=lease["generation"])
-    assert core.stop(context)["allowed"] is False
-
-
-def test_allowed_edit_requires_current_lease_and_tracks_implementer(setup):
-    core, context, task, root = setup
-    task = advance(core, context, task)
+def test_explicit_editor_requires_current_writer_without_phase_permission_model(setup):
+    core, hook, context, task, root = setup
     with pytest.raises(CoreError, match="writer-lease-required"):
-        core.admit(context, {"edit"}, checkout_path=root)
+        core.admit_write(context, checkout_path=root, generation=None)
     lease = core.call(
         context, "worktree_claim", {"key": "claim", "task_id": task["id"], "checkout": str(root)}
     )["lease"]
     with pytest.raises(CoreError, match="stale-lease"):
-        core.admit(context, {"edit"}, checkout_path=root, generation=lease["generation"] + 1)
-    admitted = core.admit(context, {"edit"}, checkout_path=root, generation=lease["generation"])
-    assert admitted["task_id"] == task["id"]
-    assert core.call(context, "task_read", {"task_id": task["id"]})["task"][
-        "implementation_actors"
-    ] == ["root"]
+        core.admit_write(context, checkout_path=root, generation=lease["generation"] + 1)
+    assert core.admit_write(context, checkout_path=root, generation=lease["generation"])["allowed"]
+    assert core.call(context, "phase_read", {"task_id": task["id"]})["phase"]["id"] == "analysis"
+    core.observe_actor("other", "other-session", "codex")
+    with pytest.raises(CoreError, match="lease-conflict"):
+        with core.store.transaction() as tx:
+            tx.claim(str(root), "other")
 
 
-def test_unknown_execution_cannot_escape_read_phase(setup):
-    core, context, _, _ = setup
-    with pytest.raises(CoreError, match="effect-out-of-phase"):
-        core.admit(context, {"execute"})
-
-
-def test_checks_do_not_need_writer_lease(setup):
-    core, context, task, _ = setup
-    advance(core, context, task)
-    assert core.admit(context, {"check"})["allowed"]
-
-
-def test_publication_needs_interpreted_consent_for_the_exact_native_target(setup):
-    core, context, task, root = setup
-    from dataclasses import replace
-
-    from neurath.core.domain import Phase, Skill
-
-    # This fixture's release phase is explicit, not reached by skipping its read phase.
-    core.skills["release"] = Skill(
-        "release", "1", (Phase("publish", effects=frozenset({"publish"})),)
-    )
-    task = advance(core, context, task)
-    task = core.call(
-        context,
-        "phase_complete",
-        {
-            "key": "edit-finished",
-            "task_id": task["id"],
-            "expected_revision": task["revision"],
-            "phase_id": "edit",
-            "outcomes": {},
-            "inputs": {},
-        },
-    )["task"]
-    task = core.call(
-        context,
-        "skill_start",
-        {
-            "key": "release",
-            "task_id": task["id"],
-            "expected_revision": task["revision"],
-            "skill": "release",
-        },
-    )["task"]
-    target = {"command": "git push origin branch", "cwd": str(root)}
-    with pytest.raises(CoreError, match="approval-required"):
-        core.admit(context, {"publish"}, effect_target=target)
-    source = core.observe_input(context, "Publish the verified change.", "publish")
+def test_structured_editor_paths_are_literal_not_shell_patterns(setup):
+    core, hook, context, task, root = setup
     core.call(
-        replace(context, invocation_id="approval"),
-        "approval_record",
-        {
-            "key": "approval",
-            "task_id": task["id"],
-            "source_id": source.id,
-            "start": 0,
-            "end": len(source.text),
-            "digest": source.digest,
-            "action": "publish",
-            "target": target,
-            "reason": "Current user authorized publication.",
-        },
+        context,
+        "worktree_claim",
+        {"key": "claim-literal", "task_id": task["id"], "checkout": str(root)},
     )
-    assert core.admit(context, {"publish"}, effect_target=target)["allowed"]
-    with pytest.raises(CoreError, match="approval-required"):
-        core.admit(
-            context, {"publish"}, effect_target={**target, "command": "git push different branch"}
-        )
+    result = hook.handle(
+        "PreToolUse",
+        {
+            "session_id": "s",
+            "cwd": str(root),
+            "tool_name": "Write",
+            "tool_use_id": "literal-write",
+            "tool_input": {"file_path": str(root / "[literal].txt"), "content": "source"},
+        },
+        "write",
+    )
+    assert result == {}

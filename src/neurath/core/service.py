@@ -19,7 +19,6 @@ from neurath.core.domain import (
     Evidence,
     Source,
     Task,
-    admit_effects,
     quote,
     require,
     select_execution,
@@ -47,7 +46,6 @@ COMMANDS = {
     **COMMUNICATION_COMMANDS,
     **MEMORY_COMMANDS,
     "session_status": (set(), set(), True),
-    "harness_bypass": (set(), {"enabled", "reason"}, False),
     "collaboration_discover": (set(), set(), True),
     "task_list": (set(), {"all_project"}, True),
     "task_read": ({"task_id"}, set(), True),
@@ -530,24 +528,6 @@ class Core:
         return result
 
     def _execute(self, tx, context, actor, name, values):
-        if name == "harness_bypass":
-            previous = tx.record("bypass", context.actor_id)
-            if "enabled" in values:
-                require(type(values["enabled"]) is bool, "invalid-input")
-                require(not actor["is_subagent"], "task-owner-required")
-                value = {
-                    "enabled": values["enabled"],
-                    "reason": values.get("reason", "Observed harness malfunction"),
-                    "assurance": "agent-assessment",
-                }
-                tx.put_record(
-                    "bypass",
-                    context.actor_id,
-                    value,
-                    0 if previous is None else previous["revision"],
-                )
-                return value
-            return {"enabled": False} if previous is None else previous["value"]
         if name in PROVIDER_COMMANDS:
             return provider_command(tx, self, context, name, values)
         if name in CHECK_COMMANDS:
@@ -981,7 +961,6 @@ class Core:
         require(
             not any(
                 a.recipient == recipient
-                and a.state in {"issued", "active", "cancel-requested"}
                 and (a.role == "reviewer") != (role == "reviewer")
                 for a in task.assignments
             ),
@@ -1279,77 +1258,37 @@ class Core:
                 dispatch["revision"],
             )
 
-    def admit(self, context, effects, *, checkout_path=None, generation=None, effect_target=None):
-        """Inspect actual effects supplied by the adapter, not public tool arguments.
+    def admit_write(self, context, *, checkout_path, generation):
+        """Coordinate an explicit editor write, without interpreting host commands."""
+        from neurath.core.workspace import checkout
 
-        A lease gates source changes, never reads or failure reports. The host
-        retains its own permission decision after this work-contract check.
-        """
-        effects = frozenset(effects)
         with self.store.transaction() as tx:
             self._actor(tx, context)
-            if effects <= {"read"}:
-                return {"allowed": True}
             focus = tx.record("focus", context.actor_id)
             require(focus is not None, "task-focus-required")
             task = tx.task(focus["value"]["task_id"])
+            require(task.state == "running", "task-state")
             self._participant(task, context.actor_id)
-            bypass = tx.record("bypass", context.actor_id)
-            if bypass is None or not bypass["value"]["enabled"]:
-                admit_effects(task, effects)
-            else:
-                require(task.state in {"running", "waiting"}, "task-state")
-            for approval_action in sorted(effects & {"publish", "decision"}):
-                require(
-                    effect_target is not None
-                    and any(
-                        r["value"]["task_id"] == task.id
-                        and r["value"]["action"] == approval_action
-                        and r["value"]["target"] == effect_target
-                        and r["value"].get("active", True)
-                        for r in tx.records("approval")
-                    ),
-                    "approval-required",
-                    action=approval_action,
-                    target=effect_target,
-                )
-            if any(
-                a.recipient == context.actor_id and a.role == "reviewer" and a.state == "active"
-                for a in task.assignments
-            ):
-                require(effects <= {"read", "check"}, "reviewer-read-only")
-            if (
-                effects & {"edit", "git", "cleanup"}
-                or "execute" in effects
-                and checkout_path is not None
-            ):
-                from neurath.core.workspace import checkout
-
-                require(checkout_path is not None, "writer-target-required")
-                target = checkout(self.store.root, checkout_path)
-                lease = tx.lease(target)
-                require(
-                    lease is not None and lease["writer"] == context.actor_id,
-                    "writer-lease-required",
-                )
-                require(
-                    type(generation) is int and generation == lease["generation"], "stale-lease"
-                )
-            may_change_source = bool(effects & {"edit", "cleanup"}) or (
-                "execute" in effects and checkout_path is not None
+            require(
+                not any(
+                    a.recipient == context.actor_id and a.role == "reviewer" and a.state == "active"
+                    for a in task.assignments
+                ),
+                "reviewer-read-only",
             )
-            if may_change_source and context.actor_id not in task.implementation_actors:
+            target = checkout(self.store.root, checkout_path)
+            lease = tx.lease(target)
+            require(
+                lease is not None and lease["writer"] == context.actor_id, "writer-lease-required"
+            )
+            require(type(generation) is int and generation == lease["generation"], "stale-lease")
+            if context.actor_id not in task.implementation_actors:
                 updated = task.changed(
                     implementation_actors=(*task.implementation_actors, context.actor_id)
                 )
                 tx.save_task(updated, expected_revision=task.revision)
                 task = updated
-            return {
-                "allowed": True,
-                "task_id": task.id,
-                "task_revision": task.revision,
-                "phase_id": None if task.current_phase is None else task.current_phase.id,
-            }
+            return {"allowed": True, "task_id": task.id, "task_revision": task.revision}
 
     def stop(self, context):
         with self.store.transaction() as tx:

@@ -20,7 +20,6 @@
 | `collaboration_reply` | `body`, `key`, `message_id` |  |
 | `collaboration_send` | `body`, `key`, `recipient` | `task_id` |
 | `evidence_list` | `task_id` |  |
-| `harness_bypass` | `key` | `enabled`, `reason` |
 | `learning_pending` |  |  |
 | `learning_status` |  |  |
 | `memory_checkpoint` | `key`, `summary` | `decisions`, `lessons`, `next_steps`, `status` |

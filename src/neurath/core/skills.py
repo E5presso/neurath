@@ -61,7 +61,7 @@ def load_skills(path=None):
                     Phase(
                         phase["id"],
                         tuple(conditions),
-                        frozenset(phase["effects"]),
+                        frozenset(phase.get("effects", ())),
                         phase.get("restart_from"),
                         children,
                         tuple((key, tuple(values)) for key, values in phase.get("choices", [])),
@@ -77,13 +77,6 @@ def load_skills(path=None):
             for phase in result[identifier].phases:
                 for child in phase.subskills:
                     visit(child, ancestors | {identifier})
-                    require(
-                        all(p.effects <= phase.effects for p in result[child].phases),
-                        "subskill-effects-exceed-parent",
-                        skill=identifier,
-                        phase=phase.id,
-                        child=child,
-                    )
 
         for identifier in result:
             visit(identifier, set())

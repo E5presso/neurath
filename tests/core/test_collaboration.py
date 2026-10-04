@@ -302,3 +302,34 @@ def test_accepted_review_cannot_be_reused_after_reviewed_source_changes(core):
     with service.store.transaction() as tx:
         with pytest.raises(CoreError, match="evidence-subject-changed"):
             service._outcomes(tx, task_id, {"reviewed": [report["evidence"]["id"]]})
+
+
+def test_worker_history_cannot_be_relabelled_as_independent_review(core):
+    _, task_id = core
+    worker = prepare(core, role="worker")["assignment"]
+    report = call(
+        core,
+        "assignment_report",
+        {
+            "task_id": task_id,
+            "assignment_id": worker["id"],
+            "verdict": "pass",
+            "subject": "rev1",
+            "body": "Completed assigned work",
+        },
+        actor="child",
+        key="worked",
+    )["assignment"]
+    call(
+        core,
+        "assignment_accept",
+        {
+            "task_id": task_id,
+            "assignment_id": worker["id"],
+            "source_id": report["result_source"],
+            "subject": "rev1",
+        },
+        key="accepted-work",
+    )
+    with pytest.raises(CoreError, match="review-role-conflict"):
+        prepare(core, role="reviewer")

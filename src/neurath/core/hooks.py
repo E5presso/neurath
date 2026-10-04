@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from neurath.core.domain import CoreError, require
 from neurath.core.hook_adapter import CONTROL_TOOLS, HookAdapter
-from neurath.core.host_events import SHELL_TOOLS, effects_for_tool
+from neurath.core.host_events import EDIT_TOOLS, READ_TOOLS
 from neurath.core.service import Core
 
 
@@ -69,38 +69,12 @@ def invoke(root, provider, payload):
     require(isinstance(payload, dict), "native-payload-required")
     event = payload.get("hook_event_name")
     require(isinstance(event, str), "native-event-required")
-    checks = None
-    if event == "PreToolUse":
-        name, values = payload.get("tool_name"), payload.get("tool_input")
-        if isinstance(name, str) and isinstance(values, dict):
-            if name in CONTROL_TOOLS:
-                return {}
-            if name == "write_stdin":
-                from neurath.core.terminal import control
-
-                if control(values):
-                    return {}
-            base = effects_for_tool(name, values)
-            if name in SHELL_TOOLS and base <= {"read"}:
-                try:
-                    from neurath.core.workspace import checkout
-
-                    directory = values.get("workdir") or values.get("cwd") or payload.get("cwd")
-                    require(isinstance(directory, str), "check-directory-required")
-                    directory = Path(payload.get("cwd") or root) / directory
-                    checks = configured_checks(checkout(root, directory))
-                except CoreError, ValueError, OSError:
-                    if base <= {"read"}:
-                        return {}
-                    raise
-            if effects_for_tool(name, values, checks=checks or (), cwd=payload.get("cwd")) <= {
-                "read"
-            }:
-                return {}
+    if event == "PreToolUse" and payload.get("tool_name") in CONTROL_TOOLS | READ_TOOLS:
+        return {}
     core = Core(root)
     # Distinct deliveries remain distinct even when prompt text is identical.
     receipt = "hook-" + uuid4().hex
-    result = HookAdapter(core, provider, checks=checks).handle(event, payload, receipt)
+    result = HookAdapter(core, provider, checks=None).handle(event, payload, receipt)
     if event in {"SessionStart", "UserPromptSubmit"} and not payload.get("agent_id"):
         from neurath.reporting import reporting_event
         from neurath.updates import update_event
@@ -126,6 +100,27 @@ def main(arguments=None):
         code = error.code if isinstance(error, CoreError) else "native-hook-unavailable"
         event = payload.get("hook_event_name") if isinstance(payload, dict) else None
         if event == "PreToolUse":
+            from neurath.core.native_delegation import SPAWN, FOLLOWUP
+
+            name = payload.get("tool_name", "")
+            managed = isinstance(name, str) and (
+                name.startswith(("mcp__neurath__", "mcp__neurath_collaboration__"))
+                or name in EDIT_TOOLS | SPAWN | FOLLOWUP | {"SubagentHandback"}
+            )
+            if not managed:
+                print(
+                    json.dumps(
+                        {
+                            "hookSpecificOutput": {
+                                "hookEventName": event,
+                                "additionalContext": code
+                                + ": Neurath could not retain this observation. Existing workflow obligations remain; native permissions are unchanged.",
+                            }
+                        }
+                    ),
+                    flush=True,
+                )
+                return 0
             result = {
                 "hookSpecificOutput": {
                     "hookEventName": event,

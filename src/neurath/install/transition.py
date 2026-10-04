@@ -80,11 +80,18 @@ def _require_offline(root, db, stack):
     live = []
     for line in result.stdout.splitlines():
         fields = line.strip().split(maxsplit=1)
-        if (
-            len(fields) == 2
-            and str(root) in fields[1]
-            and any(name in fields[1] for name in old_modules)
-        ):
+        if len(fields) != 2 or not any(name in fields[1] for name in old_modules):
+            continue
+        same_project = str(root) in fields[1]
+        # The v1 MCP launcher puts its checkout after --root. Reuse the Git
+        # common-root identity used by both stores, including linked checkouts.
+        if "neurath.agents.mcp --root " in fields[1]:
+            argument = fields[1].split("neurath.agents.mcp --root ", 1)[1].strip().strip("\"'")
+            try:
+                same_project = control_root(Path(argument)) == root
+            except OSError, subprocess.CalledProcessError:
+                pass
+        if same_project:
             live.append(int(fields[0]))
     tables = {row[0] for row in db.execute("SELECT name FROM sqlite_schema WHERE type='table'")}
     processes = []

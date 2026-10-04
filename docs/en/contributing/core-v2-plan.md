@@ -2,7 +2,7 @@
 
 [한국어](../../ko/contributing/core-v2-plan.md) · [Core specification](core-v2-spec.md)
 
-The replacement source and removal of the previous core are implemented. The release candidate is 0.2.1. Installation and actual activation of an existing host are separate operations; a source commit does not change a running immutable installation.
+The replacement source and removal of the previous core are implemented. The release candidate is 0.2.2. Installation and actual activation of an existing host are separate operations; a source commit does not change a running immutable installation.
 
 ## Implemented boundaries
 
@@ -15,7 +15,7 @@ The replacement source and removal of the previous core are implemented. The rel
 
 ## Verification status
 
-The full source gate passed 512 package/installation tests and 198 isolated core contract tests. Independent review findings concerning terminal input, review freshness, mandatory independent review, request error isolation and native handback were corrected and revalidated. The built wheel passed independent imports with source checkout access denied, and installation/reinstallation/removal across three repository types. The actual setup bootstrap also passed user-file preservation and self-installation checks.
+The full source gate passed 472 package/installation tests and 158 isolated core contract tests. Workflow enforcement is limited to ordered transitions, completion evidence, assignment settlement and writer coordination. Shell classification, terminal-input interception, per-phase tool permissions and the bypass switch were removed. Independent review revalidated interrupted session/executor recovery, literal editor destinations, review freshness, required independent review and result attribution. The built wheel passed independent imports with source checkout access denied, and installation/reinstallation/removal across three repository types. The actual setup bootstrap also passed user-file preservation and self-installation checks.
 
 Actual Claude observations include ordered-phase rejection and continuation after an unfinished-task Stop in earlier frozen candidates. The current candidate additionally passed native subagent creation, source reading, attributed review, native handback, owner acceptance and ordered phase completion. The failed handback attempt and successful retry retain the same Task ID and separate attempts.
 
@@ -24,3 +24,5 @@ Actual Codex validation remains pending project/hook trust for the isolated cand
 ## Test replacement
 
 Tests coupled to removed internal structures are retired with those implementations. Required behaviors live in `tests/core`: Task/phase/Stop and rework, transactional revisions, source and approval provenance, writer ownership, three delegation choices, actual check results, review freshness, native return and legacy data preservation. Installer, update, reporting, wire transport and learning tests remain. The complete suite and source integrity checker are the release gates; a passing subset is partial evidence.
+
+The 0.2.2 wheel independently passed imports, three repository installation/reinstallation/removal cases and the real setup/self-installation validation. Its actual Claude root session attempted one normal Stop with an unfinished Task, received the native rejection and completed that same Task after reading the requested source. This validates completion responsibility without a shell-permission classifier. Actual Codex activation remains unverified pending the host's project/hook trust decision.

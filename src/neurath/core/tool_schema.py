@@ -9,7 +9,6 @@ FIELDS = {
     "check_name": STRING,
     "execution_id": STRING,
     "all_project": {"type": "boolean"},
-    "enabled": {"type": "boolean"},
     "publication_kind": {
         "enum": ["git-push", "pull-request", "pr-merge", "issue-closed", "release"]
     },
@@ -104,7 +103,7 @@ DESCRIPTIONS = {
     "verification_prepare": "Prepare an exact registered project check for native execution. Run the returned action once; the owned subprocess retains the actual exit code. Use native waiting rather than polling unchanged state.",
     "task_list": "Read tasks owned by or assigned to this actual actor and its current input source. Use all_project only for an explicit project-wide inspection; other actors' work does not become your obligation.",
     "source_restore": "Restore exact original input text from an imported v1 prompt receipt for your retained Task. The original digest must match; this never upgrades provenance to human attestation or invents missing text.",
-    "approval_record": "Record your interpretation of an actual user instruction for an exact action and target. Quote the retained original span. This is attributed semantic judgment, not native human attestation; peers and continuations cannot authorize new work. For shell publication the target is {command, cwd} with an absolute cwd.",
+    "approval_record": "Record your interpretation of an actual user instruction for an exact action and target. Quote the retained original span. This is attributed semantic judgment, not native human attestation; peers and continuations cannot authorize new work. The target identifies the logical action being assessed; this record grants no native execution permission.",
     "session_status": "Read the native actor and its unfinished obligations. Reads require no writer lease.",
     "task_define": "Register an authorized user outcome with original source references and acceptance conditions.",
     "task_start": "Start the existing task using its current revision.",

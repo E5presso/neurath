@@ -9,7 +9,7 @@ import re
 from dataclasses import replace
 
 from neurath.core.codec import encode
-from neurath.core.domain import admit_effects, require
+from neurath.core.domain import require
 
 SPAWN = frozenset(
     {"spawn_agent", "collaborationspawn_agent", "collaboration.spawn_agent", "Agent", "Task"}
@@ -41,7 +41,7 @@ def prepare(core, provider, context, payload):
             a.recipient for a in task.assignments if a.role == "executor" and a.state == "active"
         }
         require(context.actor_id in (controllers or {task.owner_actor}), "assignment-issuer")
-        admit_effects(task, frozenset({"delegate"}))
+        require(task.state == "running", "task-state")
         assignment = next(a for a in task.assignments if a.id == identifier)
         require(
             assignment.execution == "subagent" and assignment.state == "issued",

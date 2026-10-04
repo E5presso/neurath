@@ -168,7 +168,7 @@ def test_native_reads_and_failure_reporting_do_not_depend_on_valid_check_configu
     assert bound == {}
 
 
-def test_registered_read_command_keeps_check_admission_in_process_adapter(tmp_path):
+def test_unbound_native_check_does_not_manufacture_workflow_evidence(tmp_path):
     from neurath.core.hooks import invoke
 
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
@@ -189,8 +189,11 @@ def test_registered_read_command_keeps_check_admission_in_process_adapter(tmp_pa
             "tool_input": {"command": "git diff --check"},
         },
     )
-    assert response["hookSpecificOutput"]["permissionDecision"] == "deny"
-    assert "task-focus-required" in response["hookSpecificOutput"]["permissionDecisionReason"]
+    assert response == {}
+    from neurath.core.service import Core
+
+    with Core(tmp_path).store.transaction() as tx:
+        assert not tx.records("check-execution")
 
 
 @pytest.mark.parametrize(
@@ -257,3 +260,40 @@ def test_failed_external_read_returns_error_without_losing_followup_diagnostics(
         },
     )
     assert second["result"]["structuredContent"]["result"] == {"ready": True}
+
+
+def test_observation_failure_does_not_block_native_work_but_cannot_complete_workflow(tmp_path):
+    payloads = [
+        {
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "tool_input": {"command": "native repair"},
+        },
+        {
+            "hook_event_name": "PreToolUse",
+            "tool_name": "mcp__neurath_collaboration__task_complete",
+            "tool_input": {"_call_id": "unknown"},
+        },
+        {"hook_event_name": "Stop"},
+    ]
+    outputs = []
+    for payload in payloads:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "neurath.core.hooks",
+                "--root",
+                str(tmp_path),
+                "--provider",
+                "codex",
+            ],
+            input=json.dumps(payload),
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        outputs.append(json.loads(result.stdout))
+    assert "permissionDecision" not in outputs[0]["hookSpecificOutput"]
+    assert outputs[1]["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert outputs[2]["decision"] == "block"

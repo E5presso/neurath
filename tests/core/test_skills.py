@@ -52,15 +52,6 @@ def test_invalid_or_recursive_subskill_definitions_are_rejected(tmp_path):
         load_skills(path)
 
 
-def test_declared_subskills_can_finish_within_parent_phase_effects():
-    skills = load_skills()
-    for skill in skills.values():
-        for phase in skill.phases:
-            for child in phase.subskills:
-                for child_phase in skills[child].phases:
-                    assert child_phase.effects <= phase.effects, (skill.id, phase.id, child)
-
-
 def test_autopilot_declares_real_nested_work_and_recovery_paths():
     skill = load_skills()["autopilot"]
     phases = {phase.id: phase for phase in skill.phases}
@@ -68,7 +59,6 @@ def test_autopilot_declares_real_nested_work_and_recovery_paths():
     assert "sync-docs" in phases["sync_docs"].subskills
     for phase in ("recovery", "meta_detection", "intent_audit"):
         assert phases[phase].restart_from == "collect_issues"
-    assert phases["execute_waves"].effects == {"read", "delegate"}
 
 
 def test_issue_publication_requires_independent_review_not_owner_report():

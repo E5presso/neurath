@@ -83,27 +83,12 @@ class Condition:
         )
 
 
-EFFECTS = frozenset(
-    {
-        "read",
-        "edit",
-        "git",
-        "workspace",
-        "check",
-        "delegate",
-        "publish",
-        "decision",
-        "cleanup",
-        "execute",
-    }
-)
-
-
 @dataclass(frozen=True, slots=True)
 class Phase:
     id: str
     requires: tuple[Condition, ...] = ()
-    effects: frozenset[str] = frozenset({"read"})
+    # Retained only to decode older candidate snapshots; not an execution policy.
+    effects: frozenset[str] = frozenset()
     restart_from: str | None = None
     subskills: frozenset[str] = frozenset()
     choices: tuple[tuple[str, tuple[str, ...]], ...] = ()
@@ -123,7 +108,6 @@ class Skill:
             "skill-definition",
         )
         for index, phase in enumerate(self.phases):
-            require(phase.effects <= EFFECTS, "skill-definition", phase=phase.id)
             require(
                 phase.restart_from is None or phase.restart_from in ids[: index + 1],
                 "skill-definition",
@@ -581,24 +565,6 @@ class Task:
             ownership_generation=self.ownership_generation + 1,
             assignments=assignments,
         )
-
-
-def admit_effects(task, effects):
-    require(effects <= EFFECTS, "unknown-effect")
-    if effects <= {"read"}:
-        return
-    require(task.state == "running", "task-state")
-    require(task.current_phase is not None, "skill-required")
-    index = task.skill_index
-    while index is not None:
-        run = task.skill_runs[index]
-        require(
-            effects <= run.current.effects,
-            "effect-out-of-phase",
-            phase=run.current.id,
-            denied=sorted(effects - run.current.effects),
-        )
-        index = run.parent_index
 
 
 def stop_reasons(session, actor, tasks):

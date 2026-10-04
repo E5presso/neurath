@@ -13,7 +13,6 @@ from neurath.core.domain import (
     Skill,
     Source,
     Task,
-    admit_effects,
     quote,
     select_execution,
     stop_reasons,
@@ -196,17 +195,6 @@ def test_restart_preserves_executor_but_requires_settled_bounded_work():
     assert repair.assignments == value.assignments
 
 
-def test_phase_effect_gate_blocks_native_edit_before_implementation():
-    value = task().start().attach_skill(skill())
-    admit_effects(value, frozenset({"read"}))
-    with pytest.raises(CoreError, match="effect-out-of-phase"):
-        admit_effects(value, frozenset({"edit"}))
-    with pytest.raises(CoreError, match="effect-out-of-phase"):
-        admit_effects(value, frozenset({"read", "publish"}))
-    value = complete_phase(value, "understand", "scope")
-    admit_effects(value, frozenset({"edit", "check"}))
-
-
 def test_child_report_settles_child_return_but_not_owner_task():
     assignment = Assignment(
         "a1", "subagent", "A bounded independent review", "owner", "child", "rev1"
@@ -239,7 +227,6 @@ def test_wrong_actor_or_changed_review_revision_cannot_report_or_accept():
 
 def test_reader_does_not_need_ownership_or_a_policy_snapshot():
     value = task().start().attach_skill(skill())
-    admit_effects(value, frozenset({"read"}))
     assert "lease" not in value.__dataclass_fields__
 
 
@@ -324,14 +311,6 @@ def test_undeclared_nested_skill_cannot_replace_parent_phase():
         value.attach_skill(
             Skill("escape", "1", (Phase("publish", effects=frozenset({"publish"})),))
         )
-
-
-def test_nested_skill_does_not_expand_parent_phase_effects():
-    outer = Skill("outer", "1", (Phase("inspect", subskills=frozenset({"inner"})),))
-    inner = Skill("inner", "1", (Phase("edit", effects=frozenset({"edit"})),))
-    value = task().start().attach_skill(outer).attach_skill(inner)
-    with pytest.raises(CoreError, match="effect-out-of-phase"):
-        admit_effects(value, frozenset({"edit"}))
 
 
 def test_rework_reuse_requires_same_condition_and_all_inputs():

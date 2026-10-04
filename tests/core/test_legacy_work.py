@@ -193,3 +193,44 @@ def test_historical_v1_changes_do_not_become_a_second_progress_gate_after_adopti
     apply_plan(tmp_path, make_plan(tmp_path))
     old.rename(old.with_suffix(".archive"))
     assert make_plan(tmp_path)["changes"] == []
+
+
+def test_transition_detects_same_project_host_from_linked_checkout(tmp_path, monkeypatch):
+    from contextlib import ExitStack
+    import subprocess
+    from neurath.install import transition
+
+    root, linked = tmp_path / "main", tmp_path / "linked checkout"
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=test@example.invalid",
+            "commit",
+            "--allow-empty",
+            "-qm",
+            "fixture",
+        ],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(root), "worktree", "add", "-q", "--detach", str(linked)], check=True
+    )
+    original = transition.subprocess.run
+
+    def observe(argv, **kwargs):
+        if argv[:2] == ["/bin/ps", "-axo"]:
+            return subprocess.CompletedProcess(
+                argv, 0, stdout=f"123 python -I -m neurath.agents.mcp --root {linked}\n"
+            )
+        return original(argv, **kwargs)
+
+    monkeypatch.setattr(transition.subprocess, "run", observe)
+    with sqlite3.connect(":memory:") as db, ExitStack() as stack:
+        with pytest.raises(CoreError, match="core-transition-host-active"):
+            transition._require_offline(root.resolve(), db, stack)

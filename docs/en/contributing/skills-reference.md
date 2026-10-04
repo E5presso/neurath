@@ -2,7 +2,7 @@
 
 [한국어](../../ko/contributing/skills-reference.md) · [Core contract](core-v2-spec.md)
 
-`core-skills.json` defines the distributed skills and ordered phases. Starting a skill snapshots its definition into the Task. `phase_complete` only accepts the current phase and its required outcomes. Nested skills must be declared and cannot expand parent effects. Conditional branches are explicit definitions; recovery records another attempt and uses the declared restart point. Skill completion and user Task acceptance are separate requirements.
+`core-skills.json` defines the distributed skills and ordered phases. Starting a skill snapshots its definition into the Task. `phase_complete` only accepts the current phase and its required outcomes. Nested skills must be declared and return to the unfinished parent phase. Conditional branches are explicit definitions; recovery records another attempt and uses the declared restart point. Skill completion and user Task acceptance are separate requirements.
 
 Implementation references:
 

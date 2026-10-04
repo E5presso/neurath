@@ -20,11 +20,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "publish",
-            "read"
-          ],
           "subskills": [],
           "file": "phases/phase-1-collection.md"
         },
@@ -37,10 +32,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "read"
           ],
           "subskills": [],
           "file": "phases/phase-2-dag.md"
@@ -61,10 +52,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "read"
-          ],
           "subskills": [],
           "file": "phases/phase-3-wave-loop.md"
         },
@@ -77,10 +64,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "read"
           ],
           "subskills": [],
           "file": "phases/phase-3_5-recovery.md",
@@ -132,10 +115,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "read"
-          ],
           "subskills": [],
           "file": "phases/phase-3_6-meta-detection.md",
           "restart_from": "collect_issues"
@@ -149,10 +128,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "read"
           ],
           "subskills": [
             "review-spec"
@@ -170,15 +145,6 @@
               ]
             }
           ],
-          "effects": [
-            "check",
-            "delegate",
-            "edit",
-            "execute",
-            "git",
-            "publish",
-            "read"
-          ],
           "subskills": [
             "sync-docs"
           ],
@@ -193,10 +159,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "read"
           ],
           "subskills": [],
           "file": "phases/phase-6-final-report.md"
@@ -241,10 +203,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "read"
-          ],
           "subskills": [],
           "file": "phases/phase-1-scenario-environment.md"
         },
@@ -269,11 +227,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "execute",
-            "read"
           ],
           "subskills": [],
           "file": "phases/phase-2-deployed-surface-evidence.md"
@@ -324,15 +277,6 @@
               ]
             }
           ],
-          "effects": [
-            "check",
-            "cleanup",
-            "delegate",
-            "edit",
-            "execute",
-            "publish",
-            "read"
-          ],
           "subskills": [],
           "file": "phases/phase-3-gap-loop-closure.md"
         }
@@ -357,10 +301,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "read"
-          ],
           "subskills": []
         },
         {
@@ -373,11 +313,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "git",
-            "read"
-          ],
           "subskills": []
         },
         {
@@ -389,11 +324,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "git",
-            "read"
           ],
           "subskills": []
         }
@@ -418,10 +348,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "read"
-          ],
           "subskills": []
         },
         {
@@ -434,11 +360,6 @@
               ],
               "operation": "git.push"
             }
-          ],
-          "effects": [
-            "delegate",
-            "publish",
-            "read"
           ],
           "subskills": []
         },
@@ -482,11 +403,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "publish",
-            "read"
           ],
           "subskills": []
         }
@@ -547,10 +463,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "read"
-          ],
           "subskills": []
         },
         {
@@ -574,11 +486,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "publish",
-            "read"
           ],
           "subskills": []
         },
@@ -628,10 +535,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "read"
-          ],
           "subskills": []
         },
         {
@@ -643,10 +546,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "read"
           ],
           "subskills": []
         }
@@ -676,10 +575,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "read"
           ],
           "subskills": []
         },
@@ -716,11 +611,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "check",
-            "delegate",
-            "read"
           ],
           "subskills": []
         },
@@ -770,13 +660,6 @@
               ]
             }
           ],
-          "effects": [
-            "check",
-            "delegate",
-            "edit",
-            "execute",
-            "read"
-          ],
           "subskills": []
         }
       ]
@@ -794,11 +677,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "execute",
-            "read"
-          ],
           "subskills": []
         },
         {
@@ -810,10 +688,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "read"
           ],
           "subskills": []
         },
@@ -827,10 +701,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "read"
-          ],
           "subskills": []
         },
         {
@@ -842,10 +712,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "read"
           ],
           "subskills": []
         }
@@ -888,10 +754,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "read"
-          ],
           "subskills": []
         },
         {
@@ -928,13 +790,6 @@
               ]
             }
           ],
-          "effects": [
-            "check",
-            "delegate",
-            "edit",
-            "execute",
-            "read"
-          ],
           "subskills": []
         },
         {
@@ -952,13 +807,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "check",
-            "delegate",
-            "edit",
-            "execute",
-            "read"
           ],
           "subskills": [
             "test-harness"
@@ -984,10 +832,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "read"
           ],
           "subskills": [],
           "file": "phases/phase-0-input.md"
@@ -1025,10 +869,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "read"
           ],
           "subskills": [],
           "file": "phases/phase-1-analysis.md"
@@ -1073,10 +913,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "read"
-          ],
           "subskills": [],
           "file": "phases/phase-2-plan.md"
         },
@@ -1113,10 +949,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "read"
           ],
           "subskills": [],
           "file": "phases/phase-2_5-spec.md"
@@ -1160,11 +992,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "edit",
-            "read"
           ],
           "subskills": [],
           "file": "phases/phase-3-document.md"
@@ -1257,10 +1084,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "read"
-          ],
           "subskills": [],
           "file": "phases/phase-3_5-simulate.md"
         },
@@ -1352,11 +1175,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "publish",
-            "read"
-          ],
           "subskills": [
             "create-issue"
           ],
@@ -1371,10 +1189,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "read"
           ],
           "subskills": [],
           "file": "phases/phase-5-report.md"
@@ -1406,10 +1220,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "read"
-          ],
           "subskills": [],
           "file": "phases/phase-1-analysis.md"
         },
@@ -1429,10 +1239,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "read"
-          ],
           "subskills": [],
           "file": "phases/phase-2-plan.md"
         },
@@ -1451,13 +1257,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "edit",
-            "execute",
-            "read",
-            "workspace"
           ],
           "subskills": [],
           "file": "phases/phase-3-worktree.md"
@@ -1493,13 +1292,6 @@
               ]
             }
           ],
-          "effects": [
-            "check",
-            "delegate",
-            "edit",
-            "execute",
-            "read"
-          ],
           "subskills": [],
           "file": "phases/phase-4-review.md",
           "choices": [
@@ -1527,13 +1319,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "check",
-            "delegate",
-            "edit",
-            "execute",
-            "read"
           ],
           "subskills": [],
           "file": "phases/phase-4-review.md"
@@ -1577,11 +1362,6 @@
                 "document"
               ]
             }
-          ],
-          "effects": [
-            "check",
-            "delegate",
-            "read"
           ],
           "subskills": [],
           "restart_from": "implementation",
@@ -1648,14 +1428,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "check",
-            "delegate",
-            "execute",
-            "git",
-            "publish",
-            "read"
           ],
           "subskills": [
             "commit",
@@ -1729,12 +1501,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "execute",
-            "publish",
-            "read"
           ],
           "subskills": [
             "watch-pr",
@@ -1837,16 +1603,6 @@
               ]
             }
           ],
-          "effects": [
-            "check",
-            "cleanup",
-            "delegate",
-            "edit",
-            "execute",
-            "git",
-            "publish",
-            "read"
-          ],
           "subskills": [
             "finish-session",
             "update-status"
@@ -1885,10 +1641,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "read"
-          ],
           "subskills": [],
           "file": "phases/phase-0-plan.md"
         },
@@ -1919,13 +1671,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "check",
-            "delegate",
-            "edit",
-            "execute",
-            "read"
           ],
           "subskills": [
             "dev-docs",
@@ -1979,11 +1724,6 @@
               ]
             }
           ],
-          "effects": [
-            "check",
-            "delegate",
-            "read"
-          ],
           "subskills": [],
           "file": "phases/phase-2-verify.md",
           "restart_from": "write"
@@ -1997,11 +1737,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "edit",
-            "read"
           ],
           "subskills": [],
           "file": "phases/phase-3-reconcile.md",
@@ -2017,10 +1752,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "read"
-          ],
           "subskills": [],
           "file": "phases/phase-4-report.md"
         },
@@ -2033,13 +1764,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "check",
-            "delegate",
-            "git",
-            "publish",
-            "read"
           ],
           "subskills": [
             "commit",
@@ -2074,10 +1798,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "read"
-          ],
           "subskills": []
         }
       ]
@@ -2106,13 +1826,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "check",
-            "delegate",
-            "edit",
-            "execute",
-            "read"
           ],
           "subskills": []
         }
@@ -2149,13 +1862,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "edit",
-            "execute",
-            "read",
-            "workspace"
-          ],
           "subskills": []
         }
       ]
@@ -2190,12 +1896,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "check",
-            "delegate",
-            "execute",
-            "read"
           ],
           "subskills": []
         }
@@ -2232,12 +1932,6 @@
               ]
             }
           ],
-          "effects": [
-            "check",
-            "delegate",
-            "execute",
-            "read"
-          ],
           "subskills": []
         }
       ]
@@ -2266,11 +1960,6 @@
                 "publication"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "publish",
-            "read"
           ],
           "subskills": []
         }
@@ -2325,13 +2014,6 @@
               ]
             }
           ],
-          "effects": [
-            "check",
-            "delegate",
-            "edit",
-            "execute",
-            "read"
-          ],
           "subskills": []
         }
       ]
@@ -2361,10 +2043,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "read"
-          ],
           "subskills": []
         },
         {
@@ -2377,11 +2055,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "git",
-            "read"
-          ],
           "subskills": []
         },
         {
@@ -2393,11 +2066,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "git",
-            "read"
           ],
           "subskills": []
         },
@@ -2412,11 +2080,6 @@
               "operation": "git.push"
             }
           ],
-          "effects": [
-            "delegate",
-            "publish",
-            "read"
-          ],
           "subskills": []
         },
         {
@@ -2429,13 +2092,6 @@
               ]
             }
           ],
-          "effects": [
-            "check",
-            "delegate",
-            "edit",
-            "execute",
-            "read"
-          ],
           "subskills": []
         },
         {
@@ -2447,10 +2103,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "read"
           ],
           "subskills": []
         }
@@ -2493,11 +2145,6 @@
               ]
             }
           ],
-          "effects": [
-            "check",
-            "delegate",
-            "read"
-          ],
           "subskills": []
         }
       ]
@@ -2526,13 +2173,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "check",
-            "delegate",
-            "edit",
-            "execute",
-            "read"
           ],
           "subskills": []
         }
@@ -2563,13 +2203,6 @@
               ]
             }
           ],
-          "effects": [
-            "check",
-            "delegate",
-            "edit",
-            "execute",
-            "read"
-          ],
           "subskills": []
         }
       ]
@@ -2598,11 +2231,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "publish",
-            "read"
           ],
           "subskills": []
         }
@@ -2633,13 +2261,6 @@
               ]
             }
           ],
-          "effects": [
-            "check",
-            "delegate",
-            "edit",
-            "execute",
-            "read"
-          ],
           "subskills": []
         }
       ]
@@ -2668,11 +2289,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "publish",
-            "read"
           ],
           "subskills": []
         }
@@ -2703,10 +2319,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "read"
-          ],
           "subskills": [],
           "file": "phases/phase-1-authority.md"
         },
@@ -2732,11 +2344,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "execute",
-            "read"
-          ],
           "subskills": [],
           "file": "phases/phase-2-exploration.md"
         },
@@ -2756,10 +2363,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "read"
-          ],
           "subskills": [],
           "file": "phases/phase-3-user-selection.md"
         },
@@ -2772,10 +2375,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "read"
           ],
           "subskills": [],
           "file": "phases/phase-4-handoff.md"
@@ -2806,11 +2405,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "execute",
-            "read"
           ],
           "subskills": []
         }
@@ -2853,13 +2447,6 @@
               ]
             }
           ],
-          "effects": [
-            "check",
-            "delegate",
-            "edit",
-            "execute",
-            "read"
-          ],
           "subskills": []
         }
       ]
@@ -2895,11 +2482,6 @@
               ]
             }
           ],
-          "effects": [
-            "delegate",
-            "execute",
-            "read"
-          ],
           "subskills": [],
           "file": "phases/phase-1-capture-compare.md"
         },
@@ -2912,10 +2494,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "delegate",
-            "read"
           ],
           "subskills": [],
           "file": "phases/phase-2-user-decision.md"
@@ -2941,10 +2519,6 @@
               ]
             }
           ],
-          "effects": [
-            "read",
-            "delegate"
-          ],
           "subskills": []
         },
         {
@@ -2956,10 +2530,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "read",
-            "delegate"
           ],
           "subskills": []
         },
@@ -2985,11 +2555,6 @@
               ]
             }
           ],
-          "effects": [
-            "read",
-            "delegate",
-            "execute"
-          ],
           "subskills": []
         },
         {
@@ -3008,10 +2573,6 @@
               ]
             }
           ],
-          "effects": [
-            "read",
-            "delegate"
-          ],
           "subskills": []
         },
         {
@@ -3023,12 +2584,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "read",
-            "delegate",
-            "execute",
-            "cleanup"
           ],
           "subskills": []
         }
@@ -3047,10 +2602,6 @@
               ]
             }
           ],
-          "effects": [
-            "read",
-            "delegate"
-          ],
           "subskills": []
         },
         {
@@ -3062,11 +2613,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "read",
-            "delegate",
-            "execute"
           ],
           "subskills": []
         },
@@ -3086,11 +2632,6 @@
               ]
             }
           ],
-          "effects": [
-            "read",
-            "delegate",
-            "execute"
-          ],
           "subskills": []
         },
         {
@@ -3102,12 +2643,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "read",
-            "delegate",
-            "execute",
-            "decision"
           ],
           "subskills": []
         },
@@ -3121,12 +2656,6 @@
               ]
             }
           ],
-          "effects": [
-            "read",
-            "delegate",
-            "execute",
-            "edit"
-          ],
           "subskills": []
         },
         {
@@ -3138,12 +2667,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "read",
-            "delegate",
-            "execute",
-            "cleanup"
           ],
           "subskills": [
             "reconnect-host"
@@ -3164,10 +2687,6 @@
               ]
             }
           ],
-          "effects": [
-            "read",
-            "delegate"
-          ],
           "subskills": []
         },
         {
@@ -3180,10 +2699,6 @@
               ]
             }
           ],
-          "effects": [
-            "read",
-            "delegate"
-          ],
           "subskills": []
         },
         {
@@ -3195,10 +2710,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "read",
-            "delegate"
           ],
           "subskills": []
         }
@@ -3217,10 +2728,6 @@
               ]
             }
           ],
-          "effects": [
-            "read",
-            "delegate"
-          ],
           "subskills": []
         },
         {
@@ -3233,13 +2740,6 @@
               ]
             }
           ],
-          "effects": [
-            "read",
-            "delegate",
-            "edit",
-            "execute",
-            "check"
-          ],
           "subskills": []
         },
         {
@@ -3251,10 +2751,6 @@
                 "report"
               ]
             }
-          ],
-          "effects": [
-            "read",
-            "delegate"
           ],
           "subskills": []
         }

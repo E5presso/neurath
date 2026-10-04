@@ -38,4 +38,4 @@ This index describes declared contracts; it is not evidence of host activation o
 | [user-docs](skills/sync-user-docs/SKILL.md) | 1 | 3 |
 | [watch-pr](skills/monitor-pr/SKILL.md) | 4 | 4 |
 
-Nested skills must be declared and remain within their parent phase effects. Normal task completion requires all attached phases and user acceptance.
+Nested skills must be declared and return to the unfinished parent phase. Normal task completion requires all attached phases and user acceptance.

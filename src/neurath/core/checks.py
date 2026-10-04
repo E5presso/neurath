@@ -4,7 +4,7 @@ import shlex
 import sys
 from uuid import uuid4
 
-from neurath.core.domain import admit_effects, require
+from neurath.core.domain import require
 from neurath.core.workspace import checkout, source_subject
 
 COMMANDS = {
@@ -22,7 +22,7 @@ def call(tx, core, context, name, values):
 
     task = tx.task(values["task_id"])
     core._participant(task, context.actor_id)
-    admit_effects(task, frozenset({"check"}))
+    require(task.state == "running", "task-state")
     target = checkout(core.store.root, values["checkout"])
     definition = next(
         (item for item in configured_checks(target) if item["name"] == values["check_name"]), None
@@ -85,7 +85,7 @@ def authorize_launch(core, context, payload):
         )
         task = tx.task(value["task_id"])
         core._participant(task, context.actor_id)
-        admit_effects(task, frozenset({"check"}))
+        require(task.state == "running", "task-state")
         from neurath.core.hooks import configured_checks
 
         require(

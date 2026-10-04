@@ -51,12 +51,7 @@ editing and command tools for actual changes and checks.
   before acknowledging. Mailbox delivery alone does not wake a peer or authorize work.
   Share concrete reusable findings through `newsroom_publish`; use
   `newsroom_headlines` and `newsroom_read` for relevant findings.
-- On a real harness malfunction, use `harness_bypass(enabled=true)` under the local
-  recovery rule, explain the defect and preserve unfinished tasks. Repair within the
-  authorized scope and restore `enabled=false` after verifying normal operation.
-  Bypass does not skip phase completion, fabricate evidence, grant user consent or
-  override native security. Normal Stop remains blocked while required tasks are unfinished.
-
-Use exact current tool schemas and returned IDs. Native `_call_id` correlates one
-observed invocation and is not actor identity. Do not create redundant state ledgers.
+- On a real harness malfunction, preserve unfinished tasks and explain the actual
+  state error. Repair within the authorized scope using native tools. Native host
+  permissions remain authoritative; task and phase completion still require evidence.
 <!-- /neurath:managed -->

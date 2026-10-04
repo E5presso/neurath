@@ -79,8 +79,6 @@ def call(tx, core, context, name, values):
 
 
 def authorize_launch(core, context, payload):
-    from neurath.core.domain import admit_effects
-
     values = payload["tool_input"]
     command = values.get("command", values.get("cmd"))
     with core.store.transaction() as tx:
@@ -95,7 +93,7 @@ def authorize_launch(core, context, payload):
             "provider-launch-state",
         )
         task = tx.task(value["task_id"])
-        admit_effects(task, frozenset({"delegate"}))
+        require(task.state == "running", "task-state")
         controllers = {
             a.recipient for a in task.assignments if a.role == "executor" and a.state == "active"
         }

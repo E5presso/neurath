@@ -80,15 +80,15 @@ Provide no general `skip`, arbitrary phase-index setter or `not-applicable` comp
 
 Evidence uses defined reference types. PASS prose, regex-shaped text and lists of labels cannot replace actual check, review or publication results. Semantic acceptance identifies its assessor and evidence; the core does not claim to prove semantic truth. The skill determines when an independent review is required.
 
-A phase may explicitly name subskills. A nested skill runs inside the same Task and returns to the unchanged parent phase after its own ordered phases finish. It does not complete the parent phase or expand its permitted effects. Undeclared subskills cannot replace a pending procedure. Task completion checks every attached skill run.
+A phase may explicitly name subskills. A nested skill runs inside the same Task and returns to the unchanged parent phase after its own ordered phases finish. It does not complete the parent phase. Undeclared subskills cannot replace a pending procedure. Task completion checks every attached skill run.
 
-### Rework and actual effects
+### Rework and execution ownership
 
 The skill predefines a `restart_from` phase for phase failures and final acceptance failure. A review finding starts another attempt of the same Task and executes the required phases again from that point. The failed review or observed changed input is the restart source. Preserve completed records as previous-attempt history; results at or after the restart boundary do not fulfill the new attempt. If inputs consumed by earlier results changed, restart from the earliest affected phase. Unknown impact restarts at the first phase. Reusing an observation requires the same condition, inputs and target revision and must not be reported as a new execution. There is no arbitrary phase-index setter or duplicate Task used to hide failure.
 
-Before execution, the native adapter binds the actual tool invocation to Task/current phase and classifies its effects. The minimum classes are `read`, `edit`, `check`, `delegate`, `publish`, `cleanup` and `execute`. Each skill phase declares allowed classes. Known edit/publication/deletion tools and commands are denied when allowed only in a later phase. Registered checks are matched by exact argv and working directory. Mixed calls require every effect to be allowed. Unclassified shell/program calls are `execute` and are denied in read-only phases. The core does not claim static proof of every effect inside arbitrary programs; it preserves host permissions and reports its observation boundary. Known effects cannot be downgraded to generic execute.
+Phase enforcement applies to ordered state transitions and required completion evidence. Ordinary native tool calls do not advance phases or complete Tasks. The agent follows the procedure; Neurath validates its recorded completion. Native execution permissions remain the host's responsibility.
 
-Control commands such as state reads, failure reports and normal lease release remain separate from phase work effects. Ambiguous Task/phase binding denies writes with an exact selection requirement. Missing required host hooks such as PreToolUse return a capability gap before the affected effect, not a claim of verified enforcement. Reads, reporting and waiting for user input remain available. Actual-host acceptance must demonstrate denial of out-of-phase native edits and publication.
+The core does not parse shell programs, classify terminal input or maintain a second publication-permission engine. It coordinates explicit editor writes against the selected writer lease, binds native observations to their actual caller and captures registered check results. Failed execution remains an attempt, not user-goal completion. State reads and ordinary native work are not gated by a phase-specific tool allowlist.
 
 ## 6. Delegation and review
 
@@ -176,7 +176,7 @@ Build and test the replacement without the old core. Remove the previous impleme
 | SC16 | A later review failure restarts defined repair/check/review phases on the same Task and preserves the earlier failure. |
 | SC17 | A child may stop after storing its report; the parent Task remains unfinished until actual acceptance and fulfilled conditions. |
 | SC18 | Authorized adoption preserves Task ID and rejects late mutations from the former owner. |
-| SC19 | The actual host denies out-of-phase native edits/publication while allowing observation and failure reports. |
+| SC19 | Native calls leave progress unchanged; phase-order, required evidence and unfinished-Task Stop are enforced independently of host permissions. |
 | SC20 | Actual user cancellation denies new work and settles active assignments only after their observed termination. |
 
 Distinguish pure domain tests, real storage/concurrency tests, distribution installation and actual Codex/Claude end-to-end execution. Source tests alone do not establish host activation or delivered user work. The implementation plan links its work order and evidence to these scenarios.

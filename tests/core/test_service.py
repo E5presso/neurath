@@ -352,46 +352,31 @@ def test_memory_pull_reads_stopped_work_without_adopting_or_claiming(core):
         assert tx.db.execute("SELECT COUNT(*) FROM leases").fetchone()[0] == 0
 
 
-def test_native_maintenance_decision_requires_retained_exact_approval(core):
-    from neurath.core.domain import Phase, Skill
-
+def test_approval_record_preserves_quote_and_target_without_granting_host_permission(core):
     service, task_id = core
-    service.skills["choice"] = Skill(
-        "choice", "1", (Phase("choice", effects=frozenset({"decision"})),)
-    )
-    call(core, "task_start", {"task_id": task_id, "expected_revision": 1}, key="start")
-    call(
-        core,
-        "skill_start",
-        {"task_id": task_id, "expected_revision": 2, "skill": "choice"},
-        key="skill",
-    )
-    context = Context("root", "session", "native-choice")
-    target = {
-        "command": "neurath releases choose offer-1 yes --user-confirmed",
-        "cwd": str(service.store.root),
-    }
-    with pytest.raises(CoreError, match="approval-required"):
-        service.admit(context, {"decision"}, effect_target=target)
+    context = Context("root", "session", "approval")
     source = service.observe_input(context, "Apply the prepared update.", "actual-input")
-    fields = {
-        "task_id": task_id,
-        "source_id": source.id,
-        "start": 0,
-        "end": len(source.text),
-        "digest": source.digest,
-        "target": target,
-        "reason": "The user selected this update.",
-    }
-    call(core, "approval_record", {**fields, "action": "publish"}, key="different-action")
-    with pytest.raises(CoreError, match="approval-required"):
-        service.admit(context, {"decision"}, effect_target=target)
-    call(core, "approval_record", {**fields, "action": "decision"}, key="actual-choice")
-    assert service.admit(context, {"decision"}, effect_target=target)["allowed"]
-    with pytest.raises(CoreError, match="approval-required"):
-        service.admit(
-            context, {"decision"}, effect_target={**target, "command": "different choice"}
-        )
+    target = {"offer": "selected-offer"}
+    result = call(
+        core,
+        "approval_record",
+        {
+            "task_id": task_id,
+            "source_id": source.id,
+            "start": 0,
+            "end": len(source.text),
+            "digest": source.digest,
+            "action": "update",
+            "target": target,
+            "reason": "Interpreted current user instruction",
+        },
+        key="approval-record",
+    )
+    with service.store.transaction() as tx:
+        record = tx.records("approval")[0]["value"]
+    assert record["target"] == target
+    assert record["assurance"] == "agent-interpretation"
+    assert result
 
 
 def test_task_dependencies_require_fulfilled_goal_before_start(core):

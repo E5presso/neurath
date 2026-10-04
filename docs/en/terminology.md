@@ -5,7 +5,7 @@
 | Term | Meaning |
 | --- | --- |
 | Task | User goal, acceptance, ordered skill runs, attempts and assignments in one aggregate. |
-| Phase | The current ordered step defined by a skill, with required outcomes and allowed effects. |
+| Phase | The current ordered step defined by a skill, with required completion outcomes. |
 | Attempt | One execution or rework attempt; failure does not complete or cancel the goal. |
 | Actor | A native observed session or agent, independent of its working directory. |
 | Assignment | Bounded work delegated through subagent, session or cross-provider execution. |

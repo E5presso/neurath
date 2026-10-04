@@ -9,12 +9,11 @@ from hashlib import sha256
 from pathlib import Path
 
 from neurath.core.codec import encode
-from neurath.core.domain import CoreError, require
+from neurath.core.domain import CoreError, Source, require
 from neurath.core.host_events import (
     SHELL_TOOLS,
+    EDIT_TOOLS,
     context_from_event,
-    effect_target,
-    effects_for_tool,
     stop_response,
     write_targets,
 )
@@ -34,6 +33,7 @@ CONTROL_TOOLS = frozenset(
         "interrupt_agent",
         "TaskOutput",
         "BashOutput",
+        "write_stdin",
     }
 )
 
@@ -82,13 +82,64 @@ class HookAdapter:
         if event == "SessionEnd":
             # Advisory event: preserve unfinished obligations across interruption.
             with self.core.store.transaction() as tx:
-                actor = tx.record("actor", context.actor_id)
-                tx.put_record(
-                    "actor",
-                    context.actor_id,
-                    {**actor["value"], "status": "stopped"},
-                    actor["revision"],
-                )
+                ended = {context.actor_id}
+                if not payload.get("agent_id"):
+                    ended.update(
+                        record["id"]
+                        for record in tx.records("actor")
+                        if record["value"]["provider"] == self.provider
+                        and record["value"]["session_id"] == context.session_id
+                    )
+                for actor_id in ended:
+                    actor = tx.record("actor", actor_id)
+                    tx.put_record(
+                        "actor",
+                        actor_id,
+                        {**actor["value"], "status": "stopped"},
+                        actor["revision"],
+                    )
+                for task in tx.tasks():
+                    assignments = []
+                    for assignment in task.assignments:
+                        if assignment.recipient in ended and assignment.state in {
+                            "issued",
+                            "active",
+                            "cancel-requested",
+                        }:
+                            identity = (
+                                "native-end:"
+                                + context.actor_id
+                                + ":"
+                                + receipt_id
+                                + ":"
+                                + assignment.id
+                            )
+                            source = Source.create(
+                                "source-" + sha256(identity.encode()).hexdigest(),
+                                "tool",
+                                encode(
+                                    {
+                                        "event": "SessionEnd",
+                                        "actor_id": context.actor_id,
+                                        "ended_actor_id": assignment.recipient,
+                                        "assignment_id": assignment.id,
+                                    }
+                                ),
+                                identity,
+                            )
+                            tx.put_source(source)
+                            assignment = assignment.report(
+                                assignment.recipient,
+                                source.id,
+                                "cancelled" if assignment.state == "cancel-requested" else "failed",
+                                assignment.subject,
+                            )
+                        assignments.append(assignment)
+                    if tuple(assignments) != task.assignments:
+                        tx.save_task(
+                            task.changed(assignments=tuple(assignments)),
+                            expected_revision=task.revision,
+                        )
                 for record in tx.records("native-invocation"):
                     value = record["value"]
                     if (
@@ -108,9 +159,6 @@ class HookAdapter:
             from neurath.core.native_delegation import finished
 
             finished(self.core, self.provider, context, payload, failed=event != "PostToolUse")
-            from neurath.core.terminal import observe as observe_terminal
-
-            observe_terminal(self.core, context, payload)
             self._close(context, payload.get("tool_use_id"))
             if "tool_response" in payload and not str(payload.get("tool_name", "")).startswith(
                 ("mcp__neurath__", "mcp__neurath_collaboration__")
@@ -144,11 +192,6 @@ class HookAdapter:
                 result = self.core.stop(context)
                 require(result["allowed"], "assignment-unsettled", pending=result["pending"])
                 return {}
-            if name == "write_stdin":
-                from neurath.core.terminal import admit as admit_terminal
-
-                admit_terminal(self.core, context, values)
-                return {}
             if name in SHELL_TOOLS:
                 from neurath.core.checks import authorize_launch as authorize_check
                 from neurath.core.provider_commands import authorize_launch
@@ -171,7 +214,6 @@ class HookAdapter:
 
                     checkout(self.core.store.root, operation["repository"])
                     effect = "workspace" if operation["action"] == "add" else "cleanup"
-                    self.core.admit(context, {effect}) if effect == "workspace" else None
                     with self.core.store.transaction() as tx:
                         lease = tx.lease(operation["target"])
                         require(
@@ -179,9 +221,8 @@ class HookAdapter:
                             "writer-lease-required",
                         )
                     if effect == "cleanup":
-                        admitted = self.core.admit(
+                        admitted = self.core.admit_write(
                             context,
-                            {effect},
                             checkout_path=operation["target"],
                             generation=lease["generation"],
                         )
@@ -200,49 +241,49 @@ class HookAdapter:
                 from neurath.core.workspace import checkout
 
                 directory = values.get("workdir") or values.get("cwd") or payload.get("cwd")
-                require(isinstance(directory, str), "check-directory-required")
-                target = checkout(
-                    self.core.store.root,
-                    Path(payload.get("cwd") or self.core.store.root) / directory,
-                )
-                self.checks = configured_checks(target)
-            effects = effects_for_tool(
-                name, values, checks=self.checks or (), cwd=payload.get("cwd")
-            )
+                try:
+                    require(isinstance(directory, str), "check-directory-required")
+                    target = checkout(
+                        self.core.store.root,
+                        Path(payload.get("cwd") or self.core.store.root) / directory,
+                    )
+                    self.checks = configured_checks(target)
+                except CoreError, ValueError, OSError:
+                    # No matching observation is not permission to block an
+                    # unrelated native command. Explicit check preparation
+                    # returns configuration errors through its own command.
+                    self.checks = ()
             from neurath.core.native_delegation import FOLLOWUP, SPAWN, prepare
 
             if name in SPAWN | FOLLOWUP:
                 prepare(self.core, self.provider, context, payload)
                 return {}
-            publication = (
-                effect_target(name, values, payload.get("cwd"))
-                if effects & {"publish", "decision"}
-                else None
-            )
-            if effects & {"edit", "git", "cleanup"} or name in SHELL_TOOLS and "execute" in effects:
+            if name in EDIT_TOOLS:
                 from neurath.core.workspace import checkout
 
-                targets = tuple(
-                    dict.fromkeys(
-                        checkout(self.core.store.root, path)
-                        for path in write_targets(name, values, payload.get("cwd"))
-                    )
-                )
-                for target in targets:
+                for target in dict.fromkeys(
+                    checkout(self.core.store.root, path)
+                    for path in write_targets(name, values, payload.get("cwd"))
+                ):
                     with self.core.store.transaction() as tx:
                         lease = tx.lease(target)
-                        generation = lease["generation"] if lease else None
-                    admitted = self.core.admit(
+                    self.core.admit_write(
                         context,
-                        effects,
                         checkout_path=target,
-                        generation=generation,
-                        effect_target=publication,
+                        generation=None if lease is None else lease["generation"],
                     )
-            else:
-                admitted = self.core.admit(context, effects, effect_target=publication)
-            if "check" in effects:
-                self._start_check(context, payload, admitted["task_id"])
+            if name in SHELL_TOOLS:
+                command = values.get("command", values.get("cmd"))
+                directory = values.get("workdir") or values.get("cwd") or payload.get("cwd")
+                if isinstance(directory, str) and any(
+                    command == check["command"]
+                    and Path(check["cwd"]).resolve() == Path(directory).resolve()
+                    for check in self.checks or ()
+                ):
+                    with self.core.store.transaction() as tx:
+                        focus = tx.record("focus", context.actor_id)
+                    if focus is not None:
+                        self._start_check(context, payload, focus["value"]["task_id"])
             # No allow override: the host retains its normal permission decision.
             return {}
         except CoreError as error:

@@ -16,7 +16,7 @@ marker는 실제 실행·승인·완료가 아니다. 현재 스키마와 반환
 | 동료 메시지 | collaboration_discover/send/inbox/reply/ack |
 | 공유 지식 | newsroom_publish/headlines/read, memory_recall/checkpoint/pull |
 | 공개 결과 확인 | publication_read |
-| 결함 격리 | harness_bypass |
+| 결함 복구 | 상태·원문 오류를 보존하고 승인된 native 도구로 수리 |
 
 재사용 가능한 `tool:<key>` 참조는 아래 의미를 가진다. 정확한 native 이름은 현재
 호스트의 inventory와 schema에서 확인하며 도구 부재를 성공으로 기록하지 않는다.

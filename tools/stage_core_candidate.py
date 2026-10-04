@@ -1,7 +1,7 @@
 """Stage a disposable new-core-only package without changing the active installation.
 
-This is a pre-cutover validation artifact, not a public release. The final source
-removal follows actual-host validation against this isolated candidate.
+This is a pre-cutover validation artifact, not a public release. Source retirement and live host activation are separate. This helper creates
+no host trust or activation claim.
 """
 
 import argparse
