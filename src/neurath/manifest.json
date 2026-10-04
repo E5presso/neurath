@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "files": {
-    "__init__.py": "3afa76470ec0519c425d6dd7d50cad58935decfa5130565e4094e86ef3209774",
+    "__init__.py": "b78cec1a8ca519ee312b0e0112e8dca06da11a0107193ba3c5586f48ef91113e",
     "__main__.py": "e376bc7dbac5a8dda3b5bcd173341d2e2965859dc9d1ee468ab596699b7f96d7",
     "_assets/.agents/HARNESS_AUDIT.md": "b5555725f7686f874d76e392709dad9e48f3671362015b13a9ea2b4a22d739b1",
     "_assets/.agents/HARNESS_INDEX.md": "0f46eee5fd81347a483db13bae3927c7ab3e3b6abdbaf2723219a64e75fd24a2",
@@ -139,7 +139,7 @@
     "core/communication.py": "ab437354fe5b0f5dca80dab7b977415a3d1144b330fdce78364301784044d856",
     "core/diagnostics.py": "82059148f1249ad7d2d8dd58d6dda86847d6a2f4db01fe38102e13eb3c3956eb",
     "core/domain.py": "ad4294cd1dda8a1036663906a3ab0aeb4f83d6f845925dba21c3f65d4f8314ae",
-    "core/hook_adapter.py": "3873921535737b392e26e3a6358fa6203c9397b3d69f67c44e3cc3493fab86e3",
+    "core/hook_adapter.py": "2b063c71f28284bdfbf53108ca5d1d4ef524413e60a54a5518185b44d6442c58",
     "core/hooks.py": "fd3bba220cc0c2441e23b92cd5e94fad18678cad5fd9eafc9ab9e478ea0e9177",
     "core/host_events.py": "dbfa671299c68accf784c249aead814fa9b6eb521db6da19ee5ffda263c06e4b",
     "core/legacy_work.py": "e5d5238a809460878a2464c33161cbc0023e51b54c71e06da670e4122958fdc9",

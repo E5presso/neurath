@@ -140,6 +140,10 @@ class HookAdapter:
         if name in CONTROL_TOOLS:
             return {}
         try:
+            if name == "SubagentHandback":
+                result = self.core.stop(context)
+                require(result["allowed"], "assignment-unsettled", pending=result["pending"])
+                return {}
             if name == "write_stdin":
                 from neurath.core.terminal import admit as admit_terminal
 

@@ -11,6 +11,9 @@ import pytest
 from neurath.install.transaction import apply_plan, make_plan, read_state
 from neurath import __version__ as CURRENT_VERSION
 
+_version_parts = CURRENT_VERSION.split(".")
+RELEASE_VERSION = ".".join([*_version_parts[:2], str(int(_version_parts[2]) + 1)])
+
 
 @pytest.mark.parametrize("requirements,accepted", [
     ([], True), (["claude-agent-sdk<0.3,>=0.2.152"], True),
@@ -47,7 +50,7 @@ def project(tmp_path):
     return root
 
 
-def release(version="0.2.0", digest=None):
+def release(version=RELEASE_VERSION, digest=None):
     return dict(id=12, tag_name="v" + version, draft=False, prerelease=False,
                 published_at="2026-09-07T00:00:00Z", body="Preserve preferences.\nImprove recovery.",
                 html_url="https://github.com/E5presso/neurath/releases/tag/v" + version,
@@ -68,7 +71,7 @@ def test_announcement_once_and_choices_survive_restart(service):
     from neurath.updates import Updates
     result = service.check()
     assert result["offer"]["current"] == CURRENT_VERSION
-    assert result["offer"]["version"] == "0.2.0"
+    assert result["offer"]["version"] == RELEASE_VERSION
     assert result["offer"]["notes"]
     assert service.notice() is not None
     assert Updates(service.root).notice() is None
@@ -219,7 +222,7 @@ def build_wheel_bytes(version):
 
 @pytest.fixture(scope="module")
 def wheel_bytes():
-    return build_wheel_bytes("0.2.0")
+    return build_wheel_bytes(RELEASE_VERSION)
 
 
 @pytest.fixture(scope="module")
@@ -282,7 +285,7 @@ def test_real_wheel_update_preserves_choices_settings_and_restores(prepared):
     service.choose(offer["id"], "yes", user_confirmed=True)
     result = service.apply(offer["id"])
     assert result["operation"]["phase"] == "applied"
-    assert read_state(root)["version"] == "0.2.0"
+    assert read_state(root)["version"] == RELEASE_VERSION
     assert read_state(root)["skill_prefix"] == "neurath-"
     assert read_state(root)["hosts"] == ["codex"]
     assert 'sandbox_mode = "read-only"' in (root / ".codex/config.toml").read_text()
@@ -293,7 +296,7 @@ def test_real_wheel_update_preserves_choices_settings_and_restores(prepared):
     env = {k: v for k, v in os.environ.items() if not k.startswith(("NEURATH_", "CODEX_", "CLAUDE_"))}
     process = subprocess.run([root / ".neurath/run", "releases", "status"], env=env,
                               capture_output=True, text=True, check=True)
-    assert json.loads(process.stdout)["current"] == "0.2.0"
+    assert json.loads(process.stdout)["current"] == RELEASE_VERSION
     assert service.recover()["operation"]["phase"] == "recovered"
     assert read_state(root) == original
     assert reporting._read() == report_state
@@ -312,7 +315,7 @@ def test_interruption_after_apply_recovers_without_reapplying(prepared, monkeypa
     monkeypatch.setattr(release_install, "apply", interrupted)
     with pytest.raises(KeyboardInterrupt):
         service.apply(offer["id"])
-    assert read_state(service.root)["version"] == "0.2.0"
+    assert read_state(service.root)["version"] == RELEASE_VERSION
     assert service.status()["operation"]["phase"] == "applying"
     assert service.recover()["operation"]["phase"] == "recovered"
     assert read_state(service.root) == before
@@ -412,7 +415,7 @@ def test_post_apply_diagnostic_failure_recovers_and_preserves_new_user_edit(prep
     with pytest.raises((ValueError, RuntimeError), match="conflict"):
         service.recover()
     assert "User edit after failure" in path.read_text()
-    assert read_state(service.root)["version"] == "0.2.0"
+    assert read_state(service.root)["version"] == RELEASE_VERSION
 
 
 @pytest.mark.parametrize("host", ["codex", "claude-code"])

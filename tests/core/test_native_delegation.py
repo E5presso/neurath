@@ -197,3 +197,38 @@ def test_unprepared_spawn_and_nonfresh_reviewer_are_denied(delegation):
             "permissionDecisionReason"
         ]
     )
+
+
+def test_native_child_handback_requires_its_report_but_not_parent_acceptance(tmp_path):
+    core, hook, context, task_id, prepared = make_delegation(tmp_path, "claude-code")
+    spawn = {
+        "session_id": "s",
+        "tool_use_id": "spawn",
+        "tool_name": "Agent",
+        "tool_input": {"prompt": prepared["dispatch_marker"]},
+    }
+    assert hook.handle("PreToolUse", spawn, "pre-spawn") == {}
+    hook.handle("SubagentStart", {"session_id": "s", "agent_id": "child"}, "child-start")
+    handback = {
+        "session_id": "s",
+        "agent_id": "child",
+        "tool_use_id": "return",
+        "tool_name": "SubagentHandback",
+        "tool_input": {"message": "Actual result"},
+    }
+    assert "assignment-unsettled" in str(hook.handle("PreToolUse", handback, "early-return"))
+    child = Context("claude-code:agent:child", "s", "report")
+    core.call(
+        child,
+        "assignment_report",
+        {
+            "key": "report",
+            "task_id": task_id,
+            "assignment_id": prepared["assignment"]["id"],
+            "verdict": "pass",
+            "body": "Read actual source",
+            "subject": "rev1",
+        },
+    )
+    assert hook.handle("PreToolUse", handback, "return-after-report") == {}
+    assert not core.stop(context)["allowed"]

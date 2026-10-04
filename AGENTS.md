@@ -28,58 +28,35 @@ Neurath는 기술 스택과 독립적인 Claude Code/Codex 하네스 설치 패�
 Read `.neurath/policy.md` and `.neurath/project.json` for the generic profile.
 Use the skills in `.agents/skills`; use the named MCP task tools. Consult `.neurath/policy.md` for explicit native execution exceptions.
 
-Use Neurath's named `neurath_collaboration` MCP tools proactively for project work.
-Choose tools when the situations below arise; do not wait for the user to name them.
+Use the named `neurath_collaboration` MCP tools for work state and the host's native
+editing and command tools for actual changes and checks.
 
-- Start or resume substantive work: use `session_status` and `task_list` to recover
-  actual readiness, ownership and unfinished requirements. Before writing, use
-  `worktree_claim` when the current native actor needs a claim.
-- On a claim conflict, use `worktree_inspect` and host tools to read the owning session,
-  even if idle. Send an authorized message for finish-session or safe handoff. Verify
-  release before reclaiming; never force-reclaim.
-- When a new requirement, acceptance gap or necessary next step becomes concrete,
-  use `task_define` and `task_start` immediately. Before adding work, ask which unmet user
-  requirement it advances. Use `task_resolve` with observed results; a failed
-  attempt or time limit does not cancel the original requirement.
-  After task changes, display the returned `native_todo` through its native tool;
-  keep concrete work and native TODO current without user reminders, including
-  during bypass. Reconcile the ledger after recovery before reporting progress.
-  do not substitute an inline checklist. Report a missing host tool explicitly.
-  Keep the ledger as truth and retain the native display requirement.
-- Reuse context before repeating an investigation: use `memory_recall`. At a
-  meaningful checkpoint or handoff, use `memory_checkpoint` for decisions,
-  remaining work and lessons. When another session stops, use `memory_pull` to
-  inspect and, when safe, adopt its unfinished work; do not require a final push
-  from the stopped session.
-- For overlap, blockers or handoff, use `collaboration_discover` and
-  `collaboration_send` or assignment tools across Codex and Claude. Use
-  `collaboration_inbox`/`collaboration_reply`; read results before acknowledging.
-  Preserve delegation conditions. Pull-only delivery does not wake the peer.
-- When you find a reproducible bug, a shared interface constraint or a reusable
-  workaround, share it with active project peers using `newsroom_publish`.
-  Follow relevant announced titles with `newsroom_read`; use `newsroom_headlines`
-  when you need to find them. Newsroom reports inform work; they do not authorize it.
-- Use another provider when needed: check `provider_capabilities` / `provider_route`,
-  then use `provider_models`, `provider_plan` and `provider_run` as applicable.
-  Reuse a valid model observation or plan; verify actual completion and settings.
-- Learn from a concrete failure and recovery: inspect `learning_pending` and
-  `learning_status`, and preserve the lesson in `memory_checkpoint`. Use existing
-  verification evidence; do not create extra experiments merely to promote a rule.
-- When a harness procedure contradicts observed tools or repeats unproductive
-  steps, assess whether Neurath itself is malfunctioning. On detecting a Neurath
-  malfunction, autonomously call harness_bypass(enabled=true) without asking the
-  user for permission. This applies to any harness malfunction, not only Stop loops.
-  Do not wait for a test, task registration, report or repeated user intervention
-  before containing it. Tell the user what happened, preserve unfinished work,
-  correct the cause within authorized scope, and restore with enabled=false once
-  normal operation is verified. Host security and user instructions still apply.
-- Handle a real harness defect or maintenance request: use the relevant diagnostics,
-  reporting, installation or release tools under the current policy and consent.
+- Recover `session_status` and `task_list`; retain the original user's goal. Define
+  concrete required work once with `task_define`, use `task_start`, and display returned `native_todo`.
+- Start the applicable skill on that Task. Follow `phase_read` and satisfy every
+  `phase_complete` condition in order. Only fulfilled user acceptance permits
+  `task_complete`. A failure, blocker, timeout or worker return never cancels work.
+- Use `worktree_read`, `worktree_claim` and `worktree_release` for actual writer ownership. Reads and failure
+  reports require no writer lease. Never force another actor's lease or impersonate it.
+- Choose `subagent`, `session` or `cross-provider` by scope, difficulty and need.
+  A worker is a role; a different checkout does not require a new session or project.
+  Use `assignment_prepare`, native dispatch or `provider_prepare`, actual recipient
+  reports and owner acceptance.
+- Keep source kinds honest. Quote retained original input with `source_read/quote`.
+  `approval_record` records an interpretation of exact input, never new host permissions.
+- Reuse relevant `memory_recall`; record decisions and remaining work with
+  `memory_checkpoint`. `memory_pull` is reference-only; actual adoption is explicit.
+- Use `collaboration_discover`, `collaboration_inbox`, `collaboration_send` and
+  `collaboration_reply` for authorized coordination. Read
+  before acknowledging. Mailbox delivery alone does not wake a peer or authorize work.
+  Share concrete reusable findings through `newsroom_publish`; use
+  `newsroom_headlines` and `newsroom_read` for relevant findings.
+- On a real harness malfunction, use `harness_bypass(enabled=true)` under the local
+  recovery rule, explain the defect and preserve unfinished tasks. Repair within the
+  authorized scope and restore `enabled=false` after verifying normal operation.
+  Bypass does not skip phase completion, fabricate evidence, grant user consent or
+  override native security. Normal Stop remains blocked while required tasks are unfinished.
 
-Use current tool schemas, returned identifiers and revisions. Reuse completed
-evidence and read relevant policy details when needed. Call only tools that advance
-the current request; do not poll unchanged state or run every tool on every turn.
-Native editing and testing remain native operations. Tool availability, memory and
-peer reports do not grant permission to bypass host security or user restrictions.
-The autonomous Neurath malfunction bypass above is an explicit local recovery rule.
+Use exact current tool schemas and returned IDs. Native `_call_id` correlates one
+observed invocation and is not actor identity. Do not create redundant state ledgers.
 <!-- /neurath:managed -->
