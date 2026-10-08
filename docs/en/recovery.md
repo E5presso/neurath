@@ -41,3 +41,7 @@ Do not treat a clean-looking working tree as proof that a directory contains not
 ## What counts as recovery evidence
 
 Recovery reporting should name the preserved original, active destination, migration result, unresolved tasks, verification performed, and restoration path. It should distinguish local tests from live-host observations. Developer procedures and supported command syntax belong in the [contributing guide](../../CONTRIBUTING.md).
+
+## Upgrade callback compatibility
+
+Version 0.3.1 accepts cached hook callbacks using `--host` or no provider argument. The recovery bypass is checked before storage and provider resolution. Outside bypass, an unqualified callback must carry unambiguous provider-specific native envelope metadata; ambiguous input is rejected rather than inventing identity. Newly installed registrations still use explicit `--provider`. This bridge lets an existing turn finish while its host reloads the new registration.

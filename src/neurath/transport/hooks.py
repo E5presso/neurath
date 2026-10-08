@@ -115,6 +115,19 @@ def process(root, provider, payload):
     return {}
 
 
+def legacy_provider(payload):
+    """Resolve old hook callbacks only from provider-specific native envelope fields."""
+    if not isinstance(payload, dict):
+        raise ValueError("A native event object is required")
+    transcript = payload.get("transcript_path")
+    parts = Path(transcript).parts if isinstance(transcript, str) else ()
+    codex = bool(isinstance(payload.get("turn_id"), str) and payload["turn_id"]) or ".codex" in parts
+    claude = ".claude" in parts
+    if codex == claude:
+        raise AuthorizationError("Legacy hook provider is ambiguous; reconnect using --provider")
+    return "codex" if codex else "claude-code"
+
+
 def run(root, provider):
     payload = {}
     try:
@@ -122,7 +135,13 @@ def run(root, provider):
         if len(raw.encode()) > 1048576:
             raise ValueError("Native event exceeds limit")
         payload = json.loads(raw)
-        result = process(root, provider, payload)
+        recovery = isinstance(payload, dict) and payload.get("hook_event_name") == "PreToolUse" and payload.get("tool_name") in {
+            "mcp__neurath__harness_bypass", "mcp__neurath_collaboration__harness_bypass"
+        }
+        if bypass(root)["enabled"] or recovery:
+            result = {}
+        else:
+            result = process(root, provider or legacy_provider(payload), payload)
     except Exception as error:
         event = payload.get("hook_event_name") if isinstance(payload, dict) else None
         if event == "PreToolUse":

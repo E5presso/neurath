@@ -11,7 +11,8 @@ def main(argv=None):
     sub = parser.add_subparsers(dest='command', required=True)
     for name in ('mcp', 'hook'):
         command = sub.add_parser(name)
-        command.add_argument('--provider', choices=('codex', 'claude-code'), required=True)
+        flags = ('--provider', '--host') if name == 'hook' else ('--provider',)
+        command.add_argument(*flags, choices=('codex', 'claude-code'), required=name == 'mcp')
     recovery = sub.add_parser('bypass')
     recovery.add_argument('--enabled', choices=('true', 'false'))
     check = sub.add_parser('check-run')

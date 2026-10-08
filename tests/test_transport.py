@@ -140,3 +140,37 @@ def test_repeated_stop_preserves_obligation_without_infinite_continuation(tmp_pa
     current = native(tmp_path, 'task.get', {'task_id': task['id']}, 'stop-read')
     assert current['status'] == 'pending'
     assert current['revision'] == 0
+
+
+def test_legacy_hook_without_provider_can_use_recovery_before_storage(tmp_path):
+    local = tmp_path / '.neurath/local'
+    local.mkdir(parents=True)
+    (local / 'neurath.sqlite3').write_bytes(b'broken but retained')
+    bypass(tmp_path, True)
+    run = subprocess.run([sys.executable, '-m', 'neurath', '--root', str(tmp_path), 'hook'], input=json.dumps({'hook_event_name': 'Stop'}), text=True, capture_output=True)
+    assert run.returncode == 0
+    assert json.loads(run.stdout) == {}
+    assert (local / 'neurath.sqlite3').read_bytes() == b'broken but retained'
+
+
+@pytest.mark.parametrize('arguments,payload,host', [
+    ([], {'turn_id': 'native-turn'}, 'codex'),
+    (['--host', 'codex'], {}, 'codex'),
+    ([], {'transcript_path': '/native/.claude/projects/session.jsonl'}, 'claude-code'),
+])
+def test_legacy_hook_provider_comes_from_explicit_alias_or_native_envelope(tmp_path, arguments, payload, host):
+    event = {'hook_event_name': 'SessionStart', 'session_id': 'native-session', **payload}
+    run = subprocess.run([sys.executable, '-m', 'neurath', '--root', str(tmp_path), 'hook', *arguments], input=json.dumps(event), text=True, capture_output=True)
+    assert run.returncode == 0, run.stderr
+    from neurath.infrastructure import Database
+    with Database(tmp_path / '.neurath/local/neurath.sqlite3').uow() as uow:
+        sessions = uow.repo('session').list()
+        assert len(sessions) == 1
+        assert sessions[0].host == host
+
+
+def test_ambiguous_legacy_hook_rejects_without_inventing_identity(tmp_path):
+    run = subprocess.run([sys.executable, '-m', 'neurath', '--root', str(tmp_path), 'hook'], input=json.dumps({'hook_event_name': 'PreToolUse', 'session_id': 'unknown', 'tool_name': 'exec_command', 'tool_input': {}}), text=True, capture_output=True)
+    assert run.returncode == 0
+    assert json.loads(run.stdout)['hookSpecificOutput']['permissionDecision'] == 'deny'
+    assert not (tmp_path / '.neurath/local/neurath.sqlite3').exists()

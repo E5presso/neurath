@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "neurath"
-version = "0.3.0"
+version = "0.3.1"
 description = "Evidence-preserving agent work orchestration"
 requires-python = ">=3.14,<3.15"
 dependencies = ["SQLAlchemy==2.0.54", "alembic==1.20.0"]
