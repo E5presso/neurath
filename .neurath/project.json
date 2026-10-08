@@ -1,52 +1,20 @@
 {
-  "schema": 1,
+  "schema": 2,
   "documents": {
     "intent": "README.md",
-    "decisions": "docs/en/contributing/architecture.md",
-    "core_spec": "docs/en/contributing/core-v2-spec.md",
-    "core_plan": "docs/en/contributing/core-v2-plan.md"
+    "specification": "docs/en/specification.md",
+    "operations": "docs/en/workflows.md"
   },
   "verification": {
-    "runtime-contracts": {
-      "argv": [
-        "uv",
-        "run",
-        "--locked",
-        "python",
-        "tools/run_core_regressions.py"
-      ],
-      "cwd": ".",
-      "success_codes": [
-        0
-      ],
-      "timeout_seconds": 300
-    },
     "check": {
-      "argv": [
-        "uv",
-        "run",
-        "--locked",
-        "python",
-        "tools/check.py"
-      ],
+      "argv": ["uv", "run", "--locked", "python", "tools/check.py"],
       "cwd": ".",
-      "success_codes": [
-        0
-      ],
-      "timeout_seconds": 1800,
-      "stdout_contains": "NEURATH_CHECK_OK"
+      "success_codes": [0]
     },
     "pytest": {
-      "argv": [
-        ".venv/bin/python",
-        "-m",
-        "pytest"
-      ],
+      "argv": ["uv", "run", "--locked", "pytest", "-q"],
       "cwd": ".",
-      "success_codes": [
-        0
-      ],
-      "timeout_seconds": 1800
+      "success_codes": [0]
     }
   }
 }

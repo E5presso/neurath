@@ -1,209 +1,43 @@
-"""One installation engine for automation, onboarding agents, and the human wizard."""
+"""Agent-operated local installation and transport entrypoints."""
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
-from neurath import __version__
-from neurath.install.projection import HOSTS, PROFILES
-from neurath.install.transaction import InstallError, apply_plan, make_plan, recover, repository
 
-
-def emit(value):
-    print(json.dumps(value, indent=2, ensure_ascii=False))
-
-
-def main(arguments=None):
-    parser = argparse.ArgumentParser(prog="neurath", allow_abbrev=False)
-    parser.add_argument("--version", action="version", version=__version__)
-    parser.add_argument("--root", type=Path, default=Path.cwd())
-    commands = parser.add_subparsers(dest="command", required=True)
-    from neurath.reporting_cli import add_commands as add_report_commands
-
-    add_report_commands(commands)
-    from neurath.updates_cli import add_commands as add_release_commands
-
-    add_release_commands(commands)
-    setup = commands.add_parser("setup", help="프로젝트 설치와 진단을 한 번에 실행")
-    setup.add_argument("target", nargs="?", type=Path, help="대상 Git root (기본: 현재 폴더)")
-    setup.add_argument("--profile", choices=PROFILES)
-    setup.add_argument("--host", action="append", choices=HOSTS, dest="hosts")
-    setup.add_argument(
-        "--dry-run", action="store_true", help="대상 파일을 쓰지 않고 변경 목록 확인"
-    )
-    setup.add_argument("--json", action="store_true", help="자동화용 JSON 결과")
-    setup.add_argument(
-        "--auto-report",
-        choices=("yes", "no"),
-        help="사용자가 동의한 Neurath 자동 보고 설정; 생략하면 기존 선택 유지",
-    )
-    plan = commands.add_parser("plan")
-    plan.add_argument(
-        "--action", choices=["install", "update", "uninstall", "restore"], default="install"
-    )
-    plan.add_argument("--profile", choices=PROFILES)
-    plan.add_argument("--host", action="append", choices=HOSTS, dest="hosts")
-    plan.add_argument(
-        "--installation-id",
-        "--receipt",
-        dest="receipt",
-        metavar="INSTALLATION_ID",
-        help="되돌릴 설치 이력 ID (--receipt는 기존 명령과의 호환용)",
-    )
-    plan.add_argument("--output", type=Path, required=True)
-    apply = commands.add_parser("apply")
-    apply.add_argument("plan", type=Path)
-    installation_commands = []
-    for action in ("install", "update", "uninstall"):
-        sub = commands.add_parser(action)
-        installation_commands.append(sub)
-        sub.add_argument("--profile", choices=PROFILES)
-        sub.add_argument("--host", action="append", choices=HOSTS, dest="hosts")
-    restore = commands.add_parser("restore")
-    restore.add_argument("receipt", metavar="INSTALLATION_ID", help="되돌릴 설치 이력 ID")
-    commands.add_parser("recover")
-    wizard = commands.add_parser("wizard")
-    wizard.add_argument("--output", type=Path, help="새 비공개 계획 파일 (기본: Git 관리 디렉터리)")
-    check = commands.add_parser("doctor")
-    check.add_argument("--protocol", action="store_true")
-    commands.add_parser("integrity")
-    hook = commands.add_parser("hook")
-    hook.add_argument("--host", required=True, choices=HOSTS)
-    source = commands.add_parser("corpus")
-    source.add_argument("destination", type=Path)
-    for command_parser in (setup, plan, wizard, *installation_commands):
-        command_parser.add_argument(
-            "--skill-prefix",
-            metavar="PREFIX",
-            help="새 설치의 스킬 접두어 (예: neurath-); 생략하면 기존 설치 기록을 유지",
-        )
-    args = parser.parse_args(arguments)
-    try:
-        if args.command == "integrity":
-            from neurath.doctor import integrity
-
-            result = integrity()
-            emit(result)
-            return 0 if result["status"] == "passed" else 1
-        if args.command == "corpus":
-            import shutil
-
-            from neurath.resources import BUNDLE
-
-            if args.destination.exists():
-                raise InstallError("corpus destination must not exist")
-            shutil.copytree(
-                BUNDLE, args.destination, ignore=shutil.ignore_patterns("__pycache__", "*.pyc")
-            )
-            emit(
-                {
-                    "destination": str(args.destination.resolve()),
-                    "kind": "independent-runtime-reference",
-                }
-            )
-            return 0
-        root = repository((args.target or args.root) if args.command == "setup" else args.root)
-        if args.command == "releases":
-            from neurath.updates_cli import run as run_releases
-
-            emit(run_releases(root, args))
-            return 0
-        if args.command == "report":
-            from neurath.reporting_cli import run as run_report
-
-            result = run_report(root, args)
-            emit(result)
-            return 1 if isinstance(result, dict) and result.get("status") == "uncertain" else 0
-        if args.command == "setup":
-            from neurath.install.setup import setup_project, show_setup
-            from neurath.reporting import QUESTION, Reporting
-
-            decision = None if args.auto_report is None else args.auto_report == "yes"
-            if (
-                decision is None
-                and not args.dry_run
-                and not args.json
-                and sys.stdin.isatty()
-                and Reporting(root).status()["consent_required"]
-            ):
-                answer = input(QUESTION + " [y/N]: ").strip().lower()
-                decision = answer in {"y", "yes"}
-
-            result = setup_project(
-                root,
-                profile=args.profile,
-                hosts=args.hosts,
-                dry_run=args.dry_run,
-                skill_prefix=args.skill_prefix,
-                auto_report=decision,
-            )
-            emit(result) if args.json else show_setup(result)
-            return 1 if result["status"] == "failed" else 0
-        elif args.command == "plan":
-            from neurath.install.plan import write_plan
-
-            result = make_plan(
-                root,
-                action=args.action,
-                profile=args.profile,
-                hosts=args.hosts,
-                receipt=args.receipt,
-                skill_prefix=args.skill_prefix,
-            )
-            output = write_plan(root, result, args.output)
-            emit(
-                {
-                    "plan": str(output),
-                    "id": result["id"],
-                    "changes": [
-                        {"path": x["path"], "action": "remove" if x["after"] is None else "write"}
-                        for x in result["changes"]
-                    ],
-                }
-            )
-        elif args.command == "apply":
-            emit(apply_plan(root, json.loads(args.plan.read_text())))
-        elif args.command in {"install", "update", "uninstall"}:
-            emit(
-                apply_plan(
-                    root,
-                    make_plan(
-                        root,
-                        action=args.command,
-                        profile=args.profile,
-                        hosts=args.hosts,
-                        skill_prefix=args.skill_prefix,
-                    ),
-                )
-            )
-        elif args.command == "restore":
-            emit(apply_plan(root, make_plan(root, action="restore", receipt=args.receipt)))
-        elif args.command == "recover":
-            emit(recover(root))
-        elif args.command == "wizard":
-            from neurath.install.plan import write_plan
-
-            profile = input(f"Profile ({', '.join(PROFILES)}) [generic]: ").strip() or "generic"
-            hosts = (input("Hosts (codex,claude-code) [both]: ").strip() or ",".join(HOSTS)).split(
-                ","
-            )
-            result = make_plan(root, profile=profile, hosts=hosts, skill_prefix=args.skill_prefix)
-            output = write_plan(root, result, args.output)
-            print(f"{len(result['changes'])} changes; inspect {output}")
-            if input("Apply this plan? [y/N]: ").lower() == "y":
-                emit(apply_plan(root, result))
-        elif args.command == "doctor":
-            from neurath.doctor import doctor, passed
-
-            result = doctor(root, args.protocol)
-            emit(result)
-            return 0 if passed(result) else 1
-        elif args.command == "hook":
-            from neurath.core.hooks import main as run_hook
-
-            return run_hook(["--root", str(root), "--provider", args.host])
-        return 0
-    except (InstallError, ValueError, OSError, RuntimeError) as error:
-        print(f"neurath: {error}", file=sys.stderr)
-        return 2
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog='neurath')
+    parser.add_argument('--root', type=Path, default=Path.cwd())
+    sub = parser.add_subparsers(dest='command', required=True)
+    for name in ('mcp', 'hook'):
+        command = sub.add_parser(name)
+        command.add_argument('--provider', choices=('codex', 'claude-code'), required=True)
+    recovery = sub.add_parser('bypass')
+    recovery.add_argument('--enabled', choices=('true', 'false'))
+    check = sub.add_parser('check-run')
+    check.add_argument('execution_id')
+    sub.add_parser('status')
+    install = sub.add_parser('install')
+    install.add_argument('--source', type=Path, required=True)
+    args = parser.parse_args(argv)
+    if args.command == 'mcp':
+        from neurath.transport.mcp import serve
+        serve(args.root, args.provider)
+    elif args.command == 'hook':
+        from neurath.transport.hooks import run
+        run(args.root, args.provider)
+    elif args.command == 'bypass':
+        from neurath.transport.recovery import bypass
+        print(json.dumps(bypass(args.root, None if args.enabled is None else args.enabled == 'true')))
+    elif args.command == 'check-run':
+        from neurath.transport.check_runner import run
+        result = run(args.root, args.execution_id)
+        print(json.dumps(result, ensure_ascii=False))
+        code = result['exit_code']
+        raise SystemExit(1 if code is None else code if code >= 0 else 128 - code)
+    elif args.command == 'install':
+        from neurath.install import install
+        print(json.dumps(install(args.root, args.source), indent=2))
+    else:
+        from neurath.transport.runtime import status
+        print(json.dumps(status(args.root), indent=2))

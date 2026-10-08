@@ -1,31 +1,40 @@
-<!-- last_updated: 2026-09-19; synced_from: 243400e58ca74c7fd79bcdd86b488953fa743b97 -->
+# Neurath
 
-<p align="center">
-  <img src="docs/assets/neurath.png" width="720" alt="Neurath's boat, repaired while still at sea">
-</p>
+[한국어](README.ko.md)
 
-<h1 align="center">N E U R A T H</h1>
-<p align="center"><strong>Keep the context. Stay the course.</strong></p>
-<p align="center">A harness for Claude Code and Codex.<br>Shared memory, thoughtful collaboration, and a clear path back to your goal.</p>
-<p align="center"><strong>English</strong> · <a href="README.ko.md">한국어</a></p>
-<p align="center"><a href="docs/en/usage/start-here.md">Get started</a> · <a href="docs/en/usage/index.md">Usage guide</a> · <a href="docs/en/contributing/index.md">Contributing</a></p>
+Neurath keeps agent work accountable across requests, execution, delegation, and completion. It records task ownership and ordered phases, keeps evidence attributable, and separates a reported result from an accepted result.
 
-### Install in your project
+This repository contains the fresh **Neurath 0.3.0** implementation. The MCP server name is `neurath`.
 
-On macOS or Linux, open your project folder in Codex or Claude Code and send this request:
+## Working with Neurath
 
-> Read the installation documentation at https://github.com/E5presso/neurath and install Neurath in the current project for Codex and Claude Code. If this is not yet a Git repository, initialize it first. Preserve existing instructions, hooks, permissions, and the development environment, and connect the project's documentation and test commands. After installation, verify that hooks and MCP tools are active in a new session, and tell me about any trust approvals I need to complete myself.
+Tell your connected agent what you want to accomplish and what would count as success. For example:
 
-If you use only one host, replace “for Codex and Claude Code” with “for Codex” or “for Claude Code.” See the [installation guide](docs/en/usage/installation.md) for the installation process and activation checks.
+> Fix the reported problem. First explain the cause, then make the change, verify the result, and show the evidence before marking the work complete.
 
-### Remember. Reconsider. Continue.
+For a handoff:
 
-- **Remember the work.** Carry decisions and unfinished tasks between sessions—even when you switch between Codex and Claude.
-- **Keep your bearings.** Bring the original goal back into view, so an agent can change its approach without losing the purpose.
-- **Build together.** Let agents exchange findings and review one another's work while keeping editing responsibilities separate.
+> Ask another agent to inspect the change independently. Keep ownership of the original task here, and review its findings before accepting its result.
 
-Neurath is a technology-independent harness: a supporting layer around Claude Code and Codex that helps an agent carry a development task through investigation, collaboration, and a change of session.
+For resuming work:
 
-Its name comes from Otto Neurath's image of repairing a ship while still at sea. The work continues while its parts change; the destination stays in view.
+> Show my unfinished tasks, their current phases, and the evidence already recorded. Continue the selected task without discarding its previous history.
 
-**[Follow one bug from request to verified fix](docs/en/usage/start-here.md).** Start with a hypothetical web app whose saved filter disappears after refresh, and learn each idea when the agent needs it. To apply it to your Git project, [ask your agent to prepare installation](docs/en/usage/installation.md).
+These are workflow examples. An agent must use the operations actually available in its connected environment and identify unsupported actions. Task records do not execute an external agent, prove a native action happened, or supply human approval by themselves.
+
+## Reading the result
+
+A useful result identifies the current owner, task state, completed phases, remaining criteria, and applicable evidence. A delegate's report stays separate from the owner's acceptance. Completion requires the task's explicit requirements to be satisfied; a stopped process or a successful transport response is insufficient.
+
+When checking an upgrade, distinguish the source checkout, installed distribution, reachable protocol, and integration actually loaded by the host. Each needs its own observation.
+
+## Documentation
+
+- [User workflows and capability boundaries](docs/en/workflows.md)
+- [Requirements and acceptance specification](docs/en/specification.md)
+- [Migration and recovery](docs/en/recovery.md)
+- [Local candidate verification and native activation](docs/en/candidate-status.md)
+- [Development and validation](CONTRIBUTING.md)
+- [Documentation index](docs/en/index.md)
+
+Existing data and unfinished work must be preserved during adoption. Read the recovery guidance before replacing a database or removing a worktree.
