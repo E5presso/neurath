@@ -13,3 +13,9 @@ from neurath.infrastructure.project_location import LocalProjects
 
 def build_core(database_path: Path | None = None) -> Core:
     return Core(CoreDatabase(database_path), LocalProjects())
+
+
+def build_task_ledger(database_path: Path | None = None):
+    from neurath.application.task_ledger import TaskLedger
+
+    return TaskLedger(CoreDatabase(database_path))

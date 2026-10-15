@@ -9,13 +9,13 @@ from urllib.parse import quote
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, event, inspect
-from sqlalchemy.engine import Connection, URL
+from sqlalchemy.engine import URL, Connection
 from sqlalchemy.pool import NullPool
 
 from neurath.domain.core import StorageNotReady
 from neurath.infrastructure.core_identity import SqlIdentities
 
-SCHEMA_REVISION = "core_0001"
+SCHEMA_REVISION = "core_0002"
 
 
 def user_database_path() -> Path:
@@ -30,6 +30,12 @@ def user_database_path() -> Path:
 @dataclass
 class CoreUnitOfWork:
     connection: Connection
+
+    @property
+    def tasks(self):
+        from neurath.infrastructure.core_tasks import SqlTasks
+
+        return SqlTasks(self.connection)
 
     @property
     def identities(self) -> SqlIdentities:
