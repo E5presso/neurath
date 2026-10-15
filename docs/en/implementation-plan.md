@@ -33,3 +33,9 @@ All 84 requirement cases and 27 capability results have a primary implementation
 2. Memory, collaboration, newsroom, external monitoring, recovery and independent outcome/retrospective evaluation.
 3. CLI integration → skill definitions → rules entry and actual startup.
 4. Data migration and distribution/guide installation → full validation, three-project rollout and finish.
+
+## Core foundation implementation
+
+The internal request-scoped identity/storage foundation for #137 is described in
+[Core foundation](core-foundation.md). Isolated tests do not establish live hook,
+CLI, migration, or deployment completion; those remain in their assigned tickets.
