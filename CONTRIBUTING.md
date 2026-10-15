@@ -62,8 +62,8 @@ stores. No source test authorizes installation or conversion of user databases.
 The previous 0.3.1 implementation and its implementation-specific tests were
 removed from this candidate source tree instead of keeping an untyped parallel
 runtime. Git retains that history. The new tests preserve #137/#154 behavioral
-contracts; they do not claim the former full harness suite still passes. Tasks,
-runner, host hooks, memory, migration, and public CLI/installation remain separate
+contracts and #140 task semantics; they do not claim the former full harness suite
+still passes. Runner, host hooks, memory, migration, and public CLI/installation remain separate
 implementation tickets. `setup` cannot install this incomplete candidate.
 
 Keep public documentation paired under `docs/en` and `docs/ko`, with the same

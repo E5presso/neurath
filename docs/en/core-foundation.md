@@ -69,7 +69,9 @@ Explicit initialization refuses legacy tables and applies known Alembic revision
 Normal requests reject absent or mismatched schemas. Future changes add revisions
 and advance `SCHEMA_REVISION`; do not edit previously applied schema definitions.
 `tests/fixtures/core_0001.sql` represents the original schema and proves existing
-identifiers and revisions remain readable and updatable through the new ORM.
+identifiers and revisions remain readable and updatable through the new ORM after
+explicit upgrade. The current `core_0002` extension is described in
+[task requirements, attempts and TODO](task-ledger.md).
 
 ## Validation and limits
 
@@ -85,7 +87,7 @@ responsible for module cohesion and meaningful documentation.
 
 The old 0.3.1 runtime and implementation-specific tests are recoverable from Git,
 not included as a second runtime or a lint exception. This candidate does not
-implement tasks (#140), runner (#141), hooks (#142), memory (#143), collaboration
+implement runner (#141), hooks (#142), memory (#143), collaboration
 (#144), CLI (#148), legacy conversion (#150), or installation (#151). Their absence
 is outstanding implementation work, not completed feature preservation. The wheel
 has no obsolete CLI entry point and `setup` refuses installation. No user database,

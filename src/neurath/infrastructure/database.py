@@ -14,7 +14,7 @@ from sqlalchemy.pool import ConnectionPoolEntry, NullPool
 
 from neurath.domain.errors import StorageNotReady
 
-SCHEMA_REVISION = "core_0001"
+SCHEMA_REVISION = "core_0002"
 
 
 def user_database_path() -> Path:

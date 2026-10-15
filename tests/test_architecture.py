@@ -267,3 +267,12 @@ class ProjectRepository(Request):
 ''',
     }
     assert any("NOMINAL_IMPLEMENTATION" in error for error in ArchitectureChecker(sources).check())
+
+
+def test_command_name_starting_with_i_is_not_an_interface():
+    checker = ArchitectureChecker(
+        {
+            "neurath.application.ports.usecases.invalidate": '"""Invalidation command."""\nclass InvalidateTaskCommand:\n    """Carry a sourced invalidation."""\n    task_id: str'
+        }
+    )
+    assert checker.check() == []

@@ -5,7 +5,7 @@
 Neurath는 로컬 CLI 전용 에이전트 하네스로 전면 재작성 중입니다.
 [승인된 명세](docs/ko/specification.md)는 태스크, 순서가 있는 실행 단계,
 훅, 기억, 협업, 복구 기능을 유지합니다. 이 체크아웃이 구현한 범위는
-#137의 사용자 단위 프로젝트·세션 영속성 기반입니다.
+#137의 사용자 단위 프로젝트·세션 영속성 기반과 #140의 작업 요구·시도·TODO 조회입니다.
 
 현재 후보 패키지는 불변 도메인 aggregate, 명시적인 애플리케이션 port와
 use case, 타입이 있는 SQLAlchemy ORM repository, 요청별 세션 함수를 제공합니다.
@@ -17,6 +17,7 @@ use case, 타입이 있는 SQLAlchemy ORM repository, 요청별 세션 함수를
 종료하며 사라진 모듈을 가리키는 console entry point도 배포하지 않습니다.
 CLI·자료 이전·설치는 승인된 후속 구현 계획에 남아 있습니다.
 
+- [작업 요구·시도·TODO](docs/ko/task-ledger.md)
 - [기반 구조·API·구현 경계](docs/ko/core-foundation.md)
 - [개발과 강제 품질 검사](CONTRIBUTING.ko.md)
 - [전체 구현 계획](docs/ko/implementation-plan.md)

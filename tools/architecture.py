@@ -178,7 +178,12 @@ class ArchitectureChecker:
                     errors.append(f"{location} CORE: name a specific use-case responsibility")
                 symbol = f"{module}.{node.name}"
                 ancestors = self._ancestors(symbol)
-                is_port = ".application.ports." in module and node.name.startswith("I")
+                is_port = (
+                    ".application.ports." in module
+                    and node.name.startswith("I")
+                    and len(node.name) > 1
+                    and node.name[1].isupper()
+                )
                 if is_port:
                     if "abc.ABC" not in ancestors:
                         errors.append(f"{location} NOMINAL_PORT: inherit ABC explicitly")

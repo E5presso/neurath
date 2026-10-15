@@ -19,3 +19,7 @@ class ProjectIdentityConflict(NeurathError):
 
 class StorageNotReady(NeurathError):
     """The database needs explicit initialization or a compatible migration."""
+
+
+class InvalidTaskOperation(NeurathError):
+    """The requested task operation lacks valid provenance, state or actual evidence."""

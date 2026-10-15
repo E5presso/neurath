@@ -75,6 +75,9 @@ def test_original_schema_records_are_readable_and_updatable_without_data_convers
             (str(folder),),
         )
     database = SqliteDatabase(path)
+    with pytest.raises(StorageNotReady, match="version"):
+        get_session_context("original-project", "original-session", database_path=path)
+    database.initialize()
     original = get_session_context("original-project", "original-session", database_path=path)
     assert original.session.revision == 7
     database.initialize()
@@ -123,3 +126,59 @@ def test_existing_empty_file_requires_initialization(tmp_path):
                 database.verify_schema(session)
     finally:
         engine.dispose()
+
+
+def test_upgraded_0001_and_new_initialization_have_equivalent_schema_and_preserved_rows(tmp_path):
+    upgraded = tmp_path / "upgraded.sqlite3"
+    fresh = tmp_path / "fresh.sqlite3"
+    fixture = Path(__file__).parent / "fixtures" / "core_0001.sql"
+    with sqlite3.connect(upgraded) as connection:
+        connection.executescript(fixture.read_text())
+        connection.execute("INSERT INTO core_projects VALUES ('p', '/original/project')")
+        connection.execute(
+            "INSERT INTO core_project_locations VALUES ('folder', '/original/project', 'p')"
+        )
+        connection.execute(
+            "INSERT INTO core_sessions VALUES ('s', 'p', 'codex', 'original-native', '/original/project', 11)"
+        )
+        original = {
+            name: connection.execute(f"SELECT * FROM {name}").fetchall()
+            for name in ("core_projects", "core_project_locations", "core_sessions")
+        }
+    before = upgraded.read_bytes()
+    with pytest.raises(StorageNotReady):
+        get_session_context("p", "s", database_path=upgraded)
+    assert upgraded.read_bytes() == before
+    SqliteDatabase(upgraded).initialize()
+    SqliteDatabase(fresh).initialize()
+    with sqlite3.connect(upgraded) as connection, sqlite3.connect(fresh) as fresh_connection:
+        assert {
+            name: connection.execute(f"SELECT * FROM {name}").fetchall() for name in original
+        } == original
+        for (name,) in connection.execute("SELECT name FROM sqlite_master WHERE type='table'"):
+            assert (
+                connection.execute(f"PRAGMA table_info({name})").fetchall()
+                == fresh_connection.execute(f"PRAGMA table_info({name})").fetchall()
+            )
+            assert (
+                connection.execute(f"PRAGMA foreign_key_list({name})").fetchall()
+                == fresh_connection.execute(f"PRAGMA foreign_key_list({name})").fetchall()
+            )
+            assert (
+                connection.execute(f"PRAGMA index_list({name})").fetchall()
+                == fresh_connection.execute(f"PRAGMA index_list({name})").fetchall()
+            )
+        assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+        assert connection.execute("SELECT version_num FROM core_schema_revision").fetchall() == [
+            ("core_0002",)
+        ]
+    for path in (fresh, upgraded):
+        engine = SqliteDatabase(path).create_engine(write=False)
+        try:
+            with engine.connect() as connection:
+                context = MigrationContext.configure(
+                    connection, opts={"version_table": "core_schema_revision"}
+                )
+                assert compare_metadata(context, DatabaseModel.metadata) == []
+        finally:
+            engine.dispose()
