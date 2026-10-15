@@ -1,1 +1,1 @@
-"""Adapters for actual native host events and the MCP wire protocol."""
+"""SQLAlchemy가 소유하는 트랜잭션으로 요청을 구성한다."""

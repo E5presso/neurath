@@ -7,13 +7,21 @@ name = "neurath"
 version = "0.3.1"
 description = "Evidence-preserving agent work orchestration"
 requires-python = ">=3.14,<3.15"
-dependencies = ["SQLAlchemy==2.0.54", "alembic==1.20.0"]
-
-[project.scripts]
-neurath = "neurath.cli:main"
+dependencies = [
+    "SQLAlchemy==2.0.54",
+    "alembic==1.20.0",
+    "dishka>=1.10.1",
+]
 
 [dependency-groups]
-dev = ["pytest>=8.3", "ruff>=0.15", "build>=1.2"]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.15",
+    "build>=1.2",
+    "pre-commit>=4.5",
+    "pyrefly>=1.3.2",
+    "pydoclint>=0.11.1",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/neurath"]
@@ -25,3 +33,26 @@ addopts = "--import-mode=importlib --tb=short"
 [tool.ruff]
 target-version = "py314"
 line-length = 100
+
+[tool.pyrefly]
+python-version = "3.14"
+preset = "strict"
+project-includes = ["src/**/*.py", "tools/**/*.py"]
+search-path = ["src", "."]
+check-unannotated-defs = true
+infer-return-types = "never"
+
+[tool.pydoclint]
+style = "google"
+arg-type-hints-in-docstring = false
+skip-checking-short-docstrings = false
+allow-init-docstring = true
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "D", "ANN"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["D", "ANN"]

@@ -1,4 +1,1 @@
-"""SQLAlchemy persistence adapters."""
-from .storage import Database, MigrationError, Repository, SQLiteStore, StorageError, UnitOfWork
-
-__all__ = ['Database', 'SQLiteStore', 'UnitOfWork', 'Repository', 'StorageError', 'MigrationError']
+"""Git 관찰과 SQLite 저장 어댑터를 제공한다."""

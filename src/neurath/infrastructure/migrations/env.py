@@ -1,12 +1,22 @@
-"""Migrations run only on the transaction owned by Database.initialize()."""
+"""초기화가 명시적으로 전달한 연결에서만 마이그레이션을 실행한다."""
 
 from alembic import context
+from sqlalchemy.engine import Connection
 
-from neurath.infrastructure.models import Base
+from neurath.infrastructure.models.base import DatabaseModel
+from neurath.infrastructure.models.project import ProjectLocationModel, ProjectModel
+from neurath.infrastructure.models.session import SessionModel
 
-connection = context.config.attributes.get("connection")
-if connection is None:
-    raise RuntimeError("An explicit database transaction is required")
-context.configure(connection=connection, target_metadata=Base.metadata, transactional_ddl=True)
+# Importing these declarative models registers their tables on the shared metadata.
+MODEL_TYPES = (ProjectModel, ProjectLocationModel, SessionModel)
+connection = context.config.attributes["connection"]
+if not isinstance(connection, Connection):
+    raise TypeError("Migration requires an explicit SQLAlchemy Connection")
+context.configure(
+    connection=connection,
+    target_metadata=DatabaseModel.metadata,
+    version_table="core_schema_revision",
+    transactional_ddl=True,
+)
 with context.begin_transaction():
     context.run_migrations()

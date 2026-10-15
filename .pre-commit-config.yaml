@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: neurath-quality
+        name: Neurath full-source quality and architecture
+        entry: uv run --locked python tools/quality.py
+        language: system
+        pass_filenames: false
+        always_run: true

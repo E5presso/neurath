@@ -1,5 +1,7 @@
 # Local candidate verification record
 
+> Historical 0.3.0 record only. It does not validate the current rewrite candidate. See [current foundation boundaries](core-foundation.md).
+
 [Documentation](index.md) · [한국어](../ko/candidate-status.md)
 
 This record describes the local 0.3.0 candidate as of 2026-10-08. No public release, push, or deployment is reported here.
@@ -17,12 +19,12 @@ This record describes the local 0.3.0 candidate as of 2026-10-08. No public rele
 | Writer release | The verification task's writer lease was released: `active: false`, generation 1, revision 1. |
 | Claude native activation | An actual Claude session successfully invoked `session_get` against the final installed wheel. An earlier native run also passed `session_get` and `task_list`, returning 30 preserved waiting tasks. |
 
-`legacy-unknown` does not mean a session has ended. Task adoption still requires its explicit native user source and the previous owner's confirmed ended state. Migration did not promote historical reports, claims, or approvals into current authority.
+`legacy-unknown` does not mean a session has ended. The candidate then required an explicit native user source and confirmed termination of the previous owner. Requiring another direct user source is not a requirement of the redesign; use the current [handoff contract](architecture.md). Migration did not promote historical reports, claims, or approvals into current authority.
 
 These observations establish Codex activation, a real configured-check and task-completion lifecycle, writer release, and Claude activation with a read-only call against the final wheel. They do not establish a Claude mutation lifecycle. The preserved-task count comes from the original structured event log rather than a shortened model summary.
 
 The earlier failed verification evidence remained unchanged when the same verification task resumed. Existing user tasks were not modified. The new successful evidence records the runner's actual subprocess result, independently of how a host renders tool output.
 
-Keep the [hook trust procedure](../../CONTRIBUTING.md#trust-changed-codex-hooks) in the installation workflow: future changes to a hook definition may require fresh user review. New host or lifecycle claims still require their own observations.
+Keep the historical hook trust procedure in the installation workflow: future changes to a hook definition may require fresh user review. New host or lifecycle claims still require their own observations.
 
 After final formatting, import sorting, and annotation normalization, the required checks passed again and both real hosts read back the final wheel hash above. The original complete-lifecycle evidence is retained separately.
