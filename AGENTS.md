@@ -10,22 +10,10 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 - 기존 데이터 이전은 `migration`의 명시적 보존 경계에서 수행한다. 원본 DB를 수정하거나 미완료 작업을 임의로 완료·취소하지 않는다.
 - 새 설계는 Python + Typer 기반 `neurath` CLI 전용이며 MCP 서버나 어댑터를 제공하지 않는다. 릴리스 시 실제 CLI 정의에서 가이드 프롬프트를 생성하고 설치 시 관리 영역에 반영한다. 네이티브 호스트의 실행 권한과 사용자 승인을 하네스 기록으로 대체하지 않는다.
 - `uv sync --locked`로 개발 환경을 준비하고 `uv run --locked python tools/check.py`로 필수 검사를 실행한다.
-- `./setup --self`는 로컬 자기 설치다. 설치 환경은 개발 환경과 분리한다. 소스 검사, 패키지 설치, 프로토콜 시험, 실제 호스트 호출을 구분해 보고한다.
+- 현재 `./setup`은 미완성 후보 설치를 거부한다. 소스 검사, 패키지 생성, 설치, 실제 호스트 호출을 구분해 보고한다.
 - 설치는 관련 없는 사용자 설정·훅·지침을 보존하며, 변경 전에 복구 사본을 남긴다.
 - 공개 문서는 `docs/en`과 `docs/ko`의 같은 상대 경로에 함께 작성한다. README와 CONTRIBUTING은 영어·한국어 쌍을 유지한다. 개인 경로와 검증 원문은 공개 문서나 패키지에 넣지 않는다.
 - 코드·설치 수정은 승인된 로컬 작업이다. 공개 push·PR·배포는 사용자의 별도 요청 없이 수행하지 않는다.
-- 기존 구현·보관 코드·다른 코드베이스를 재작성의 본보기로 사용하지 않는다. 개념과 명시적 스펙에서 설계한다.
-
-
-아래 관리 블록은 현재 설치된 0.3.1의 참조다. 새 구현은 위 CLI 전용 명세를 따르며, 실제 설치 전환 때 설치기가 이 블록을 갱신한다.
-
-<!-- neurath:managed -->
-## Neurath
-
-Use MCP server `neurath`. Read `.neurath/policy.md`.
-Inspect `session.get` and `task.list`; preserve unfinished user requirements.
-Register the requested outcome with `task.create`, then start it with `task.activate`.
-Use ordered phases and criterion-specific evidence; delegation reports need owner acceptance.
-Use `lease.acquire` and `lease.release` for writer ownership, native tools for actual execution.
-Recover with `harness_bypass(enabled=true)` when the harness malfunctions, then restore it after verification.
-<!-- /neurath:managed -->
+- 도메인 aggregate, 명시적 ABC port, 개별 command/query use case, 구체 repository adapter와 declarative ORM 모델의 책임을 구분한다. 사용자 지정 구조 참고의 과거 Protocol·암묵 DI·UoW는 복제하지 않는다.
+- 전체 현재 src와 tools에 strict 타입·docstring·lint 검사를 적용한다. pre-commit과 CI는 tools/quality.py를 공유한다. 모듈 의미와 문서의 유용성은 별도 사람 검토 사항이다.
+- 현재 후보는 #137의 기반 라이브러리다. 이전 MCP runtime은 Git 기록에 있으며 새 패키지에는 포함하지 않는다. 공개 CLI·설치·기존 자료 변환은 후속 티켓이며 이 후보를 실설치하지 않는다.

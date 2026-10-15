@@ -1,1 +1,1 @@
-"""Versioned schema changes."""
+"""Immutable applied database revisions."""

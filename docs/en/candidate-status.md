@@ -1,5 +1,7 @@
 # Local candidate verification record
 
+> Historical 0.3.0 record only. It does not validate the current rewrite candidate. See [current foundation boundaries](core-foundation.md).
+
 [Documentation](index.md) · [한국어](../ko/candidate-status.md)
 
 This record describes the local 0.3.0 candidate as of 2026-10-08. No public release, push, or deployment is reported here.
@@ -23,6 +25,6 @@ These observations establish Codex activation, a real configured-check and task-
 
 The earlier failed verification evidence remained unchanged when the same verification task resumed. Existing user tasks were not modified. The new successful evidence records the runner's actual subprocess result, independently of how a host renders tool output.
 
-Keep the [hook trust procedure](../../CONTRIBUTING.md#trust-changed-codex-hooks) in the installation workflow: future changes to a hook definition may require fresh user review. New host or lifecycle claims still require their own observations.
+Keep the historical hook trust procedure in the installation workflow: future changes to a hook definition may require fresh user review. New host or lifecycle claims still require their own observations.
 
 After final formatting, import sorting, and annotation normalization, the required checks passed again and both real hosts read back the final wheel hash above. The original complete-lifecycle evidence is retained separately.

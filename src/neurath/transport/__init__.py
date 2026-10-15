@@ -1,1 +1,1 @@
-"""Adapters for actual native host events and the MCP wire protocol."""
+"""Request composition with SQLAlchemy-owned transactions."""
