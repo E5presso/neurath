@@ -8,32 +8,35 @@ Protocol contract, or imperative runtime table mapping remains in the package.
 
 ## Responsibilities
 
-- `domain/aggregates/project.py`: project identity and `ProjectKind` enum.
-- `domain/aggregates/session.py`: host-session aggregate, revision transition, detached context.
-- `application/ports`: explicit repository/service/use-case ABCs and immutable command/query inputs.
-- `application/usecases`: separate register, read-context, and move implementations with `execute`.
-- `infrastructure/models`: declarative ORM records and named `from_domain`/`to_domain` conversions.
-- `infrastructure/repositories`: explicit implementations of the application repository ports.
-- `infrastructure/database.py`: SQLite engine settings, schema validation, explicit initialization.
-- `infrastructure/project_locator.py`: bounded Git observation before opening a transaction.
-- `transport/session_requests.py`: direct Session transaction lifecycle and dependency composition.
+- `domain/aggregates/project.py`: mutable project/location entities, identity selection, folder promotion, and ownership/conflict rules.
+- `domain/aggregates/session.py`: mutable host-session identity, native identifier validation, and movement guarded by the caller's observed revision.
+- `domain/observations.py`: immutable primitive filesystem/Git facts, without identity policy.
+- `application/ports`: nominal repository and observation ABCs. Repository operations are lookup and storage only.
+- `application/usecases`: concrete register-project, register-session, read-context, and move operations with immutable command/query inputs; no use-case interfaces.
+- `application/context.py`: immutable result snapshots; entity equality compares identity, while snapshots compare state.
+- `infrastructure/models` and `repositories`: declarative records, named conversions, and primitive persistence implementations.
+- `infrastructure/database.py`: engine creation, schema verification, and explicit initialization functions.
+- `infrastructure/directory_observer.py`: bounded Git/filesystem I/O returning canonical directory/common-directory/primary-worktree facts.
+- `infrastructure/providers.py`: Dishka constructor injection with APP engine and REQUEST Session/repository/use-case lifetimes.
+- `transport/session_requests.py`: request orchestration and direct `Session.begin()` transaction ownership.
 
-Domain and application layers do not import SQLAlchemy, Alembic, or host adapters.
-Dependencies are constructor arguments, never a generic registry or implicit DI.
-The request layer returns immutable domain values and releases its connection before
-an external host action. No service retains durable request state in memory.
+Domain and application layers do not import SQLAlchemy, Alembic, Dishka, or host adapters.
+A fresh container is built for every host request; APP scope is a resource lifetime,
+not a daemon. Git observation completes before resolving the database session.
+Dishka closes the Session and disposes the engine; it never commits a transaction.
+Request results are independent immutable snapshots returned after cleanup.
 
 ## Internal request API
 
 ```python
 from pathlib import Path
-from neurath.infrastructure.database import SqliteDatabase
+from neurath.infrastructure.database import initialize_database
 from neurath.transport.session_requests import (
     register_session, get_session_context, move_session,
 )
 
 path = Path("/explicit/isolated/core.sqlite3")
-SqliteDatabase(path).initialize()  # Explicit setup; never performed by a normal request.
+initialize_database(path)  # Explicit setup; never performed by a normal request.
 opened = register_session("/project", "codex", "native-session", database_path=path)
 current = get_session_context(opened.project.id, opened.session.id, database_path=path)
 changed = move_session(current.project.id, current.session.id, "/project/subfolder",
@@ -56,12 +59,17 @@ become new folder projects.
 
 ## SQLAlchemy and migrations
 
-Each request opens an unpooled engine and actual ORM `Session`, then uses
-`with Session(engine) as session, session.begin():`. Writes acquire
+Each request resolves an unpooled engine and actual ORM `Session` through Dishka,
+then the request adapter directly uses `with session.begin():`. Writes acquire
 `BEGIN IMMEDIATE` before reading mutable state; reads use SQLite read-only mode.
 Foreign keys are enabled on every connection. SQLite coordinates competing writers;
 the default busy timeout is five seconds and failures are not silently retried.
 Repositories flush within the supplied transaction and never commit independently.
+`HostSession.move` validates the observed version and changes directory. Primitive
+`save(entity)` returns the persisted entity using SQLAlchemy `merge` and
+`version_id_col`; the ORM increments the storage version and rejects stale detached
+entities. Saving an unchanged path is a no-op under normal ORM dirty checking and retains the version.
+There is no repository-side entity cache or load-before-save requirement.
 
 The original `core_0001` DDL and stored table names remain compatible. That revision
 now lives in `infrastructure/migrations`; only annotations/docstrings changed.
@@ -78,6 +86,11 @@ uncommitted read isolation, foreign keys, read-only connections, explicit and
 concurrent initialization, old-schema compatibility, rejected legacy-byte
 preservation, Git/worktree/clone identity, and folder promotion. The dependent-record
 fixture verifies foreign-key preservation; it is not a task or memory feature.
+
+Pure-domain tests exercise root choice, linked-worktree identity, promotion,
+conflicting owners, entity identity, and stale movement without Git or SQL. DI tests
+verify constructor injection, scope isolation, detached stale saves, repeated saves,
+and rollback/connection cleanup on exceptions.
 
 [Required quality checks](../../CONTRIBUTING.md) enforce the concrete review rules
 across the entire current package, with negative fixtures. Human review remains

@@ -12,7 +12,7 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
-from neurath.domain.aggregates.project import ProjectKind, ProjectLocation
+from neurath.application.usecases.register_project import RegisterProjectUseCase
 from neurath.domain.aggregates.session import HostSession
 from neurath.domain.errors import (
     ContextNotFound,
@@ -20,9 +20,12 @@ from neurath.domain.errors import (
     ProjectIdentityConflict,
     RevisionConflict,
 )
+from neurath.domain.observations import DirectoryObservation
+from neurath.infrastructure.database import create_database_engine
 from neurath.infrastructure.models.project import ProjectModel
 from neurath.infrastructure.models.session import SessionModel
 from neurath.infrastructure.repositories.project import ProjectRepository
+from neurath.infrastructure.repositories.project_location import ProjectLocationRepository
 from neurath.infrastructure.repositories.session import SessionRepository
 from neurath.transport.session_requests import get_session_context, move_session, register_session
 from tests.conftest import git, initialize_git
@@ -56,7 +59,7 @@ def request(database, mode, *arguments):
             sys.executable,
             "-c",
             PROCESS,
-            str(database.path),
+            str(database),
             mode,
             *[str(value) for value in arguments],
         ],
@@ -88,7 +91,7 @@ def test_worktrees_and_subfolders_share_project_but_keep_observed_directory(
     child = linked / "child"
     child.mkdir()
     contexts = [
-        register_session(str(folder), "codex", str(index), database_path=database.path)
+        register_session(str(folder), "codex", str(index), database_path=database)
         for index, folder in enumerate((repository, linked, child))
     ]
     assert len({context.project.id for context in contexts}) == 1
@@ -110,21 +113,15 @@ def test_clones_same_remote_same_native_id_and_other_providers_are_scoped(
         clones[1], "remote", "get-url", "origin"
     )
     first, second = [
-        register_session(str(clone), "codex", "same", database_path=database.path)
-        for clone in clones
+        register_session(str(clone), "codex", "same", database_path=database) for clone in clones
     ]
     assert first.project.id != second.project.id
     with pytest.raises(ContextNotFound):
-        get_session_context(first.project.id, second.session.id, database_path=database.path)
+        get_session_context(first.project.id, second.session.id, database_path=database)
     with pytest.raises(ContextNotFound):
-        move_session(
-            first.project.id, first.session.id, str(clones[1]), 1, database_path=database.path
-        )
-    assert (
-        get_session_context(first.project.id, first.session.id, database_path=database.path)
-        == first
-    )
-    other = register_session(str(clones[0]), "claude", "same", database_path=database.path)
+        move_session(first.project.id, first.session.id, str(clones[1]), 1, database_path=database)
+    assert get_session_context(first.project.id, first.session.id, database_path=database) == first
+    other = register_session(str(clones[0]), "claude", "same", database_path=database)
     assert other.project == first.project
     assert other.session.id != first.session.id
 
@@ -134,8 +131,8 @@ def test_folder_to_git_promotion_preserves_foreign_keys_from_first_linked_reques
 ):
     plain = tmp_path / "plain"
     plain.mkdir()
-    before = register_session(str(plain), "codex", "native", database_path=database.path)
-    with sqlite3.connect(database.path) as connection:
+    before = register_session(str(plain), "codex", "native", database_path=database)
+    with sqlite3.connect(database) as connection:
         connection.execute("PRAGMA foreign_keys=ON")
         connection.execute(
             "CREATE TABLE dependent_fixture (project_id TEXT REFERENCES core_projects(id), source TEXT)"
@@ -150,7 +147,7 @@ def test_folder_to_git_promotion_preserves_foreign_keys_from_first_linked_reques
     after = request(database, "register", linked, "codex", "another")
     assert after["project"]["id"] == before.project.id
     assert request(database, "read", before.project.id, before.session.id) == asdict(before)
-    with sqlite3.connect(database.path) as connection:
+    with sqlite3.connect(database) as connection:
         assert connection.execute("SELECT * FROM dependent_fixture").fetchall() == [
             (before.project.id, "unfinished original source")
         ]
@@ -167,7 +164,7 @@ def test_concurrent_process_registration_returns_one_identity(database, reposito
 
 
 def test_concurrent_revision_change_has_one_winner(database, repository):
-    first = register_session(str(repository), "codex", "native", database_path=database.path)
+    first = register_session(str(repository), "codex", "native", database_path=database)
     folders = [repository / "left", repository / "right"]
     for folder in folders:
         folder.mkdir()
@@ -194,43 +191,45 @@ def test_failed_registration_rolls_back_project_alias_and_session(
 
     monkeypatch.setattr(SessionRepository, "add", fail_after_flush)
     with pytest.raises(RuntimeError, match="after flush"):
-        register_session(str(repository), "codex", "native", database_path=database.path)
-    with sqlite3.connect(database.path) as connection:
+        register_session(str(repository), "codex", "native", database_path=database)
+    with sqlite3.connect(database) as connection:
         for table in ("core_projects", "core_project_locations", "core_sessions"):
             assert connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone() == (0,)
 
 
 def test_related_changes_roll_back_together_using_actual_session(database, repository):
-    first = register_session(str(repository), "codex", "native", database_path=database.path)
-    engine = database.create_engine(write=True)
+    first = register_session(str(repository), "codex", "native", database_path=database)
+    engine = create_database_engine(database, write=True)
     try:
         with pytest.raises(RuntimeError, match="rollback"):
             with Session(engine) as session, session.begin():
                 repository_adapter = SessionRepository(session)
-                repository_adapter.save(first.session.move("new-directory", 1), 1)
+                changed = repository_adapter.get(first.project.id, first.session.id)
+                changed.move("new-directory", 1)
+                repository_adapter.save(changed)
                 repository_adapter.add(
                     HostSession("second", first.project.id, "codex", "second", "new", 1)
                 )
                 raise RuntimeError("rollback")
     finally:
         engine.dispose()
-    assert (
-        get_session_context(first.project.id, first.session.id, database_path=database.path)
-        == first
-    )
-    with sqlite3.connect(database.path) as connection:
+    assert get_session_context(first.project.id, first.session.id, database_path=database) == first
+    with sqlite3.connect(database) as connection:
         assert connection.execute("SELECT COUNT(*) FROM core_sessions").fetchone() == (1,)
 
 
 def test_uncommitted_data_is_invisible_and_read_only_connection_rejects_writes(
     database, repository
 ):
-    first = register_session(str(repository), "codex", "native", database_path=database.path)
-    writer_engine = database.create_engine(write=True)
-    reader_engine = database.create_engine(write=False)
+    first = register_session(str(repository), "codex", "native", database_path=database)
+    writer_engine = create_database_engine(database, write=True)
+    reader_engine = create_database_engine(database, write=False)
     try:
         with Session(writer_engine) as writer, writer.begin():
-            SessionRepository(writer).save(first.session.move("uncommitted", 1), 1)
+            sessions = SessionRepository(writer)
+            changed = sessions.get(first.project.id, first.session.id)
+            changed.move("uncommitted", 1)
+            sessions.save(changed)
             assert request(database, "read", first.project.id, first.session.id) == asdict(first)
         with Session(reader_engine) as reader, reader.begin():
             with pytest.raises(OperationalError, match="readonly"):
@@ -241,7 +240,7 @@ def test_uncommitted_data_is_invisible_and_read_only_connection_rejects_writes(
 
 
 def test_foreign_keys_and_positive_revisions_are_enforced(database):
-    engine = database.create_engine(write=True)
+    engine = create_database_engine(database, write=True)
     try:
         with pytest.raises(IntegrityError):
             with Session(engine) as session, session.begin():
@@ -259,14 +258,9 @@ def test_foreign_keys_and_positive_revisions_are_enforced(database):
             with Session(engine) as session, session.begin():
                 session.add(ProjectModel(id="project", root_path="/tmp"))
                 session.flush()
-                session.add(
-                    SessionModel(
-                        id="bad",
-                        project_id="project",
-                        provider="test",
-                        host_session_id="x",
-                        working_directory="/tmp",
-                        revision=0,
+                session.execute(
+                    text(
+                        "INSERT INTO core_sessions VALUES ('bad', 'project', 'test', 'x', '/tmp', 0)"
                     )
                 )
     finally:
@@ -274,41 +268,38 @@ def test_foreign_keys_and_positive_revisions_are_enforced(database):
 
 
 def test_identity_conflict_does_not_merge_or_modify_existing_aliases(database):
-    engine = database.create_engine(write=True)
+    engine = create_database_engine(database, write=True)
     try:
         with Session(engine) as session, session.begin():
-            projects = ProjectRepository(session)
-            first = projects.resolve(ProjectLocation(ProjectKind.GIT, "/one/.git", "/one", "/one"))
-            second = projects.resolve(ProjectLocation(ProjectKind.FOLDER, "/two", "/two", "/two"))
+            projects = RegisterProjectUseCase(
+                ProjectRepository(session), ProjectLocationRepository(session)
+            )
+            first = projects.execute(DirectoryObservation("/one", "/one/.git", "/one"))
+            second = projects.execute(DirectoryObservation("/two"))
         with pytest.raises(ProjectIdentityConflict):
             with Session(engine) as session, session.begin():
-                ProjectRepository(session).resolve(
-                    ProjectLocation(ProjectKind.GIT, "/one/.git", "/two", "/two")
-                )
+                RegisterProjectUseCase(
+                    ProjectRepository(session), ProjectLocationRepository(session)
+                ).execute(DirectoryObservation("/two", "/one/.git", "/two"))
         with Session(engine) as session, session.begin():
             assert set(session.scalars(select(ProjectModel.id))) == {first.id, second.id}
         with pytest.raises(ProjectIdentityConflict):
             with Session(engine) as session, session.begin():
-                ProjectRepository(session).resolve(
-                    ProjectLocation(ProjectKind.GIT, "/different/.git", "/one", "/one")
-                )
+                RegisterProjectUseCase(
+                    ProjectRepository(session), ProjectLocationRepository(session)
+                ).execute(DirectoryObservation("/one", "/different/.git", "/one"))
     finally:
         engine.dispose()
 
 
 def test_wrong_revision_and_empty_native_identifiers_fail_without_mutation(database, repository):
-    first = register_session(str(repository), "codex", "native", database_path=database.path)
+    first = register_session(str(repository), "codex", "native", database_path=database)
     with pytest.raises(RevisionConflict):
-        move_session(
-            first.project.id, first.session.id, str(repository), 0, database_path=database.path
-        )
+        move_session(first.project.id, first.session.id, str(repository), 0, database_path=database)
     for provider, native in ((" ", "native"), ("codex", "")):
         with pytest.raises(ValueError):
-            register_session(str(repository), provider, native, database_path=database.path)
-    assert (
-        get_session_context(first.project.id, first.session.id, database_path=database.path)
-        == first
-    )
+            register_session(str(repository), provider, native, database_path=database)
+    assert get_session_context(first.project.id, first.session.id, database_path=database) == first
 
 
 def test_git_environment_is_ignored_and_errors_are_not_folder_fallback(
@@ -317,20 +308,20 @@ def test_git_environment_is_ignored_and_errors_are_not_folder_fallback(
     monkeypatch.setenv("GIT_DIR", str(repository / ".git"))
     plain = tmp_path / "plain"
     plain.mkdir()
-    first = register_session(str(repository), "codex", "native", database_path=database.path)
-    second = register_session(str(plain), "codex", "native", database_path=database.path)
+    first = register_session(str(repository), "codex", "native", database_path=database)
+    second = register_session(str(plain), "codex", "native", database_path=database)
     assert first.project.id != second.project.id
-    from neurath.infrastructure.project_locator import GitProjectLocator
+    from neurath.infrastructure.directory_observer import GitDirectoryObserver
 
     def fail(self, directory, *arguments):
         return subprocess.CompletedProcess(arguments, 128, "", "fatal: dubious ownership")
 
-    monkeypatch.setattr(GitProjectLocator, "_git", fail)
+    monkeypatch.setattr(GitDirectoryObserver, "_git", fail)
     with pytest.raises(NeurathError, match="dubious ownership"):
-        register_session(str(repository), "codex", "new", database_path=database.path)
+        register_session(str(repository), "codex", "new", database_path=database)
 
 
 def test_request_releases_writer_before_following_external_action(database, repository):
-    first = register_session(str(repository), "codex", "native", database_path=database.path)
+    first = register_session(str(repository), "codex", "native", database_path=database)
     following = request(database, "register", repository, "codex", "external-result")
     assert following["project"]["id"] == first.project.id

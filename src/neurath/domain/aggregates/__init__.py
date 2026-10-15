@@ -1,1 +1,1 @@
-"""Immutable project and host-session aggregates."""
+"""Project, location, and host-session entities with stable identities."""

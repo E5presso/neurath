@@ -12,9 +12,15 @@ from alembic.migration import MigrationContext
 from sqlalchemy.orm import Session
 
 from neurath.domain.errors import StorageNotReady
-from neurath.infrastructure.database import SqliteDatabase, user_database_path
+from neurath.infrastructure.database import (
+    create_database_engine,
+    initialize_database,
+    user_database_path,
+    verify_schema,
+)
 from neurath.infrastructure.models.base import DatabaseModel
 from neurath.transport.session_requests import get_session_context, move_session, register_session
+from tests.conftest import initialize_git
 
 
 def test_database_path_is_user_wide_and_relative_xdg_is_rejected(tmp_path, monkeypatch):
@@ -25,24 +31,21 @@ def test_database_path_is_user_wide_and_relative_xdg_is_rejected(tmp_path, monke
     other = tmp_path / "other"
     other.mkdir()
     monkeypatch.chdir(other)
-    assert SqliteDatabase().path == expected
+    assert user_database_path() == expected
     monkeypatch.setenv("XDG_DATA_HOME", "relative")
     with pytest.raises(ValueError, match="absolute"):
         user_database_path()
 
 
 def test_missing_database_is_not_implicitly_created_and_initialize_is_idempotent(tmp_path):
-    database = SqliteDatabase(tmp_path / "new.sqlite3")
+    database = tmp_path / "new.sqlite3"
     with pytest.raises(StorageNotReady):
-        get_session_context("missing", "missing", database_path=database.path)
-    assert not database.path.exists()
-    database.initialize()
-    first = register_session(str(tmp_path), "codex", "native", database_path=database.path)
-    database.initialize()
-    assert (
-        get_session_context(first.project.id, first.session.id, database_path=database.path)
-        == first
-    )
+        get_session_context("missing", "missing", database_path=database)
+    assert not database.exists()
+    initialize_database(database)
+    first = register_session(str(tmp_path), "codex", "native", database_path=database)
+    initialize_database(database)
+    assert get_session_context(first.project.id, first.session.id, database_path=database) == first
 
 
 def test_legacy_database_bytes_are_preserved_on_rejected_initialization(tmp_path):
@@ -52,7 +55,7 @@ def test_legacy_database_bytes_are_preserved_on_rejected_initialization(tmp_path
         connection.execute("INSERT INTO task VALUES ('unfinished original source')")
     before = path.read_bytes()
     with pytest.raises(StorageNotReady, match="migration"):
-        SqliteDatabase(path).initialize()
+        initialize_database(path)
     assert path.read_bytes() == before
 
 
@@ -74,17 +77,20 @@ def test_original_schema_records_are_readable_and_updatable_without_data_convers
             "INSERT INTO core_sessions VALUES ('original-session', 'original-project', 'codex', 'native', ?, 7)",
             (str(folder),),
         )
-    database = SqliteDatabase(path)
+    database = path
     original = get_session_context("original-project", "original-session", database_path=path)
     assert original.session.revision == 7
-    database.initialize()
+    initialize_database(database)
+    initialize_git(folder)
+    child = folder / "child"
+    child.mkdir()
     assert register_session(str(folder), "codex", "native", database_path=path) == original
     changed = move_session(
-        original.project.id, original.session.id, str(folder), 7, database_path=path
+        original.project.id, original.session.id, str(child), 7, database_path=path
     )
     assert changed.session.id == "original-session"
     assert changed.session.revision == 8
-    engine = database.create_engine(write=False)
+    engine = create_database_engine(database, write=False)
     try:
         with engine.connect() as connection:
             context = MigrationContext.configure(
@@ -97,7 +103,7 @@ def test_original_schema_records_are_readable_and_updatable_without_data_convers
 
 def test_initialization_is_serialized_between_processes_and_unknown_revision_is_rejected(tmp_path):
     path = tmp_path / "concurrent.sqlite3"
-    script = "from neurath.infrastructure.database import SqliteDatabase; from pathlib import Path; import sys; SqliteDatabase(Path(sys.argv[1])).initialize()"
+    script = "from neurath.infrastructure.database import initialize_database; from pathlib import Path; import sys; initialize_database(Path(sys.argv[1]))"
 
     def initialize(_):
         subprocess.run([sys.executable, "-c", script, str(path)], check=True, capture_output=True)
@@ -115,11 +121,11 @@ def test_initialization_is_serialized_between_processes_and_unknown_revision_is_
 def test_existing_empty_file_requires_initialization(tmp_path):
     path = tmp_path / "empty.sqlite3"
     path.touch()
-    database = SqliteDatabase(path)
-    engine = database.create_engine(write=False)
+    database = path
+    engine = create_database_engine(database, write=False)
     try:
         with Session(engine) as session, session.begin():
             with pytest.raises(StorageNotReady, match="Schema missing"):
-                database.verify_schema(session)
+                verify_schema(session)
     finally:
         engine.dispose()

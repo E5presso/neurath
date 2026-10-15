@@ -40,7 +40,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Refuse destructive rollback of preserved user records."""
+    """Refuse destructive rollback of preserved user records.
+
+    Raises:
+        RuntimeError: The operation would overwrite existing configuration or destroy retained records.
+    """
     raise RuntimeError(
         "Destructive core downgrade is unsupported; preserve data for migration recovery"
     )

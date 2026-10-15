@@ -5,7 +5,7 @@ import subprocess
 
 import pytest
 
-from neurath.infrastructure.database import SqliteDatabase
+from neurath.infrastructure.database import initialize_database
 
 
 def git(directory, *arguments):
@@ -35,8 +35,8 @@ def initialize_git(directory):
 
 @pytest.fixture
 def database(tmp_path):
-    database = SqliteDatabase(tmp_path / "user" / "identity.sqlite3")
-    database.initialize()
+    database = tmp_path / "user" / "identity.sqlite3"
+    initialize_database(database)
     return database
 
 

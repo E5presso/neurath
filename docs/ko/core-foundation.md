@@ -8,32 +8,34 @@ imperative table 매핑을 패키지에 남기지 않습니다.
 
 ## 책임 분리
 
-- `domain/aggregates/project.py`: 프로젝트 동일성과 `ProjectKind` enum.
-- `domain/aggregates/session.py`: 호스트 세션 aggregate, revision 전이, 분리된 응답 값.
-- `application/ports`: repository/service/use case ABC와 불변 command/query 입력.
-- `application/usecases`: 등록·맥락 조회·이동을 각각 `execute`하는 명시 구현.
-- `infrastructure/models`: 선언형 ORM 레코드와 명시적 `from_domain`/`to_domain` 변환.
-- `infrastructure/repositories`: application repository port를 명시적으로 상속한 구현.
-- `infrastructure/database.py`: SQLite engine 설정, 스키마 확인, 명시적 초기화.
-- `infrastructure/project_locator.py`: 트랜잭션 이전에 수행하는 제한 시간이 있는 Git 관찰.
-- `transport/session_requests.py`: 실제 Session 트랜잭션 수명주기와 의존성 조립.
+- `domain/aggregates/project.py`: 가변 프로젝트·위치 엔티티, 동일성 선택, 폴더 승격, 소유권·충돌 규칙.
+- `domain/aggregates/session.py`: 가변 세션 동일성, 네이티브 ID 검증, 호출자가 관찰한 revision에 따른 이동 검증.
+- `domain/observations.py`: 동일성 정책이 없는 불변 파일시스템·Git 원시 관찰 값.
+- `application/ports`: repository·관찰용 명시적 ABC. 저장소 계약은 조회·저장만 제공합니다.
+- `application/usecases`: 불변 command/query를 받는 구체 프로젝트 등록·세션 등록·조회·이동 동작. use case 인터페이스는 없습니다.
+- `application/context.py`: 불변 응답 snapshot. 엔티티는 동일성을, snapshot은 상태를 비교합니다.
+- `infrastructure/models`와 `repositories`: 선언형 레코드, 명시적 변환, 기본 영속성 구현.
+- `infrastructure/database.py`: engine 생성·스키마 확인·명시적 초기화 함수.
+- `infrastructure/directory_observer.py`: 정규 경로·Git common directory·primary worktree 사실만 반환하는 제한 시간 있는 I/O.
+- `infrastructure/providers.py`: Dishka 생성자 주입과 APP engine·REQUEST Session/repository/use case 수명 관리.
+- `transport/session_requests.py`: 요청 조정과 직접적인 `Session.begin()` 트랜잭션 소유권.
 
-domain과 application은 SQLAlchemy·Alembic·호스트 adapter를 import하지 않습니다.
-의존성은 명시적인 생성자 인자이며 일반 registry나 암묵 DI를 사용하지 않습니다.
-요청 계층은 불변 도메인 값을 반환하고 외부 호스트 동작 전에 연결을 닫습니다.
-서비스 객체는 영속 요청 상태를 메모리에 보관하지 않습니다.
+domain과 application은 SQLAlchemy·Alembic·Dishka·호스트 adapter를 import하지 않습니다.
+호스트 요청마다 새 컨테이너를 만듭니다. APP scope는 자원 수명이며 상주 daemon이 아닙니다.
+DB Session을 resolve하기 전에 Git 관찰을 마칩니다. Dishka는 Session 종료·engine 폐기를
+담당하며 트랜잭션을 commit하지 않습니다. 자원 정리 후 독립된 불변 snapshot을 반환합니다.
 
 ## 내부 요청 API
 
 ```python
 from pathlib import Path
-from neurath.infrastructure.database import SqliteDatabase
+from neurath.infrastructure.database import initialize_database
 from neurath.transport.session_requests import (
     register_session, get_session_context, move_session,
 )
 
 path = Path("/explicit/isolated/core.sqlite3")
-SqliteDatabase(path).initialize()  # 명시적인 준비이며 일반 요청은 초기화하지 않습니다.
+initialize_database(path)  # 명시적인 준비이며 일반 요청은 초기화하지 않습니다.
 opened = register_session("/project", "codex", "native-session", database_path=path)
 current = get_session_context(opened.project.id, opened.session.id, database_path=path)
 changed = move_session(current.project.id, current.session.id, "/project/subfolder",
@@ -55,12 +57,17 @@ XDG가 없으면 `~/.local/share/neurath/core.sqlite3`를 사용합니다. 상�
 
 ## SQLAlchemy와 이전
 
-각 요청은 pool 없는 engine과 실제 ORM `Session`을 열고
-`with Session(engine) as session, session.begin():`을 사용합니다. 쓰기는 가변
+각 요청은 Dishka로 pool 없는 engine과 실제 ORM `Session`을 resolve하고 요청
+adapter가 직접 `with session.begin():`을 사용합니다. 쓰기는 가변
 상태를 읽기 전에 `BEGIN IMMEDIATE`를 획득하고 조회는 SQLite 읽기 전용 모드를
 사용합니다. 모든 연결은 외래 키를 적용합니다. SQLite가 동시 작성을 조정하며
 기본 잠금 대기는 5초입니다. 실패를 몰래 재시도하지 않습니다. repository는
 전달받은 트랜잭션 안에서 flush하고 독립 commit하지 않습니다.
+`HostSession.move`는 관찰한 버전을 검증하고 경로를 바꿉니다. 기본 저장 동작인
+`save(entity)`는 SQLAlchemy `merge`와 `version_id_col`을 사용해 저장한 엔티티를
+반환합니다. ORM이 저장 버전을 증가시키고 오래된 detached 엔티티를 거부합니다.
+동일한 경로 저장은 ORM의 일반 dirty checking에 따라 UPDATE 없이 버전을 유지합니다. repository 자체의
+엔티티 캐시나 save 이전 load 강제 조건은 없습니다.
 
 원래 `core_0001` DDL과 저장된 테이블 이름은 호환됩니다. revision은 현재
 `infrastructure/migrations`에 있으며 타입 표기와 docstring만 바뀌었습니다.
@@ -76,6 +83,10 @@ XDG가 없으면 `~/.local/share/neurath/core.sqlite3`를 사용합니다. 상�
 읽기 전용 연결, 명시적·동시 초기화, 이전 스키마 호환, 거부한 legacy DB 바이트
 보존, Git/worktree/clone 구분, 폴더 전환을 확인합니다. 종속 레코드 fixture는
 외래 키 보존 시험이며 태스크·메모리 구현을 뜻하지 않습니다.
+
+순수 도메인 시험은 Git·SQL 없이 루트 선택, worktree 동일성, 승격, 소유권 충돌,
+엔티티 동일성, 오래된 이동 요청을 검증합니다. DI 시험은 실제 생성자 주입, scope 격리,
+detached stale 저장, 연속 저장, 예외 시 롤백·연결 종료를 검증합니다.
 
 [필수 품질 검사](../../CONTRIBUTING.ko.md)는 현재 패키지 전체에 구체적 리뷰 규칙을
 적용하고 실패 fixture로 검증합니다. 모듈 응집도와 문서의 의미는 사람 검토가

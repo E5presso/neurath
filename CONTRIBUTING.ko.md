@@ -3,12 +3,12 @@
 [홈](README.ko.md) · [English](CONTRIBUTING.md)
 
 승인된 명세와 [기반 구조](docs/ko/core-foundation.md)의 책임 경계를 따릅니다.
-도메인 aggregate는 불변식을 담당합니다. 애플리케이션 port는 `ABC`와
-`@abstractmethod`를 사용하며 구체 use case와 repository adapter가 명시적으로
-상속합니다. 각 use case는 이름이 있는 불변 command/query를 받아 `execute`합니다.
+도메인 엔티티는 불변식과 상태 전이를 담당합니다. repository·관찰 port는 `ABC`와
+`@abstractmethod`를 사용하며 해당 adapter가 명시적으로 상속합니다. use case는
+별도 인터페이스 없이 구체 클래스로 작성합니다. 각 use case는 이름이 있는 불변 command/query를 받아 `execute`합니다.
 ORM 모델은 `DeclarativeBase`, `Mapped`, `mapped_column`과 명시적인 도메인 변환을
 사용합니다. 요청 adapter는 `Session.begin()`을 직접 사용하며 별도 UoW·트랜잭션
-프레임워크를 추가하지 않습니다.
+프레임워크나 DB 설정 wrapper를 추가하지 않습니다. Dishka가 의존성과 자원 수명을 관리합니다.
 
 ## 필수 개발 검사
 
@@ -25,20 +25,26 @@ uv run --locked python tools/check.py
 다른 worktree는 기존 hook 동작을 유지합니다.
 
 pre-commit과 필수 runner는 동일한 `tools/quality.py`를 실행합니다. Ruff의
-lint·docstring·타입 표기·포맷, strict mypy, 구조 AST 규칙, 정상·실패 fixture를
+lint·docstring·타입 표기·포맷, strict Pyrefly, Google 형식 pydoclint 계약 문서, 구조 AST 규칙, 정상·실패 fixture를
 검사합니다. CI도 필수 runner를 실행하며, runner는 이어서 전체 동작 시험과
 휠 생성을 수행합니다. 성공 표시는 `NEURATH_CHECK_OK`입니다. 현재 소스의 모듈
 허용 목록, 과거 소스 예외 baseline, `Any` 우회, 타입·lint 무시 정책은 없습니다.
 `src` 아래 앞으로 추가되는 Python 파일도 모두 발견합니다. 시험은 lint·포맷을
 적용하되 문서·타입 표기 스타일 규칙에서 제외하며, 제품 소스와 개발 도구는
-엄격한 타입 표기와 docstring을 적용합니다.
+엄격한 타입 표기와 Google 형식 docstring을 적용합니다. Pydoclint는 Args·Returns·Yields·
+Raises·Attributes를 signature와 대조하며 짧은 요약으로 검사를 건너뛸 수 없습니다.
+인자 타입은 signature를 기준으로 삼으므로 docstring 인자 설명에 타입을 중복하지 않습니다.
 
 ## 기계 검사 규칙과 사람 검토의 경계
 
 AST 검사는 import 별칭과 로컬 상속 관계를 해석해 Protocol, Literal, Any/cast,
 이름으로 드러나는 커스텀 transaction/UoW API, Core/core 모듈, 계층 위반 import,
-ABC/abstractmethod 없는 port, 명시 계약 상속이 없는 repository/use case/locator,
-비선언형 ORM 매핑을 거부합니다. ORM 규칙은 실행 모델에 적용하며 불변 Alembic
+ABC/abstractmethod 없는 port, 명시 계약 상속이 없는 repository/observer,
+비선언형 ORM 매핑을 거부합니다. use case 인터페이스, frozen 또는 기본 값 동등성을 쓰는
+엔티티 dataclass, 조회·저장을 넘어서는 repository 계약, 엔티티를 노출하는 관찰 port,
+transport의 직접 adapter 생성도 거부합니다. 자원을 yield·정리하는 provider는 허용하며
+트랜잭션까지 소유하는 generator wrapper는 거부합니다. 공통 품질 hook은 순수 도메인과
+실제 DI/ORM 수명 회귀 시험도 구문·checker 실패 fixture와 함께 실행합니다. ORM 규칙은 실행 모델에 적용하며 불변 Alembic
 revision의 DDL에는 SQLAlchemy Column을 의도적으로 사용합니다. 별칭, 간접 상속,
 port처럼 가장한 DTO, 새 모듈 등 실패·정상 fixture로 규칙을 검증합니다.
 

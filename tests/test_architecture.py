@@ -8,10 +8,9 @@ import pytest
 
 from neurath.application.ports.repositories.project import IProjectRepository
 from neurath.application.ports.repositories.session import ISessionRepository
-from neurath.application.ports.services.project_locator import IProjectLocator
-from neurath.application.ports.usecases.register_session import IRegisterSessionUseCase
+from neurath.application.ports.services.directory_observer import IDirectoryObserver
 from neurath.application.usecases.register_session import RegisterSessionUseCase
-from neurath.infrastructure.project_locator import GitProjectLocator
+from neurath.infrastructure.directory_observer import GitDirectoryObserver
 from neurath.infrastructure.repositories.project import ProjectRepository
 from neurath.infrastructure.repositories.session import SessionRepository
 from tools.architecture import ArchitectureChecker, check_tree
@@ -51,14 +50,14 @@ from tools.architecture import ArchitectureChecker, check_tree
         ),
         (
             "neurath.infrastructure.database",
-            "from contextlib import contextmanager as cm\n@cm\ndef scope(): yield 1",
+            "from contextlib import contextmanager as cm\n@cm\ndef scope(session):\n with session.begin(): yield session",
             "TRANSACTION_WRAPPER",
         ),
         ("neurath.application.core", "class Core: pass", "CORE"),
         ("neurath.domain.project", "import sqlalchemy as sa", "DOMAIN_BOUNDARY"),
         (
             "neurath.domain.project",
-            "from ..infrastructure.database import SqliteDatabase",
+            "from ..infrastructure.database import create_database_engine",
             "DOMAIN_BOUNDARY",
         ),
         (
@@ -68,7 +67,7 @@ from tools.architecture import ArchitectureChecker, check_tree
         ),
         (
             "neurath.application.usecases.change",
-            "from neurath.infrastructure.database import SqliteDatabase",
+            "from neurath.infrastructure.database import create_database_engine",
             "APPLICATION_BOUNDARY",
         ),
         (
@@ -93,8 +92,8 @@ from tools.architecture import ArchitectureChecker, check_tree
         ),
         (
             "neurath.application.usecases.register",
-            "class RegisterSessionUseCase: pass",
-            "NOMINAL_IMPLEMENTATION",
+            "class IRegisterSessionUseCase: pass",
+            "USECASE_INTERFACE",
         ),
         (
             "neurath.infrastructure.models.project",
@@ -187,19 +186,18 @@ def test_indirect_protocol_alias_cannot_hide_forbidden_base():
     assert any("NOMINAL_PORT" in error for error in errors)
 
 
-def test_repository_and_usecase_contracts_are_nominal_and_abstract():
+def test_only_external_ports_are_nominal_and_abstract():
     for interface in (
         IProjectRepository,
         ISessionRepository,
-        IProjectLocator,
-        IRegisterSessionUseCase,
+        IDirectoryObserver,
     ):
         with pytest.raises(TypeError):
             interface()
     assert issubclass(ProjectRepository, IProjectRepository)
     assert issubclass(SessionRepository, ISessionRepository)
-    assert issubclass(GitProjectLocator, IProjectLocator)
-    assert issubclass(RegisterSessionUseCase, IRegisterSessionUseCase)
+    assert issubclass(GitDirectoryObserver, IDirectoryObserver)
+    assert not hasattr(RegisterSessionUseCase, "__abstractmethods__")
 
 
 def test_new_source_files_are_discovered_without_whitelisting(tmp_path):
@@ -220,11 +218,21 @@ class MissingRepository(IProjectRepository):
 missing = MissingRepository()
 """)
     result = subprocess.run(
-        [sys.executable, "-m", "mypy", "--strict", str(fixture)], capture_output=True, text=True
+        [
+            sys.executable,
+            "-m",
+            "pyrefly",
+            "check",
+            "--config",
+            str(Path(__file__).resolve().parents[1] / "pyproject.toml"),
+            str(fixture),
+        ],
+        capture_output=True,
+        text=True,
     )
     assert result.returncode != 0
-    assert "Incompatible types" in result.stdout
-    assert "abstract class" in result.stdout
+    assert "not assignable" in result.stdout
+    assert "abstract" in result.stdout
 
 
 def test_ruff_rejects_missing_docstrings(tmp_path):
@@ -267,3 +275,123 @@ class ProjectRepository(Request):
 ''',
     }
     assert any("NOMINAL_IMPLEMENTATION" in error for error in ArchitectureChecker(sources).check())
+
+
+@pytest.mark.parametrize(
+    ("module", "source", "rule"),
+    [
+        (
+            "neurath.application.ports.repositories.project",
+            "class IProjectRepository:\n def resolve(self, observation): pass",
+            "PRIMITIVE_REPOSITORY",
+        ),
+        (
+            "neurath.application.ports.repositories.session",
+            "class ISessionRepository:\n def save(self, entity, expected_revision): pass",
+            "PRIMITIVE_REPOSITORY",
+        ),
+        (
+            "neurath.infrastructure.repositories.project",
+            "class ProjectRepository:\n def add(self, entity): entity.associate()",
+            "REPOSITORY_POLICY",
+        ),
+        (
+            "neurath.application.ports.services.directory_observer",
+            "from neurath.domain.aggregates.project import ProjectLocation\nclass IDirectoryObserver:\n def observe(self) -> ProjectLocation: pass",
+            "OBSERVATION_BOUNDARY",
+        ),
+        (
+            "neurath.domain.aggregates.project",
+            "from dataclasses import dataclass\n@dataclass(frozen=True)\nclass Project:\n id: str",
+            "ENTITY_MUTABILITY",
+        ),
+        (
+            "neurath.domain.aggregates.session",
+            "from dataclasses import dataclass\n@dataclass\nclass HostSession:\n id: str",
+            "ENTITY_IDENTITY",
+        ),
+        ("neurath.infrastructure.database", "class SqliteDatabase: pass", "DATABASE_WRAPPER"),
+        (
+            "neurath.transport.session_requests",
+            "from neurath.infrastructure.repositories.project import ProjectRepository\nvalue = ProjectRepository(session)",
+            "DEPENDENCY_COMPOSITION",
+        ),
+        ("neurath.domain.project", "value: str = 1 # pyrefly: ignore", "SUPPRESSION"),
+    ],
+)
+def test_round_two_architecture_regressions_are_rejected(module, source, rule):
+    errors = ArchitectureChecker({module: '"""Fixture."""\n' + source}).check()
+    assert any(f" {rule}:" in error for error in errors), errors
+
+
+def test_resource_factories_and_frozen_values_are_not_transaction_or_entity_wrappers():
+    sources = {
+        "neurath.infrastructure.providers": '''"""Framework resource fixture."""
+from collections.abc import Iterator
+from dishka import Provider, Scope, provide
+from sqlalchemy.orm import Session
+class ResourceProvider(Provider):
+    """Resource lifetime without transaction ownership."""
+    @provide(scope=Scope.REQUEST)
+    def session(self) -> Iterator[Session]:
+        """Provide and close the ORM resource."""
+        with Session() as session:
+            yield session
+''',
+        "neurath.domain.observations": '''"""Immutable observation fixture."""
+from dataclasses import dataclass
+@dataclass(frozen=True)
+class Observation:
+    """External primitive facts."""
+    working_directory: str
+''',
+        "neurath.application.usecases.example": '''"""Concrete use case fixture."""
+class ExampleUseCase:
+    """No business-policy variation requires an interface."""
+''',
+    }
+    assert ArchitectureChecker(sources).check() == []
+
+
+def test_pyrefly_rejects_wrong_type_with_the_repository_configuration(tmp_path):
+    fixture = tmp_path / "wrong_type.py"
+    fixture.write_text('def count() -> int:\n    return "not an integer"\n')
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pyrefly",
+            "check",
+            "--config",
+            str(Path(__file__).resolve().parents[1] / "pyproject.toml"),
+            str(fixture),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "bad-return" in result.stdout
+
+
+def test_google_doc_checker_rejects_missing_parameter_and_return_sections(tmp_path):
+    fixture = tmp_path / "bad_doc.py"
+    fixture.write_text('''"""Negative docstring fixture."""
+def example(value: str) -> str:
+    """Nonempty prose alone does not document the contract."""
+    return value
+''')
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pydoclint.main",
+            "--config",
+            str(Path(__file__).resolve().parents[1] / "pyproject.toml"),
+            str(fixture),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "DOC101" in result.stdout + result.stderr
+    assert "DOC201" in result.stdout + result.stderr

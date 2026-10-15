@@ -9,19 +9,40 @@ MARKER = "# neurath-quality-hook-v1"
 
 
 def git_environment() -> dict[str, str]:
-    """Ignore inherited hook repository overrides when targeting a checkout explicitly."""
+    """Ignore inherited hook repository overrides when targeting a checkout explicitly.
+
+    Returns:
+        dict[str, str]: Process environment without inherited Git repository overrides.
+    """
     return {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
 
 
 def git(root: Path, *arguments: str) -> str:
-    """Read or update Git configuration for the explicitly selected checkout."""
+    """Read or update Git configuration for the explicitly selected checkout.
+
+    Args:
+        root: Root directory of the checkout to inspect.
+        *arguments: Git arguments passed without shell interpolation.
+
+    Returns:
+        str: Git standard output with surrounding whitespace removed.
+    """
     return subprocess.check_output(
         ["git", "-C", str(root), *arguments], text=True, env=git_environment()
     ).strip()
 
 
 def optional_config(root: Path, scope: str, key: str) -> str | None:
-    """Read a configuration value without confusing absence with an execution failure."""
+    """Read a configuration value without confusing absence with an execution failure.
+
+    Args:
+        root: Root directory of the checkout to inspect.
+        scope: Git configuration scope flag, or an empty string for effective settings.
+        key: Git configuration key to read.
+
+    Returns:
+        str | None: Effective value, or None when Git reports an absent key.
+    """
     result = subprocess.run(
         ["git", "-C", str(root), "config", *([scope] if scope else []), "--get", key],
         text=True,
@@ -36,7 +57,17 @@ def optional_config(root: Path, scope: str, key: str) -> str | None:
 
 
 def install(root: Path) -> Path:
-    """Install only in this worktree's private Git directory and chain its prior hook."""
+    """Install only in this worktree's private Git directory and chain its prior hook.
+
+    Args:
+        root: Root directory of the checkout to inspect.
+
+    Returns:
+        Path: Installed worktree-private hook path, preserving the previous hook.
+
+    Raises:
+        RuntimeError: The operation would overwrite existing configuration or destroy retained records.
+    """
     root = Path(git(root, "rev-parse", "--show-toplevel"))
     git_directory = Path(git(root, "rev-parse", "--absolute-git-dir"))
     destination = git_directory / "neurath-quality-hooks"

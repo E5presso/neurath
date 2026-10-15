@@ -8,17 +8,19 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from neurath.application.ports.usecases.get_session_context import GetSessionContextQuery
-from neurath.application.ports.usecases.move_session import MoveSessionCommand
-from neurath.application.ports.usecases.register_session import RegisterSessionCommand
-from neurath.application.usecases.get_session_context import GetSessionContextUseCase
-from neurath.application.usecases.move_session import MoveSessionUseCase
-from neurath.application.usecases.register_session import RegisterSessionUseCase
-from neurath.domain.aggregates.session import SessionContext
-from neurath.infrastructure.database import SqliteDatabase
-from neurath.infrastructure.project_locator import GitProjectLocator
-from neurath.infrastructure.repositories.project import ProjectRepository
-from neurath.infrastructure.repositories.session import SessionRepository
+from neurath.application.context import SessionContext
+from neurath.application.ports.services.directory_observer import IDirectoryObserver
+from neurath.application.usecases.get_session_context import (
+    GetSessionContextQuery,
+    GetSessionContextUseCase,
+)
+from neurath.application.usecases.move_session import MoveSessionCommand, MoveSessionUseCase
+from neurath.application.usecases.register_session import (
+    RegisterSessionCommand,
+    RegisterSessionUseCase,
+)
+from neurath.infrastructure.database import verify_schema
+from neurath.infrastructure.providers import DatabaseSettings, request_container
 
 
 def register_session(
@@ -28,40 +30,55 @@ def register_session(
     *,
     database_path: Path | None = None,
 ) -> SessionContext:
-    """Register a native session idempotently without overwriting its newer directory."""
-    location = GitProjectLocator().locate(working_directory)
-    request = RegisterSessionCommand(
-        location=location, provider=provider, host_session_id=host_session_id
-    )
-    database = SqliteDatabase(database_path)
-    engine = database.create_engine(write=True)
+    """Register a native session idempotently without overwriting its newer directory.
+
+    Args:
+        working_directory: Existing directory supplied by the host request.
+        provider: Host provider namespace for the native session identifier.
+        host_session_id: Native session identifier supplied by the host provider.
+        database_path: Explicit store path, or None for the user-wide default.
+
+    Returns:
+        SessionContext: Existing or newly registered host-session context.
+    """
+    container = request_container(DatabaseSettings(database_path, write=True))
     try:
-        with Session(engine) as session, session.begin():
-            database.verify_schema(session)
-            use_case = RegisterSessionUseCase(
-                ProjectRepository(session), SessionRepository(session)
+        with container() as scope:
+            observation = scope.get(IDirectoryObserver).observe(working_directory)
+            request = RegisterSessionCommand(
+                observation=observation, provider=provider, host_session_id=host_session_id
             )
-            return use_case.execute(request)
+            session = scope.get(Session)
+            with session.begin():
+                verify_schema(session)
+                return scope.get(RegisterSessionUseCase).execute(request)
     finally:
-        engine.dispose()
+        container.close()
 
 
 def get_session_context(
     project_id: str, session_id: str, *, database_path: Path | None = None
 ) -> SessionContext:
-    """Read exactly the requested project/session with a SQLite read-only connection."""
+    """Read exactly the requested project/session with a SQLite read-only connection.
+
+    Args:
+        project_id: Stable identifier of the project to address.
+        session_id: Identifier of the session within the addressed project.
+        database_path: Explicit store path, or None for the user-wide default.
+
+    Returns:
+        SessionContext: Current state of the explicitly addressed session.
+    """
     request = GetSessionContextQuery(project_id=project_id, session_id=session_id)
-    database = SqliteDatabase(database_path)
-    engine = database.create_engine(write=False)
+    container = request_container(DatabaseSettings(database_path, write=False))
     try:
-        with Session(engine) as session, session.begin():
-            database.verify_schema(session)
-            use_case = GetSessionContextUseCase(
-                ProjectRepository(session), SessionRepository(session)
-            )
-            return use_case.execute(request)
+        with container() as scope:
+            session = scope.get(Session)
+            with session.begin():
+                verify_schema(session)
+                return scope.get(GetSessionContextUseCase).execute(request)
     finally:
-        engine.dispose()
+        container.close()
 
 
 def move_session(
@@ -72,20 +89,31 @@ def move_session(
     *,
     database_path: Path | None = None,
 ) -> SessionContext:
-    """Move a session inside its project only when the observed revision still matches."""
-    location = GitProjectLocator().locate(working_directory)
-    request = MoveSessionCommand(
-        project_id=project_id,
-        session_id=session_id,
-        location=location,
-        expected_revision=expected_revision,
-    )
-    database = SqliteDatabase(database_path)
-    engine = database.create_engine(write=True)
+    """Move a session inside its project only when the observed revision still matches.
+
+    Args:
+        project_id: Stable identifier of the project to address.
+        session_id: Identifier of the session within the addressed project.
+        working_directory: Existing directory supplied by the host request.
+        expected_revision: Session revision observed before requesting a move.
+        database_path: Explicit store path, or None for the user-wide default.
+
+    Returns:
+        SessionContext: Context containing the successfully advanced session revision.
+    """
+    container = request_container(DatabaseSettings(database_path, write=True))
     try:
-        with Session(engine) as session, session.begin():
-            database.verify_schema(session)
-            use_case = MoveSessionUseCase(ProjectRepository(session), SessionRepository(session))
-            return use_case.execute(request)
+        with container() as scope:
+            observation = scope.get(IDirectoryObserver).observe(working_directory)
+            request = MoveSessionCommand(
+                project_id=project_id,
+                session_id=session_id,
+                observation=observation,
+                expected_revision=expected_revision,
+            )
+            session = scope.get(Session)
+            with session.begin():
+                verify_schema(session)
+                return scope.get(MoveSessionUseCase).execute(request)
     finally:
-        engine.dispose()
+        container.close()

@@ -9,7 +9,11 @@ class ArchitectureChecker:
     """Resolve local import aliases and inheritance before enforcing explicit contracts."""
 
     def __init__(self, sources: dict[str, str]) -> None:
-        """Parse a complete source tree whose keys are dotted module names."""
+        """Parse a complete source tree whose keys are dotted module names.
+
+        Args:
+            sources: Python source text keyed by dotted module name.
+        """
         self.trees = {module: ast.parse(source) for module, source in sources.items()}
         self.sources = sources
         self.aliases: dict[str, str] = {}
@@ -40,7 +44,15 @@ class ArchitectureChecker:
                     self.aliases[f"{module}.{node.name.id}"] = self._name(module, node.value)
 
     def _import_module(self, module: str, node: ast.ImportFrom) -> str:
-        """Resolve relative imports against the importing module's package."""
+        """Resolve relative imports against the importing module's package.
+
+        Args:
+            module: Dotted module containing the syntax node.
+            node: Syntax node whose imported symbol is resolved.
+
+        Returns:
+            str: Absolute module name resolved from the import statement.
+        """
         if node.level == 0:
             return node.module or ""
         parts = module.split(".")[: -node.level]
@@ -49,7 +61,15 @@ class ArchitectureChecker:
         return ".".join(parts)
 
     def _name(self, module: str, node: ast.AST) -> str:
-        """Return a canonical symbol name for an annotation, base, or call target."""
+        """Return a canonical symbol name for an annotation, base, or call target.
+
+        Args:
+            module: Dotted module containing the syntax node.
+            node: Syntax node whose imported symbol is resolved.
+
+        Returns:
+            str: Canonical symbol name, or an empty string for unsupported syntax.
+        """
         if isinstance(node, ast.Subscript):
             return self._name(module, node.value)
         if isinstance(node, ast.Name):
@@ -65,7 +85,15 @@ class ArchitectureChecker:
         return name
 
     def _ancestors(self, symbol: str, seen: set[str] | None = None) -> set[str]:
-        """Follow explicit base classes, including imported and indirect local bases."""
+        """Follow explicit base classes, including imported and indirect local bases.
+
+        Args:
+            symbol: Fully qualified class name to inspect.
+            seen: Previously visited class names used to stop inheritance cycles.
+
+        Returns:
+            set[str]: Class and transitive ancestor names, including external bases.
+        """
         visited = set() if seen is None else set(seen)
         if symbol in visited or symbol not in self.classes:
             return {symbol}
@@ -77,7 +105,11 @@ class ArchitectureChecker:
         return result
 
     def check(self) -> list[str]:
-        """Return actionable rule codes with module and line for every violation."""
+        """Return actionable rule codes with module and line for every violation.
+
+        Returns:
+            list[str]: Sorted unique violations with module, line, and rule code.
+        """
         errors: list[str] = []
         forbidden = {
             f"{package}.{name}"
@@ -91,7 +123,7 @@ class ArchitectureChecker:
             ):
                 errors.append(f"{module}:1 CORE: organize modules by responsibility")
             for line, text in enumerate(self.sources[module].splitlines(), start=1):
-                if re.search(r"#\s*(type:\s*ignore|noqa|mypy:)", text):
+                if re.search(r"#\s*(type:\s*ignore|noqa|pyrefly:)", text):
                     errors.append(f"{module}:{line} SUPPRESSION: correct the type or lint error")
             if not ast.get_docstring(tree):
                 errors.append(f"{module}:1 DOCSTRING: document the module responsibility")
@@ -150,16 +182,55 @@ class ArchitectureChecker:
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     if node.name in {"transaction", "commit", "rollback", "uow", "unit_of_work"}:
                         errors.append(f"{location} TRANSACTION_WRAPPER: use ORM Session lifecycle")
-                    for decorator in node.decorator_list:
-                        if self._name(module, decorator) in {
-                            "contextlib.contextmanager",
-                            "contextlib.asynccontextmanager",
+                    if any(
+                        isinstance(child, (ast.Yield, ast.YieldFrom)) for child in ast.walk(node)
+                    ):
+                        if any(
+                            isinstance(child, ast.Call)
+                            and isinstance(child.func, ast.Attribute)
+                            and child.func.attr in {"begin", "commit", "rollback"}
+                            for child in ast.walk(node)
+                        ):
+                            errors.append(
+                                f"{location} TRANSACTION_WRAPPER: resource providers must not wrap transactions"
+                            )
+                    if ".ports.repositories." in module:
+                        if node.name not in {
+                            "get",
+                            "find",
+                            "list",
+                            "add",
+                            "save",
+                            "delete",
+                            "exists",
                         }:
                             errors.append(
-                                f"{location} TRANSACTION_WRAPPER: no custom context manager lifecycle"
+                                f"{location} PRIMITIVE_REPOSITORY: expose lookup and storage only"
+                            )
+                        if any(
+                            argument.arg == "expected_revision"
+                            for argument in node.args.args + node.args.kwonlyargs
+                        ):
+                            errors.append(
+                                f"{location} PRIMITIVE_REPOSITORY: revision decisions belong to the entity"
                             )
                 if isinstance(node, ast.Call):
                     called = self._name(module, node.func)
+                    if ".transport." in module and called.endswith(
+                        ("Repository", "UseCase", "Observer")
+                    ):
+                        errors.append(
+                            f"{location} DEPENDENCY_COMPOSITION: resolve dependencies through Dishka"
+                        )
+                    if (
+                        ".infrastructure.repositories." in module
+                        and isinstance(node.func, ast.Attribute)
+                        and node.func.attr
+                        in {"move", "associate", "identify", "owner_of", "root_for", "create"}
+                    ):
+                        errors.append(
+                            f"{location} REPOSITORY_POLICY: call domain actions in the application layer"
+                        )
                     if not migration and (
                         (
                             called.startswith("sqlalchemy.")
@@ -176,8 +247,81 @@ class ArchitectureChecker:
                     errors.append(f"{location} TRANSACTION_WRAPPER: remove custom unit of work")
                 if node.name == "Core":
                     errors.append(f"{location} CORE: name a specific use-case responsibility")
+                if ".ports.usecases." in module or (
+                    ".application.usecases." in module
+                    and node.name.startswith("I")
+                    and node.name.endswith("UseCase")
+                ):
+                    errors.append(
+                        f"{location} USECASE_INTERFACE: keep concrete application use cases"
+                    )
+                if node.name == "SqliteDatabase":
+                    errors.append(
+                        f"{location} DATABASE_WRAPPER: use engine and initialization functions"
+                    )
+                if ".domain." in module:
+                    fields = {
+                        child.target.id
+                        for child in node.body
+                        if isinstance(child, ast.AnnAssign) and isinstance(child.target, ast.Name)
+                    }
+                    is_entity = "id" in fields or {"kind", "path", "project_id"}.issubset(fields)
+                    if is_entity:
+                        for decorator in node.decorator_list:
+                            if (
+                                self._name(
+                                    module,
+                                    decorator.func
+                                    if isinstance(decorator, ast.Call)
+                                    else decorator,
+                                )
+                                == "dataclasses.dataclass"
+                            ):
+                                if any(
+                                    keyword.arg == "frozen"
+                                    and isinstance(keyword.value, ast.Constant)
+                                    and keyword.value.value is True
+                                    for keyword in (
+                                        decorator.keywords
+                                        if isinstance(decorator, ast.Call)
+                                        else []
+                                    )
+                                ):
+                                    errors.append(
+                                        f"{location} ENTITY_MUTABILITY: entities own state transitions; use frozen only for values"
+                                    )
+                                if not any(
+                                    keyword.arg == "eq"
+                                    and isinstance(keyword.value, ast.Constant)
+                                    and keyword.value.value is False
+                                    for keyword in (
+                                        decorator.keywords
+                                        if isinstance(decorator, ast.Call)
+                                        else []
+                                    )
+                                ):
+                                    errors.append(
+                                        f"{location} ENTITY_IDENTITY: declare entity equality explicitly"
+                                    )
                 symbol = f"{module}.{node.name}"
                 ancestors = self._ancestors(symbol)
+                service_adapter = any(".ports.services." in parent for parent in ancestors)
+                if service_adapter:
+                    for child in ast.walk(node):
+                        if isinstance(
+                            child, (ast.Name, ast.Attribute, ast.Subscript)
+                        ) and ".domain.aggregates." in self._name(module, child):
+                            errors.append(
+                                f"{location} OBSERVATION_BOUNDARY: service adapters return primitive facts, not entities"
+                            )
+                if ".ports.services." in module:
+                    for child in ast.walk(node):
+                        if isinstance(
+                            child, (ast.Name, ast.Attribute, ast.Subscript)
+                        ) and ".domain.aggregates." in self._name(module, child):
+                            errors.append(
+                                f"{location} OBSERVATION_BOUNDARY: observation contracts must not expose entities"
+                            )
                 is_port = ".application.ports." in module and node.name.startswith("I")
                 if is_port:
                     if "abc.ABC" not in ancestors:
@@ -189,9 +333,7 @@ class ArchitectureChecker:
                         ):
                             errors.append(f"{location} ABSTRACT_METHOD: {node.name}.{method.name}")
                 is_adapter = (
-                    ".application.usecases." in module
-                    or ".infrastructure.repositories." in module
-                    or node.name.endswith("Locator")
+                    ".infrastructure.repositories." in module or node.name.endswith("Observer")
                 ) and not is_port
                 if is_adapter and not any(
                     ".application.ports." in parent
@@ -242,7 +384,14 @@ class ArchitectureChecker:
 
 
 def check_tree(root: Path) -> list[str]:
-    """Discover every current source module, so future files cannot evade the gate."""
+    """Discover every current source module, so future files cannot evade the gate.
+
+    Args:
+        root: Root directory of the checkout to inspect.
+
+    Returns:
+        list[str]: Violations across all discovered current package modules.
+    """
     sources: dict[str, str] = {}
     for path in sorted((root / "src").rglob("*.py")):
         module = ".".join(path.relative_to(root / "src").with_suffix("").parts)
@@ -251,7 +400,11 @@ def check_tree(root: Path) -> list[str]:
 
 
 def main() -> None:
-    """Run the complete source architecture gate and fail the process on violations."""
+    """Run the complete source architecture gate and fail the process on violations.
+
+    Raises:
+        SystemExit: The architecture gate detected at least one violation.
+    """
     errors = check_tree(Path(__file__).resolve().parents[1])
     for error in errors:
         print(error)
