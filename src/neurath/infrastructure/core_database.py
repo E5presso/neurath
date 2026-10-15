@@ -15,7 +15,7 @@ from sqlalchemy.pool import NullPool
 from neurath.domain.core import StorageNotReady
 from neurath.infrastructure.core_identity import SqlIdentities
 
-SCHEMA_REVISION = "core_0002"
+SCHEMA_REVISION = "core_0003"
 
 
 def user_database_path() -> Path:
@@ -30,6 +30,12 @@ def user_database_path() -> Path:
 @dataclass
 class CoreUnitOfWork:
     connection: Connection
+
+    @property
+    def workflows(self):
+        from neurath.infrastructure.core_workflows import SqlWorkflows
+
+        return SqlWorkflows(self.connection)
 
     @property
     def tasks(self):

@@ -19,3 +19,9 @@ def build_task_ledger(database_path: Path | None = None):
     from neurath.application.task_ledger import TaskLedger
 
     return TaskLedger(CoreDatabase(database_path))
+
+
+def build_workflow_runner(database_path: Path | None = None):
+    from neurath.application.workflow_runner import WorkflowRunner
+
+    return WorkflowRunner(CoreDatabase(database_path))
