@@ -2,6 +2,8 @@
 
 [Documentation](index.md) · [한국어](../ko/workflows.md)
 
+> This page describes the earlier 0.3.x implementation. The rewrite follows the [new requirements](specification.md) and [complete architecture including the phase runner](architecture.md).
+
 Use natural language to describe the outcome you want. The connected agent translates that request into supported Neurath operations. If its host cannot perform an action, it must explain the limitation instead of recording an invented success.
 
 ## Start a task

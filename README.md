@@ -4,7 +4,9 @@
 
 Neurath keeps agent work accountable across requests, execution, delegation, and completion. It records task ownership and ordered phases, keeps evidence attributable, and separates a reported result from an accepted result.
 
-This repository contains the fresh **Neurath 0.3.0** implementation. The MCP server name is `neurath`.
+The current implementation is **Neurath 0.3.1**. The MCP server name is `neurath`.
+
+The [2026-10-13 full redesign](docs/en/specification.md) rebuilds the complete harness to prevent unwarranted expansion/omission of user instructions and improve through reflection. It retains tasks/TODO, the **phase runner**, Stop guards, enclave, memory/handoff, collaboration/Newsroom/providers, skills/review/verification/maintenance. This is not implemented yet. Read the [architecture](docs/en/architecture.md), [per-capability mapping](docs/en/capability-continuity.md), and [acceptance tests](docs/en/acceptance.md).
 
 ## Working with Neurath
 
@@ -38,3 +40,7 @@ When checking an upgrade, distinguish the source checkout, installed distributio
 - [Documentation index](docs/en/index.md)
 
 Existing data and unfinished work must be preserved during adoption. Read the recovery guidance before replacing a database or removing a worktree.
+
+The redesigned default surface is [14 skills and 19 core CLI commands](docs/en/interfaces.md). Ordinary work such as commits/worktree creation uses host tools; internal lifecycle behavior is automatic.
+
+The redesign is CLI-only. A release script generates usage prompts from actual CLI definitions; installation/update applies the matching prompt to the managed harness region. The 0.3.1 MCP description above documents current implementation, not the redesigned distribution.

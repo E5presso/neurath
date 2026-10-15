@@ -2,7 +2,7 @@
 
 [Home](README.md) · [한국어](CONTRIBUTING.ko.md)
 
-The fresh 0.3.0 candidate separates domain rules, application operations, persistence, and host integration. Read the [acceptance specification](docs/en/specification.md) before changing a lifecycle rule. Requirements are targets; describe a validation as passed only when you have the actual result.
+The 0.3.1 implementation separates domain rules, application operations, persistence, and host integration. Its current command reference below is not the target API of the [2026-10-13 redesign](docs/en/specification.md). Read the new [architecture](docs/en/architecture.md) and [acceptance cases](docs/en/acceptance.md) before implementing the rewrite. Requirements are targets; describe validation as passed only with actual results.
 
 ## Structure
 

@@ -17,7 +17,7 @@ This record describes the local 0.3.0 candidate as of 2026-10-08. No public rele
 | Writer release | The verification task's writer lease was released: `active: false`, generation 1, revision 1. |
 | Claude native activation | An actual Claude session successfully invoked `session_get` against the final installed wheel. An earlier native run also passed `session_get` and `task_list`, returning 30 preserved waiting tasks. |
 
-`legacy-unknown` does not mean a session has ended. Task adoption still requires its explicit native user source and the previous owner's confirmed ended state. Migration did not promote historical reports, claims, or approvals into current authority.
+`legacy-unknown` does not mean a session has ended. The candidate then required an explicit native user source and confirmed termination of the previous owner. Requiring another direct user source is not a requirement of the redesign; use the current [handoff contract](architecture.md). Migration did not promote historical reports, claims, or approvals into current authority.
 
 These observations establish Codex activation, a real configured-check and task-completion lifecycle, writer release, and Claude activation with a read-only call against the final wheel. They do not establish a Claude mutation lifecycle. The preserved-task count comes from the original structured event log rather than a shortened model summary.
 
