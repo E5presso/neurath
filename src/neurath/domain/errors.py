@@ -1,21 +1,25 @@
-"""Failures that leave the ledger transaction unchanged."""
+"""Failures callers can handle without knowing persistence implementation details."""
 
 
-class DomainError(Exception):
-    code = "invalid-transition"
+class NeurathError(Exception):
+    """Base error for project and session requests."""
 
 
-class ValidationError(DomainError):
-    code = "invalid-input"
+class ContextNotFound(NeurathError):
+    """The requested project or its scoped session does not exist."""
 
 
-class ConflictError(DomainError):
-    code = "conflict"
+class RevisionConflict(NeurathError):
+    """A session changed after the caller observed its revision."""
 
 
-class AuthorizationError(DomainError):
-    code = "forbidden"
+class ProjectIdentityConflict(NeurathError):
+    """Persisted folder and Git aliases refer to incompatible projects."""
 
 
-class NotFoundError(DomainError):
-    code = "not-found"
+class StorageNotReady(NeurathError):
+    """The database needs explicit initialization or a compatible migration."""
+
+
+class InvalidTaskOperation(NeurathError):
+    """The requested task operation lacks valid provenance, state or actual evidence."""

@@ -1,1 +1,1 @@
-"""Packaged Alembic migrations."""
+"""Explicit schema revisions for the user-wide store."""
