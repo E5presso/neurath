@@ -116,3 +116,39 @@ task_waits = Table(
     Column("resolution_condition", String, nullable=False),
     Column("resolved_by", String),
 )
+
+workflow_runs = Table(
+    "core_workflow_runs",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("project_id", String, ForeignKey("core_projects.id"), nullable=False),
+    Column("task_id", String, ForeignKey("core_tasks.id"), nullable=False),
+    Column("revision", Integer, nullable=False),
+    Column("payload", String, nullable=False),
+)
+workflow_definitions = Table(
+    "core_workflow_definitions",
+    metadata,
+    Column("run_id", String, ForeignKey("core_workflow_runs.id"), primary_key=True),
+    Column("revision", Integer, primary_key=True),
+    Column("payload", String, nullable=False),
+    Column("reason", String, nullable=False),
+    Column("source_id", String, ForeignKey("core_sources.id")),
+)
+workflow_attempts = Table(
+    "core_workflow_attempts",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("run_id", String, ForeignKey("core_workflow_runs.id"), nullable=False),
+    Column("payload", String, nullable=False),
+)
+workflow_results = Table(
+    "core_workflow_results",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("attempt_id", String, ForeignKey("core_workflow_attempts.id"), nullable=False),
+    Column("event_key", String, nullable=False),
+    Column("payload", String, nullable=False),
+    Column("applied", Integer, nullable=False),
+    UniqueConstraint("attempt_id", "event_key", name="uq_core_workflow_result"),
+)

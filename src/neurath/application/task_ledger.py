@@ -204,6 +204,11 @@ class TaskLedger:
             )
             work.tasks.end_attempt(attempt_id, outcome)
             if applicable and outcome != "submitted":
+                if outcome == "succeeded" and any(
+                    r.status != "completed" or r.task_definition_revision != task.definition_revision
+                    for r in work.workflows.for_task(task.id)
+                ):
+                    raise InvalidTaskTransition("Selected workflow still has unfinished phases")
                 if outcome == "succeeded" and self.blocked(work, task):
                     raise InvalidTaskTransition("Unresolved dependencies prevent success")
                 task = work.tasks.change(
