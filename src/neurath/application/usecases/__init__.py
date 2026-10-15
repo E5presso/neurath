@@ -1,1 +1,1 @@
-"""Request-independent application orchestration."""
+"""요청 간 상태를 유지하지 않는 애플리케이션 작업을 조정한다."""

@@ -1,4 +1,4 @@
-"""Run migrations only on the connection explicitly supplied by initialization."""
+"""초기화가 명시적으로 전달한 연결에서만 마이그레이션을 실행한다."""
 
 from alembic import context
 from sqlalchemy.engine import Connection

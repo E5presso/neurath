@@ -8,7 +8,7 @@ imperative table 매핑을 패키지에 남기지 않습니다.
 
 ## 책임 분리
 
-- `domain/aggregates/project.py`: 가변 프로젝트·위치 엔티티, 동일성 선택, 폴더 승격, 소유권·충돌 규칙.
+- `domain/aggregates/project.py`: 불변 ProjectLocation 값을 소유하는 가변 Project aggregate, 동일성 선택, 폴더 승격, 소유권·충돌 규칙.
 - `domain/aggregates/session.py`: 가변 세션 동일성, 네이티브 ID 검증, 호출자가 관찰한 revision에 따른 이동 검증.
 - `domain/observations.py`: 동일성 정책이 없는 불변 파일시스템·Git 원시 관찰 값.
 - `application/ports`: repository·관찰용 명시적 ABC. 저장소 계약은 조회·저장만 제공합니다.
@@ -63,6 +63,12 @@ adapter가 직접 `with session.begin():`을 사용합니다. 쓰기는 가변
 사용합니다. 모든 연결은 외래 키를 적용합니다. SQLite가 동시 작성을 조정하며
 기본 잠금 대기는 5초입니다. 실패를 몰래 재시도하지 않습니다. repository는
 전달받은 트랜잭션 안에서 flush하고 독립 commit하지 않습니다.
+Project가 aggregate root이며 위치에는 독립 저장소나 생명주기가 없습니다.
+`get`·`find_by_location`은 소유 위치를 포함한 전체 프로젝트를 읽습니다.
+`save(project)`는 부모 필드와 소유 ORM 관계를 함께 반영합니다. 기존 자식은 유지하고
+새 값은 삽입하며 제거한 값은 orphan으로 삭제합니다. 다른 프로젝트의 위치 키는
+재할당하지 않고 삽입 충돌을 일으켜 호출자 트랜잭션이 부모와 자식을 함께 롤백합니다.
+스키마는 바꾸지 않습니다. 프로젝트·세션의 삽입과 갱신은 모두 `save(entity) -> entity`입니다.
 `HostSession.move`는 관찰한 버전을 검증하고 경로를 바꿉니다. 기본 저장 동작인
 `save(entity)`는 SQLAlchemy `merge`와 `version_id_col`을 사용해 저장한 엔티티를
 반환합니다. ORM이 저장 버전을 증가시키고 오래된 detached 엔티티를 거부합니다.

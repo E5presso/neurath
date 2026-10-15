@@ -1,1 +1,1 @@
-"""Project, location, and host-session entities with stable identities."""
+"""프로젝트·호스트 세션 aggregate와 프로젝트가 소유하는 위치 값을 제공한다."""

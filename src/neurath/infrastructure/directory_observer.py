@@ -1,4 +1,4 @@
-"""Observe local Git common directories without trusting caller Git overrides."""
+"""호출자가 설정한 Git 환경을 신뢰하지 않고 로컬 공통 디렉터리를 관찰한다."""
 
 import os
 import subprocess
@@ -11,20 +11,20 @@ from neurath.domain.observations import DirectoryObservation
 
 
 class GitDirectoryObserver(IDirectoryObserver):
-    """Read canonical filesystem and Git facts without selecting project identities."""
+    """프로젝트 동일성을 선택하지 않고 파일 시스템과 Git의 정규화된 사실을 읽는다."""
 
     def _git(self, directory: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
-        """Run a bounded, read-only Git observation against the requested directory.
+        """지정한 디렉터리에서 시간과 범위를 제한한 읽기 전용 Git 관찰을 실행한다.
 
         Args:
-            directory: Canonical directory in which to execute Git.
-            *arguments: Git arguments passed without shell interpolation.
+            directory: Git을 실행할 정규 디렉터리.
+            *arguments: 셸 보간 없이 전달하는 Git 인자들.
 
         Returns:
-            subprocess.CompletedProcess[str]: Captured Git exit status, output, and diagnostics.
+            subprocess.CompletedProcess[str]: 캡처한 Git 종료 상태와 출력 및 진단 정보.
 
         Raises:
-            NeurathError: Git inspection fails or returns malformed worktree metadata.
+            NeurathError: Git 조사가 실패하거나 잘못된 작업 트리 메타데이터를 반환한 경우.
         """
         environment = dict(os.environ)
         for key in tuple(environment):
@@ -45,17 +45,17 @@ class GitDirectoryObserver(IDirectoryObserver):
 
     @override
     def observe(self, working_directory: str) -> DirectoryObservation:
-        """Read canonical facts; Git failures never silently become non-Git observations.
+        """정규화된 사실을 읽으며 Git 실패를 일반 폴더 관찰로 바꾸지 않는다.
 
         Args:
-            working_directory: Existing directory supplied by the host request.
+            working_directory: 호스트 요청이 제공한 기존 디렉터리.
 
         Returns:
-            DirectoryObservation: Canonical filesystem and parsed Git metadata without identity policy.
+            DirectoryObservation: 식별 정책을 포함하지 않는 정규 파일 시스템 경로와 해석한 Git 메타데이터.
 
         Raises:
-            NeurathError: Git inspection fails or returns malformed worktree metadata.
-            ValueError: A supplied path, identifier, or directory is invalid for the operation.
+            NeurathError: Git 조사가 실패하거나 잘못된 작업 트리 메타데이터를 반환한 경우.
+            ValueError: 입력 경로·식별자·디렉터리가 작업에 적합하지 않은 경우.
         """
         directory = Path(working_directory).expanduser().resolve(strict=True)
         if not directory.is_dir():

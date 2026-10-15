@@ -1,1 +1,1 @@
-"""Stateless project and session persistence for the Neurath rewrite."""
+"""Neurath 재작성을 위한 비상주 프로젝트·세션 저장 기능을 제공한다."""

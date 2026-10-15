@@ -1,1 +1,1 @@
-"""Development-only quality and validation commands, excluded from the package."""
+"""패키지에서 제외되는 개발 전용 품질·검증 명령을 제공한다."""

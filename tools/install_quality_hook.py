@@ -1,4 +1,4 @@
-"""Install a worktree-local quality hook while preserving an existing user hook."""
+"""기존 사용자 훅을 보존하면서 작업 트리 전용 품질 훅을 설치한다."""
 
 import os
 import shlex
@@ -9,23 +9,23 @@ MARKER = "# neurath-quality-hook-v1"
 
 
 def git_environment() -> dict[str, str]:
-    """Ignore inherited hook repository overrides when targeting a checkout explicitly.
+    """명시적으로 선택한 체크아웃에서 상속된 Git 저장소 환경 설정을 제거한다.
 
     Returns:
-        dict[str, str]: Process environment without inherited Git repository overrides.
+        dict[str, str]: 상속된 Git 저장소 환경 설정을 제거한 프로세스 환경.
     """
     return {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
 
 
 def git(root: Path, *arguments: str) -> str:
-    """Read or update Git configuration for the explicitly selected checkout.
+    """명시적으로 선택한 체크아웃의 Git 설정을 읽거나 변경한다.
 
     Args:
-        root: Root directory of the checkout to inspect.
-        *arguments: Git arguments passed without shell interpolation.
+        root: 조사할 체크아웃의 루트 디렉터리.
+        *arguments: 셸 보간 없이 전달하는 Git 인자들.
 
     Returns:
-        str: Git standard output with surrounding whitespace removed.
+        str: 앞뒤 공백을 제거한 Git 표준 출력.
     """
     return subprocess.check_output(
         ["git", "-C", str(root), *arguments], text=True, env=git_environment()
@@ -33,15 +33,15 @@ def git(root: Path, *arguments: str) -> str:
 
 
 def optional_config(root: Path, scope: str, key: str) -> str | None:
-    """Read a configuration value without confusing absence with an execution failure.
+    """설정값의 부재와 실행 실패를 구분하여 설정을 읽는다.
 
     Args:
-        root: Root directory of the checkout to inspect.
-        scope: Git configuration scope flag, or an empty string for effective settings.
-        key: Git configuration key to read.
+        root: 조사할 체크아웃의 루트 디렉터리.
+        scope: Git 설정 범위 플래그이며 빈 문자열이면 유효 설정 전체.
+        key: 읽을 Git 설정 키.
 
     Returns:
-        str | None: Effective value, or None when Git reports an absent key.
+        str | None: 유효 설정값이며 Git이 키 부재를 보고하면 None.
     """
     result = subprocess.run(
         ["git", "-C", str(root), "config", *([scope] if scope else []), "--get", key],
@@ -57,16 +57,16 @@ def optional_config(root: Path, scope: str, key: str) -> str | None:
 
 
 def install(root: Path) -> Path:
-    """Install only in this worktree's private Git directory and chain its prior hook.
+    """이 작업 트리의 전용 Git 디렉터리에만 설치하고 이전 훅을 연결한다.
 
     Args:
-        root: Root directory of the checkout to inspect.
+        root: 조사할 체크아웃의 루트 디렉터리.
 
     Returns:
-        Path: Installed worktree-private hook path, preserving the previous hook.
+        Path: 이전 훅을 보존하여 설치한 작업 트리 전용 훅 경로.
 
     Raises:
-        RuntimeError: The operation would overwrite existing configuration or destroy retained records.
+        RuntimeError: 기존 설정을 덮어쓰거나 보존된 기록을 파괴하는 작업인 경우.
     """
     root = Path(git(root, "rev-parse", "--show-toplevel"))
     git_directory = Path(git(root, "rev-parse", "--absolute-git-dir"))
@@ -103,7 +103,7 @@ def install(root: Path) -> Path:
 
 
 def main() -> None:
-    """Install the hook for the checkout containing this tool."""
+    """이 도구가 속한 체크아웃에 훅을 설치한다."""
     print(install(Path(__file__).resolve().parents[1]))
 
 

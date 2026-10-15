@@ -1,4 +1,4 @@
-"""Read-only filesystem and Git observation port."""
+"""파일 시스템과 Git을 읽기 전용으로 관찰하는 포트다."""
 
 from abc import ABC, abstractmethod
 
@@ -6,19 +6,19 @@ from neurath.domain.observations import DirectoryObservation
 
 
 class IDirectoryObserver(ABC):
-    """Observe primitive external facts without selecting or associating projects."""
+    """프로젝트를 선택하거나 연결하지 않고 외부의 원시 사실을 관찰한다."""
 
     @abstractmethod
     def observe(self, working_directory: str) -> DirectoryObservation:
-        """Read canonical directory and optional Git metadata.
+        """정규 디렉터리와 선택적 Git 메타데이터를 읽는다.
 
         Args:
-            working_directory: User-selected existing directory to inspect.
+            working_directory: 사용자가 선택한 조사 대상 기존 디렉터리.
 
         Returns:
-            DirectoryObservation: Canonical directory, Git common directory, and primary worktree facts.
+            DirectoryObservation: 정규 디렉터리·Git 공통 디렉터리·기본 작업 트리 관찰 사실.
 
         Raises:
-            NotImplementedError: An abstract port method is called without an implementation.
+            NotImplementedError: 구현 없이 추상 포트를 호출한 경우.
         """
         raise NotImplementedError

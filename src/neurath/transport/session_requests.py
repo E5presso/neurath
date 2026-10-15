@@ -1,7 +1,7 @@
-"""Compose individual session requests using SQLAlchemy's transaction lifecycle.
+"""SQLAlchemy의 트랜잭션 수명에 따라 개별 세션 요청을 구성한다.
 
-Git observation completes before opening SQLite. Each request owns a new ORM
-Session, commits or rolls back through Session.begin, and closes before returning.
+SQLite를 열기 전에 Git 관찰을 마친다. 각 요청은 새 ORM 세션을 소유하며
+Session.begin으로 커밋 또는 롤백한 뒤 반환 전에 세션을 닫는다.
 """
 
 from pathlib import Path
@@ -30,16 +30,16 @@ def register_session(
     *,
     database_path: Path | None = None,
 ) -> SessionContext:
-    """Register a native session idempotently without overwriting its newer directory.
+    """더 최신인 작업 경로를 덮어쓰지 않고 네이티브 세션을 멱등적으로 등록한다.
 
     Args:
-        working_directory: Existing directory supplied by the host request.
-        provider: Host provider namespace for the native session identifier.
-        host_session_id: Native session identifier supplied by the host provider.
-        database_path: Explicit store path, or None for the user-wide default.
+        working_directory: 호스트 요청이 제공한 기존 디렉터리.
+        provider: 네이티브 세션 식별자의 호스트 공급자 이름 공간.
+        host_session_id: 호스트 공급자가 전달한 네이티브 세션 식별자.
+        database_path: 명시적인 저장소 경로이며 None이면 사용자 단위 기본 경로.
 
     Returns:
-        SessionContext: Existing or newly registered host-session context.
+        SessionContext: 기존 또는 새로 등록한 호스트 세션 컨텍스트.
     """
     container = request_container(DatabaseSettings(database_path, write=True))
     try:
@@ -59,15 +59,15 @@ def register_session(
 def get_session_context(
     project_id: str, session_id: str, *, database_path: Path | None = None
 ) -> SessionContext:
-    """Read exactly the requested project/session with a SQLite read-only connection.
+    """SQLite 읽기 전용 연결로 지정한 프로젝트와 세션만 조회한다.
 
     Args:
-        project_id: Stable identifier of the project to address.
-        session_id: Identifier of the session within the addressed project.
-        database_path: Explicit store path, or None for the user-wide default.
+        project_id: 조회 대상 프로젝트의 안정적인 식별자.
+        session_id: 지정한 프로젝트 안에 있는 세션의 식별자.
+        database_path: 명시적인 저장소 경로이며 None이면 사용자 단위 기본 경로.
 
     Returns:
-        SessionContext: Current state of the explicitly addressed session.
+        SessionContext: 명시적으로 지정한 세션의 현재 상태.
     """
     request = GetSessionContextQuery(project_id=project_id, session_id=session_id)
     container = request_container(DatabaseSettings(database_path, write=False))
@@ -89,17 +89,17 @@ def move_session(
     *,
     database_path: Path | None = None,
 ) -> SessionContext:
-    """Move a session inside its project only when the observed revision still matches.
+    """관찰한 버전이 현재와 일치할 때만 프로젝트 안에서 세션을 이동한다.
 
     Args:
-        project_id: Stable identifier of the project to address.
-        session_id: Identifier of the session within the addressed project.
-        working_directory: Existing directory supplied by the host request.
-        expected_revision: Session revision observed before requesting a move.
-        database_path: Explicit store path, or None for the user-wide default.
+        project_id: 조회 대상 프로젝트의 안정적인 식별자.
+        session_id: 지정한 프로젝트 안에 있는 세션의 식별자.
+        working_directory: 호스트 요청이 제공한 기존 디렉터리.
+        expected_revision: 이동 요청 전에 관찰한 세션 버전.
+        database_path: 명시적인 저장소 경로이며 None이면 사용자 단위 기본 경로.
 
     Returns:
-        SessionContext: Context containing the successfully advanced session revision.
+        SessionContext: 성공적으로 갱신한 세션 버전을 포함하는 컨텍스트.
     """
     container = request_container(DatabaseSettings(database_path, write=True))
     try:

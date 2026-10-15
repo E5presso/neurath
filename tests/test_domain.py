@@ -1,4 +1,4 @@
-"""Identity and transition policies tested without Git, SQL, or adapters."""
+"""Git·SQL·어댑터 없이 동일성과 상태 전이 정책을 검증한다."""
 
 from dataclasses import FrozenInstanceError
 
@@ -15,10 +15,10 @@ def test_identity_and_root_policy_distinguishes_clones_and_unifies_worktrees():
     primary = DirectoryObservation("/repo", "/repo/.git", "/repo")
     linked = DirectoryObservation("/linked/child", "/repo/.git", "/repo")
     clone = DirectoryObservation("/clone", "/clone/.git", "/clone")
-    assert ProjectLocation.identify(primary) == ProjectLocation.identify(linked)
-    assert ProjectLocation.identify(primary) != ProjectLocation.identify(clone)
+    assert Project.identify(primary) == Project.identify(linked)
+    assert Project.identify(primary) != Project.identify(clone)
     assert Project.create(linked).root_path == "/repo"
-    assert ProjectLocation.identify(DirectoryObservation("/folder")) == (
+    assert Project.identify(DirectoryObservation("/folder")) == (
         ProjectLocation(ProjectKind.FOLDER, "/folder"),
     )
 
@@ -32,38 +32,38 @@ def test_identity_and_root_policy_distinguishes_clones_and_unifies_worktrees():
 )
 def test_incomplete_git_facts_are_rejected_in_domain(observation):
     with pytest.raises(ValueError):
-        ProjectLocation.identify(observation)
+        Project.identify(observation)
 
 
 def test_folder_promotion_from_first_linked_observation_retains_entity_identity():
-    project = Project("retained", "/repo")
-    folder = ProjectLocation(ProjectKind.FOLDER, "/repo", project.id)
-    git, observed_folder = ProjectLocation.identify(
-        DirectoryObservation("/linked", "/repo/.git", "/repo")
-    )
-    assert folder == observed_folder  # Identity is independent of association state.
-    assert ProjectLocation.owner_of((git, folder)) == project.id
-    project.associate((git, folder), (folder,))
-    assert git.project_id == folder.project_id == "retained"
-    assert project.id == "retained" and project.root_path == "/repo"
+    project = Project.create(DirectoryObservation("/repo"))
+    retained_id = project.id
+    candidates = Project.identify(DirectoryObservation("/linked", "/repo/.git", "/repo"))
+    assert Project.owner_of((project,)) is project
+    project.associate(candidates)
+    assert set(project.locations) == set(candidates)
+    assert project.id == retained_id and project.root_path == "/repo"
 
 
 def test_conflicting_owners_and_replacement_git_identity_never_partially_associate():
-    project = Project("first", "/root")
-    folder = ProjectLocation(ProjectKind.FOLDER, "/root", "second")
-    git = ProjectLocation(ProjectKind.GIT, "/root/.git")
+    first = Project.create(DirectoryObservation("/one", "/one/.git", "/one"))
+    second = Project.create(DirectoryObservation("/two"))
+    before = first.locations
     with pytest.raises(ProjectIdentityConflict):
-        project.associate((git, folder), ())
-    assert git.project_id is None and folder.project_id == "second"
-    folder.associate("second")
+        Project.owner_of((first, second))
     with pytest.raises(ProjectIdentityConflict):
-        folder.associate("first")
-    previous = ProjectLocation(ProjectKind.GIT, "/old/.git", "first")
-    with pytest.raises(ProjectIdentityConflict):
-        project.associate((git,), (previous,))
-    assert git.project_id is None
-    with pytest.raises(ProjectIdentityConflict):
-        ProjectLocation.owner_of((folder, previous))
+        first.associate((ProjectLocation(ProjectKind.GIT, "/different/.git"),))
+    assert first.locations == before
+    assert Project.owner_of((first, first)) is first
+    assert Project.owner_of(()) is None
+
+
+def test_owned_location_is_an_immutable_value_without_owner_identity():
+    location = ProjectLocation(ProjectKind.FOLDER, "/root")
+    assert location == ProjectLocation(ProjectKind.FOLDER, "/root")
+    assert location != ProjectLocation(ProjectKind.GIT, "/root")
+    with pytest.raises(FrozenInstanceError):
+        location.path = "/changed"
 
 
 def test_entity_identity_is_stable_while_snapshot_equality_compares_state():

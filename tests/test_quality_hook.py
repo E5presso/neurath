@@ -1,4 +1,4 @@
-"""Safe hook installation retains previous hooks and affects only the chosen checkout."""
+"""훅 설치가 이전 훅을 보존하며 선택한 체크아웃에만 영향을 주는지 검증한다."""
 
 import os
 import signal

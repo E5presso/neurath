@@ -1,4 +1,4 @@
-"""Explicit initialization and compatibility with the schema shipped in original #154."""
+"""명시적인 초기화와 원래 #154 스키마의 호환성을 검증한다."""
 
 import sqlite3
 import subprocess

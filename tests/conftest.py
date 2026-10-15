@@ -1,4 +1,4 @@
-"""Isolated filesystem, database, and Git fixtures for the candidate implementation."""
+"""후보 구현을 위한 격리된 파일 시스템·데이터베이스·Git fixture를 제공한다."""
 
 import os
 import subprocess

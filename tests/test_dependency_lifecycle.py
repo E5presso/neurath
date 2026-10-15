@@ -1,4 +1,4 @@
-"""Actual Dishka scopes, SQLAlchemy merge versioning, and exception cleanup."""
+"""실제 Dishka 범위와 SQLAlchemy 병합 버전 검사 및 예외 정리를 검증한다."""
 
 from dataclasses import asdict
 
@@ -135,5 +135,90 @@ def test_orm_flush_rejects_stale_identity_map_without_refreshing_it(database, re
                     SessionRepository(first).save(stale)
         result = get_session_context(context.project.id, context.session.id, database_path=database)
         assert result.session.working_directory == "/winner" and result.session.revision == 2
+    finally:
+        engine.dispose()
+
+
+def test_project_save_roundtrips_owned_locations_and_updates_the_whole_aggregate(database):
+    from neurath.domain.aggregates.project import Project
+    from neurath.domain.observations import DirectoryObservation
+    from neurath.infrastructure.models.project import ProjectModel
+    from neurath.infrastructure.repositories.project import ProjectRepository
+
+    project = Project.create(DirectoryObservation("/repo"))
+    mapped = ProjectModel.from_domain(project)
+    assert mapped.to_domain().locations == project.locations
+    assert mapped.locations[0].project_id == project.id
+    engine = create_database_engine(database, write=True)
+    try:
+        with Session(engine) as session, session.begin():
+            saved = ProjectRepository(session).save(project)
+            assert saved.id == project.id and saved.locations == project.locations
+        project.associate(Project.identify(DirectoryObservation("/linked", "/repo/.git", "/repo")))
+        with Session(engine) as session, session.begin():
+            saved = ProjectRepository(session).save(project)
+            assert set(saved.locations) == set(project.locations)
+            assert ProjectRepository(session).save(saved).locations == saved.locations
+        with Session(engine) as session, session.begin():
+            repository = ProjectRepository(session)
+            loaded = repository.get(project.id)
+            assert set(loaded.locations) == set(project.locations)
+            for location in project.locations:
+                assert repository.find_by_location(location).id == project.id
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("existing_parent", [False, True])
+def test_cross_owner_aggregate_save_conflict_rolls_back_parent_and_children(
+    database, existing_parent
+):
+    from neurath.domain.aggregates.project import Project
+    from neurath.domain.errors import ProjectIdentityConflict
+    from neurath.domain.observations import DirectoryObservation
+    from neurath.infrastructure.repositories.project import ProjectRepository
+
+    first = Project.create(DirectoryObservation("/first"))
+    conflicting = Project.create(DirectoryObservation("/second"))
+    original_locations = conflicting.locations
+    engine = create_database_engine(database, write=True)
+    try:
+        with Session(engine) as session, session.begin():
+            ProjectRepository(session).save(first)
+            if existing_parent:
+                ProjectRepository(session).save(conflicting)
+        conflicting.root_path = "/changed"
+        conflicting.associate(first.locations)
+        with pytest.raises(ProjectIdentityConflict):
+            with Session(engine) as session, session.begin():
+                ProjectRepository(session).save(conflicting)
+        with Session(engine) as session, session.begin():
+            count = 2 if existing_parent else 1
+            assert session.scalar(text("SELECT COUNT(*) FROM core_projects")) == count
+            assert session.scalar(text("SELECT COUNT(*) FROM core_project_locations")) == count
+            assert ProjectRepository(session).get(first.id).locations == first.locations
+            if existing_parent:
+                retained = ProjectRepository(session).get(conflicting.id)
+                assert retained.root_path == "/second"
+                assert retained.locations == original_locations
+    finally:
+        engine.dispose()
+
+
+def test_session_save_inserts_and_returns_stored_entity(database):
+    from neurath.domain.aggregates.project import Project
+    from neurath.domain.observations import DirectoryObservation
+    from neurath.infrastructure.repositories.project import ProjectRepository
+
+    project = Project.create(DirectoryObservation("/repo"))
+    entity = HostSession.create(project.id, "codex", "new", "/repo")
+    engine = create_database_engine(database, write=True)
+    try:
+        with Session(engine) as session, session.begin():
+            ProjectRepository(session).save(project)
+            stored = SessionRepository(session).save(entity)
+            assert stored == entity and stored.revision == 1
+        with Session(engine) as session, session.begin():
+            assert SessionRepository(session).get(project.id, entity.id).revision == 1
     finally:
         engine.dispose()

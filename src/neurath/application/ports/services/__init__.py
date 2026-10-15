@@ -1,1 +1,1 @@
-"""External observation contracts."""
+"""외부 관찰 계약을 제공한다."""

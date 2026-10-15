@@ -1,1 +1,1 @@
-"""Nominal contracts for application dependencies."""
+"""애플리케이션 의존성을 위한 명시적 상속 계약을 제공한다."""

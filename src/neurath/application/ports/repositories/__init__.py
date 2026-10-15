@@ -1,1 +1,1 @@
-"""Persistence contracts expressed in domain values."""
+"""도메인 값으로 표현한 저장 계약을 제공한다."""

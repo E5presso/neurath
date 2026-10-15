@@ -1,53 +1,38 @@
-"""Orchestrate primitive reads and writes around project identity domain actions."""
+"""프로젝트 조회·도메인 판단·aggregate 저장 순서를 조정한다."""
 
 from neurath.application.ports.repositories.project import IProjectRepository
-from neurath.application.ports.repositories.project_location import IProjectLocationRepository
-from neurath.domain.aggregates.project import Project, ProjectLocation
+from neurath.domain.aggregates.project import Project
 from neurath.domain.observations import DirectoryObservation
 
 
 class RegisterProjectUseCase:
-    """Load candidate locations, apply domain associations, and persist new records."""
+    """위치로 프로젝트를 조회하고 도메인 규칙을 적용하여 전체를 저장한다."""
 
-    def __init__(self, projects: IProjectRepository, locations: IProjectLocationRepository) -> None:
-        """Bind primitive repositories belonging to one request.
+    def __init__(self, projects: IProjectRepository) -> None:
+        """한 요청에 속하는 프로젝트 저장소를 주입받는다.
 
         Args:
-            projects: Project lookup and insertion port.
-            locations: Location lookup, listing, and insertion port.
+            projects: 프로젝트 aggregate의 조회와 저장을 제공하는 포트.
         """
         self.projects = projects
-        self.locations = locations
 
     def execute(self, observation: DirectoryObservation) -> Project:
-        """Register observed identities while retaining existing project references.
+        """기존 프로젝트 참조를 유지하면서 관찰한 위치를 등록한다.
 
         Args:
-            observation: Canonical external facts to interpret in the domain.
+            observation: 도메인에서 해석할 정규화된 외부 관찰 사실.
 
         Returns:
-            Project: Existing or newly registered project entity.
+            Project: 관찰 위치를 소유하는 저장된 프로젝트 aggregate.
         """
-        observed = ProjectLocation.identify(observation)
-        candidate_list: list[ProjectLocation] = []
-        additions: list[ProjectLocation] = []
-        for location in observed:
-            found = self.locations.find(location.kind, location.path)
-            if found is None:
-                candidate_list.append(location)
-                additions.append(location)
-            else:
-                candidate_list.append(found)
-        candidates = tuple(candidate_list)
-        project_id = ProjectLocation.owner_of(candidates)
-        if project_id is None:
+        candidates = Project.identify(observation)
+        owners: list[Project] = []
+        for location in candidates:
+            owner = self.projects.find_by_location(location)
+            if owner is not None:
+                owners.append(owner)
+        project = Project.owner_of(tuple(owners))
+        if project is None:
             project = Project.create(observation)
-        else:
-            project = self.projects.get(project_id)
-        existing = self.locations.list(project.id)
-        project.associate(candidates, existing)
-        if project_id is None:
-            self.projects.add(project)
-        for location in additions:
-            self.locations.add(location)
-        return project
+        project.associate(candidates)
+        return self.projects.save(project)

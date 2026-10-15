@@ -1,4 +1,4 @@
-"""Positive and negative fixtures for each mechanically enforceable review requirement."""
+"""기계적으로 검사할 수 있는 리뷰 요구사항마다 정상·실패 fixture를 제공한다."""
 
 import subprocess
 import sys
@@ -131,44 +131,46 @@ from tools.architecture import ArchitectureChecker, check_tree
     ],
 )
 def test_invalid_architecture_fixture_fails(module, source, rule):
-    errors = ArchitectureChecker({module: '"""Fixture module."""\n' + source}).check()
+    errors = ArchitectureChecker(
+        {module: '"""구조 계약을 검증하는 테스트 대상이다."""\n' + source}
+    ).check()
     assert any(f" {rule}:" in error for error in errors), errors
 
 
 def test_aliases_and_indirect_nominal_inheritance_are_resolved_across_modules():
     sources = {
-        "neurath.application.ports.repositories.project": '''"""Project contract."""
+        "neurath.application.ports.repositories.project": '''"""구조 계약을 검증하는 테스트 대상이다."""
 from abc import ABC as AbstractBase, abstractmethod as abstract
 class IProjectRepository(AbstractBase):
-    """Project persistence contract."""
+    """구조 계약을 검증하는 테스트 대상이다."""
     @abstract
     def get(self, project_id: str) -> str:
-        """Read an existing project."""
+        """구조 계약을 검증하는 테스트 대상이다."""
         raise NotImplementedError
 ''',
-        "neurath.infrastructure.base_repository": '''"""Reusable explicit base."""
+        "neurath.infrastructure.base_repository": '''"""구조 계약을 검증하는 테스트 대상이다."""
 from neurath.application.ports.repositories.project import IProjectRepository as Contract
 class BaseRepository(Contract):
-    """Intermediate nominal implementation."""
+    """구조 계약을 검증하는 테스트 대상이다."""
     def get(self, project_id: str) -> str:
-        """Return the fixture value."""
+        """구조 계약을 검증하는 테스트 대상이다."""
         return project_id
 ''',
-        "neurath.infrastructure.repositories.project": '''"""Concrete project adapter."""
+        "neurath.infrastructure.repositories.project": '''"""구조 계약을 검증하는 테스트 대상이다."""
 from neurath.infrastructure.base_repository import BaseRepository as Parent
 class ProjectRepository(Parent):
-    """Explicitly inherit the contract through the base."""
+    """구조 계약을 검증하는 테스트 대상이다."""
 ''',
-        "neurath.infrastructure.models.base": '''"""ORM metadata."""
+        "neurath.infrastructure.models.base": '''"""구조 계약을 검증하는 테스트 대상이다."""
 from sqlalchemy.orm import DeclarativeBase as D
 class Base(D):
-    """Typed metadata base."""
+    """구조 계약을 검증하는 테스트 대상이다."""
 ''',
-        "neurath.infrastructure.models.project": '''"""Project ORM fixture."""
+        "neurath.infrastructure.models.project": '''"""구조 계약을 검증하는 테스트 대상이다."""
 from sqlalchemy.orm import Mapped as M, mapped_column as column
 from neurath.infrastructure.models.base import Base as Parent
 class ProjectModel(Parent):
-    """Typed declarative persistence record."""
+    """구조 계약을 검증하는 테스트 대상이다."""
     __tablename__ = "project"
     id: M[str] = column(primary_key=True)
 ''',
@@ -178,8 +180,8 @@ class ProjectModel(Parent):
 
 def test_indirect_protocol_alias_cannot_hide_forbidden_base():
     sources = {
-        "neurath.application.alias": '"""Alias."""\nimport typing as t\nParent = t.Protocol',
-        "neurath.application.ports.repositories.project": '"""Port."""\nfrom neurath.application.alias import Parent as P\nclass IProjectRepository(P):\n """Bad protocol."""',
+        "neurath.application.alias": '"""구조 계약을 검증하는 테스트 대상이다."""\nimport typing as t\nParent = t.Protocol',
+        "neurath.application.ports.repositories.project": '"""구조 계약을 검증하는 테스트 대상이다."""\nfrom neurath.application.alias import Parent as P\nclass IProjectRepository(P):\n """구조 계약을 검증하는 테스트 대상이다."""',
     }
     errors = ArchitectureChecker(sources).check()
     assert any("FORBIDDEN_TYPE" in error for error in errors)
@@ -203,7 +205,9 @@ def test_only_external_ports_are_nominal_and_abstract():
 def test_new_source_files_are_discovered_without_whitelisting(tmp_path):
     package = tmp_path / "src" / "neurath" / "domain"
     package.mkdir(parents=True)
-    (package / "future.py").write_text('"""Future domain."""\nimport sqlalchemy')
+    (package / "future.py").write_text(
+        '"""구조 계약을 검증하는 테스트 대상이다."""\nimport sqlalchemy'
+    )
     assert any("DOMAIN_BOUNDARY" in error for error in check_tree(tmp_path))
 
 
@@ -253,7 +257,7 @@ def test_current_source_tree_has_no_architecture_violations():
 
 def test_importing_low_level_sqlalchemy_alias_does_not_bypass_declarative_rule():
     sources = {
-        "neurath.infrastructure.models.bad": '''"""Bad ORM fixture."""
+        "neurath.infrastructure.models.bad": '''"""구조 계약을 검증하는 테스트 대상이다."""
 from sqlalchemy.sql.schema import Table as Builder
 Alias = Builder
 record = Alias("project")
@@ -264,14 +268,14 @@ record = Alias("project")
 
 def test_inheriting_an_input_dto_is_not_nominal_interface_implementation():
     sources = {
-        "neurath.application.ports.usecases.register": '''"""Input fixture."""
+        "neurath.application.ports.usecases.register": '''"""구조 계약을 검증하는 테스트 대상이다."""
 class Request:
-    """A value object is not a repository contract."""
+    """구조 계약을 검증하는 테스트 대상이다."""
 ''',
-        "neurath.infrastructure.repositories.project": '''"""Invalid adapter fixture."""
+        "neurath.infrastructure.repositories.project": '''"""구조 계약을 검증하는 테스트 대상이다."""
 from neurath.application.ports.usecases.register import Request
 class ProjectRepository(Request):
-    """Does not implement a repository contract."""
+    """구조 계약을 검증하는 테스트 대상이다."""
 ''',
     }
     assert any("NOMINAL_IMPLEMENTATION" in error for error in ArchitectureChecker(sources).check())
@@ -320,34 +324,36 @@ class ProjectRepository(Request):
     ],
 )
 def test_round_two_architecture_regressions_are_rejected(module, source, rule):
-    errors = ArchitectureChecker({module: '"""Fixture."""\n' + source}).check()
+    errors = ArchitectureChecker(
+        {module: '"""구조 계약을 검증하는 테스트 대상이다."""\n' + source}
+    ).check()
     assert any(f" {rule}:" in error for error in errors), errors
 
 
 def test_resource_factories_and_frozen_values_are_not_transaction_or_entity_wrappers():
     sources = {
-        "neurath.infrastructure.providers": '''"""Framework resource fixture."""
+        "neurath.infrastructure.providers": '''"""구조 계약을 검증하는 테스트 대상이다."""
 from collections.abc import Iterator
 from dishka import Provider, Scope, provide
 from sqlalchemy.orm import Session
 class ResourceProvider(Provider):
-    """Resource lifetime without transaction ownership."""
+    """구조 계약을 검증하는 테스트 대상이다."""
     @provide(scope=Scope.REQUEST)
     def session(self) -> Iterator[Session]:
-        """Provide and close the ORM resource."""
+        """구조 계약을 검증하는 테스트 대상이다."""
         with Session() as session:
             yield session
 ''',
-        "neurath.domain.observations": '''"""Immutable observation fixture."""
+        "neurath.domain.observations": '''"""구조 계약을 검증하는 테스트 대상이다."""
 from dataclasses import dataclass
 @dataclass(frozen=True)
 class Observation:
-    """External primitive facts."""
+    """구조 계약을 검증하는 테스트 대상이다."""
     working_directory: str
 ''',
-        "neurath.application.usecases.example": '''"""Concrete use case fixture."""
+        "neurath.application.usecases.example": '''"""구조 계약을 검증하는 테스트 대상이다."""
 class ExampleUseCase:
-    """No business-policy variation requires an interface."""
+    """구조 계약을 검증하는 테스트 대상이다."""
 ''',
     }
     assert ArchitectureChecker(sources).check() == []
@@ -375,9 +381,9 @@ def test_pyrefly_rejects_wrong_type_with_the_repository_configuration(tmp_path):
 
 def test_google_doc_checker_rejects_missing_parameter_and_return_sections(tmp_path):
     fixture = tmp_path / "bad_doc.py"
-    fixture.write_text('''"""Negative docstring fixture."""
+    fixture.write_text('''"""구조 계약을 검증하는 테스트 대상이다."""
 def example(value: str) -> str:
-    """Nonempty prose alone does not document the contract."""
+    """구조 계약을 검증하는 테스트 대상이다."""
     return value
 ''')
     result = subprocess.run(
@@ -395,3 +401,101 @@ def example(value: str) -> str:
     assert result.returncode != 0
     assert "DOC101" in result.stdout + result.stderr
     assert "DOC201" in result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("method", ["add", "insert", "create", "update"])
+@pytest.mark.parametrize("layer", ["application.ports", "infrastructure"])
+def test_repository_creation_and_update_aliases_must_use_save(layer, method):
+    source = f'''"""저장 계약의 명칭을 검증한다."""
+class ExampleRepository:
+    """삽입과 갱신을 분리하는 잘못된 저장 계약이다."""
+    def {method}(self, entity):
+        """잘못된 이름으로 엔티티를 저장한다."""
+        pass
+'''
+    errors = ArchitectureChecker({f"neurath.{layer}.repositories.example": source}).check()
+    assert any(" REPOSITORY_SAVE:" in error for error in errors), errors
+
+
+@pytest.mark.parametrize(
+    ("module", "name"),
+    [
+        ("neurath.application.ports.repositories.project_location", "IProjectLocationRepository"),
+        ("neurath.infrastructure.repositories.project_location", "ProjectLocationRepository"),
+    ],
+)
+def test_owned_locations_cannot_have_an_independent_repository(module, name):
+    source = f'''"""종속 위치의 독립 저장소 회귀를 검증한다."""
+class {name}:
+    """프로젝트를 통하지 않는 잘못된 위치 저장소다."""
+'''
+    errors = ArchitectureChecker({module: source}).check()
+    assert any(" AGGREGATE_OWNERSHIP:" in error for error in errors), errors
+
+
+def test_owned_values_relationships_and_domain_creation_are_valid():
+    sources = {
+        "neurath.domain.aggregates.project": '''"""프로젝트와 소유 위치 값을 정의한다."""
+from dataclasses import dataclass
+@dataclass(frozen=True)
+class ProjectLocation:
+    """프로젝트가 소유하는 불변 위치 값이다."""
+    kind: str
+    path: str
+class Project:
+    """위치 값을 소유하는 aggregate다."""
+    @classmethod
+    def create(cls):
+        """도메인 규칙으로 새 프로젝트를 생성한다."""
+        return cls()
+''',
+        "neurath.infrastructure.models.project": '''"""프로젝트의 소유 관계를 매핑한다."""
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+class ProjectModel(DeclarativeBase):
+    """타입을 명시한 소유 관계 모델이다."""
+    __tablename__ = "projects"
+    id: Mapped[str] = mapped_column(primary_key=True)
+    locations: Mapped[list["LocationModel"]] = relationship(cascade="all, delete-orphan")
+''',
+        "neurath.infrastructure.example": '''"""ORM의 자체 저장 API를 사용할 수 있다."""
+def store(session, record):
+    """ORM 내부 삽입 API는 저장소 계약 이름과 구별한다."""
+    session.add(record)
+''',
+    }
+    assert ArchitectureChecker(sources).check() == []
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "record = existing.get(key) or Model()",
+        "record: Model = existing.get(key) or Model()",
+        "return existing.get(key) or Model()",
+        "records = [existing.get(key) or Model() for key in keys]",
+    ],
+)
+def test_repository_object_selection_requires_explicit_none_branch(statement):
+    source = f'''"""저장소의 객체 선택 표현을 검사한다."""
+def select_record(existing, key, keys):
+    """누락된 객체를 암묵적인 진리값으로 대체하는 실패 예다."""
+    {statement}
+'''
+    errors = ArchitectureChecker({"neurath.infrastructure.repositories.example": source}).check()
+    assert any(" EXPLICIT_OBJECT_SELECTION:" in error for error in errors), errors
+
+
+def test_repository_explicit_object_selection_and_boolean_conditions_are_valid():
+    source = '''"""명시적인 객체 선택과 일반 조건을 구별한다."""
+def select_record(existing, key, valid, ready):
+    """누락 여부를 확인하여 객체를 선택한다."""
+    record = existing.get(key)
+    if record is None:
+        record = Model()
+    if valid or ready:
+        return record
+    return None
+'''
+    assert (
+        ArchitectureChecker({"neurath.infrastructure.repositories.example": source}).check() == []
+    )

@@ -1,1 +1,1 @@
-"""Explicit schema revisions for the user-wide store."""
+"""사용자 단위 저장소의 명시적인 스키마 리비전을 제공한다."""

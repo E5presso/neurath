@@ -7,7 +7,7 @@ Follow the approved specification and the responsibility boundaries in
 Repository and observation ports use `ABC` and `@abstractmethod`; their adapters
 explicitly inherit those ports. Use cases are concrete classes without interfaces. Each use case accepts a named immutable
 command or query and exposes `execute`. ORM models use `DeclarativeBase`, `Mapped`,
-`mapped_column`, and explicit domain conversion methods. Request adapters directly
+`mapped_column`, `relationship`, and explicit domain conversion methods. Request adapters directly
 use `Session.begin()`; Dishka supplies scoped dependencies and resource cleanup.
 Do not add a custom transaction/unit-of-work framework or a database configuration wrapper.
 
@@ -31,12 +31,19 @@ architectural AST checks, and negative/positive guard fixtures. CI executes the
 required runner, followed within that runner by all behavioral tests and a wheel
 build. The success marker is `NEURATH_CHECK_OK`. There is no current-source module
 allowlist, old-source suppression baseline, `Any` escape hatch, or type/lint-ignore
-policy. All future Python files under `src` are discovered. Tests are linted and
-formatted but exempt from documentation/annotation style rules; production and
-development tools have strict annotations and Google-style docstrings. Pydoclint
+policy. All future Python files under `src` are discovered. Tests are linted and formatted but do not require new docstrings or annotations.
+All existing code docstrings, including tests and root Python configuration, use Korean
+summaries and natural-language field descriptions. Production and development tools
+have strict annotations and Google-style docstrings. Pydoclint
 checks Args, Returns, Yields, Raises, and Attributes sections against the signatures;
 short summaries do not bypass checking. Signature annotations are the argument-type
 source, so docstring argument descriptions do not duplicate those types.
+`tools/docstrings.py` checks Korean prose in actual AST docstrings; Google section
+headings and code/type identifiers stay in their standard syntax. It checks each
+prose line for at least two Hangul characters and at least as many Hangul as English
+letters after excluding identifiers and inline code. English prose with a token
+Korean word is a negative fixture, not an accepted translation. Deliberate invalid
+fixture strings remain test data; translation quality still requires human review.
 
 ## Mechanically checked rules and review limits
 
@@ -46,7 +53,14 @@ forbidden layer imports, missing port ABC/abstractmethod declarations, non-nomin
 repository/observer implementations, and non-declarative ORM mappings. It also rejects use-case interfaces,
 frozen or implicit value-equality entity dataclasses, nonprimitive repository
 contracts, observation ports exposing entities, and direct adapter construction in
-transport. Resource providers may yield and close resources; transaction-owning
+transport. Project owns immutable `ProjectLocation` values; there is no independent
+location repository, DI registration, or lifecycle. The child table is mapped through
+an ORM relationship and saved atomically with its root. Root selection and promotion
+remain domain rules. All repository insertion and update paths use `save(entity) -> entity`;
+`add`, `insert`, `create`, and `update` persistence aliases are rejected. Domain `create`
+methods and SQLAlchemy `Session.add` calls are permitted. Owned child values and
+mapped relationships have positive regression fixtures; aggregate semantics still
+require review. Resource providers may yield and close resources; transaction-owning
 generator wrappers are rejected. Pure-domain and actual DI/ORM lifecycle regression
 tests run in the shared quality hook alongside syntax and checker negative fixtures.
 The ORM rule applies to runtime models; immutable Alembic revisions use SQLAlchemy
@@ -60,6 +74,10 @@ is semantically appropriate. Reviewers must inspect cohesion, invariants, transa
 scope, and whether additional abstractions are justified. Do not claim lint proves
 those judgments. Deliberate dynamic code generation or reflective bypasses are not
 an accepted substitute for explicit implementation.
+
+Object selection in repository mappings uses named variables and explicit `is None`
+branches. The narrow AST rule rejects value assignments, returns, or comprehension
+items using `mapping.get(...) or replacement`; ordinary boolean conditions remain valid.
 
 ## Preservation and implementation scope
 

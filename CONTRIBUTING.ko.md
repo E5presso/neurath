@@ -6,7 +6,7 @@
 도메인 엔티티는 불변식과 상태 전이를 담당합니다. repository·관찰 port는 `ABC`와
 `@abstractmethod`를 사용하며 해당 adapter가 명시적으로 상속합니다. use case는
 별도 인터페이스 없이 구체 클래스로 작성합니다. 각 use case는 이름이 있는 불변 command/query를 받아 `execute`합니다.
-ORM 모델은 `DeclarativeBase`, `Mapped`, `mapped_column`과 명시적인 도메인 변환을
+ORM 모델은 `DeclarativeBase`, `Mapped`, `mapped_column`·`relationship`과 명시적인 도메인 변환을
 사용합니다. 요청 adapter는 `Session.begin()`을 직접 사용하며 별도 UoW·트랜잭션
 프레임워크나 DB 설정 wrapper를 추가하지 않습니다. Dishka가 의존성과 자원 수명을 관리합니다.
 
@@ -29,11 +29,16 @@ lint·docstring·타입 표기·포맷, strict Pyrefly, Google 형식 pydoclint 
 검사합니다. CI도 필수 runner를 실행하며, runner는 이어서 전체 동작 시험과
 휠 생성을 수행합니다. 성공 표시는 `NEURATH_CHECK_OK`입니다. 현재 소스의 모듈
 허용 목록, 과거 소스 예외 baseline, `Any` 우회, 타입·lint 무시 정책은 없습니다.
-`src` 아래 앞으로 추가되는 Python 파일도 모두 발견합니다. 시험은 lint·포맷을
-적용하되 문서·타입 표기 스타일 규칙에서 제외하며, 제품 소스와 개발 도구는
+`src` 아래 앞으로 추가되는 Python 파일도 모두 발견합니다. 시험은 lint·포맷을 적용하며 새 문서 문자열·타입 표기 작성은 강제하지 않습니다.
+시험과 루트 Python 설정을 포함한 모든 기존 docstring의 요약·자연어 필드 설명은 한국어로 작성합니다. 제품 소스와 개발 도구는
 엄격한 타입 표기와 Google 형식 docstring을 적용합니다. Pydoclint는 Args·Returns·Yields·
 Raises·Attributes를 signature와 대조하며 짧은 요약으로 검사를 건너뛸 수 없습니다.
 인자 타입은 signature를 기준으로 삼으므로 docstring 인자 설명에 타입을 중복하지 않습니다.
+`tools/docstrings.py`는 AST의 실제 문서 문자열을 검사합니다. Google 섹션명과 코드·타입
+식별자는 표준 문법을 유지합니다. 식별자와 인라인 코드를 제외한 각 서술 줄은 한글이
+두 글자 이상이고 영문 글자 수 이상이어야 합니다. 영문에 한글 단어만 붙인 문장은
+실패 fixture입니다. 의도적으로 잘못 작성한 fixture 문자열은 테스트 데이터로 구분하며
+번역 정확성과 문서 유용성은 사람이 검토합니다.
 
 ## 기계 검사 규칙과 사람 검토의 경계
 
@@ -42,7 +47,12 @@ AST 검사는 import 별칭과 로컬 상속 관계를 해석해 Protocol, Liter
 ABC/abstractmethod 없는 port, 명시 계약 상속이 없는 repository/observer,
 비선언형 ORM 매핑을 거부합니다. use case 인터페이스, frozen 또는 기본 값 동등성을 쓰는
 엔티티 dataclass, 조회·저장을 넘어서는 repository 계약, 엔티티를 노출하는 관찰 port,
-transport의 직접 adapter 생성도 거부합니다. 자원을 yield·정리하는 provider는 허용하며
+transport의 직접 adapter 생성도 거부합니다. Project는 불변 ProjectLocation 값을 소유하며
+위치 전용 repository·DI·생명주기를 만들지 않습니다. 자식 테이블은 ORM 관계로 매핑하여
+프로젝트와 원자적으로 저장합니다. 루트 선택·승격은 도메인 규칙입니다. 모든 저장소의
+삽입·갱신은 `save(entity) -> entity`로 통일하고 add·insert·create·update 저장 별칭은
+거부합니다. 도메인의 create와 SQLAlchemy Session.add는 허용합니다. 소유된 자식 값과
+선언형 관계는 정상 fixture로 검증하며 aggregate 의미 자체는 사람 검토에 남깁니다. 자원을 yield·정리하는 provider는 허용하며
 트랜잭션까지 소유하는 generator wrapper는 거부합니다. 공통 품질 hook은 순수 도메인과
 실제 DI/ORM 수명 회귀 시험도 구문·checker 실패 fixture와 함께 실행합니다. ORM 규칙은 실행 모델에 적용하며 불변 Alembic
 revision의 DDL에는 SQLAlchemy Column을 의도적으로 사용합니다. 별칭, 간접 상속,
@@ -53,6 +63,10 @@ docstring이 유용한지, 일반 클래스가 숨겨진 façade인지, 이름�
 추상화가 의미상 적절한지는 증명하지 못합니다. 응집도·불변식·트랜잭션 범위와
 추상화의 필요성은 사람이 검토해야 합니다. lint가 이 판단까지 증명한다고
 주장하지 않습니다. 동적 코드 생성·리플렉션 우회는 명시적 구현의 대안이 아닙니다.
+
+저장소 매핑의 객체 선택은 이름 있는 변수와 명시적 `is None` 분기를 사용합니다.
+좁은 AST 규칙은 대입·반환·comprehension 요소에서 `mapping.get(...) or 대체객체`를
+거부하며 일반적인 boolean 조건은 허용합니다.
 
 ## 보존과 구현 범위
 

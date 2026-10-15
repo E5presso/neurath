@@ -1,1 +1,1 @@
-"""Candidate package behavior and architectural regression tests."""
+"""후보 패키지의 행동과 구조 회귀 테스트를 제공한다."""

@@ -1,1 +1,1 @@
-"""ORM implementations of repository ports."""
+"""저장소 포트의 ORM 구현을 제공한다."""

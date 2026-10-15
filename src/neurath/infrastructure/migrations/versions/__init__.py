@@ -1,1 +1,1 @@
-"""Immutable applied database revisions."""
+"""적용 후 변경하지 않는 데이터베이스 리비전을 제공한다."""

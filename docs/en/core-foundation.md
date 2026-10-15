@@ -8,7 +8,7 @@ Protocol contract, or imperative runtime table mapping remains in the package.
 
 ## Responsibilities
 
-- `domain/aggregates/project.py`: mutable project/location entities, identity selection, folder promotion, and ownership/conflict rules.
+- `domain/aggregates/project.py`: mutable Project aggregate owning immutable ProjectLocation values, identity selection, folder promotion, and ownership/conflict rules.
 - `domain/aggregates/session.py`: mutable host-session identity, native identifier validation, and movement guarded by the caller's observed revision.
 - `domain/observations.py`: immutable primitive filesystem/Git facts, without identity policy.
 - `application/ports`: nominal repository and observation ABCs. Repository operations are lookup and storage only.
@@ -65,6 +65,13 @@ then the request adapter directly uses `with session.begin():`. Writes acquire
 Foreign keys are enabled on every connection. SQLite coordinates competing writers;
 the default busy timeout is five seconds and failures are not silently retried.
 Repositories flush within the supplied transaction and never commit independently.
+Project is the aggregate root; locations have no separate repository or lifecycle.
+`get` and `find_by_location` load the complete root and its owned values. `save(project)`
+merges parent fields and reconciles the owned ORM collection: existing children stay
+attached, new children are inserted, and removed values are deleted as orphans.
+Another project's location key conflicts on insertion instead of being reassigned;
+the caller transaction rolls back the parent and children together. The schema is unchanged.
+All project/session insert and update paths use `save(entity) -> entity`.
 `HostSession.move` validates the observed version and changes directory. Primitive
 `save(entity)` returns the persisted entity using SQLAlchemy `merge` and
 `version_id_col`; the ORM increments the storage version and rejects stale detached

@@ -1,4 +1,4 @@
-"""Observable request behavior across processes, scopes, transactions, and Git changes."""
+"""프로세스·범위·트랜잭션·Git 변경에 걸친 요청의 관찰 가능한 행동을 검증한다."""
 
 import json
 import sqlite3
@@ -25,7 +25,6 @@ from neurath.infrastructure.database import create_database_engine
 from neurath.infrastructure.models.project import ProjectModel
 from neurath.infrastructure.models.session import SessionModel
 from neurath.infrastructure.repositories.project import ProjectRepository
-from neurath.infrastructure.repositories.project_location import ProjectLocationRepository
 from neurath.infrastructure.repositories.session import SessionRepository
 from neurath.transport.session_requests import get_session_context, move_session, register_session
 from tests.conftest import git, initialize_git
@@ -183,13 +182,13 @@ def test_concurrent_revision_change_has_one_winner(database, repository):
 def test_failed_registration_rolls_back_project_alias_and_session(
     database, repository, monkeypatch
 ):
-    original_add = SessionRepository.add
+    original_save = SessionRepository.save
 
     def fail_after_flush(self, session):
-        original_add(self, session)
+        original_save(self, session)
         raise RuntimeError("after flush")
 
-    monkeypatch.setattr(SessionRepository, "add", fail_after_flush)
+    monkeypatch.setattr(SessionRepository, "save", fail_after_flush)
     with pytest.raises(RuntimeError, match="after flush"):
         register_session(str(repository), "codex", "native", database_path=database)
     with sqlite3.connect(database) as connection:
@@ -207,7 +206,7 @@ def test_related_changes_roll_back_together_using_actual_session(database, repos
                 changed = repository_adapter.get(first.project.id, first.session.id)
                 changed.move("new-directory", 1)
                 repository_adapter.save(changed)
-                repository_adapter.add(
+                repository_adapter.save(
                     HostSession("second", first.project.id, "codex", "second", "new", 1)
                 )
                 raise RuntimeError("rollback")
@@ -271,23 +270,21 @@ def test_identity_conflict_does_not_merge_or_modify_existing_aliases(database):
     engine = create_database_engine(database, write=True)
     try:
         with Session(engine) as session, session.begin():
-            projects = RegisterProjectUseCase(
-                ProjectRepository(session), ProjectLocationRepository(session)
-            )
+            projects = RegisterProjectUseCase(ProjectRepository(session))
             first = projects.execute(DirectoryObservation("/one", "/one/.git", "/one"))
             second = projects.execute(DirectoryObservation("/two"))
         with pytest.raises(ProjectIdentityConflict):
             with Session(engine) as session, session.begin():
-                RegisterProjectUseCase(
-                    ProjectRepository(session), ProjectLocationRepository(session)
-                ).execute(DirectoryObservation("/two", "/one/.git", "/two"))
+                RegisterProjectUseCase(ProjectRepository(session)).execute(
+                    DirectoryObservation("/two", "/one/.git", "/two")
+                )
         with Session(engine) as session, session.begin():
             assert set(session.scalars(select(ProjectModel.id))) == {first.id, second.id}
         with pytest.raises(ProjectIdentityConflict):
             with Session(engine) as session, session.begin():
-                RegisterProjectUseCase(
-                    ProjectRepository(session), ProjectLocationRepository(session)
-                ).execute(DirectoryObservation("/one", "/different/.git", "/one"))
+                RegisterProjectUseCase(ProjectRepository(session)).execute(
+                    DirectoryObservation("/one", "/different/.git", "/one")
+                )
     finally:
         engine.dispose()
 

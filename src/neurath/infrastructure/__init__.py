@@ -1,1 +1,1 @@
-"""Git observation and SQLite persistence adapters."""
+"""Git 관찰과 SQLite 저장 어댑터를 제공한다."""

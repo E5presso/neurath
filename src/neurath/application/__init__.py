@@ -1,1 +1,1 @@
-"""Explicit commands, queries, ports, and their implementations."""
+"""명시적인 명령·조회·포트와 그 구현을 제공한다."""

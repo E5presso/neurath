@@ -1,4 +1,4 @@
-"""Mutable host-session identity and revision rules within a specific project."""
+"""특정 프로젝트 안에서 가변 호스트 세션의 동일성과 버전 규칙을 관리한다."""
 
 from dataclasses import dataclass
 from uuid import uuid4
@@ -8,15 +8,15 @@ from neurath.domain.errors import RevisionConflict
 
 @dataclass(eq=False)
 class HostSession:
-    """A host observation that changes directory while preserving its identity.
+    """동일성을 유지하면서 작업 경로가 바뀌는 호스트 관찰 엔티티다.
 
     Attributes:
-        id: Stable session identifier.
-        project_id: Project containing this session.
-        provider: Host provider namespace.
-        host_session_id: Native identifier, which is not authentication.
-        working_directory: Most recently accepted canonical directory.
-        revision: Persisted optimistic version used to reject stale requests.
+        id: 세션의 안정적인 식별자.
+        project_id: 이 세션이 속한 프로젝트.
+        provider: 호스트 공급자의 이름 공간.
+        host_session_id: 인증 수단이 아닌 네이티브 식별자.
+        working_directory: 가장 최근에 수용한 정규 디렉터리.
+        revision: 오래된 요청을 거부하기 위해 저장한 낙관적 버전.
     """
 
     id: str
@@ -27,13 +27,13 @@ class HostSession:
     revision: int
 
     def __eq__(self, other: object) -> bool:
-        """Compare the stable session identifier independently of observation state.
+        """관찰 상태와 독립적인 안정적 세션 식별자로 동일성을 비교한다.
 
         Args:
-            other: Object whose session identity is compared.
+            other: 세션 동일성을 비교할 대상 객체.
 
         Returns:
-            bool: Whether both objects represent the same session.
+            bool: 두 객체가 같은 세션을 나타내는지 여부.
         """
         if not isinstance(other, HostSession):
             return NotImplemented
@@ -43,33 +43,33 @@ class HostSession:
     def create(
         cls, project_id: str, provider: str, host_session_id: str, working_directory: str
     ) -> "HostSession":
-        """Register the first observation with a valid native identity.
+        """유효한 네이티브 식별자로 최초 관찰을 등록한다.
 
         Args:
-            project_id: Project containing the host session.
-            provider: Nonempty host provider namespace.
-            host_session_id: Nonempty identifier supplied by that provider.
-            working_directory: Canonical observed directory.
+            project_id: 호스트 세션이 속한 프로젝트.
+            provider: 비어 있지 않은 호스트 공급자 이름 공간.
+            host_session_id: 해당 공급자가 전달한 비어 있지 않은 식별자.
+            working_directory: 관찰한 정규 디렉터리.
 
         Returns:
-            HostSession: A new session at revision one.
+            HostSession: 버전이 1인 새 세션.
 
         Raises:
-            ValueError: The provider or native identifier is blank.
+            ValueError: 공급자 또는 네이티브 식별자가 빈 문자열인 경우.
         """
         if not provider.strip() or not host_session_id.strip():
             raise ValueError("provider and host_session_id must be non-empty")
         return cls(str(uuid4()), project_id, provider, host_session_id, working_directory, 1)
 
     def move(self, working_directory: str, expected_revision: int) -> None:
-        """Accept a new directory only when the caller observed the current revision.
+        """호출자가 현재 버전을 관찰한 경우에만 새 디렉터리를 수용한다.
 
         Args:
-            working_directory: Canonical directory in this session's project.
-            expected_revision: Revision observed by the caller before requesting a move.
+            working_directory: 이 세션의 프로젝트 안에 있는 정규 디렉터리.
+            expected_revision: 이동 요청 전에 호출자가 관찰한 버전.
 
         Raises:
-            RevisionConflict: The caller's observation is stale.
+            RevisionConflict: 호출자가 관찰한 버전이 오래된 경우.
         """
         if expected_revision != self.revision:
             raise RevisionConflict("Session changed; read current context before updating")

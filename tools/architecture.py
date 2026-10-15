@@ -1,4 +1,4 @@
-"""Check concrete architectural syntax; semantic cohesion still requires human review."""
+"""구체적인 구조 문법을 검사하며 의미적 응집성은 사람 검토에 남긴다."""
 
 import ast
 import re
@@ -6,13 +6,13 @@ from pathlib import Path
 
 
 class ArchitectureChecker:
-    """Resolve local import aliases and inheritance before enforcing explicit contracts."""
+    """명시적 계약을 검사하기 전에 로컬 임포트 별칭과 상속을 해석한다."""
 
     def __init__(self, sources: dict[str, str]) -> None:
-        """Parse a complete source tree whose keys are dotted module names.
+        """점으로 구분한 모듈 이름을 키로 갖는 전체 소스 트리를 구문 분석한다.
 
         Args:
-            sources: Python source text keyed by dotted module name.
+            sources: 점으로 구분한 모듈 이름을 키로 갖는 Python 소스 텍스트.
         """
         self.trees = {module: ast.parse(source) for module, source in sources.items()}
         self.sources = sources
@@ -44,14 +44,14 @@ class ArchitectureChecker:
                     self.aliases[f"{module}.{node.name.id}"] = self._name(module, node.value)
 
     def _import_module(self, module: str, node: ast.ImportFrom) -> str:
-        """Resolve relative imports against the importing module's package.
+        """임포트하는 모듈의 패키지를 기준으로 상대 임포트를 해석한다.
 
         Args:
-            module: Dotted module containing the syntax node.
-            node: Syntax node whose imported symbol is resolved.
+            module: 구문 노드를 포함하는 점으로 구분한 모듈 이름.
+            node: 임포트 심벌을 해석할 구문 노드.
 
         Returns:
-            str: Absolute module name resolved from the import statement.
+            str: 임포트 문에서 해석한 절대 모듈 이름.
         """
         if node.level == 0:
             return node.module or ""
@@ -61,14 +61,14 @@ class ArchitectureChecker:
         return ".".join(parts)
 
     def _name(self, module: str, node: ast.AST) -> str:
-        """Return a canonical symbol name for an annotation, base, or call target.
+        """타입 표기·기반 클래스·호출 대상의 정규 심벌 이름을 반환한다.
 
         Args:
-            module: Dotted module containing the syntax node.
-            node: Syntax node whose imported symbol is resolved.
+            module: 구문 노드를 포함하는 점으로 구분한 모듈 이름.
+            node: 임포트 심벌을 해석할 구문 노드.
 
         Returns:
-            str: Canonical symbol name, or an empty string for unsupported syntax.
+            str: 정규 심벌 이름이며 지원하지 않는 문법이면 빈 문자열.
         """
         if isinstance(node, ast.Subscript):
             return self._name(module, node.value)
@@ -85,14 +85,14 @@ class ArchitectureChecker:
         return name
 
     def _ancestors(self, symbol: str, seen: set[str] | None = None) -> set[str]:
-        """Follow explicit base classes, including imported and indirect local bases.
+        """임포트한 기반 클래스와 간접 로컬 상속을 포함하여 명시적 상속을 추적한다.
 
         Args:
-            symbol: Fully qualified class name to inspect.
-            seen: Previously visited class names used to stop inheritance cycles.
+            symbol: 조사할 클래스의 완전한 이름.
+            seen: 상속 순환을 끊기 위해 기록한 이미 방문한 클래스 이름들.
 
         Returns:
-            set[str]: Class and transitive ancestor names, including external bases.
+            set[str]: 외부 기반 클래스를 포함하는 클래스와 모든 상위 클래스 이름들.
         """
         visited = set() if seen is None else set(seen)
         if symbol in visited or symbol not in self.classes:
@@ -105,10 +105,10 @@ class ArchitectureChecker:
         return result
 
     def check(self) -> list[str]:
-        """Return actionable rule codes with module and line for every violation.
+        """각 위반에 대해 모듈과 줄 번호 및 수정 가능한 규칙 코드를 반환한다.
 
         Returns:
-            list[str]: Sorted unique violations with module, line, and rule code.
+            list[str]: 모듈·줄 번호·규칙 코드로 구성한 중복 없는 정렬된 위반 목록.
         """
         errors: list[str] = []
         forbidden = {
@@ -180,6 +180,15 @@ class ArchitectureChecker:
                     if not ast.get_docstring(node):
                         errors.append(f"{location} DOCSTRING: document {node.name}")
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    if ".repositories." in module and node.name in {
+                        "add",
+                        "insert",
+                        "create",
+                        "update",
+                    }:
+                        errors.append(
+                            f"{location} REPOSITORY_SAVE: use save for insertion and update"
+                        )
                     if node.name in {"transaction", "commit", "rollback", "uow", "unit_of_work"}:
                         errors.append(f"{location} TRANSACTION_WRAPPER: use ORM Session lifecycle")
                     if any(
@@ -199,7 +208,7 @@ class ArchitectureChecker:
                             "get",
                             "find",
                             "list",
-                            "add",
+                            "find_by_location",
                             "save",
                             "delete",
                             "exists",
@@ -213,6 +222,22 @@ class ArchitectureChecker:
                         ):
                             errors.append(
                                 f"{location} PRIMITIVE_REPOSITORY: revision decisions belong to the entity"
+                            )
+                if ".infrastructure.repositories." in module:
+                    selected = None
+                    if isinstance(node, (ast.Assign, ast.AnnAssign, ast.Return)):
+                        selected = node.value
+                    elif isinstance(node, ast.ListComp):
+                        selected = node.elt
+                    if isinstance(selected, ast.BoolOp) and isinstance(selected.op, ast.Or):
+                        if any(
+                            isinstance(value, ast.Call)
+                            and isinstance(value.func, ast.Attribute)
+                            and value.func.attr == "get"
+                            for value in selected.values
+                        ):
+                            errors.append(
+                                f"{location} EXPLICIT_OBJECT_SELECTION: use a named value and is None branch"
                             )
                 if isinstance(node, ast.Call):
                     called = self._name(module, node.func)
@@ -241,6 +266,13 @@ class ArchitectureChecker:
                         errors.append(f"{location} DECLARATIVE_ORM: use Mapped and mapped_column")
                 if not isinstance(node, ast.ClassDef):
                     continue
+                if ".repositories." in module and node.name in {
+                    "IProjectLocationRepository",
+                    "ProjectLocationRepository",
+                }:
+                    errors.append(
+                        f"{location} AGGREGATE_OWNERSHIP: persist locations through Project"
+                    )
                 if "unitofwork" in node.name.lower().replace("_", "") or node.name.lower().endswith(
                     "uow"
                 ):
@@ -265,7 +297,7 @@ class ArchitectureChecker:
                         for child in node.body
                         if isinstance(child, ast.AnnAssign) and isinstance(child.target, ast.Name)
                     }
-                    is_entity = "id" in fields or {"kind", "path", "project_id"}.issubset(fields)
+                    is_entity = "id" in fields
                     if is_entity:
                         for decorator in node.decorator_list:
                             if (
@@ -377,20 +409,23 @@ class ArchitectureChecker:
                                 self._name(module, field.annotation) != "sqlalchemy.orm.Mapped"
                                 or not isinstance(field.value, ast.Call)
                                 or self._name(module, field.value.func)
-                                != "sqlalchemy.orm.mapped_column"
+                                not in {
+                                    "sqlalchemy.orm.mapped_column",
+                                    "sqlalchemy.orm.relationship",
+                                }
                             ):
                                 errors.append(f"{location} MAPPED_COLUMN: {field.target.id}")
         return sorted(set(errors))
 
 
 def check_tree(root: Path) -> list[str]:
-    """Discover every current source module, so future files cannot evade the gate.
+    """새 파일이 검사를 우회하지 못하도록 현재 소스 모듈 전체를 탐색한다.
 
     Args:
-        root: Root directory of the checkout to inspect.
+        root: 조사할 체크아웃의 루트 디렉터리.
 
     Returns:
-        list[str]: Violations across all discovered current package modules.
+        list[str]: 탐색한 현재 패키지 모듈 전체의 위반 목록.
     """
     sources: dict[str, str] = {}
     for path in sorted((root / "src").rglob("*.py")):
@@ -400,10 +435,10 @@ def check_tree(root: Path) -> list[str]:
 
 
 def main() -> None:
-    """Run the complete source architecture gate and fail the process on violations.
+    """전체 소스 구조 검사를 실행하고 위반 시 실패 상태로 종료한다.
 
     Raises:
-        SystemExit: The architecture gate detected at least one violation.
+        SystemExit: 구조 검사에서 하나 이상의 위반을 발견한 경우.
     """
     errors = check_tree(Path(__file__).resolve().parents[1])
     for error in errors:

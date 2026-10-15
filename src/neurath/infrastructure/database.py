@@ -1,4 +1,4 @@
-"""SQLite engine configuration and explicit Alembic initialization."""
+"""SQLite 엔진 설정과 명시적인 Alembic 초기화를 제공한다."""
 
 import os
 import sqlite3
@@ -18,13 +18,13 @@ SCHEMA_REVISION = "core_0001"
 
 
 def user_database_path() -> Path:
-    """Resolve one user-wide database path independently of the current directory.
+    """현재 디렉터리와 독립적인 사용자 단위 데이터베이스 경로를 결정한다.
 
     Returns:
-        Path: User-wide core database path, independent of the working directory.
+        Path: 작업 디렉터리와 독립적인 사용자 단위 코어 데이터베이스 경로.
 
     Raises:
-        ValueError: A supplied path, identifier, or directory is invalid for the operation.
+        ValueError: 입력 경로·식별자·디렉터리가 작업에 적합하지 않은 경우.
     """
     configured = os.environ.get("XDG_DATA_HOME")
     data_home = Path(configured).expanduser() if configured else Path.home() / ".local" / "share"
@@ -36,19 +36,19 @@ def user_database_path() -> Path:
 def create_database_engine(
     path: Path | None = None, *, write: bool, create: bool = False, timeout: float = 5.0
 ) -> Engine:
-    """Create an unpooled engine; callers own Session.begin and engine disposal.
+    """풀 없는 엔진을 생성하며 호출자가 Session.begin과 엔진 정리를 소유한다.
 
     Args:
-        path: Explicit database path, or None to resolve the user-wide default.
-        write: Whether to permit writes and reserve a writer before reading.
-        create: Whether explicit initialization may create the database file.
-        timeout: Seconds SQLite waits to acquire a database lock.
+        path: 명시적인 데이터베이스 경로이며 None이면 사용자 단위 기본 경로.
+        write: 쓰기를 허용하고 읽기 전에 쓰기 권한을 예약할지 여부.
+        create: 명시적 초기화 과정에서 데이터베이스 파일을 생성할지 여부.
+        timeout: SQLite가 데이터베이스 잠금을 기다리는 시간(초).
 
     Returns:
-        Engine: Unpooled engine whose caller must dispose after use.
+        Engine: 사용 후 호출자가 정리해야 하는 풀 없는 엔진.
 
     Raises:
-        StorageNotReady: The database is absent, uninitialized, or incompatible with this package.
+        StorageNotReady: 데이터베이스가 없거나 초기화되지 않았거나 패키지와 호환되지 않는 경우.
     """
     path = (path if path is not None else user_database_path()).expanduser().resolve()
     if not create and not path.is_file():
@@ -65,11 +65,11 @@ def create_database_engine(
     )
 
     def configure(connection: sqlite3.Connection, record: ConnectionPoolEntry) -> None:
-        """Let SQLAlchemy begin transactions and enforce foreign keys on each connection.
+        """SQLAlchemy가 트랜잭션을 시작하게 하고 모든 연결에 외래 키 제약을 적용한다.
 
         Args:
-            connection: Connection whose SQLite transaction behavior is configured.
-            record: Pool entry supplied by the SQLAlchemy connection event.
+            connection: SQLite 트랜잭션 동작을 설정할 연결.
+            record: SQLAlchemy 연결 이벤트가 전달한 풀 항목.
         """
         connection.isolation_level = None
         connection.execute("PRAGMA foreign_keys=ON")
@@ -77,10 +77,10 @@ def create_database_engine(
             connection.execute("PRAGMA query_only=ON")
 
     def begin(connection: Connection) -> None:
-        """Acquire the write reservation before any read-modify-write operation.
+        """조회·수정·저장 작업 전에 쓰기 권한을 예약한다.
 
         Args:
-            connection: Connection whose SQLite transaction behavior is configured.
+            connection: SQLite 트랜잭션 동작을 설정할 연결.
         """
         connection.exec_driver_sql("BEGIN IMMEDIATE" if write else "BEGIN")
 
@@ -90,13 +90,13 @@ def create_database_engine(
 
 
 def initialize_database(path: Path | None = None) -> None:
-    """Apply known revisions explicitly, refusing to reinterpret a legacy database.
+    """기존 데이터베이스를 재해석하지 않고 알려진 리비전만 명시적으로 적용한다.
 
     Args:
-        path: Explicit database path, or None to resolve the user-wide default.
+        path: 명시적인 데이터베이스 경로이며 None이면 사용자 단위 기본 경로.
 
     Raises:
-        StorageNotReady: The database is absent, uninitialized, or incompatible with this package.
+        StorageNotReady: 데이터베이스가 없거나 초기화되지 않았거나 패키지와 호환되지 않는 경우.
     """
     path = (path if path is not None else user_database_path()).expanduser().resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -117,13 +117,13 @@ def initialize_database(path: Path | None = None) -> None:
 
 
 def verify_schema(session: Session) -> None:
-    """Reject absent or incompatible schema without running migrations on a request.
+    """요청 중 마이그레이션을 실행하지 않고 없거나 호환되지 않는 스키마를 거부한다.
 
     Args:
-        session: Request-local SQLAlchemy session.
+        session: 현재 요청의 SQLAlchemy 세션.
 
     Raises:
-        StorageNotReady: The database is absent, uninitialized, or incompatible with this package.
+        StorageNotReady: 데이터베이스가 없거나 초기화되지 않았거나 패키지와 호환되지 않는 경우.
     """
     if not inspect(session.connection()).has_table("core_schema_revision"):
         raise StorageNotReady("Schema missing; initialize or migrate explicitly")

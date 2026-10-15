@@ -1,1 +1,1 @@
-"""Independent project and session rules."""
+"""독립적인 프로젝트와 세션 규칙을 제공한다."""
