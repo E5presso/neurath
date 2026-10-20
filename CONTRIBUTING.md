@@ -6,10 +6,12 @@ Follow the approved specification and the responsibility boundaries in
 [core-foundation](docs/en/core-foundation.md). Domain aggregates contain invariants.
 Repository and observation ports use `ABC` and `@abstractmethod`; their adapters
 explicitly inherit those ports. Use cases are concrete classes without interfaces. Each use case accepts a named immutable
-command or query and exposes `execute`. ORM models use `DeclarativeBase`, `Mapped`,
+command or query and exposes `execute`. ORM models use Spakky declarative table bases, `Mapped`,
 `mapped_column`, `relationship`, and explicit domain conversion methods. Request adapters directly
-use `Session.begin()`; Spakky Framework supplies constructor injection through `ApplicationContext`, `@Pod`,
-`@UseCase`, and `@Repository`. Each request owns and closes its ORM resources.
+use the framework `Transaction`. Spakky Framework supplies `AbstractAggregateRoot`,
+`IGenericRepository`, `AbstractGenericRepository`, `@Table`/`AbstractMappableTable`,
+`SchemaRegistry`, `ConnectionManager`, `SessionManager`, and constructor injection.
+Ports and adapters inherit basic CRUD and batch methods without redefining them.
 Do not add a custom transaction/unit-of-work framework or a database configuration wrapper.
 
 ## Required development checks
@@ -101,3 +103,8 @@ out of public documentation and packages.
 Ruff UP checks Python 3.14 syntax. Classmethod factories returning their own type use `Self`.
 The shared quality runner checks subclass construction, snapshot independence, full state
 preservation after rejected requests, Spakky request isolation and bootstrap failure cleanup.
+
+The `FRAMEWORK_CRUD` guard rejects local basic repository implementations. The
+`core_0002` migration retains existing IDs, revisions and dependent records, using
+epoch as an unknown-time marker for old metadata. Regression tests cover inherited
+CRUD and schema/data/revision rollback after migration failure.

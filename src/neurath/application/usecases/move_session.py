@@ -54,7 +54,8 @@ class MoveSessionUseCase:
         Raises:
             ContextNotFound: 지정한 프로젝트 또는 세션이 요청한 범위에 없는 경우.
         """
-        session = self.sessions.get(request.project_id, request.session_id)
+        session = self.sessions.get(request.session_id)
+        session.require_project(request.project_id)
         project = self.projects.execute(request.observation)
         if project.id != request.project_id:
             raise ContextNotFound("Working directory belongs to another project")

@@ -9,10 +9,12 @@ from contextlib import closing
 from dataclasses import asdict
 
 import pytest
+from spakky.plugins.sqlalchemy.persistency.session_manager import SessionManager
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
+from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.application.usecases.register_project import RegisterProjectUseCase
 from neurath.domain.aggregates.session import HostSession
 from neurath.domain.errors import (
@@ -25,10 +27,9 @@ from neurath.domain.observations import DirectoryObservation
 from neurath.infrastructure.database import create_database_engine
 from neurath.infrastructure.models.project import ProjectModel
 from neurath.infrastructure.models.session import SessionModel
-from neurath.infrastructure.repositories.project import ProjectRepository
 from neurath.infrastructure.repositories.session import SessionRepository
 from neurath.transport.session_requests import get_session_context, move_session, register_session
-from tests.conftest import git, initialize_git
+from tests.conftest import git, initialize_git, storage_scope
 
 PROCESS = """
 import json, sys
@@ -199,44 +200,35 @@ def test_failed_registration_rolls_back_project_alias_and_session(
 
 def test_related_changes_roll_back_together_using_actual_session(database, repository):
     first = register_session(str(repository), "codex", "native", database_path=database)
-    engine = create_database_engine(database, write=True)
-    try:
-        with pytest.raises(RuntimeError, match="rollback"):
-            with Session(engine) as session, session.begin():
-                repository_adapter = SessionRepository(session)
-                changed = repository_adapter.get(first.project.id, first.session.id)
-                changed.move("new-directory", 1)
-                repository_adapter.save(changed)
-                repository_adapter.save(
-                    HostSession("second", first.project.id, "codex", "second", "new", 1)
-                )
-                raise RuntimeError("rollback")
-    finally:
-        engine.dispose()
+    with pytest.raises(RuntimeError, match="rollback"):
+        with storage_scope(database) as scope:
+            sessions = scope.get(ISessionRepository)
+            changed = sessions.get(first.session.id)
+            changed.move("new-directory", 1)
+            sessions.save(changed)
+            sessions.save(HostSession.create(first.project.id, "codex", "second", "new"))
+            raise RuntimeError("rollback")
     assert get_session_context(first.project.id, first.session.id, database_path=database) == first
-    with closing(sqlite3.connect(database)) as connection, connection:
-        assert connection.execute("SELECT COUNT(*) FROM core_sessions").fetchone() == (1,)
+    with storage_scope(database, write=False) as scope:
+        assert (
+            scope.get(SessionManager).session.scalar(text("SELECT COUNT(*) FROM core_sessions"))
+            == 1
+        )
 
 
 def test_uncommitted_data_is_invisible_and_read_only_connection_rejects_writes(
     database, repository
 ):
     first = register_session(str(repository), "codex", "native", database_path=database)
-    writer_engine = create_database_engine(database, write=True)
-    reader_engine = create_database_engine(database, write=False)
-    try:
-        with Session(writer_engine) as writer, writer.begin():
-            sessions = SessionRepository(writer)
-            changed = sessions.get(first.project.id, first.session.id)
-            changed.move("uncommitted", 1)
-            sessions.save(changed)
-            assert request(database, "read", first.project.id, first.session.id) == asdict(first)
-        with Session(reader_engine) as reader, reader.begin():
-            with pytest.raises(OperationalError, match="readonly"):
-                reader.execute(text("DELETE FROM core_sessions"))
-    finally:
-        writer_engine.dispose()
-        reader_engine.dispose()
+    with storage_scope(database) as scope:
+        sessions = scope.get(ISessionRepository)
+        changed = sessions.get(first.session.id)
+        changed.move("uncommitted", 1)
+        sessions.save(changed)
+        assert request(database, "read", first.project.id, first.session.id) == asdict(first)
+    with pytest.raises(OperationalError, match="readonly"):
+        with storage_scope(database, write=False) as scope:
+            scope.get(SessionManager).session.execute(text("DELETE FROM core_sessions"))
 
 
 def test_foreign_keys_and_positive_revisions_are_enforced(database):
@@ -260,7 +252,7 @@ def test_foreign_keys_and_positive_revisions_are_enforced(database):
                 session.flush()
                 session.execute(
                     text(
-                        "INSERT INTO core_sessions VALUES ('bad', 'project', 'test', 'x', '/tmp', 0)"
+                        "INSERT INTO core_sessions (id, project_id, provider, host_session_id, working_directory, revision) VALUES ('bad', 'project', 'test', 'x', '/tmp', 0)"
                     )
                 )
     finally:
@@ -268,26 +260,25 @@ def test_foreign_keys_and_positive_revisions_are_enforced(database):
 
 
 def test_identity_conflict_does_not_merge_or_modify_existing_aliases(database):
-    engine = create_database_engine(database, write=True)
-    try:
-        with Session(engine) as session, session.begin():
-            projects = RegisterProjectUseCase(ProjectRepository(session))
-            first = projects.execute(DirectoryObservation("/one", "/one/.git", "/one"))
-            second = projects.execute(DirectoryObservation("/two"))
-        with pytest.raises(ProjectIdentityConflict):
-            with Session(engine) as session, session.begin():
-                RegisterProjectUseCase(ProjectRepository(session)).execute(
-                    DirectoryObservation("/two", "/one/.git", "/two")
-                )
-        with Session(engine) as session, session.begin():
-            assert set(session.scalars(select(ProjectModel.id))) == {first.id, second.id}
-        with pytest.raises(ProjectIdentityConflict):
-            with Session(engine) as session, session.begin():
-                RegisterProjectUseCase(ProjectRepository(session)).execute(
-                    DirectoryObservation("/one", "/different/.git", "/one")
-                )
-    finally:
-        engine.dispose()
+    with storage_scope(database) as scope:
+        projects = scope.get(RegisterProjectUseCase)
+        first = projects.execute(DirectoryObservation("/one", "/one/.git", "/one"))
+        second = projects.execute(DirectoryObservation("/two"))
+    with pytest.raises(ProjectIdentityConflict):
+        with storage_scope(database) as scope:
+            scope.get(RegisterProjectUseCase).execute(
+                DirectoryObservation("/two", "/one/.git", "/two")
+            )
+    with storage_scope(database, write=False) as scope:
+        assert set(scope.get(SessionManager).session.scalars(select(ProjectModel.id))) == {
+            first.id,
+            second.id,
+        }
+    with pytest.raises(ProjectIdentityConflict):
+        with storage_scope(database) as scope:
+            scope.get(RegisterProjectUseCase).execute(
+                DirectoryObservation("/one", "/different/.git", "/one")
+            )
 
 
 def test_wrong_revision_and_empty_native_identifiers_fail_without_mutation(database, repository):

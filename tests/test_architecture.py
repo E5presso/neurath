@@ -554,3 +554,46 @@ def test_python_314_lint_rejects_quoted_and_legacy_typing_annotations(tmp_path):
     assert result.returncode == 1
     assert "UP006" in codes
     assert "UP037" in codes
+
+
+@pytest.mark.parametrize(
+    "method",
+    ["get", "get_or_none", "contains", "range", "save", "save_all", "delete", "delete_all"],
+)
+def test_framework_crud_reimplementation_is_rejected(method):
+    source = f'''"""기본 저장 계약의 재구현을 검증하는 실패 사례다."""
+class ExampleRepository:
+    """프레임워크 기본 메서드를 다시 구현한 잘못된 저장소다."""
+    def {method}(self, value):
+        """프레임워크에서 상속해야 하는 메서드다."""
+        return value
+'''
+    errors = ArchitectureChecker({"neurath.infrastructure.repositories.example": source}).check()
+    assert any("FRAMEWORK_CRUD:" in error for error in errors)
+
+
+def test_framework_domain_bases_and_tables_are_allowed_without_layer_escape():
+    sources = {
+        "neurath.domain.aggregates.example": '''"""프레임워크 도메인 기반을 사용하는 정상 사례다."""
+from spakky.core.common.mutability import mutable
+from spakky.domain.models.aggregate_root import AbstractAggregateRoot
+@mutable
+class Example(AbstractAggregateRoot[str]):
+    """식별자와 변경 추적을 상속하는 도메인이다."""
+''',
+        "neurath.infrastructure.models.example": '''"""프레임워크 선언형 테이블을 사용하는 정상 사례다."""
+from spakky.plugins.sqlalchemy.orm.table import AbstractMappableTable, Table
+from sqlalchemy.orm import Mapped, mapped_column
+from neurath.domain.aggregates.example import Example
+@Table(Example)
+class ExampleModel(AbstractMappableTable[Example]):
+    """도메인과 연결된 선언형 테이블이다."""
+    __tablename__ = "example"
+    id: Mapped[str] = mapped_column(primary_key=True)
+''',
+    }
+    assert ArchitectureChecker(sources).check() == []
+    sources["neurath.domain.aggregates.example"] += (
+        "\nfrom spakky.plugins.sqlalchemy.persistency.repository import AbstractGenericRepository\n"
+    )
+    assert any("DOMAIN_BOUNDARY:" in error for error in ArchitectureChecker(sources).check())

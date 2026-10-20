@@ -6,9 +6,11 @@
 도메인 엔티티는 불변식과 상태 전이를 담당합니다. repository·관찰 port는 `ABC`와
 `@abstractmethod`를 사용하며 해당 adapter가 명시적으로 상속합니다. use case는
 별도 인터페이스 없이 구체 클래스로 작성합니다. 각 use case는 이름이 있는 불변 command/query를 받아 `execute`합니다.
-ORM 모델은 `DeclarativeBase`, `Mapped`, `mapped_column`·`relationship`과 명시적인 도메인 변환을
-사용합니다. 요청 adapter는 `Session.begin()`을 직접 사용하며 별도 UoW·트랜잭션
-프레임워크나 DB 설정 wrapper를 추가하지 않습니다. Spakky Framework의 `ApplicationContext`·`@Pod`·`@UseCase`·`@Repository`가 생성자 주입을 담당하며 요청 경계에서 ORM 자원을 정리합니다.
+도메인은 Spakky의 `AbstractAggregateRoot`·`AbstractValueObject`를 사용합니다. 저장 포트와
+adapter는 `IGenericRepository`·`AbstractGenericRepository`의 기본 CRUD와 배치 메서드를
+다시 정의하지 않습니다. `@Table`·`AbstractMappableTable`·`SchemaRegistry`로 매핑하고
+표준 `ConnectionManager`·`SessionManager`·`Transaction`을 사용합니다. 요청 경계는
+엔진 수명을 정리하며 별도 UoW나 트랜잭션 구현을 추가하지 않습니다.
 
 ## 필수 개발 검사
 
@@ -87,3 +89,7 @@ DB 시험은 모두 임시 경로를 사용합니다. 이미 적용한 revision�
 Python 3.14 문법은 Ruff UP로 검사하고 classmethod의 자기 타입 반환은 `Self`를 사용합니다.
 실패·정상 구조 fixture와 함께 하위 클래스 생성, 스냅샷 독립성, 실패 요청의 전체 상태 보존,
 Spakky 요청 격리와 초기화 실패 시 자원 정리를 공통 품질 검사에서 실행합니다.
+
+기본 저장 동작은 `FRAMEWORK_CRUD` 검사로 재구현을 거부합니다. `core_0002` 이전은 기존
+ID·revision·종속 자료를 유지하고 원래 시각이 없는 행에는 epoch 미상 표식을 사용합니다.
+이전 실패의 스키마·자료·revision 롤백과 실제 상속 CRUD를 회귀 시험으로 확인합니다.

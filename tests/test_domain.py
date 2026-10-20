@@ -19,7 +19,7 @@ def test_identity_and_root_policy_distinguishes_clones_and_unifies_worktrees():
     assert Project.identify(primary) != Project.identify(clone)
     assert Project.create(linked).root_path == "/repo"
     assert Project.identify(DirectoryObservation("/folder")) == (
-        ProjectLocation(ProjectKind.FOLDER, "/folder"),
+        ProjectLocation(kind=ProjectKind.FOLDER, path="/folder"),
     )
 
 
@@ -52,30 +52,44 @@ def test_conflicting_owners_and_replacement_git_identity_never_partially_associa
     with pytest.raises(ProjectIdentityConflict):
         Project.owner_of((first, second))
     with pytest.raises(ProjectIdentityConflict):
-        first.associate((ProjectLocation(ProjectKind.GIT, "/different/.git"),))
+        first.associate((ProjectLocation(kind=ProjectKind.GIT, path="/different/.git"),))
     assert first.locations == before
     assert Project.owner_of((first, first)) is first
     assert Project.owner_of(()) is None
 
 
 def test_owned_location_is_an_immutable_value_without_owner_identity():
-    location = ProjectLocation(ProjectKind.FOLDER, "/root")
-    assert location == ProjectLocation(ProjectKind.FOLDER, "/root")
-    assert location != ProjectLocation(ProjectKind.GIT, "/root")
+    location = ProjectLocation(kind=ProjectKind.FOLDER, path="/root")
+    assert location == ProjectLocation(kind=ProjectKind.FOLDER, path="/root")
+    assert location != ProjectLocation(kind=ProjectKind.GIT, path="/root")
     with pytest.raises(FrozenInstanceError):
         location.path = "/changed"
 
 
 def test_entity_identity_is_stable_while_snapshot_equality_compares_state():
-    project = Project("project", "/root")
-    session = HostSession("session", project.id, "codex", "native", "/root", 1)
+    project = Project(uid="project", root_path="/root")
+    session = HostSession(
+        uid="session",
+        project_id=project.id,
+        provider="codex",
+        host_session_id="native",
+        working_directory="/root",
+        revision=1,
+    )
     before = SessionContext.from_entities(project, session)
-    same_identity = HostSession("session", project.id, "codex", "native", "/different", 8)
+    same_identity = HostSession(
+        uid="session",
+        project_id=project.id,
+        provider="codex",
+        host_session_id="native",
+        working_directory="/different",
+        revision=8,
+    )
     assert session == same_identity
-    assert project == Project(project.id, "/another-root")
+    assert project == Project(uid=project.id, root_path="/another-root")
     session.move("/next", 1)
     assert session.id == "session" and session.working_directory == "/next"
-    assert session.revision == 1  # Persistence owns the optimistic version counter.
+    assert session.revision == 1  # 정수 잠금 카운터는 ORM이 저장할 때 갱신한다.
     assert SessionContext.from_entities(project, session) != before
     assert before.session.working_directory == "/root"
     with pytest.raises(FrozenInstanceError):
@@ -83,7 +97,14 @@ def test_entity_identity_is_stable_while_snapshot_equality_compares_state():
 
 
 def test_domain_rejects_stale_movement_without_mutating_state():
-    session = HostSession("session", "project", "codex", "native", "/root", 3)
+    session = HostSession(
+        uid="session",
+        project_id="project",
+        provider="codex",
+        host_session_id="native",
+        working_directory="/root",
+        revision=3,
+    )
     with pytest.raises(RevisionConflict):
         session.move("/next", 2)
     assert session.working_directory == "/root" and session.revision == 3

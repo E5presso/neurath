@@ -8,7 +8,7 @@ hooks, memory, collaboration, and recovery. This checkout currently implements
 only the user-wide project/session persistence foundation in #137.
 
 The candidate package contains mutable domain entities and immutable request values, explicit application
-ports and use cases, typed SQLAlchemy ORM repositories, and Spakky Framework request-scoped session
+ports and use cases, inherited Spakky SQLAlchemy repositories and table mappings, and request-scoped session
 functions. It does not provide the former MCP server, a public CLI, an installer,
 or the rest of the planned harness. The previous runtime remains recoverable in
 Git history. Existing installed distributions and user databases are not changed

@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
+from spakky.plugins.sqlalchemy.orm.table import AbstractTable
 from sqlalchemy.orm import Session
 
 from neurath.domain.errors import StorageNotReady
@@ -19,7 +20,6 @@ from neurath.infrastructure.database import (
     user_database_path,
     verify_schema,
 )
-from neurath.infrastructure.models.base import DatabaseModel
 from neurath.transport.session_requests import get_session_context, move_session, register_session
 from tests.conftest import initialize_git
 
@@ -68,20 +68,25 @@ def test_original_schema_records_are_readable_and_updatable_without_data_convers
     with closing(sqlite3.connect(path)) as connection, connection:
         connection.executescript(fixture.read_text())
         connection.execute(
-            "INSERT INTO core_projects VALUES ('original-project', ?)", (str(folder),)
+            "INSERT INTO core_projects (id, root_path) VALUES ('original-project', ?)",
+            (str(folder),),
         )
         connection.execute(
             "INSERT INTO core_project_locations VALUES ('folder', ?, 'original-project')",
             (str(folder),),
         )
         connection.execute(
-            "INSERT INTO core_sessions VALUES ('original-session', 'original-project', 'codex', 'native', ?, 7)",
+            "INSERT INTO core_sessions (id, project_id, provider, host_session_id, working_directory, revision) VALUES ('original-session', 'original-project', 'codex', 'native', ?, 7)",
             (str(folder),),
         )
     database = path
+    before = path.read_bytes()
+    with pytest.raises(StorageNotReady):
+        get_session_context("original-project", "original-session", database_path=path)
+    assert path.read_bytes() == before
+    initialize_database(database)
     original = get_session_context("original-project", "original-session", database_path=path)
     assert original.session.revision == 7
-    initialize_database(database)
     initialize_git(folder)
     child = folder / "child"
     child.mkdir()
@@ -97,7 +102,7 @@ def test_original_schema_records_are_readable_and_updatable_without_data_convers
             context = MigrationContext.configure(
                 connection, opts={"version_table": "core_schema_revision"}
             )
-            assert compare_metadata(context, DatabaseModel.metadata) == []
+            assert compare_metadata(context, AbstractTable.metadata) == []
     finally:
         engine.dispose()
 
@@ -130,3 +135,86 @@ def test_existing_empty_file_requires_initialization(tmp_path):
                 verify_schema(session)
     finally:
         engine.dispose()
+
+
+def test_framework_migration_preserves_legacy_values_and_marks_unknown_metadata(tmp_path):
+    from datetime import UTC, datetime
+    from uuid import UUID
+
+    from neurath.application.ports.repositories.project import IProjectRepository
+    from neurath.application.ports.repositories.session import ISessionRepository
+    from tests.conftest import storage_scope
+
+    path = tmp_path / "old.sqlite3"
+    fixture = Path(__file__).parent / "fixtures" / "core_0001.sql"
+    with closing(sqlite3.connect(path)) as connection, connection:
+        connection.executescript(fixture.read_text())
+        connection.execute(
+            "INSERT INTO core_projects (id, root_path) VALUES ('retained', '/legacy')"
+        )
+        connection.execute(
+            "INSERT INTO core_project_locations VALUES ('folder', '/legacy', 'retained')"
+        )
+        connection.execute(
+            "INSERT INTO core_sessions (id, project_id, provider, host_session_id, working_directory, revision) VALUES ('native', 'retained', 'codex', 'original', '/legacy/sub', 17)"
+        )
+        connection.execute(
+            "CREATE TABLE dependent_fixture (project_id TEXT REFERENCES core_projects(id), source TEXT)"
+        )
+        connection.execute(
+            "INSERT INTO dependent_fixture VALUES ('retained', 'unfinished original source')"
+        )
+    initialize_database(path)
+    with storage_scope(path, write=False) as scope:
+        project = scope.get(IProjectRepository).get("retained")
+        session = scope.get(ISessionRepository).get("native")
+        assert project.uid == "retained" and project.root_path == "/legacy"
+        assert project.locations[0].path == "/legacy"
+        assert session.project_id == "retained" and session.revision == 17
+        assert session.working_directory == "/legacy/sub"
+        for entity in (project, session):
+            assert entity.version == UUID(int=0)
+            assert entity.created_at == datetime(1970, 1, 1, tzinfo=UTC)
+            assert entity.updated_at == entity.created_at
+    before = path.read_bytes()
+    initialize_database(path)
+    assert path.read_bytes() == before
+    with closing(sqlite3.connect(path)) as connection:
+        assert connection.execute("SELECT * FROM dependent_fixture").fetchall() == [
+            ("retained", "unfinished original source")
+        ]
+        assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+
+
+def test_failed_framework_migration_rolls_back_schema_data_and_revision(tmp_path, monkeypatch):
+    from neurath.infrastructure import database as database_module
+
+    path = tmp_path / "rollback.sqlite3"
+    fixture = Path(__file__).parent / "fixtures" / "core_0001.sql"
+    with closing(sqlite3.connect(path)) as connection, connection:
+        connection.executescript(fixture.read_text())
+        connection.execute(
+            "INSERT INTO core_projects (id, root_path) VALUES ('retained', '/legacy')"
+        )
+    before = path.read_bytes()
+    original_upgrade = database_module.command.upgrade
+
+    def fail_after_upgrade(config, revision):
+        original_upgrade(config, revision)
+        raise RuntimeError("after schema migration")
+
+    monkeypatch.setattr(database_module.command, "upgrade", fail_after_upgrade)
+    with pytest.raises(RuntimeError, match="after schema migration"):
+        initialize_database(path)
+    assert path.read_bytes() == before
+    with closing(sqlite3.connect(path)) as connection:
+        assert connection.execute("SELECT * FROM core_projects").fetchall() == [
+            ("retained", "/legacy")
+        ]
+        assert connection.execute("SELECT version_num FROM core_schema_revision").fetchone() == (
+            "core_0001",
+        )
+        assert [row[1] for row in connection.execute("PRAGMA table_info(core_projects)")] == [
+            "id",
+            "root_path",
+        ]

@@ -14,7 +14,7 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 - 설치는 관련 없는 사용자 설정·훅·지침을 보존하며, 변경 전에 복구 사본을 남긴다.
 - 공개 문서는 `docs/en`과 `docs/ko`의 같은 상대 경로에 함께 작성한다. README와 CONTRIBUTING은 영어·한국어 쌍을 유지한다. 개인 경로와 검증 원문은 공개 문서나 패키지에 넣지 않는다.
 - 코드·설치 수정은 승인된 로컬 작업이다. 공개 push·PR·배포는 사용자의 별도 요청 없이 수행하지 않는다.
-- 도메인 aggregate, 명시적 ABC port, 개별 command/query use case, 구체 repository adapter와 declarative ORM 모델의 책임을 구분한다. 참고 구조의 과거 Protocol·불필요한 use case 인터페이스·UoW는 복제하지 않는다. Spakky Framework 8.1.0의 ApplicationContext·Pod·UseCase·Repository로 생성자 주입과 요청별 의존성을 구성하되 트랜잭션은 호출자의 Session.begin()이 소유한다.
+- 도메인 aggregate, 명시적 ABC port, 개별 command/query use case, 구체 repository adapter와 declarative ORM 모델의 책임을 구분한다. 참고 구조의 과거 Protocol·불필요한 use case 인터페이스·UoW는 복제하지 않는다. Spakky Framework 8.1.0의 AbstractAggregateRoot·AbstractValueObject·IGenericRepository·AbstractGenericRepository·AbstractMappableTable·Table·SchemaRegistry와 ConnectionManager·SessionManager·Transaction을 사용한다. 기본 CRUD·배치 메서드를 포트나 어댑터에 다시 정의하지 않는다. 트랜잭션은 표준 Transaction이 소유하며 Neurath용 UoW나 트랜잭션 구현을 추가하지 않는다.
 - 전체 현재 src와 tools에 strict Pyrefly·Google 형식 pydoclint·Ruff 검사를 적용한다. pre-commit과 CI는 tools/quality.py를 공유한다. 모듈 의미와 문서의 유용성은 별도 사람 검토 사항이다. 저장소는 조회·저장만 제공하며 위치 식별·승격·충돌 규칙은 Project aggregate가 소유한다. 엔티티는 가변 상태·동일성을 가지며 불변 관찰·명령·응답 값과 구분한다.
 - 현재 후보는 #137의 기반 라이브러리다. 이전 MCP runtime은 Git 기록에 있으며 새 패키지에는 포함하지 않는다. 공개 CLI·설치·기존 자료 변환은 후속 티켓이며 이 후보를 실설치하지 않는다.
 
@@ -24,3 +24,5 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 - 저장소의 객체 선택은 이름 있는 변수와 명시적인 `is None` 분기로 작성한다. `mapping.get(...) or 새객체`처럼 진리값으로 객체를 선택하는 축약은 사용하지 않는다. 일반적인 boolean 조건은 이 규칙과 구분한다.
 
 - 지원 Python 3.14 문법은 Ruff UP 규칙으로 검사한다. 호출한 하위 클래스 타입을 유지하는 classmethod 생성·변환 메서드는 Self를 사용한다. 구체 도메인 타입으로 변환하는 인스턴스 메서드의 반환 타입은 그대로 명시한다. Spakky 컨테이너는 요청마다 새로 구성하고 엔진·세션은 요청 경계에서 항상 정리한다.
+
+- 도메인의 uid와 변경 메타데이터는 프레임워크 기반을 사용한다. 기존 id 참조와 정수 revision은 보존하며 ORM의 version_id_col은 정수 revision에 연결한다. UUID version은 도메인 변경 토큰으로 저장한다. SQLite 시각을 UTC로 왕복하되 변경 없는 저장이 UPDATE를 만들지 않게 매핑한다. core_0001은 수정하지 않고 core_0002로 기존 행과 외래 키를 보존한다. 이전 시각이 없으면 epoch를 미상 표식으로 저장하며 원래 생성 시각으로 해석하지 않는다.

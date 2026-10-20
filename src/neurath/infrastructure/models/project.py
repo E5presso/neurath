@@ -1,49 +1,75 @@
 """프로젝트와 소유 위치를 선언적 관계로 매핑하고 명시적으로 변환한다."""
 
-from typing import Self
+from datetime import UTC, datetime
+from typing import Self, override
+from uuid import UUID
 
-from sqlalchemy import CheckConstraint, ForeignKey, String
+from spakky.plugins.sqlalchemy.orm.table import AbstractMappableTable, AbstractTable, Table
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from neurath.domain.aggregates.project import Project, ProjectKind, ProjectLocation
-from neurath.infrastructure.models.base import DatabaseModel
 
 
-class ProjectModel(DatabaseModel):
+@Table(Project)
+class ProjectModel(AbstractMappableTable[Project]):
     """Git 초기화 전후에 유지되는 프로젝트와 소유 위치를 매핑한다.
 
     Attributes:
         id: 저장된 프로젝트의 안정적인 식별자.
+        version: 프레임워크가 관리하는 도메인 변경 토큰.
+        created_at: 최초 메타데이터이며 이전 자료는 미상 시각을 나타내는 epoch.
+        updated_at: 마지막으로 변경한 도메인 시각.
         root_path: Git 승격 후에도 유지하는 프로젝트의 정규 루트 경로.
+        revision: 저장소의 정수 낙관적 잠금 카운터.
         locations: 프로젝트와 함께 저장하고 삭제하는 소유 위치 레코드들.
     """
 
     __tablename__ = "core_projects"
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    version: Mapped[UUID] = mapped_column(
+        Uuid(), nullable=False, server_default="00000000000000000000000000000000"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default="1970-01-01 00:00:00"
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default="1970-01-01 00:00:00"
+    )
+
     root_path: Mapped[str] = mapped_column(String, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+
+    __mapper_args__ = {"version_id_col": revision}
     locations: Mapped[list[ProjectLocationModel]] = relationship(
         cascade="all, delete-orphan",
         order_by="ProjectLocationModel.kind, ProjectLocationModel.path",
     )
 
     @classmethod
-    def from_domain(cls, project: Project) -> Self:
+    @override
+    def from_domain(cls, domain: Project) -> Self:
         """프로젝트의 명시적인 필드와 모든 소유 위치를 레코드로 변환한다.
 
         Args:
-            project: 동일성을 보존하여 변환할 프로젝트 aggregate.
+            domain: 동일성을 보존하여 변환할 프로젝트 aggregate.
 
         Returns:
             Self: 프로젝트와 소유 위치 전체를 포함하는 새 ORM 레코드.
         """
         return cls(
-            id=project.id,
-            root_path=project.root_path,
+            id=domain.uid,
+            version=domain.version,
+            created_at=domain.created_at.astimezone(UTC).replace(tzinfo=None),
+            updated_at=domain.updated_at.astimezone(UTC).replace(tzinfo=None),
+            root_path=domain.root_path,
+            revision=domain.revision,
             locations=[
-                ProjectLocationModel.from_domain(item, project.id) for item in project.locations
+                ProjectLocationModel.from_domain(item, domain.id) for item in domain.locations
             ],
         )
 
+    @override
     def to_domain(self) -> Project:
         """ORM 동일성 맵과 독립적인 프로젝트 aggregate를 반환한다.
 
@@ -51,13 +77,18 @@ class ProjectModel(DatabaseModel):
             Project: 저장된 식별자와 모든 소유 위치를 가진 프로젝트.
         """
         return Project(
-            id=self.id,
+            uid=self.id,
+            version=self.version,
+            created_at=self.created_at.replace(tzinfo=UTC),
+            updated_at=self.updated_at.replace(tzinfo=UTC),
             root_path=self.root_path,
+            revision=self.revision,
             locations=tuple(location.to_domain() for location in self.locations),
         )
 
 
-class ProjectLocationModel(DatabaseModel):
+@Table()
+class ProjectLocationModel(AbstractTable):
     """프로젝트에 종속된 위치 값을 물리적인 자식 테이블에 저장한다.
 
     Attributes:
@@ -91,4 +122,4 @@ class ProjectLocationModel(DatabaseModel):
         Returns:
             ProjectLocation: ORM 동일성 맵과 독립적인 위치 값.
         """
-        return ProjectLocation(ProjectKind(self.kind), self.path)
+        return ProjectLocation(kind=ProjectKind(self.kind), path=self.path)

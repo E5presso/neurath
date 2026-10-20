@@ -45,6 +45,7 @@ class GetSessionContextUseCase:
         Returns:
             SessionContext: 작업 후 프로젝트와 세션의 분리된 상태.
         """
-        session = self.sessions.get(request.project_id, request.session_id)
+        session = self.sessions.get(request.session_id)
+        session.require_project(request.project_id)
         project = self.projects.get(request.project_id)
         return SessionContext.from_entities(project, session)

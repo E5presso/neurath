@@ -1,9 +1,12 @@
 """프로젝트 aggregate가 위치 값과 식별·승격·소유권 규칙을 관리한다."""
 
-from dataclasses import dataclass
 from enum import StrEnum
-from typing import Self
+from typing import Self, override
 from uuid import uuid4
+
+from spakky.core.common.mutability import immutable, mutable
+from spakky.domain.models.aggregate_root import AbstractAggregateRoot
+from spakky.domain.models.value_object import AbstractValueObject
 
 from neurath.domain.errors import ProjectIdentityConflict
 from neurath.domain.observations import DirectoryObservation
@@ -21,8 +24,8 @@ class ProjectKind(StrEnum):
     GIT = "git"
 
 
-@dataclass(frozen=True)
-class ProjectLocation:
+@immutable
+class ProjectLocation(AbstractValueObject):
     """프로젝트에 종속되며 독립적인 생명주기를 갖지 않는 위치 값이다.
 
     Attributes:
@@ -34,32 +37,38 @@ class ProjectLocation:
     path: str
 
 
-@dataclass(eq=False)
-class Project:
+@mutable
+class Project(AbstractAggregateRoot[str]):
     """소유한 위치와 Git 승격 전후의 안정적인 동일성을 관리한다.
 
     Attributes:
-        id: 세션과 보존된 기록에서 참조하는 프로젝트 식별자.
         root_path: 최초 등록 시 선택한 프로젝트의 정규 루트 경로.
         locations: 이 프로젝트가 소유한 불변 위치 값의 모음.
+        revision: 저장소가 갱신하는 정수 낙관적 잠금 카운터.
     """
 
-    id: str
     root_path: str
     locations: tuple[ProjectLocation, ...] = ()
+    revision: int = 1
 
-    def __eq__(self, other: object) -> bool:
-        """가변 상태와 관계없이 프로젝트 식별자로 동일성을 비교한다.
-
-        Args:
-            other: 동일성을 비교할 대상 객체.
+    @property
+    def id(self) -> str:
+        """기존 참조를 유지하는 도메인 식별자를 반환한다.
 
         Returns:
-            bool: 두 객체가 같은 프로젝트를 나타내는지 여부.
+            str: 기존 요청과 저장 기록에서 사용하는 식별자.
         """
-        if not isinstance(other, Project):
-            return NotImplemented
-        return self.id == other.id
+        return self.uid
+
+    @classmethod
+    @override
+    def next_id(cls) -> str:
+        """새 aggregate의 안정적인 식별자를 생성한다.
+
+        Returns:
+            str: 새 도메인 인스턴스에 사용할 식별자.
+        """
+        return str(uuid4())
 
     @staticmethod
     def root_for(observation: DirectoryObservation) -> str:
@@ -92,10 +101,13 @@ class Project:
         Returns:
             tuple[ProjectLocation, ...]: 프로젝트 식별에 필요한 위치 값들.
         """
-        folder = ProjectLocation(ProjectKind.FOLDER, cls.root_for(observation))
+        folder = ProjectLocation(kind=ProjectKind.FOLDER, path=cls.root_for(observation))
         if observation.git_common_directory is None:
             return (folder,)
-        return (ProjectLocation(ProjectKind.GIT, observation.git_common_directory), folder)
+        return (
+            ProjectLocation(kind=ProjectKind.GIT, path=observation.git_common_directory),
+            folder,
+        )
 
     @classmethod
     def owner_of(cls, owners: tuple[Self, ...]) -> Self | None:
@@ -124,7 +136,11 @@ class Project:
         Returns:
             Self: 독립적으로 생성한 식별자와 소유 위치를 가진 새 프로젝트.
         """
-        return cls(str(uuid4()), cls.root_for(observation), cls.identify(observation))
+        return cls(
+            uid=cls.next_id(),
+            root_path=cls.root_for(observation),
+            locations=cls.identify(observation),
+        )
 
     def associate(self, candidates: tuple[ProjectLocation, ...]) -> None:
         """기존 Git 동일성을 교체하지 않고 호환되는 위치를 소유 목록에 추가한다.
@@ -141,4 +157,6 @@ class Project:
         git_paths = {location.path for location in locations if location.kind is ProjectKind.GIT}
         if len(git_paths) > 1:
             raise ProjectIdentityConflict("Folder already belongs to another repository")
-        self.locations = tuple(dict.fromkeys(locations))
+        unique = tuple(dict.fromkeys(locations))
+        if set(unique) != set(self.locations):
+            self.locations = unique

@@ -14,7 +14,7 @@ from sqlalchemy.pool import ConnectionPoolEntry, NullPool
 
 from neurath.domain.errors import StorageNotReady
 
-SCHEMA_REVISION = "core_0001"
+SCHEMA_REVISION = "core_0002"
 
 
 def user_database_path() -> Path:
@@ -47,22 +47,48 @@ def create_database_engine(
     Returns:
         Engine: 사용 후 호출자가 정리해야 하는 풀 없는 엔진.
 
+    """
+    engine = create_engine(
+        database_url(path, write=write, create=create),
+        poolclass=NullPool,
+        connect_args={"timeout": timeout},
+    )
+    configure_sqlite_engine(engine, write=write)
+    return engine
+
+
+def database_url(path: Path | None = None, *, write: bool, create: bool = False) -> URL:
+    """파일의 존재와 접근 모드를 보존하는 SQLite URI를 만든다.
+
+    Args:
+        path: 명시적인 데이터베이스 경로이며 None이면 사용자 단위 기본 경로.
+        write: 쓰기 연결을 허용할지 여부.
+        create: 명시적 초기화에서만 파일을 생성할지 여부.
+
+    Returns:
+        URL: 파일 경로의 특수 문자를 인코딩한 SQLite 연결 주소.
+
     Raises:
-        StorageNotReady: 데이터베이스가 없거나 초기화되지 않았거나 패키지와 호환되지 않는 경우.
+        StorageNotReady: 초기화되지 않은 데이터베이스를 일반 요청에서 지정한 경우.
     """
     path = (path if path is not None else user_database_path()).expanduser().resolve()
     if not create and not path.is_file():
         raise StorageNotReady("Database is missing; initialize it explicitly")
     mode = "rwc" if create else ("rw" if write else "ro")
-    engine = create_engine(
-        URL.create(
-            "sqlite+pysqlite",
-            database="file:" + quote(str(path), safe="/"),
-            query={"mode": mode, "uri": "true"},
-        ),
-        poolclass=NullPool,
-        connect_args={"timeout": timeout},
+    return URL.create(
+        "sqlite+pysqlite",
+        database="file:" + quote(str(path), safe="/"),
+        query={"mode": mode, "uri": "true"},
     )
+
+
+def configure_sqlite_engine(engine: Engine, *, write: bool) -> None:
+    """주어진 엔진의 모든 SQLite 연결에 무결성과 트랜잭션 정책을 적용한다.
+
+    Args:
+        engine: 프레임워크 또는 마이그레이션이 생성한 엔진.
+        write: 상태 조회 전에 쓰기 권한을 예약할지 여부.
+    """
 
     def configure(connection: sqlite3.Connection, record: ConnectionPoolEntry) -> None:
         """SQLAlchemy가 트랜잭션을 시작하게 하고 모든 연결에 외래 키 제약을 적용한다.
@@ -86,7 +112,6 @@ def create_database_engine(
 
     event.listen(engine, "connect", configure)
     event.listen(engine, "begin", begin)
-    return engine
 
 
 def initialize_database(path: Path | None = None) -> None:

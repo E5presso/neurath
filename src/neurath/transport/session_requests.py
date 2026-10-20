@@ -1,12 +1,13 @@
-"""SQLAlchemy의 트랜잭션 수명에 따라 개별 세션 요청을 구성한다.
+"""Spakky의 표준 트랜잭션으로 개별 세션 요청을 구성한다.
 
-SQLite를 열기 전에 Git 관찰을 마친다. 각 요청은 새 ORM 세션을 소유하며
-Session.begin으로 커밋 또는 롤백한 뒤 반환 전에 세션을 닫는다.
+DB 트랜잭션 전에 Git 관찰을 마친다. 요청마다 표준 Transaction이
+세션을 열고 성공 시 커밋하거나 실패 시 롤백한 뒤 세션을 닫는다.
 """
 
 from pathlib import Path
 
-from sqlalchemy.orm import Session
+from spakky.plugins.sqlalchemy.persistency.session_manager import SessionManager
+from spakky.plugins.sqlalchemy.persistency.transaction import Transaction
 
 from neurath.application.context import SessionContext
 from neurath.application.ports.services.directory_observer import IDirectoryObserver
@@ -46,9 +47,8 @@ def register_session(
         request = RegisterSessionCommand(
             observation=observation, provider=provider, host_session_id=host_session_id
         )
-        session = scope.get(Session)
-        with session.begin():
-            verify_schema(session)
+        with scope.get(Transaction):
+            verify_schema(scope.get(SessionManager).session)
             return scope.get(RegisterSessionUseCase).execute(request)
 
 
@@ -67,9 +67,8 @@ def get_session_context(
     """
     request = GetSessionContextQuery(project_id=project_id, session_id=session_id)
     with request_container(DatabaseSettings(database_path, write=False)) as scope:
-        session = scope.get(Session)
-        with session.begin():
-            verify_schema(session)
+        with scope.get(Transaction):
+            verify_schema(scope.get(SessionManager).session)
             return scope.get(GetSessionContextUseCase).execute(request)
 
 
@@ -101,7 +100,6 @@ def move_session(
             observation=observation,
             expected_revision=expected_revision,
         )
-        session = scope.get(Session)
-        with session.begin():
-            verify_schema(session)
+        with scope.get(Transaction):
+            verify_schema(scope.get(SessionManager).session)
             return scope.get(MoveSessionUseCase).execute(request)

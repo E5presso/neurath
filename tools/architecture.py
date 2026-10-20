@@ -142,7 +142,8 @@ class ArchitectureChecker:
                     )
                     for imported in imports:
                         if ".domain." in module and not (
-                            imported.startswith("neurath.domain")
+                            imported.startswith(("neurath.domain", "spakky.domain"))
+                            or imported == "spakky.core.common.mutability"
                             or imported.split(".")[0]
                             in {
                                 "abc",
@@ -180,6 +181,19 @@ class ArchitectureChecker:
                     if not ast.get_docstring(node):
                         errors.append(f"{location} DOCSTRING: document {node.name}")
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    if ".infrastructure.repositories." in module and node.name in {
+                        "get",
+                        "get_or_none",
+                        "contains",
+                        "range",
+                        "save",
+                        "save_all",
+                        "delete",
+                        "delete_all",
+                    }:
+                        errors.append(
+                            f"{location} FRAMEWORK_CRUD: inherit the Spakky repository implementation"
+                        )
                     if ".repositories." in module and node.name in {
                         "add",
                         "insert",
@@ -403,7 +417,13 @@ class ArchitectureChecker:
                     for item in node.body
                 )
                 if has_table:
-                    if "sqlalchemy.orm.DeclarativeBase" not in ancestors:
+                    if not ancestors.intersection(
+                        {
+                            "sqlalchemy.orm.DeclarativeBase",
+                            "spakky.plugins.sqlalchemy.orm.table.AbstractTable",
+                            "spakky.plugins.sqlalchemy.orm.table.AbstractMappableTable",
+                        }
+                    ):
                         errors.append(
                             f"{location} DECLARATIVE_ORM: table class must inherit DeclarativeBase"
                         )

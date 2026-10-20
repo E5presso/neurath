@@ -2,10 +2,13 @@
 
 import os
 import subprocess
+from contextlib import contextmanager
 
 import pytest
+from spakky.plugins.sqlalchemy.persistency.transaction import Transaction
 
 from neurath.infrastructure.database import initialize_database
+from neurath.infrastructure.providers import DatabaseSettings, request_container
 
 
 def git(directory, *arguments):
@@ -46,3 +49,10 @@ def repository(tmp_path):
     repository.mkdir()
     initialize_git(repository)
     return repository
+
+
+@contextmanager
+def storage_scope(database, *, write=True):
+    with request_container(DatabaseSettings(database, write=write)) as scope:
+        with scope.get(Transaction):
+            yield scope

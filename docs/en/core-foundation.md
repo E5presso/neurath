@@ -2,29 +2,78 @@
 
 [Architecture](architecture.md) · [Implementation plan](implementation-plan.md) · [한국어](../ko/core-foundation.md)
 
-#137 supplies request-scoped project/session persistence. The #154 implementation
-was fully rewritten after review: no Core facade, unit-of-work container, structural
-Protocol contract, or imperative runtime table mapping remains in the package.
+#137 manages projects and sessions per request in a user-wide SQLite database.
+The foundation uses Spakky Framework 8.1.0 domain and persistence components.
+Public CLI, hooks and installation remain subsequent implementation work.
 
-## Responsibilities
+## Framework components and responsibilities
 
-- `domain/aggregates/project.py`: mutable Project aggregate owning immutable ProjectLocation values, identity selection, folder promotion, and ownership/conflict rules.
-- `domain/aggregates/session.py`: mutable host-session identity, native identifier validation, and movement guarded by the caller's observed revision.
-- `domain/observations.py`: immutable primitive filesystem/Git facts, without identity policy.
-- `application/ports`: nominal repository and observation ABCs. Repository operations are lookup and storage only.
-- `application/usecases`: concrete register-project, register-session, read-context, and move operations with immutable command/query inputs; no use-case interfaces.
-- `application/context.py`: immutable result snapshots; entity equality compares identity, while snapshots compare state.
-- `infrastructure/models` and `repositories`: declarative records, named conversions, and primitive persistence implementations.
-- `infrastructure/database.py`: engine creation, schema verification, and explicit initialization functions.
-- `infrastructure/directory_observer.py`: bounded Git/filesystem I/O returning canonical directory/common-directory/primary-worktree facts.
-- `infrastructure/providers.py`: Spakky ApplicationContext constructor injection with a fresh engine, Session, repository and use-case graph per request.
-- `transport/session_requests.py`: request orchestration and direct `Session.begin()` transaction ownership.
+- `Project` and `HostSession` use `@mutable` and `AbstractAggregateRoot[str]` for identity, equality and change tracking. Project owns `ProjectLocation` as an `AbstractValueObject`.
+- The existing `id` reference remains a read-only compatibility property over `uid`. Identity selection, folder promotion, ownership conflicts, session scope and movement remain domain rules.
+- Repository ports inherit `IGenericRepository`, adding only location-owner and project/provider/native-session lookup.
+- `ProjectRepository` and `SessionRepository` inherit `AbstractGenericRepository`. They do not redefine constructors, `get`, `get_or_none`, `contains`, `range`, `save`, `save_all`, `delete`, or `delete_all`.
+- Domain tables use `@Table(Domain)` and `AbstractMappableTable[Domain]` with explicit conversion. Owned location records use `AbstractTable` without a separate domain repository.
+- `SchemaRegistry` resolves domain/table mappings from Table tags. Repositories do not maintain another mapping registry.
+- `ApplicationContext` composes `@UseCase`, `@Repository`, observation Pods and the framework's `ConnectionManager`, `SessionManager`, `Transaction`, and `AggregateCollector`.
+- Request adapters use the standard `Transaction` for commit, rollback and session closure. There is no custom unit-of-work or transaction implementation.
+- The request boundary maps framework missing-entity and version-conflict errors to `ContextNotFound` and `RevisionConflict`. Use cases ask the domain to validate session/project scope.
 
-Domain and application layers do not import SQLAlchemy, Alembic, or host adapters. Application use cases declare Spakky `@UseCase` stereotypes.
-A fresh Spakky container is built for every host request, without a resident daemon
-or shared request state. Git observation completes before starting the database transaction.
-The request boundary closes the Session and disposes the engine; Spakky resolves the dependency graph and does not commit transactions.
-Request results are independent immutable snapshots returned after cleanup.
+SQL for basic CRUD, merge, flush and aggregate collection belongs to the framework.
+Local repository SQL implements only the two additional lookups. The domain imports
+pure Spakky domain bases and mutability declarations, without SQLAlchemy or persistence adapters.
+
+## Request lifetime and SQLite
+
+Each request owns an independent container, configuration and connection manager.
+Configuration objects are injected without modifying process environment variables.
+SQLite connection policies are applied to the framework-created engine. The request
+boundary disposes it on normal completion or bootstrap failure. No resident daemon is used.
+
+Git observation completes before the database transaction begins. Writers acquire
+`BEGIN IMMEDIATE` before their first read. Readers use SQLite URI `mode=ro` and
+`query_only`. Every connection enforces foreign keys; the default lock timeout is
+five seconds. There are no hidden retries. Nested independent requests have separate
+SessionManagers and transactions.
+
+Native identifiers are scoped by `(project_id, provider, host_session_id)`.
+Re-registration preserves the latest working directory. Linked worktrees and their
+subdirectories share a project; independent clones with the same remote remain distinct.
+Folder-to-Git promotion preserves IDs, locations and dependent foreign keys without
+merging unrelated projects.
+
+## Mapping, versions and ownership
+
+The framework's UUID `version`, `created_at` and `updated_at` are persisted. UUID version
+is a domain change token and does not replace the existing integer request `revision`.
+SQLAlchemy `version_id_col` uses integer revision to reject stale detached saves and
+flush races. Projects receive a storage revision as well.
+
+Entities are detached from ORM lifetimes; request responses are immutable snapshots.
+Timestamps round-trip through UTC. Explicit conversion between SQLite storage and
+UTC domain values prevents unchanged timestamps from causing an UPDATE. Same-directory
+moves and repeated location association preserve change tokens, timestamps and revisions.
+
+The inherited merge saves Project and its owned location relationship atomically.
+Removed values are deleted as orphans. A SQLite trigger rejects reassignment of a
+location to another Project, including reassignment attempted by generic merge.
+The enclosing transaction rolls back both parent and child changes on failure.
+
+## Schema and preservation
+
+The applied `core_0001` revision is unchanged. Explicit initialization applies
+`core_0002` to add metadata, project revision and location ownership enforcement.
+Existing IDs, session revisions, project/location/session values and dependent
+foreign keys are preserved.
+
+Old rows have no original timestamps, so epoch is an **unknown-time marker**, not a
+claim about creation time. Their initial change token is zero UUID; a domain mutation
+causes the framework to generate a new token. Newly created aggregates have real
+creation timestamps and tokens. Historical records are not promoted to new authority
+or successful execution evidence.
+
+Ordinary requests do not migrate storage and reject older or future revisions.
+`initialize_database` is the explicit migration boundary. Failure rolls back schema,
+rows and revision together. Legacy stores require a separate migration process.
 
 ## Internal request API
 
@@ -36,77 +85,26 @@ from neurath.transport.session_requests import (
 )
 
 path = Path("/explicit/isolated/core.sqlite3")
-initialize_database(path)  # Explicit setup; never performed by a normal request.
+initialize_database(path)
 opened = register_session("/project", "codex", "native-session", database_path=path)
 current = get_session_context(opened.project.id, opened.session.id, database_path=path)
 changed = move_session(current.project.id, current.session.id, "/project/subfolder",
                        current.session.revision, database_path=path)
 ```
 
-When the optional path is omitted, all requests use
-`$XDG_DATA_HOME/neurath/core.sqlite3`, falling back to
-`~/.local/share/neurath/core.sqlite3`. A relative XDG data directory is rejected.
-Native identifiers are scoped by `(project_id, provider, host_session_id)` and do
-not prove host authority. Re-registration preserves the latest observed directory.
-Wrong-project lookups raise `ContextNotFound`; stale moves raise `RevisionConflict`.
+The default path is `$XDG_DATA_HOME/neurath/core.sqlite3`, falling back to
+`~/.local/share/neurath/core.sqlite3`. Relative XDG paths are rejected.
 
-A canonical local common Git directory identifies a repository. Linked worktrees
-and subfolders share its project; independent clones remain distinct even with the
-same remote URL. A folder alias preserves project IDs and dependent foreign keys
-when Git is initialized, including a first follow-up from a linked worktree.
-Contradictory aliases fail without merging records. Git failures do not silently
-become new folder projects.
+## Verification and implementation boundary
 
-## SQLAlchemy and migrations
+Tests exercise inherited methods, actual registry/constructor injection/aggregate
+collection, CRUD/batches/deletion, read isolation, no-op saves, stale writes and races,
+exception cleanup, ownership conflicts, independent processes, Git/worktree/clone
+identity and explicit/concurrent initialization. Migration tests retain original
+values and dependent records, repeat initialization and verify full rollback after
+migration failure. The shared pre-commit/CI `FRAMEWORK_CRUD` guard rejects local basic
+CRUD implementations. Domain semantics still require human review.
 
-Each request resolves an unpooled engine and actual ORM `Session` through Spakky,
-then the request adapter directly uses `with session.begin():`. Writes acquire
-`BEGIN IMMEDIATE` before reading mutable state; reads use SQLite read-only mode.
-Foreign keys are enabled on every connection. SQLite coordinates competing writers;
-the default busy timeout is five seconds and failures are not silently retried.
-Repositories flush within the supplied transaction and never commit independently.
-Project is the aggregate root; locations have no separate repository or lifecycle.
-`get` and `find_by_location` load the complete root and its owned values. `save(project)`
-merges parent fields and reconciles the owned ORM collection: existing children stay
-attached, new children are inserted, and removed values are deleted as orphans.
-Another project's location key conflicts on insertion instead of being reassigned;
-the caller transaction rolls back the parent and children together. The schema is unchanged.
-All project/session insert and update paths use `save(entity) -> entity`.
-`HostSession.move` validates the observed version and changes directory. Primitive
-`save(entity)` returns the persisted entity using SQLAlchemy `merge` and
-`version_id_col`; the ORM increments the storage version and rejects stale detached
-entities. Saving an unchanged path is a no-op under normal ORM dirty checking and retains the version.
-There is no repository-side entity cache or load-before-save requirement.
-
-The original `core_0001` DDL and stored table names remain compatible. That revision
-now lives in `infrastructure/migrations`; only annotations/docstrings changed.
-Explicit initialization refuses legacy tables and applies known Alembic revisions.
-Normal requests reject absent or mismatched schemas. Future changes add revisions
-and advance `SCHEMA_REVISION`; do not edit previously applied schema definitions.
-`tests/fixtures/core_0001.sql` represents the original schema and proves existing
-identifiers and revisions remain readable and updatable through the new ORM.
-
-## Validation and limits
-
-Behavior tests cover independent processes, registration/revision races, rollback,
-uncommitted read isolation, foreign keys, read-only connections, explicit and
-concurrent initialization, old-schema compatibility, rejected legacy-byte
-preservation, Git/worktree/clone identity, and folder promotion. The dependent-record
-fixture verifies foreign-key preservation; it is not a task or memory feature.
-
-Pure-domain tests exercise root choice, linked-worktree identity, promotion,
-conflicting owners, entity identity, and stale movement without Git or SQL. DI tests
-verify constructor injection, scope isolation, detached stale saves, repeated saves,
-and rollback/connection cleanup on exceptions.
-
-[Required quality checks](../../CONTRIBUTING.md) enforce the concrete review rules
-across the entire current package, with negative fixtures. Human review remains
-responsible for module cohesion and meaningful documentation.
-
-The old 0.3.1 runtime and implementation-specific tests are recoverable from Git,
-not included as a second runtime or a lint exception. This candidate does not
-implement tasks (#140), runner (#141), hooks (#142), memory (#143), collaboration
-(#144), CLI (#148), legacy conversion (#150), or installation (#151). Their absence
-is outstanding implementation work, not completed feature preservation. The wheel
-has no obsolete CLI entry point and `setup` refuses installation. No user database,
-installed distribution, or real host activation was changed or validated here.
+Tasks, runner, host hooks, memory, collaboration, public CLI, actual user-data migration
+and installation remain subsequent tickets. `setup` rejects installation of this
+foundation candidate. Source changes do not alter user databases or installed distributions.

@@ -7,22 +7,20 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 from spakky.core.application.application_context import ApplicationContext
+from spakky.plugins.sqlalchemy.persistency.session_manager import SessionManager
 from sqlalchemy import event, text
-from sqlalchemy.orm import Session
 
 from neurath.application.context import SessionContext
 from neurath.application.ports.repositories.project import IProjectRepository
+from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.domain.aggregates.project import Project, ProjectKind, ProjectLocation
 from neurath.domain.aggregates.session import HostSession
 from neurath.domain.errors import ContextNotFound, ProjectIdentityConflict, RevisionConflict
 from neurath.domain.observations import DirectoryObservation
 from neurath.infrastructure import providers
-from neurath.infrastructure.database import create_database_engine
 from neurath.infrastructure.providers import DatabaseSettings, request_container
-from neurath.infrastructure.repositories.project import ProjectRepository
-from neurath.infrastructure.repositories.session import SessionRepository
 from neurath.transport.session_requests import get_session_context, move_session, register_session
-from tests.conftest import initialize_git
+from tests.conftest import initialize_git, storage_scope
 
 
 def persisted_state(database):
@@ -70,8 +68,8 @@ def test_mixed_location_conflict_never_partially_adds_folder_alias():
     with pytest.raises(ProjectIdentityConflict):
         project.associate(
             (
-                ProjectLocation(ProjectKind.FOLDER, "/new-alias"),
-                ProjectLocation(ProjectKind.GIT, "/other/.git"),
+                ProjectLocation(kind=ProjectKind.FOLDER, path="/new-alias"),
+                ProjectLocation(kind=ProjectKind.GIT, path="/other/.git"),
             )
         )
     assert project.locations == before
@@ -135,31 +133,29 @@ def test_stale_move_rolls_back_folder_to_git_alias_promotion(database, tmp_path)
 def test_aggregate_child_removal_does_not_remove_other_project_locations(database):
     first = Project.create(DirectoryObservation("/one", "/one/.git", "/one"))
     second = Project.create(DirectoryObservation("/two"))
-    engine = create_database_engine(database, write=True)
-    try:
-        with Session(engine) as session, session.begin():
-            repository = ProjectRepository(session)
-            repository.save(first)
-            repository.save(second)
-        first.locations = (ProjectLocation(ProjectKind.GIT, "/one/.git"),)
-        with Session(engine) as session, session.begin():
-            repository = ProjectRepository(session)
-            repository.save(first)
-        with Session(engine) as session, session.begin():
-            repository = ProjectRepository(session)
-            assert repository.get(first.id).locations == first.locations
-            assert repository.find_by_location(ProjectLocation(ProjectKind.FOLDER, "/one")) is None
-            assert repository.get(second.id).locations == second.locations
-            assert repository.find_by_location(second.locations[0]).id == second.id
-    finally:
-        engine.dispose()
+    with storage_scope(database) as scope:
+        repository = scope.get(IProjectRepository)
+        first = repository.save(first)
+        repository.save(second)
+    first.locations = (ProjectLocation(kind=ProjectKind.GIT, path="/one/.git"),)
+    with storage_scope(database) as scope:
+        scope.get(IProjectRepository).save(first)
+    with storage_scope(database, write=False) as scope:
+        repository = scope.get(IProjectRepository)
+        assert repository.get(first.uid).locations == first.locations
+        assert (
+            repository.find_by_location(ProjectLocation(kind=ProjectKind.FOLDER, path="/one"))
+            is None
+        )
+        assert repository.get(second.uid).locations == second.locations
+        assert repository.find_by_location(second.locations[0]).uid == second.uid
 
 
 def test_unchanged_save_issues_no_update_and_preserves_version(database, repository):
     first = register_session(str(repository), "codex", "native", database_path=database)
     statements = []
-    with request_container(DatabaseSettings(database, write=True)) as scope:
-        session = scope.get(Session)
+    with storage_scope(database) as scope:
+        session = scope.get(SessionManager).session
         event.listen(
             session.get_bind(),
             "before_cursor_execute",
@@ -167,46 +163,49 @@ def test_unchanged_save_issues_no_update_and_preserves_version(database, reposit
                 statement
             ),
         )
-        with session.begin():
-            sessions = scope.get(SessionRepository)
-            entity = sessions.get(first.project.id, first.session.id)
-            entity.move(entity.working_directory, entity.revision)
-            saved = sessions.save(entity)
-            assert saved.revision == first.session.revision
+        sessions = scope.get(ISessionRepository)
+        entity = sessions.get(first.session.id)
+        version = entity.version
+        updated_at = entity.updated_at
+        entity.move(entity.working_directory, entity.revision)
+        saved = sessions.save(entity)
+        assert saved.revision == first.session.revision
+        assert saved.version == version and saved.updated_at == updated_at
     assert not any(statement.lstrip().upper().startswith("UPDATE ") for statement in statements)
 
 
 def test_nested_spakky_requests_have_independent_resources_and_cleanup(database):
-    with request_container(DatabaseSettings(database, write=True)) as outer:
-        outer_session = outer.get(Session)
-        with request_container(DatabaseSettings(database, write=False)) as inner:
-            inner_session = inner.get(Session)
+    with storage_scope(database) as outer:
+        outer_session = outer.get(SessionManager).session
+        with storage_scope(database, write=False) as inner:
+            inner_session = inner.get(SessionManager).session
             assert inner_session is not outer_session
-            assert outer.get(IProjectRepository).session is outer_session
-            assert inner.get(IProjectRepository).session is inner_session
-            with inner_session.begin():
-                assert inner_session.scalar(text("SELECT 1")) == 1
-        with outer_session.begin():
-            assert outer_session.scalar(text("SELECT 2")) == 2
+            assert outer.get(IProjectRepository)._session_manager.session is outer_session
+            assert inner.get(IProjectRepository)._session_manager.session is inner_session
+            assert inner_session.scalar(text("SELECT 1")) == 1
+        assert outer_session.scalar(text("SELECT 2")) == 2
 
 
 def test_spakky_bootstrap_failure_preserves_original_error_and_disposes_engine(
     database, monkeypatch
 ):
-    engine = create_database_engine(database, write=True)
     disposed = []
-    event.listen(engine, "engine_disposed", lambda current: disposed.append(current))
-    monkeypatch.setattr(providers, "create_database_engine", lambda path, *, write: engine)
+    original_dispose = providers.ConnectionManager.dispose
+
+    def dispose(self):
+        disposed.append(self.connection)
+        original_dispose(self)
 
     def fail_start(self):
         raise RuntimeError("bootstrap failure")
 
+    monkeypatch.setattr(providers.ConnectionManager, "dispose", dispose)
     monkeypatch.setattr(ApplicationContext, "start", fail_start)
     before = persisted_state(database)
     with pytest.raises(RuntimeError, match="bootstrap failure"):
         with request_container(DatabaseSettings(database, write=True)):
             pytest.fail("A failed bootstrap must not enter the request")
-    assert disposed == [engine]
+    assert len(disposed) == 1
     assert persisted_state(database) == before
 
 
@@ -253,11 +252,8 @@ def test_file_path_and_unknown_project_lookup_are_rejected_without_writes(databa
     before = persisted_state(database)
     with pytest.raises(ValueError, match="must be a directory"):
         register_session(str(invalid), "codex", "native", database_path=database)
-    with request_container(DatabaseSettings(database, write=False)) as scope:
-        with (
-            scope.get(Session).begin(),
-            pytest.raises(ContextNotFound, match="Project does not exist"),
-        ):
+    with pytest.raises(ContextNotFound):
+        with storage_scope(database, write=False) as scope:
             scope.get(IProjectRepository).get("missing")
     assert persisted_state(database) == before
 

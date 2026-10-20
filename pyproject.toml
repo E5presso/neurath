@@ -12,6 +12,8 @@ dependencies = [
     "alembic==1.20.0",
     "spakky==8.1.0",
     "spakky-data==8.1.0",
+    "spakky-domain==8.1.0",
+    "spakky-sqlalchemy==8.1.0",
 ]
 
 [dependency-groups]

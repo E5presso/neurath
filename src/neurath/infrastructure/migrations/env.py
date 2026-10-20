@@ -1,9 +1,9 @@
 """초기화가 명시적으로 전달한 연결에서만 마이그레이션을 실행한다."""
 
 from alembic import context
+from spakky.plugins.sqlalchemy.orm.table import AbstractTable
 from sqlalchemy.engine import Connection
 
-from neurath.infrastructure.models.base import DatabaseModel
 from neurath.infrastructure.models.project import ProjectLocationModel, ProjectModel
 from neurath.infrastructure.models.session import SessionModel
 
@@ -14,7 +14,7 @@ if not isinstance(connection, Connection):
     raise TypeError("Migration requires an explicit SQLAlchemy Connection")
 context.configure(
     connection=connection,
-    target_metadata=DatabaseModel.metadata,
+    target_metadata=AbstractTable.metadata,
     version_table="core_schema_revision",
     transactional_ddl=True,
 )
