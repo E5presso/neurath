@@ -264,3 +264,65 @@ def test_entity_identity_comparison_rejects_unrelated_objects():
     assert project != object()
     assert session != object()
     assert project != session
+
+
+def test_unrelated_integrity_failure_is_not_misreported_as_project_ownership_conflict(database):
+    from sqlalchemy.exc import IntegrityError
+
+    before = persisted_state(database)
+    with pytest.raises(IntegrityError) as failure:
+        with storage_scope(database) as scope:
+            scope.get(SessionManager).session.execute(
+                text(
+                    "INSERT INTO core_sessions (id, project_id, provider, host_session_id, working_directory, revision) VALUES ('invalid', 'missing-parent', 'codex', 'new', '/invalid', 1)"
+                )
+            )
+    assert "FOREIGN KEY constraint failed" in str(failure.value.orig)
+    assert persisted_state(database) == before
+    with storage_scope(database, write=False) as scope:
+        assert scope.get(SessionManager).session.scalar(text("SELECT 1")) == 1
+
+
+def test_incomplete_observer_fails_explicitly_without_registering_a_project(
+    database, repository, monkeypatch
+):
+    from neurath.application.ports.services.directory_observer import IDirectoryObserver
+    from neurath.infrastructure.directory_observer import GitDirectoryObserver
+
+    with pytest.raises(TypeError, match="abstract"):
+        IDirectoryObserver()
+
+    def incomplete_observe(self, working_directory):
+        return IDirectoryObserver.observe(self, working_directory)
+
+    monkeypatch.setattr(GitDirectoryObserver, "observe", incomplete_observe)
+    before = persisted_state(database)
+    with pytest.raises(NotImplementedError):
+        register_session(str(repository), "codex", "new", database_path=database)
+    assert persisted_state(database) == before
+
+
+@pytest.mark.parametrize("kind", ["project-location", "native-session"])
+def test_incomplete_repository_lookup_rolls_back_registration_instead_of_returning_fake_success(
+    database, repository, monkeypatch, kind
+):
+    from neurath.infrastructure.repositories.project import ProjectRepository
+    from neurath.infrastructure.repositories.session import SessionRepository
+
+    if kind == "project-location":
+        adapter = ProjectRepository
+        method = "find_by_location"
+        contract = IProjectRepository.find_by_location
+    else:
+        adapter = SessionRepository
+        method = "find"
+        contract = ISessionRepository.find
+
+    def incomplete_lookup(self, *arguments):
+        return contract(self, *arguments)
+
+    monkeypatch.setattr(adapter, method, incomplete_lookup)
+    before = persisted_state(database)
+    with pytest.raises(NotImplementedError):
+        register_session(str(repository), "codex", "new", database_path=database)
+    assert persisted_state(database) == before

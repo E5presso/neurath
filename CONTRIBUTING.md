@@ -108,3 +108,19 @@ The `FRAMEWORK_CRUD` guard rejects local basic repository implementations. The
 `core_0002` migration retains existing IDs, revisions and dependent records, using
 epoch as an unknown-time marker for old metadata. Regression tests cover inherited
 CRUD and schema/data/revision rollback after migration failure.
+
+## Statement and branch coverage
+
+The required `tools/check.py` measures the entire `src/neurath` directory with pytest-cov,
+including Alembic files loaded under dynamic module names. Statements and branches must
+both reach 100%. `--cov-fail-under=100` is followed by exact `missing_lines == 0` and
+`missing_branches == 0` checks, so rounded percentages cannot pass. JSON/XML reports are
+written to `coverage-out/` and uploaded as CI artifacts.
+
+Do not meet the threshold using omit settings, custom exclusions, `pragma: no cover`,
+or `pragma: no branch`. Keep regression tests rejecting configuration/comment bypasses
+and actual statement-only or branch-only gaps. Behavioral tests cover data-preserving
+downgrade, complete rollback of rejected destructive downgrade, invalid connections,
+unrelated integrity failures and incomplete observation adapters.
+
+Reports must also have `excluded_lines == 0`; a real report reaching 100% through exclusions is rejected.

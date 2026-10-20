@@ -19,5 +19,8 @@ class IProjectRepository(IGenericRepository[Project, str], ABC):
 
         Returns:
             Project | None: 위치의 기존 소유자이며 없으면 None.
+
+        Raises:
+            NotImplementedError: 구체 어댑터가 추가 조회 메서드를 구현하지 않은 경우.
         """
-        ...
+        raise NotImplementedError

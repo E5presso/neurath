@@ -93,3 +93,17 @@ Spakky 요청 격리와 초기화 실패 시 자원 정리를 공통 품질 검�
 기본 저장 동작은 `FRAMEWORK_CRUD` 검사로 재구현을 거부합니다. `core_0002` 이전은 기존
 ID·revision·종속 자료를 유지하고 원래 시각이 없는 행에는 epoch 미상 표식을 사용합니다.
 이전 실패의 스키마·자료·revision 롤백과 실제 상속 CRUD를 회귀 시험으로 확인합니다.
+
+## 라인·분기 커버리지
+
+필수 `tools/check.py`는 `pytest-cov`로 `src/neurath` 전체를 디렉터리 기준으로 계측합니다.
+Alembic의 동적 로드도 포함하며 라인과 분기 모두 100%여야 합니다. `--cov-fail-under=100`과
+보고서의 `missing_lines == 0`, `missing_branches == 0` 검사를 함께 실행하여 반올림으로
+통과하지 못하게 합니다. JSON/XML 보고서는 `coverage-out/`에 생성하고 CI artifact로 남깁니다.
+
+omit, 커스텀 제외 규칙, `pragma: no cover`·`pragma: no branch`로 수치를 맞추지 않습니다.
+설정·주석 우회와 실제 미검증 라인·분기가 게이트를 실패시키는 회귀 시험을 유지합니다.
+원본 자료를 보존하는 downgrade, 파괴적 downgrade 거부 시 전체 롤백, 잘못된 연결 거부,
+일반 무결성 오류 전달, 미완성 관찰 어댑터 실패를 실제 실행 경로로 검증합니다.
+
+보고서의 `excluded_lines`도 0이어야 합니다. 제외로 100%가 된 실제 보고서도 게이트가 거부합니다.

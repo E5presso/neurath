@@ -24,6 +24,7 @@ dev = [
     "pre-commit>=4.5",
     "pyrefly>=1.3.2",
     "pydoclint>=0.11.1",
+    "pytest-cov>=7",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -59,3 +60,13 @@ convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["D", "ANN"]
+
+[tool.coverage.run]
+branch = true
+source = ["src/neurath"]
+data_file = "coverage-out/.coverage"
+
+[tool.coverage.report]
+fail_under = 100
+precision = 2
+show_missing = true

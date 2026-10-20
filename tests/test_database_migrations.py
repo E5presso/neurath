@@ -218,3 +218,116 @@ def test_failed_framework_migration_rolls_back_schema_data_and_revision(tmp_path
             "id",
             "root_path",
         ]
+
+
+def migration_config(connection):
+    from alembic.config import Config
+
+    config = Config()
+    config.set_main_option("script_location", "neurath.infrastructure:migrations")
+    config.attributes["connection"] = connection
+    return config
+
+
+def test_metadata_downgrade_preserves_original_records_and_can_upgrade(database, repository):
+    from alembic import command
+    from sqlalchemy import text
+
+    original = register_session(str(repository), "codex", "retained", database_path=database)
+    with closing(sqlite3.connect(database)) as connection, connection:
+        connection.execute(
+            "CREATE TABLE dependent_fixture (project_id TEXT REFERENCES core_projects(id), source TEXT)"
+        )
+        connection.execute(
+            "INSERT INTO dependent_fixture VALUES (?, 'unfinished original source')",
+            (original.project.id,),
+        )
+    engine = create_database_engine(database, write=True)
+    try:
+        with engine.begin() as connection:
+            command.downgrade(migration_config(connection), "core_0001")
+        with engine.connect() as connection:
+            assert (
+                connection.execute(
+                    text("SELECT version_num FROM core_schema_revision")
+                ).scalar_one()
+                == "core_0001"
+            )
+            assert [
+                row[1] for row in connection.exec_driver_sql("PRAGMA table_info(core_projects)")
+            ] == ["id", "root_path"]
+            assert [
+                row[1] for row in connection.exec_driver_sql("PRAGMA table_info(core_sessions)")
+            ] == [
+                "id",
+                "project_id",
+                "provider",
+                "host_session_id",
+                "working_directory",
+                "revision",
+            ]
+            assert connection.execute(
+                text("SELECT id, project_id, host_session_id, revision FROM core_sessions")
+            ).one() == (original.session.id, original.project.id, "retained", 1)
+            assert connection.execute(text("SELECT * FROM dependent_fixture")).one() == (
+                original.project.id,
+                "unfinished original source",
+            )
+            assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
+            assert (
+                connection.execute(
+                    text("SELECT name FROM sqlite_master WHERE type='trigger'")
+                ).all()
+                == []
+            )
+    finally:
+        engine.dispose()
+    initialize_database(database)
+    assert (
+        get_session_context(original.project.id, original.session.id, database_path=database)
+        == original
+    )
+    with closing(sqlite3.connect(database)) as connection:
+        assert connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='trigger'"
+        ).fetchall() == [("core_location_owner_immutable",)]
+
+
+def test_destructive_downgrade_is_rejected_and_rolls_back_intermediate_metadata_removal(
+    database, repository
+):
+    from alembic import command
+
+    original = register_session(str(repository), "codex", "retained", database_path=database)
+    before = database.read_bytes()
+    engine = create_database_engine(database, write=True)
+    try:
+        with pytest.raises(RuntimeError, match="Destructive core downgrade is unsupported"):
+            with engine.begin() as connection:
+                command.downgrade(migration_config(connection), "base")
+    finally:
+        engine.dispose()
+    assert database.read_bytes() == before
+    assert (
+        get_session_context(original.project.id, original.session.id, database_path=database)
+        == original
+    )
+    with closing(sqlite3.connect(database)) as connection:
+        assert connection.execute("SELECT version_num FROM core_schema_revision").fetchone() == (
+            "core_0002",
+        )
+        assert connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='trigger'"
+        ).fetchall() == [("core_location_owner_immutable",)]
+
+
+@pytest.mark.parametrize("invalid_connection", [None, "sqlite:///not-a-connection"])
+def test_migration_rejects_non_connection_input_before_touching_database(
+    database, invalid_connection
+):
+    from alembic import command
+
+    before = database.read_bytes()
+    with pytest.raises(TypeError, match="explicit SQLAlchemy Connection"):
+        command.upgrade(migration_config(invalid_connection), "head")
+    assert database.read_bytes() == before

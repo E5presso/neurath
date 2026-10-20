@@ -597,3 +597,16 @@ class ExampleModel(AbstractMappableTable[Example]):
         "\nfrom spakky.plugins.sqlalchemy.persistency.repository import AbstractGenericRepository\n"
     )
     assert any("DOMAIN_BOUNDARY:" in error for error in ArchitectureChecker(sources).check())
+
+
+@pytest.mark.parametrize("pragma", ["no cover", "no branch"])
+def test_coverage_suppression_is_rejected(pragma):
+    source = f'''"""커버리지 누락을 주석으로 숨기는 실패 사례다."""
+def delivery_fee(express):
+    """조건에 따라 배달 요금을 결정한다."""
+    if express:  # pragma: {pragma}
+        return 10
+    return 0
+'''
+    errors = ArchitectureChecker({"neurath.application.delivery": source}).check()
+    assert any("SUPPRESSION:" in error for error in errors)

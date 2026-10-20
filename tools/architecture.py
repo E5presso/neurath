@@ -123,7 +123,9 @@ class ArchitectureChecker:
             ):
                 errors.append(f"{module}:1 CORE: organize modules by responsibility")
             for line, text in enumerate(self.sources[module].splitlines(), start=1):
-                if re.search(r"#\s*(type:\s*ignore|noqa|pyrefly:)", text):
+                if re.search(
+                    r"#\s*(type:\s*ignore|noqa|pyrefly:|pragma:\s*no\s*(cover|branch))", text
+                ):
                     errors.append(f"{module}:{line} SUPPRESSION: correct the type or lint error")
             if not ast.get_docstring(tree):
                 errors.append(f"{module}:1 DOCSTRING: document the module responsibility")

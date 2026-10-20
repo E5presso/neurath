@@ -100,3 +100,7 @@ CLAUDE.md
 .codex/hooks.json
 .claude/settings.json
 .mcp.json
+
+# Reproducible coverage reports and measurement database
+/coverage-out/
+/.coverage

@@ -6,11 +6,22 @@ from pathlib import Path
 
 
 def main() -> None:
-    """공유 품질 검사와 전체 행동 테스트 및 휠 생성을 실행한다."""
+    """공유 품질 검사·전체 행동 시험·라인과 분기 100% 검사·휠 생성을 실행한다."""
     root = Path(__file__).resolve().parents[1]
     for arguments in (
         ["tools/quality.py"],
-        ["-m", "pytest", "-q"],
+        [
+            "-m",
+            "pytest",
+            "-q",
+            "--cov=src/neurath",
+            "--cov-branch",
+            "--cov-fail-under=100",
+            "--cov-report=term-missing",
+            "--cov-report=json:coverage-out/coverage.json",
+            "--cov-report=xml:coverage-out/coverage.xml",
+        ],
+        ["tools/check_coverage.py"],
         ["-m", "build", "--wheel", "--outdir", "dist"],
     ):
         subprocess.run([sys.executable, *arguments], cwd=root, check=True)

@@ -21,5 +21,8 @@ class ISessionRepository(IGenericRepository[HostSession, str], ABC):
 
         Returns:
             HostSession | None: 해당 프로젝트·공급자 범위의 세션이며 없으면 None.
+
+        Raises:
+            NotImplementedError: 구체 어댑터가 추가 조회 메서드를 구현하지 않은 경우.
         """
-        ...
+        raise NotImplementedError
