@@ -824,3 +824,42 @@ def test_workflow_storage_rejects_cross_project_links(database, work, tmp_path, 
         with storage_scope(database) as scope:
             scope.get(IWorkflowRepository).save(invalid)
     assert snapshot(database) == before
+
+
+def test_recovered_result_returns_before_capability_check_or_resubmission(database, work):
+    _, _, flow = work
+    prepared = run(
+        PreparePhaseUseCase,
+        PreparePhaseCommand(flow.project_id, flow.session_id, flow.uid, flow.revision),
+        database_path=database,
+    ).run
+
+    class FoundOnly(RecoverableExecutor):
+        @property
+        def supports_deduplication(self):
+            raise AssertionError("A found result needs no capability check")
+
+        def execute(self, request_id, phase):
+            raise AssertionError("A found result must not be executed again")
+
+    host = FoundOnly(flow.current, found=result(flow.current))
+    completed = execute(database, prepared, host)
+    assert completed.run.current is None
+    assert host.calls == [("lookup", f"{flow.uid}:1")]
+
+
+def test_fresh_attempt_returns_without_lookup_or_recovery_capability(database, work):
+    _, _, flow = work
+
+    class FreshOnly(RecoverableExecutor):
+        @property
+        def supports_deduplication(self):
+            raise AssertionError("A first execution needs no recovery capability")
+
+        def lookup(self, request_id, phase):
+            raise AssertionError("A newly reserved attempt has no previous execution to look up")
+
+    host = FreshOnly(flow.current, database=database)
+    completed = execute(database, flow, host)
+    assert completed.run.current is None
+    assert host.calls == [("execute", f"{flow.uid}:1")]

@@ -12,7 +12,7 @@ from neurath.application.ports.repositories.workflow import IWorkflowRepository
 from neurath.application.ports.services.phase_executor import IPhaseExecutor, IWorkflowNotifier
 from neurath.application.usecases.report_phase import ReportPhaseCommand, ReportPhaseUseCase
 from neurath.domain.aggregates.workflow import WorkflowRun
-from neurath.domain.workflow_records import PhaseResult, PhaseStatus
+from neurath.domain.workflow_records import PhaseAttempt, PhaseDefinition, PhaseResult, PhaseStatus
 
 
 @dataclass(frozen=True)
@@ -113,18 +113,7 @@ class ExecutePhaseUseCase(ICommandUseCase[ExecutePhaseCommand, ExecutePhaseResul
             phase = run.phase_for(attempt)
         request_id = f"{run.uid}:{attempt.number}"
         try:
-            if fresh:
-                result = self.executor.execute(request_id, phase)
-            else:
-                result = self.executor.lookup(request_id, phase)
-                if result is None and self.executor.supports_deduplication:
-                    result = self.executor.execute(request_id, phase)
-                if result is None:
-                    result = attempt.result or PhaseResult(
-                        status=PhaseStatus.WAITING,
-                        target_revision=phase.target_revision,
-                        summary="External result is unknown; lookup or verified deduplication is required",
-                    )
+            result = self._execute_or_reconcile(request_id, phase, attempt, fresh=fresh)
         except Exception as error:
             result = PhaseResult(
                 status=PhaseStatus.WAITING,
@@ -140,3 +129,42 @@ class ExecutePhaseUseCase(ICommandUseCase[ExecutePhaseCommand, ExecutePhaseResul
         if result.status is PhaseStatus.WAITING and result != attempt.result:
             self.notifier.waiting(request_id, result.summary)
         return ExecutePhaseResult(run=current, request_id=request_id)
+
+    def _execute_or_reconcile(
+        self,
+        request_id: str,
+        phase: PhaseDefinition,
+        attempt: PhaseAttempt,
+        *,
+        fresh: bool,
+    ) -> PhaseResult:
+        """새 시도를 실행하거나 기존 시도의 조회 결과를 우선 반환한다.
+
+        조회로 결과를 찾으면 중복 제거 기능을 조회하거나 재제출하지 않는다.
+        재제출 보장이 없는 실행은 기존 대기 결과를 유지한다.
+
+        Args:
+            request_id: 외부 실행에 사용할 동일 시도의 ID.
+            phase: 시도 당시 고정한 실행 대상과 조건.
+            attempt: 실행 또는 복구할 보존된 시도.
+            fresh: 이번 요청에서 새로 예약한 시도인지 여부.
+
+        Returns:
+            PhaseResult: 실제 실행·조회 결과 또는 보존할 결과 불명 상태.
+        """
+        if fresh:
+            return self.executor.execute(request_id, phase)
+        result = self.executor.lookup(request_id, phase)
+        if result is not None:
+            return result
+        if self.executor.supports_deduplication:
+            result = self.executor.execute(request_id, phase)
+        if result is not None:
+            return result
+        if attempt.result is not None:
+            return attempt.result
+        return PhaseResult(
+            status=PhaseStatus.WAITING,
+            target_revision=phase.target_revision,
+            summary="External result is unknown; lookup or verified deduplication is required",
+        )

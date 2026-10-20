@@ -84,9 +84,9 @@ class Project(AbstractAggregateRoot[str]):
         Raises:
             ValueError: Git 공통 디렉터리와 기본 작업 트리 정보가 불완전한 경우.
         """
+        if observation.git_common_directory is None and observation.primary_worktree is not None:
+            raise ValueError("A primary worktree requires a Git common directory")
         if observation.git_common_directory is None:
-            if observation.primary_worktree is not None:
-                raise ValueError("A primary worktree requires a Git common directory")
             return observation.working_directory
         if observation.primary_worktree is None:
             raise ValueError("A Git common directory requires a primary worktree")

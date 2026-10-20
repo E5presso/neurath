@@ -79,12 +79,12 @@ class StartWorkflowUseCase(ICommandUseCase[StartWorkflowCommand, StartWorkflowRe
         task = self.tasks.get(command.task_id)
         task.require_scope(command.project_id, command.session_id)
         existing = self.workflows.find_by_task(task.uid)
+        if existing is not None and (
+            existing.definition != command.definition
+            or existing.revisions[-1].task_definition_number != task.definition.number
+        ):
+            raise InvalidWorkflowState("Use workflow revision to change an existing procedure")
         if existing is not None:
-            if (
-                existing.definition != command.definition
-                or existing.revisions[-1].task_definition_number != task.definition.number
-            ):
-                raise InvalidWorkflowState("Use workflow revision to change an existing procedure")
             return StartWorkflowResult(run=existing)
         task.require_revision(command.expected_task_revision)
         if task.status is not TaskStatus.ACTIVE:

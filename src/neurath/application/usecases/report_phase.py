@@ -76,25 +76,26 @@ class ReportPhaseUseCase(ICommandUseCase[ReportPhaseCommand, ReportPhaseResult])
         run.require_scope(command.project_id, command.session_id)
         run.report(command.attempt_number, command.result)
         task = self.tasks.get(run.task_id)
-        request_id = f"{run.uid}:{command.attempt_number}"
         if (
-            run.applies_to_current(command.attempt_number)
-            and task.definition.number == run.revisions[-1].task_definition_number
+            not run.applies_to_current(command.attempt_number)
+            or task.definition.number != run.revisions[-1].task_definition_number
         ):
-            if command.result.status is PhaseStatus.WAITING and task.status is TaskStatus.ACTIVE:
-                task.wait(
-                    ExternalWait(
-                        target=request_id,
-                        condition="execution result observed",
-                        resume_scope=f"continue workflow {run.uid}",
-                        observation=command.result.summary,
-                    )
+            return ReportPhaseResult(run=self.workflows.save(run))
+        request_id = f"{run.uid}:{command.attempt_number}"
+        if command.result.status is PhaseStatus.WAITING and task.status is TaskStatus.ACTIVE:
+            task.wait(
+                ExternalWait(
+                    target=request_id,
+                    condition="execution result observed",
+                    resume_scope=f"continue workflow {run.uid}",
+                    observation=command.result.summary,
                 )
-            elif (
-                command.result.status is not PhaseStatus.WAITING
-                and task.status is TaskStatus.WAITING
-                and task.waits[-1].target == request_id
-            ):
-                task.resume(command.result.summary)
-            self.tasks.save(task)
+            )
+        elif (
+            command.result.status is not PhaseStatus.WAITING
+            and task.status is TaskStatus.WAITING
+            and task.waits[-1].target == request_id
+        ):
+            task.resume(command.result.summary)
+        self.tasks.save(task)
         return ReportPhaseResult(run=self.workflows.save(run))

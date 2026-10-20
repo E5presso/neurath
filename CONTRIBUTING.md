@@ -30,6 +30,9 @@ Type/docstring checks cover all production sources and development tools. Tests 
 - Use cases implement Spakky `ICommandUseCase`/`IQueryUseCase` and `run(command/query)`. Inputs inherit `AbstractCommand`/`AbstractQuery`; colocate dedicated inputs and result DTOs with their use case.
 - Reuse Spakky domain bases, default repository CRUD/batches, declarative mapping/SchemaRegistry, constructor injection and request transactions. The core foundation describes current composition. Assess additional adapters/abstractions by responsibility and need.
 - Express read-only list contracts with `Sequence`. Use `Self` for classmethod construction/conversion preserving the invoking subclass. Ruff UP checks supported Python 3.14 syntax.
+- Use guard clauses and early returns for errors, inapplicable work and no-op paths so the normal flow stays shallow. Use continue/break in loops. Preserve validation, persistence, notification and transaction/finally cleanup order. Extract cohesive operations within the same responsibility.
+
+Shared Ruff rules RET505/RET506/RET507/RET508 detect unnecessary else branches after return/raise/continue/break. Review other nesting for simplification without imposing an arbitrary depth limit or banning every if/else.
 
 Structure checks inspect actual registered component ancestry and dependency direction. Concrete tests verify current repositories, input/output contracts, mapping, resource lifetimes, migrations and domain behavior. A function, exception, name or expression alone does not establish misplaced responsibility. Do not require a DTO/suffix/frozen result for every return or infer misplaced responsibility from Any/cast/Literal/ordinary suppression comments in custom AST checks. Standard Ruff ANN rules remain enabled, including ANN401. Syntax checks do not establish semantic design quality.
 

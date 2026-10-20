@@ -76,10 +76,11 @@ def install(root: Path) -> Path:
     destination = git_directory / "neurath-quality-hooks"
     hook = destination / "pre-commit"
     current_hooks = optional_config(root, "", "core.hooksPath")
-    if current_hooks is not None and Path(current_hooks) == destination:
-        if hook.is_file() and MARKER in hook.read_text():
-            return hook
+    managed = current_hooks is not None and Path(current_hooks) == destination
+    if managed and (not hook.is_file() or MARKER not in hook.read_text()):
         raise RuntimeError("Managed hook path exists without the expected hook; inspect manually")
+    if managed:
+        return hook
     if destination.exists():
         raise RuntimeError("Refusing to overwrite an existing hook directory")
     if optional_config(root, "--local", "core.worktree") is not None:

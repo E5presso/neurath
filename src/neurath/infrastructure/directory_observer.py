@@ -71,9 +71,9 @@ class GitDirectoryObserver(IDirectoryObserver):
         if not directory.is_dir():
             raise ValueError("working_directory must be a directory")
         common = self._git(directory, "rev-parse", "--path-format=absolute", "--git-common-dir")
+        if common.returncode != 0 and "not a git repository" not in common.stderr:
+            raise NeurathError(f"Cannot inspect local Git project: {common.stderr.strip()}")
         if common.returncode != 0:
-            if "not a git repository" not in common.stderr:
-                raise NeurathError(f"Cannot inspect local Git project: {common.stderr.strip()}")
             return DirectoryObservation(working_directory=str(directory))
         listing = self._git(directory, "worktree", "list", "--porcelain", "-z")
         if listing.returncode != 0:

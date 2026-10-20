@@ -142,10 +142,13 @@ class TaskResult(AbstractValueObject):
         for observation in self.observations:
             if not observation.strip():
                 raise ValueError("observation must be non-empty")
+        if self.outcome is Outcome.SUCCEEDED and (
+            self.remaining_work is not None or self.exit_code not in (None, 0)
+        ):
+            raise InvalidTaskState("Success contradicts remaining work or command failure")
         if self.outcome is Outcome.SUCCEEDED:
-            if self.remaining_work is not None or self.exit_code not in (None, 0):
-                raise InvalidTaskState("Success contradicts remaining work or command failure")
-        elif self.remaining_work is None or not self.remaining_work.strip():
+            return
+        if self.remaining_work is None or not self.remaining_work.strip():
             raise ValueError("remaining_work must be non-empty")
 
 

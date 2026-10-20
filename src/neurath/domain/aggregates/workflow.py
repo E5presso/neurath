@@ -280,9 +280,10 @@ class WorkflowRun(AbstractAggregateRoot[str]):
         attempt = next((item for item in self.attempts if item.number == number), None)
         if attempt is None:
             raise ContextNotFound("Workflow attempt does not exist")
-        if attempt.status in (PhaseStatus.SUCCEEDED, PhaseStatus.FAILED, PhaseStatus.SKIPPED):
-            if attempt.result == result:
-                return
+        settled = attempt.status in (PhaseStatus.SUCCEEDED, PhaseStatus.FAILED, PhaseStatus.SKIPPED)
+        if settled and attempt.result == result:
+            return
+        if settled:
             raise InvalidWorkflowState("A settled phase result cannot be overwritten")
         phase = self.phase_for(attempt)
         if result.target_revision != phase.target_revision:
@@ -362,20 +363,19 @@ class WorkflowRun(AbstractAggregateRoot[str]):
         """
         if not reason.strip():
             raise InvalidWorkflowState("Workflow revision requires a reason")
-        if task_definition_number == self.revisions[-1].task_definition_number:
-            required = {
-                phase.key for phase in self.definition.phases if phase.skip_condition is None
-            }
-            retained = {phase.key for phase in definition.phases if phase.skip_condition is None}
-            if not required.issubset(retained):
-                raise InvalidWorkflowState(
-                    "Required phases need an actual task correction before removal"
-                )
         if (
             definition == self.definition
             and task_definition_number == self.revisions[-1].task_definition_number
         ):
             return
+        required = {phase.key for phase in self.definition.phases if phase.skip_condition is None}
+        retained = {phase.key for phase in definition.phases if phase.skip_condition is None}
+        if task_definition_number == self.revisions[
+            -1
+        ].task_definition_number and not required.issubset(retained):
+            raise InvalidWorkflowState(
+                "Required phases need an actual task correction before removal"
+            )
         self.revisions = tuple(self.revisions) + (
             WorkflowRevision(
                 definition=deepcopy(definition),

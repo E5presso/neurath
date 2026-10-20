@@ -77,13 +77,14 @@ class ReportResultUseCase(ICommandUseCase[ReportResultCommand, ReportResult]):
         task = self.tasks.get(command.task_id)
         task.require_scope(command.project_id, command.session_id)
         attempt = task.attempt(command.attempt_number)
+        workflow = None
         if (
             command.result.outcome is Outcome.SUCCEEDED
             and attempt.definition_number == task.definition.number
             and attempt.result is None
         ):
             workflow = self.workflows.find_by_task(task.uid)
-            if workflow is not None:
-                workflow.require_complete(task.definition.number)
+        if workflow is not None:
+            workflow.require_complete(task.definition.number)
         task.report(command.attempt_number, command.result, command.expected_revision)
         return ReportResult(task=self.tasks.save(task))
