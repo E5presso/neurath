@@ -118,6 +118,16 @@ class ArchitectureChecker:
         }
         for module, tree in self.trees.items():
             migration = ".infrastructure.migrations." in module
+            business_module = module.startswith(
+                ("neurath.domain.", "neurath.application.")
+            ) or module in {"neurath.domain", "neurath.application"}
+            owned_functions = {
+                method
+                for owner in ast.walk(tree)
+                if isinstance(owner, ast.ClassDef)
+                for method in ast.walk(owner)
+                if isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef))
+            }
             if module == "neurath.application.dto" or module.startswith("neurath.application.dto."):
                 errors.append(f"{module}:1 RESULT_LOCATION: define results beside their use case")
             if module in {"neurath.transport.session_requests", "neurath.transport.task_requests"}:
@@ -138,6 +148,14 @@ class ArchitectureChecker:
             for node in ast.walk(tree):
                 line = getattr(node, "lineno", 1)
                 location = f"{module}:{line}"
+                if (
+                    business_module
+                    and isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and node not in owned_functions
+                ):
+                    errors.append(
+                        f"{location} BEHAVIOR_OWNERSHIP: put business behavior on its owning object"
+                    )
                 if (
                     isinstance(node, ast.Subscript)
                     and self._name(module, node).rsplit(".", 1)[-1] == "tuple"
@@ -310,6 +328,42 @@ class ArchitectureChecker:
                         errors.append(f"{location} DECLARATIVE_ORM: use Mapped and mapped_column")
                 if not isinstance(node, ast.ClassDef):
                     continue
+                methods = [
+                    method
+                    for method in node.body
+                    if isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef))
+                ]
+                if (
+                    business_module
+                    and methods
+                    and not any(isinstance(field, ast.AnnAssign) for field in node.body)
+                ):
+                    static_methods = [
+                        method
+                        for method in methods
+                        if any(
+                            self._name(module, decorator).rsplit(".", 1)[-1] == "staticmethod"
+                            for decorator in method.decorator_list
+                        )
+                    ]
+                    class_methods = [
+                        method
+                        for method in methods
+                        if any(
+                            self._name(module, decorator).rsplit(".", 1)[-1] == "classmethod"
+                            for decorator in method.decorator_list
+                        )
+                    ]
+                    if len(static_methods) + len(class_methods) == len(methods) and (
+                        static_methods
+                        or any(
+                            method.name.startswith(("validate", "require", "check", "verify"))
+                            for method in class_methods
+                        )
+                    ):
+                        errors.append(
+                            f"{location} BEHAVIOR_OWNERSHIP: utility classes do not own the validated state"
+                        )
                 for method in node.body:
                     if not isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef)):
                         continue

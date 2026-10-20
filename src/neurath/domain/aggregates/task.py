@@ -18,7 +18,6 @@ from neurath.domain.task_records import (
     TaskDefinition,
     TaskResult,
     TaskStatus,
-    require_text,
 )
 
 
@@ -306,8 +305,10 @@ class Task(AbstractAggregateRoot[str]):
 
         Raises:
             InvalidTaskState: 외부 대기 상태가 아닌 경우.
+            ValueError: 해소 관찰이 공백만 포함한 경우.
         """
-        require_text(resolution, "resolution")
+        if not resolution.strip():
+            raise ValueError("resolution must be non-empty")
         if self.status is not TaskStatus.WAITING:
             raise InvalidTaskState("Task is not waiting for an external dependency")
         self.waits = tuple(self.waits[:-1]) + (replace(self.waits[-1], resolution=resolution),)
@@ -319,10 +320,14 @@ class Task(AbstractAggregateRoot[str]):
         Args:
             source: 현재 요구에 대응하는 실제 정정.
             reason: 무효화 이유.
+
+        Raises:
+            ValueError: 무효화 이유가 공백만 포함한 경우.
         """
         source.require_project(self.project_id)
         source.require_correction(self.definition.source_id)
-        require_text(reason, "reason")
+        if not reason.strip():
+            raise ValueError("reason must be non-empty")
         self.definitions = tuple(self.definitions) + (
             replace(self.definition, number=self.definition.number + 1, source_id=source.uid),
         )
@@ -330,30 +335,31 @@ class Task(AbstractAggregateRoot[str]):
         self.current_attempt_number = None
         self.invalidated_reason = reason
 
+    def validate_dependencies(
+        self, tasks: Sequence[Self], dependencies: Sequence[str] | None = None
+    ) -> None:
+        """기존 프로젝트 그래프에 추가할 의존의 범위와 순환을 검사한다.
 
-def validate_dependencies(tasks: Sequence[Task], task_id: str, dependencies: Sequence[str]) -> None:
-    """기존 프로젝트 그래프에 추가할 의존의 범위와 순환을 검사한다.
+        Args:
+            tasks: 같은 프로젝트에서 조회한 전체 현재 태스크.
+            dependencies: 검증할 선행 작업이며 None이면 현재 정의의 의존 목록.
 
-    Args:
-        tasks: 같은 프로젝트에서 조회한 전체 현재 태스크.
-        task_id: 의존을 정의하거나 정정할 태스크.
-        dependencies: 새 선행 작업 목록.
-
-    Raises:
-        ContextNotFound: 프로젝트에 없는 의존을 지정한 경우.
-        InvalidTaskState: 중복·자기 의존·순환을 만들려는 경우.
-    """
-    graph = {task.uid: task.definition.dependencies for task in tasks}
-    if len(set(dependencies)) != len(dependencies):
-        raise InvalidTaskState("Duplicate dependency")
-    if any(uid not in graph for uid in dependencies):
-        raise ContextNotFound("Dependency does not belong to this project")
-    pending = list(dependencies)
-    visited: set[str] = set()
-    while pending:
-        uid = pending.pop()
-        if uid == task_id:
-            raise InvalidTaskState("Task dependencies cannot contain a cycle")
-        if uid not in visited:
-            visited.add(uid)
-            pending.extend(graph[uid])
+        Raises:
+            ContextNotFound: 프로젝트에 없는 의존을 지정한 경우.
+            InvalidTaskState: 중복·자기 의존·순환을 만들려는 경우.
+        """
+        dependencies = self.definition.dependencies if dependencies is None else dependencies
+        graph = {task.uid: task.definition.dependencies for task in tasks}
+        if len(set(dependencies)) != len(dependencies):
+            raise InvalidTaskState("Duplicate dependency")
+        if any(uid not in graph for uid in dependencies):
+            raise ContextNotFound("Dependency does not belong to this project")
+        pending = list(dependencies)
+        visited: set[str] = set()
+        while pending:
+            uid = pending.pop()
+            if uid == self.uid:
+                raise InvalidTaskState("Task dependencies cannot contain a cycle")
+            if uid not in visited:
+                visited.add(uid)
+                pending.extend(graph[uid])

@@ -125,3 +125,5 @@ unrelated integrity failures and incomplete observation adapters.
 Reports must also have `excluded_lines == 0`; a real report reaching 100% through exclusions is rejected.
 
 `RESULT_LOCATION` rejects moving use-case results into a separate package or returning another module's response. `ALEMBIC_REVISION` rejects parallel revision constants, and `TRANSPORT_PASSTHROUGH` rejects reintroducing the removed protocol-free relay modules. All actual use-case input/result contracts and result locations are inspected. These checks do not replace semantic review of responsibilities.
+
+Domain validation and business behavior belong to methods on the owning aggregate, value object, or use case. `BEHAVIOR_OWNERSHIP` rejects standalone domain/application functions and stateless static utility relabels. Each object's validate/action method also owns its text checks. A Task instance validates its current or proposed dependencies using self.uid, without a separate task_id argument. Infrastructure resource factories and Alembic entrypoints have a different responsibility.

@@ -10,7 +10,7 @@ from spakky.domain.application.command import AbstractCommand, ICommandUseCase
 from neurath.application.ports.repositories.request_source import IRequestSourceRepository
 from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.application.ports.repositories.task import ITaskRepository
-from neurath.domain.aggregates.task import Task, validate_dependencies
+from neurath.domain.aggregates.task import Task
 from neurath.domain.errors import ContextNotFound
 
 
@@ -93,9 +93,7 @@ class CreateTaskUseCase(ICommandUseCase[CreateTaskCommand, CreateTaskResult]):
             command.dependencies,
             command.follow_up_of,
         )
-        validate_dependencies(
-            self.tasks.list(command.project_id), task.uid, task.definition.dependencies
-        )
+        task.validate_dependencies(self.tasks.list(command.project_id))
         if command.follow_up_of is not None:
             parent = self.tasks.get(command.follow_up_of)
             if parent.project_id != command.project_id:

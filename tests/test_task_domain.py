@@ -5,7 +5,7 @@ from dataclasses import replace
 import pytest
 
 from neurath.domain.aggregates.request_source import RequestSource, SourceKind
-from neurath.domain.aggregates.task import Task, validate_dependencies
+from neurath.domain.aggregates.task import Task
 from neurath.domain.errors import ContextNotFound, InvalidTaskState, RevisionConflict
 from neurath.domain.task_records import (
     ExternalWait,
@@ -272,18 +272,18 @@ def test_dependencies_require_real_success_and_cycle_detection_handles_shared_an
     right = task(dependencies=(root.uid,))
     leaf = task(dependencies=(left.uid, right.uid))
     graph = (root, left, right, leaf)
-    validate_dependencies(graph, leaf.uid, leaf.definition.dependencies)
+    leaf.validate_dependencies(graph)
     assert not leaf.ready(graph) and root.ready(graph)
     with pytest.raises(InvalidTaskState):
         left.start(graph)
     with pytest.raises(InvalidTaskState):
-        validate_dependencies(graph, root.uid, (leaf.uid,))
+        root.validate_dependencies(graph, (leaf.uid,))
     with pytest.raises(InvalidTaskState):
-        validate_dependencies(graph, root.uid, (root.uid,))
+        root.validate_dependencies(graph, (root.uid,))
     with pytest.raises(InvalidTaskState):
-        validate_dependencies(graph, leaf.uid, (root.uid, root.uid))
+        leaf.validate_dependencies(graph, (root.uid, root.uid))
     with pytest.raises(ContextNotFound):
-        validate_dependencies(graph, leaf.uid, ("foreign",))
+        leaf.validate_dependencies(graph, ("foreign",))
     root.start(graph)
     root.report(1, result(Outcome.FAILED), 1)
     assert not left.ready(graph)
@@ -300,7 +300,7 @@ def test_sequence_contracts_accept_lists_without_owning_the_callers_mutable_depe
     work = task(dependencies=dependencies)
     dependencies.clear()
     assert work.definition.dependencies == (prerequisite.uid,)
-    validate_dependencies([prerequisite, work], work.uid, [prerequisite.uid])
+    work.validate_dependencies([prerequisite, work], [prerequisite.uid])
     assert not work.ready([prerequisite])
     prerequisite.start([prerequisite])
     prerequisite.report(1, result(), 1)

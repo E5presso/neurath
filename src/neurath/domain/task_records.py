@@ -44,20 +44,6 @@ class Outcome(StrEnum):
     PARTIAL = "partial"
 
 
-def require_text(value: str, name: str) -> None:
-    """비어 있는 정의나 관찰을 실제 자료로 수용하지 않는다.
-
-    Args:
-        value: 보존할 원문 또는 결과 설명.
-        name: 오류에서 구분할 필드 이름.
-
-    Raises:
-        ValueError: 값이 공백만 포함하는 경우.
-    """
-    if not value.strip():
-        raise ValueError(f"{name} must be non-empty")
-
-
 @immutable
 class TaskDefinition(AbstractValueObject):
     """정정 전 정의를 덮어쓰지 않는 요구 개정이다.
@@ -83,8 +69,10 @@ class TaskDefinition(AbstractValueObject):
         Raises:
             ValueError: 번호·제목·결과 또는 의존 목록이 유효하지 않은 경우.
         """
-        require_text(self.title, "title")
-        require_text(self.required_result, "required_result")
+        if not self.title.strip():
+            raise ValueError("title must be non-empty")
+        if not self.required_result.strip():
+            raise ValueError("required_result must be non-empty")
         if self.number < 1 or len(set(self.dependencies)) != len(self.dependencies):
             raise ValueError("Invalid definition number or duplicate dependency")
 
@@ -103,10 +91,16 @@ class SubmittedResult(AbstractValueObject):
 
     @override
     def validate(self) -> None:
-        """빈 후보 설명과 참조를 거부한다."""
-        require_text(self.summary, "summary")
+        """빈 후보 설명과 참조를 거부한다.
+
+        Raises:
+            ValueError: 후보 설명이나 참조가 공백만 포함한 경우.
+        """
+        if not self.summary.strip():
+            raise ValueError("summary must be non-empty")
         for reference in self.references:
-            require_text(reference, "reference")
+            if not reference.strip():
+                raise ValueError("reference must be non-empty")
 
 
 @immutable
@@ -135,16 +129,18 @@ class TaskResult(AbstractValueObject):
             ValueError: 결과 설명·관찰·남은 일이 비어 있는 경우.
             InvalidTaskState: 성공 주장과 남은 일 또는 종료 코드가 충돌하는 경우.
         """
-        require_text(self.summary, "summary")
+        if not self.summary.strip():
+            raise ValueError("summary must be non-empty")
         if not self.observations:
             raise ValueError("Observed result references are required")
         for observation in self.observations:
-            require_text(observation, "observation")
+            if not observation.strip():
+                raise ValueError("observation must be non-empty")
         if self.outcome is Outcome.SUCCEEDED:
             if self.remaining_work is not None or self.exit_code not in (None, 0):
                 raise InvalidTaskState("Success contradicts remaining work or command failure")
-        else:
-            require_text(self.remaining_work or "", "remaining_work")
+        elif self.remaining_work is None or not self.remaining_work.strip():
+            raise ValueError("remaining_work must be non-empty")
 
 
 @immutable
@@ -186,8 +182,13 @@ class ExternalWait(AbstractValueObject):
 
     @override
     def validate(self) -> None:
-        """대기 대상과 관찰 없는 가짜 입력 대기를 거부한다."""
+        """대기 대상과 관찰 없는 가짜 입력 대기를 거부한다.
+
+        Raises:
+            ValueError: 대기 조건이나 해소 관찰이 공백만 포함한 경우.
+        """
         for value in (self.target, self.condition, self.resume_scope, self.observation):
-            require_text(value, "external_wait")
-        if self.resolution is not None:
-            require_text(self.resolution, "resolution")
+            if not value.strip():
+                raise ValueError("external_wait must be non-empty")
+        if self.resolution is not None and not self.resolution.strip():
+            raise ValueError("resolution must be non-empty")

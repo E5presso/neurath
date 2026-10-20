@@ -9,7 +9,7 @@ from spakky.domain.application.command import AbstractCommand, ICommandUseCase
 
 from neurath.application.ports.repositories.request_source import IRequestSourceRepository
 from neurath.application.ports.repositories.task import ITaskRepository
-from neurath.domain.aggregates.task import Task, validate_dependencies
+from neurath.domain.aggregates.task import Task
 
 
 @dataclass(frozen=True)
@@ -75,10 +75,7 @@ class CorrectTaskUseCase(ICommandUseCase[CorrectTaskCommand, CorrectTaskResult])
         task = self.tasks.get(command.task_id)
         task.require_scope(command.project_id, command.session_id)
         task.require_revision(command.expected_revision)
-        dependencies = (
-            task.definition.dependencies if command.dependencies is None else command.dependencies
-        )
-        validate_dependencies(self.tasks.list(command.project_id), task.uid, dependencies)
+        task.validate_dependencies(self.tasks.list(command.project_id), command.dependencies)
         task.correct(
             self.sources.get(command.source_id),
             command.title,

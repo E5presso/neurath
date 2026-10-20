@@ -8,7 +8,6 @@ from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 
 from neurath.domain.errors import ContextNotFound, InvalidTaskState
-from neurath.domain.task_records import require_text
 
 
 class SourceKind(StrEnum):
@@ -107,8 +106,10 @@ class RequestSource(AbstractAggregateRoot[str]):
 
         Raises:
             InvalidTaskState: 정정 용도와 대상 참조가 일치하지 않는 경우.
+            ValueError: 원문이 공백만 포함한 경우.
         """
-        require_text(self.body, "body")
+        if not self.body.strip():
+            raise ValueError("body must be non-empty")
         if (self.kind is SourceKind.CORRECTION) != (self.corrects_id is not None):
             raise InvalidTaskState(
                 "Corrections require an existing source; other source kinds cannot correct"

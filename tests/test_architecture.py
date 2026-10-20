@@ -663,12 +663,10 @@ class GetTasksQuery(Query):
     """작업 목록 조회다."""
 class GetTasksUseCase(QueryUseCase):
     """작업 목록 유스케이스다."""
-def records() -> Sequence[str]:
-    """일반 시퀀스를 반환한다."""
-    return ()
-def pair() -> tuple[str, int]:
-    """서로 다른 두 값을 반환한다."""
-    return ("value", 1)
+class Values:
+    """조회 시퀀스와 고정 이종 쌍의 계약을 구분한다."""
+    records: Sequence[str]
+    pair: tuple[str, int]
 '''
     assert ArchitectureChecker({"neurath.application.usecases.example": source}).check() == []
 
@@ -763,3 +761,60 @@ class GetNamesUseCase(IQueryUseCase[GetNamesQuery, GetNamesResult]):
         return GetNamesResult(names=())
 '''
     assert ArchitectureChecker({"neurath.application.usecases.get_names": source}).check() == []
+
+
+@pytest.mark.parametrize("package", ["domain", "application"])
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def validate_dependencies(tasks, uid, dependencies): pass",
+        "def arbitrary_rule(value): pass",
+        "async def apply_policy(value): pass",
+        "if True:\n def enforce(value): pass",
+        "def outer():\n def hidden_rule(value): pass",
+        "class UnnamedRules:\n @staticmethod\n def arbitrary_rule(value): pass",
+        "class UnnamedRules:\n @classmethod\n def check_value(cls, value): pass",
+        "from builtins import staticmethod as static\nclass Rules:\n @static\n def arbitrary(value): pass",
+    ],
+)
+def test_standalone_business_functions_and_utility_class_relabels_are_rejected(package, source):
+    module = f"neurath.{package}.rules"
+    errors = ArchitectureChecker({module: source}).check()
+    assert any("BEHAVIOR_OWNERSHIP:" in error for error in errors), errors
+
+
+def test_owned_validation_and_infrastructure_entrypoints_are_allowed():
+    sources = {
+        "neurath.domain.aggregates.task": '''"""데이터를 소유하는 도메인 객체 안에서 규칙을 검사한다."""
+from spakky.domain import AbstractAggregateRoot
+class Task(AbstractAggregateRoot[str]):
+    """의존을 소유하고 검증하는 태스크다."""
+    dependencies: Sequence[str]
+    def validate_dependencies(self, tasks):
+        """자기 의존의 규칙을 검사한다."""
+        return None
+''',
+        "neurath.infrastructure.database": '''"""인프라 초기화 진입점은 업무 정책과 구분한다."""
+def initialize_database(path):
+    """명시한 저장소를 초기화한다."""
+    return None
+''',
+        "neurath.infrastructure.migrations.versions.example": '''"""Alembic이 호출하는 진입점은 프레임워크 계약이다."""
+def upgrade():
+    """새 스키마를 적용한다."""
+    return None
+''',
+    }
+    assert ArchitectureChecker(sources).check() == []
+
+
+def test_current_business_modules_have_no_standalone_rule_functions():
+    import ast
+
+    package = Path(__file__).resolve().parents[1] / "src" / "neurath"
+    for layer in ("domain", "application"):
+        for path in (package / layer).rglob("*.py"):
+            tree = ast.parse(path.read_text())
+            assert not any(
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) for node in tree.body
+            ), path

@@ -24,6 +24,8 @@ aggregates. Each request uses the actual `ConnectionManager`, `SessionManager` a
 Successful requests commit once; failures roll back all parent/child changes. Integer revisions
 and the inherited repository's optimistic checks reject stale mutations.
 
+Dependency scope, duplicates and cycles are checked by `Task.validate_dependencies()` against its own identity and current or proposed dependencies. Original-text, definition, observation and wait validation also belongs to each aggregate/value object. No standalone validation function or utility class is introduced.
+
 ## States and observations
 
 | State | Meaning |
