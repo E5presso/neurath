@@ -4,8 +4,7 @@
 
 승인된 명세와 [기반 구조](docs/ko/core-foundation.md)의 책임 경계를 따릅니다.
 도메인 엔티티는 불변식과 상태 전이를 담당합니다. repository·관찰 port는 `ABC`와
-`@abstractmethod`를 사용하며 해당 adapter가 명시적으로 상속합니다. use case는
-별도 인터페이스 없이 구체 클래스로 작성합니다. 각 use case는 이름이 있는 불변 command/query를 받아 `execute`합니다.
+`@abstractmethod`를 사용하며 해당 adapter가 명시적으로 상속합니다. 유스케이스는 Spakky의 `ICommandUseCase` 또는 `IQueryUseCase`를 구현합니다. 입력은 `AbstractCommand` 또는 `AbstractQuery`를 상속하고 `run()`으로 처리합니다. Command/Query·Result DTO·UseCase를 같은 모듈에 정의하며 자체 인터페이스나 공통 DTO 패키지를 추가하지 않습니다.
 도메인은 Spakky의 `AbstractAggregateRoot`·`AbstractValueObject`를 사용합니다. 저장 포트와
 adapter는 `IGenericRepository`·`AbstractGenericRepository`의 기본 CRUD와 배치 메서드를
 다시 정의하지 않습니다. `@Table`·`AbstractMappableTable`·`SchemaRegistry`로 매핑하고
@@ -49,7 +48,7 @@ AST 검사는 import 별칭과 로컬 상속 관계를 해석해 Protocol, Liter
 ABC/abstractmethod 없는 port, 명시 계약 상속이 없는 repository/observer,
 비선언형 ORM 매핑을 거부합니다. 직접 만든 use case 인터페이스, frozen 또는 기본 값 동등성을 쓰는
 엔티티 dataclass, 조회·저장을 넘어서는 repository 계약, 엔티티를 노출하는 관찰 port,
-실제 호스트 어댑터에서의 직접 의존성 생성도 거부합니다. 모든 유스케이스는 Spakky command/query 계약과 run 메서드를 구현하고 입력도 프레임워크 기반을 상속해야 합니다. 동종 가변 길이 컬렉션 계약은 Sequence를 사용하며 고정 이종 tuple과 구분합니다. 응답은 application/dto에 두고 프로토콜이 없는 transport 중계 패키지는 두지 않습니다. Project는 불변 ProjectLocation 값을 소유하며
+실제 호스트 어댑터에서의 직접 의존성 생성도 거부합니다. 모든 유스케이스는 Spakky command/query 계약과 run 메서드를 구현하고 입력도 프레임워크 기반을 상속해야 합니다. 동종 가변 길이 컬렉션 계약은 Sequence를 사용하며 고정 이종 tuple과 구분합니다. 결과 DTO는 해당 유스케이스의 입력·처리와 같은 모듈에 두고 프로토콜이 없는 transport 중계 패키지는 두지 않습니다. Project는 불변 ProjectLocation 값을 소유하며
 위치 전용 repository·DI·생명주기를 만들지 않습니다. 자식 테이블은 ORM 관계로 매핑하여
 프로젝트와 원자적으로 저장합니다. 루트 선택·승격은 도메인 규칙입니다. 모든 저장소의
 삽입·갱신은 `save(entity) -> entity`로 통일하고 add·insert·create·update 저장 별칭은
@@ -87,7 +86,7 @@ DB 시험은 모두 임시 경로를 사용합니다. 이미 적용한 revision�
 개인 경로와 검증 원문은 공개 문서와 패키지에 넣지 않습니다.
 
 Python 3.14 문법은 Ruff UP로 검사하고 classmethod의 자기 타입 반환은 `Self`를 사용합니다.
-실패·정상 구조 fixture와 함께 하위 클래스 생성, 스냅샷 독립성, 실패 요청의 전체 상태 보존,
+실패·정상 구조 fixture와 함께 하위 클래스 생성, 요청 밖 반환 객체 변경의 비영속성, 실패 요청의 전체 상태 보존,
 Spakky 요청 격리와 초기화 실패 시 자원 정리를 공통 품질 검사에서 실행합니다.
 
 기본 저장 동작은 `FRAMEWORK_CRUD` 검사로 재구현을 거부합니다. `core_0002` 이전은 기존
@@ -107,3 +106,5 @@ omit, 커스텀 제외 규칙, `pragma: no cover`·`pragma: no branch`로 수치
 일반 무결성 오류 전달, 미완성 관찰 어댑터 실패를 실제 실행 경로로 검증합니다.
 
 보고서의 `excluded_lines`도 0이어야 합니다. 제외로 100%가 된 실제 보고서도 게이트가 거부합니다.
+
+유스케이스별 Result가 별도 패키지로 이동하거나 다른 모듈의 응답으로 대체되면 `RESULT_LOCATION` 검사가 실패합니다. 고정 revision 상수의 재도입은 `ALEMBIC_REVISION`, 제거한 프로토콜 없는 중계 모듈의 재도입은 `TRANSPORT_PASSTHROUGH`로 검사합니다. 모든 실제 유스케이스·입력의 프레임워크 상속과 결과 배치도 순회 검증합니다. 이 검사는 업무 책임의 의미적 적절성을 대신하지 않습니다.

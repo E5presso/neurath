@@ -28,7 +28,11 @@ from neurath.infrastructure.providers import DatabaseSettings, request_container
 from neurath.infrastructure.repositories.project import ProjectRepository
 from neurath.infrastructure.repositories.session import SessionRepository
 from tests.conftest import storage_scope
-from tests.support.session_requests import get_session_context, move_session, register_session
+from tests.support.session_requests import (
+    get_session_context,
+    move_session,
+    register_session,
+)
 
 
 def test_basic_contracts_and_methods_are_inherited_without_local_reimplementation():

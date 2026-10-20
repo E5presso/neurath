@@ -22,8 +22,19 @@ class RegisterProjectCommand(AbstractCommand):
     observation: DirectoryObservation
 
 
+@dataclass(frozen=True)
+class RegisterProjectResult:
+    """이 유스케이스의 처리 결과를 전달한다.
+
+    Attributes:
+        project: 관찰 위치를 소유하는 프로젝트.
+    """
+
+    project: Project
+
+
 @UseCase()
-class RegisterProjectUseCase(ICommandUseCase[RegisterProjectCommand, Project]):
+class RegisterProjectUseCase(ICommandUseCase[RegisterProjectCommand, RegisterProjectResult]):
     """위치로 프로젝트를 조회하고 도메인 규칙을 적용하여 전체를 저장한다."""
 
     def __init__(self, projects: IProjectRepository) -> None:
@@ -35,14 +46,14 @@ class RegisterProjectUseCase(ICommandUseCase[RegisterProjectCommand, Project]):
         self.projects = projects
 
     @override
-    def run(self, command: RegisterProjectCommand) -> Project:
+    def run(self, command: RegisterProjectCommand) -> RegisterProjectResult:
         """기존 프로젝트 참조를 유지하면서 관찰한 위치를 등록한다.
 
         Args:
             command: 도메인에서 해석할 정규화된 외부 관찰 사실을 담은 명령.
 
         Returns:
-            Project: 관찰 위치를 소유하는 저장된 프로젝트 aggregate.
+            RegisterProjectResult: 관찰 위치를 소유하는 저장된 프로젝트.
         """
         candidates = Project.identify(command.observation)
         owners: list[Project] = []
@@ -54,4 +65,4 @@ class RegisterProjectUseCase(ICommandUseCase[RegisterProjectCommand, Project]):
         if project is None:
             project = Project.create(command.observation)
         project.associate(candidates)
-        return self.projects.save(project)
+        return RegisterProjectResult(project=self.projects.save(project))

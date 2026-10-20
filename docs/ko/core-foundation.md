@@ -16,7 +16,7 @@
 - `SchemaRegistry`가 Table 태그를 통해 도메인과 실제 테이블을 연결합니다. 저장소가 매핑을 별도로 추적하지 않습니다.
 - `ApplicationContext`가 `@UseCase`, `@Repository`, 관찰 Pod와 프레임워크의 `ConnectionManager`, `SessionManager`, `Transaction`, `AggregateCollector`를 구성합니다.
 - 호출자는 요청 컨테이너에서 표준 `Transaction`을 열고 개별 유스케이스의 `run(command/query)`를 호출합니다. 성공 시 commit, 예외 시 rollback, 세션 종료는 프레임워크가 수행합니다. 실제 프로토콜 변환이 없는 `transport` 중계 계층과 별도 UoW는 없습니다.
-- 모든 유스케이스는 Spakky의 `ICommandUseCase` 또는 `IQueryUseCase`를 구현하며 입력은 `AbstractCommand` 또는 `AbstractQuery`를 상속합니다. 요청 뒤 반환하는 값은 `application/dto`의 응답 DTO이며 새 도메인 구성요소가 아닙니다.
+- 모든 유스케이스는 Spakky의 `ICommandUseCase` 또는 `IQueryUseCase`를 구현하며 입력은 `AbstractCommand` 또는 `AbstractQuery`를 상속합니다. 각 모듈에 Command/Query·Result DTO·UseCase를 함께 정의합니다. 프레임워크 제네릭의 결과 타입과 `run()` 반환 타입은 해당 모듈의 Result를 가리킵니다. 별도 DTO 패키지나 공통 응답 기반은 없습니다.
 - 요청 경계는 프레임워크의 미존재·버전 충돌 오류를 기존 `ContextNotFound`·`RevisionConflict`로 변환합니다. 세션이 요청한 프로젝트에 속하는지는 유스케이스가 도메인에 확인합니다.
 
 기본 CRUD의 SQL과 merge·flush·변경 aggregate 수집은 프레임워크 소유입니다.
@@ -46,7 +46,7 @@ Git 관찰은 DB 트랜잭션 시작 전에 마칩니다. 쓰기 연결은 첫 �
 `version_id_col`은 정수 revision에 연결하여 오래된 detached 저장과 실제 flush 경합을
 거부합니다. 프로젝트에도 저장소용 정수 revision을 추가합니다.
 
-반환된 엔티티는 ORM 수명과 독립적이며 요청 결과는 불변 snapshot입니다. 시각은 UTC로
+결과 DTO는 데이터 전달 계약이며 조회 결과 구성은 유스케이스가 담당합니다. DTO 필드의 재대입을 막는 frozen 선언과 내부 도메인 객체의 가변성은 구분합니다. 반환된 도메인 객체는 ORM 수명과 독립적이며 요청 밖에서 객체를 바꿔도 DB에 저장되지 않습니다. 시각은 UTC로
 왕복합니다. SQLite의 시각 저장 형태와 도메인 UTC 시각을 명시적으로 변환하여 같은 값을
 재저장할 때 시각 표현 차이로 UPDATE가 발생하지 않게 합니다. 같은 경로 이동과 같은
 위치 재연결은 변경 토큰·수정 시각·정수 revision을 증가시키지 않습니다.

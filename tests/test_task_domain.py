@@ -1,15 +1,9 @@
 """태스크 원문·정정·시도·외부 대기와 의존 규칙을 저장소 없이 검증한다."""
 
-from dataclasses import FrozenInstanceError, replace
+from dataclasses import replace
 
 import pytest
 
-from neurath.application.dto.task import (
-    SourceDTO,
-    TaskBoardDTO,
-    TaskDTO,
-    TaskHistoryDTO,
-)
 from neurath.domain.aggregates.request_source import RequestSource, SourceKind
 from neurath.domain.aggregates.task import Task, validate_dependencies
 from neurath.domain.errors import ContextNotFound, InvalidTaskState, RevisionConflict
@@ -71,8 +65,6 @@ def test_source_kinds_preserve_originals_and_distinguish_requirements(kind):
     assert original.body == "original text" and original.session_id == "session"
     assert original.reference == "ticket:140" and original.author == "peer"
     original.require_project("project")
-    snapshot = SourceDTO.from_entity(original)
-    assert snapshot.id == original.uid and snapshot.body == original.body
     if kind in (SourceKind.STATUS, SourceKind.SUMMARY):
         with pytest.raises(InvalidTaskState):
             original.require_requirement()
@@ -81,8 +73,6 @@ def test_source_kinds_preserve_originals_and_distinguish_requirements(kind):
     else:
         original.require_requirement()
         assert task(requirement=original).definition.source_id == original.uid
-    with pytest.raises(FrozenInstanceError):
-        snapshot.body = "changed"
 
 
 @pytest.mark.parametrize(
@@ -198,8 +188,7 @@ def test_submission_is_not_success_and_failed_attempt_can_retry_with_history():
     assert work.current_attempt_number == 2
     work.report(2, result(), 1)
     assert work.status is TaskStatus.SUCCEEDED and work.attempts[0].result == failed
-    history = TaskHistoryDTO.from_entity(work)
-    assert history.attempts == work.attempts and history.task.attempt.number == 2
+    assert len(work.attempts) == 2 and work.current_attempt_number == 2
     with pytest.raises(InvalidTaskState):
         work.start((work,))
 
@@ -221,7 +210,6 @@ def test_partial_result_remains_actionable_and_late_old_result_cannot_close_corr
     work.report(2, result(), 1)
     assert work.status is TaskStatus.PENDING and work.current_attempt_number is None
     assert work.attempt(2).result.outcome is Outcome.SUCCEEDED
-    assert TaskDTO.from_entity(work).attempt is None
     work.start((work,))
     work.report(3, result(), 1)
     assert work.status is TaskStatus.SUCCEEDED
@@ -251,9 +239,8 @@ def test_real_wait_preserves_same_attempt_and_independent_work():
         work.wait(replace(wait_condition(), resolution="already done"))
     work.wait(wait_condition())
     assert work.status is TaskStatus.WAITING
-    board = TaskBoardDTO.from_entities((work, independent), "session")
-    assert board.ready_task_ids == (independent.uid,) and not board.all_terminal
-    assert board.tasks[0].external_wait.observation == "job:running"
+    assert not work.ready((work, independent)) and independent.ready((work, independent))
+    assert work.waits[-1].observation == "job:running"
     with pytest.raises(ValueError):
         work.resume(" ")
     work.resume("job:completed")
@@ -261,7 +248,7 @@ def test_real_wait_preserves_same_attempt_and_independent_work():
     assert work.status is TaskStatus.ACTIVE and len(work.attempts) == 1
     work.wait(wait_condition())
     work.report(1, result(), 1)
-    assert TaskDTO.from_entity(work).external_wait is None
+    assert work.waits[-1].resolution is None
 
 
 def test_invalidation_preserves_old_results_and_never_counts_as_success():
@@ -272,8 +259,7 @@ def test_invalidation_preserves_old_results_and_never_counts_as_success():
         work.invalidate(fixed, " ")
     work.invalidate(fixed, "actual correction removed this requirement")
     work.report(1, result(), 1)
-    board = TaskBoardDTO.from_entities((work,), "session")
-    assert work.status is TaskStatus.INVALIDATED and board.all_terminal and not board.all_succeeded
+    assert work.status is TaskStatus.INVALIDATED
     assert work.attempt(1).result.outcome is Outcome.SUCCEEDED
     assert work.invalidated_reason and len(work.definitions) == 2
     with pytest.raises(InvalidTaskState):
@@ -306,10 +292,6 @@ def test_dependencies_require_real_success_and_cycle_detection_handles_shared_an
     assert left.ready(graph) and right.ready(graph)
     leaf.correct(correction(leaf), dependencies=(root.uid,))
     assert leaf.ready(graph)
-    board = TaskBoardDTO.from_entities((), "session")
-    assert not board.all_terminal and not board.all_succeeded
-    other = task(session_id="other")
-    assert TaskBoardDTO.from_entities((other,), "session").tasks == ()
 
 
 def test_sequence_contracts_accept_lists_without_owning_the_callers_mutable_dependencies():

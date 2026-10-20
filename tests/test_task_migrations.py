@@ -141,29 +141,29 @@ def test_database_foreign_keys_reject_cross_project_records_atomically(
         with storage_scope(database) as scope:
             if kind == "source-session":
                 item = RequestSource.create(
-                    local.project.id, foreign.session.id, SourceKind.PROMPT, "wrong scope"
+                    local.project.uid, foreign.session.uid, SourceKind.PROMPT, "wrong scope"
                 )
                 scope.get(IRequestSourceRepository).save(item)
             elif kind == "task-owner":
                 item = Task.create(
-                    local.project.id,
-                    foreign.session.id,
-                    scope.get(IRequestSourceRepository).get(original.id),
+                    local.project.uid,
+                    foreign.session.uid,
+                    scope.get(IRequestSourceRepository).get(original.uid),
                     "task",
                     "result",
                 )
                 scope.get(ITaskRepository).save(item)
             else:
                 item = Task.create(
-                    local.project.id,
-                    local.session.id,
-                    scope.get(IRequestSourceRepository).get(original.id),
+                    local.project.uid,
+                    local.session.uid,
+                    scope.get(IRequestSourceRepository).get(original.uid),
                     "task",
                     "result",
                 )
                 from dataclasses import replace
 
-                item.definitions = (replace(item.definition, source_id=foreign_source.id),)
+                item.definitions = (replace(item.definition, source_id=foreign_source.uid),)
                 scope.get(ITaskRepository).save(item)
     assert snapshot(database) == before
     with storage_scope(database, write=False) as scope:

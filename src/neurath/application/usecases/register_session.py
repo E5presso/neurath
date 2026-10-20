@@ -6,12 +6,12 @@ from typing import override
 from spakky.core.stereotype.usecase import UseCase
 from spakky.domain.application.command import AbstractCommand, ICommandUseCase
 
-from neurath.application.dto.session import SessionDTO
 from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.application.usecases.register_project import (
     RegisterProjectCommand,
     RegisterProjectUseCase,
 )
+from neurath.domain.aggregates.project import Project
 from neurath.domain.aggregates.session import HostSession
 from neurath.domain.observations import DirectoryObservation
 
@@ -31,8 +31,21 @@ class RegisterSessionCommand(AbstractCommand):
     host_session_id: str
 
 
+@dataclass(frozen=True)
+class RegisterSessionResult:
+    """이 유스케이스의 처리 결과를 전달한다.
+
+    Attributes:
+        project: 요청한 프로젝트.
+        session: 처리하거나 조회한 세션.
+    """
+
+    project: Project
+    session: HostSession
+
+
 @UseCase()
-class RegisterSessionUseCase(ICommandUseCase[RegisterSessionCommand, SessionDTO]):
+class RegisterSessionUseCase(ICommandUseCase[RegisterSessionCommand, RegisterSessionResult]):
     """저장 수명을 소유하지 않고 프로젝트와 세션 규칙을 조정한다."""
 
     def __init__(self, projects: RegisterProjectUseCase, sessions: ISessionRepository) -> None:
@@ -46,16 +59,16 @@ class RegisterSessionUseCase(ICommandUseCase[RegisterSessionCommand, SessionDTO]
         self.sessions = sessions
 
     @override
-    def run(self, command: RegisterSessionCommand) -> SessionDTO:
-        """요청한 작업을 적용하고 분리된 불변 컨텍스트를 반환한다.
+    def run(self, command: RegisterSessionCommand) -> RegisterSessionResult:
+        """요청한 작업을 적용하고 분리된 처리 결과를 반환한다.
 
         Args:
             command: 요청 경계에서 전달한 명시적인 명령 또는 조회.
 
         Returns:
-            SessionDTO: 작업 후 프로젝트와 세션의 분리된 상태.
+            RegisterSessionResult: 처리 후 프로젝트와 세션.
         """
-        project = self.projects.run(RegisterProjectCommand(command.observation))
+        project = self.projects.run(RegisterProjectCommand(command.observation)).project
         session = self.sessions.find(project.id, command.provider, command.host_session_id)
         if session is None:
             session = HostSession.create(
@@ -65,4 +78,4 @@ class RegisterSessionUseCase(ICommandUseCase[RegisterSessionCommand, SessionDTO]
                 working_directory=command.observation.working_directory,
             )
             session = self.sessions.save(session)
-        return SessionDTO.from_entities(project, session)
+        return RegisterSessionResult(project=project, session=session)

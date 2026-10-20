@@ -669,9 +669,7 @@ def records() -> Sequence[str]:
 def pair() -> tuple[str, int]:
     """서로 다른 두 값을 반환한다."""
     return ("value", 1)
-'''.replace(
-        "프레임워크 계약의 별칭과 컬렉션을 검증한다.", "프레임워크 계약의 별칭과 컬렉션을 검증한다."
-    )
+'''
     assert ArchitectureChecker({"neurath.application.usecases.example": source}).check() == []
 
 
@@ -687,6 +685,7 @@ def test_every_real_usecase_and_request_implements_the_framework_contract():
 
     usecases = []
     requests = []
+    results = []
     for info in pkgutil.iter_modules(package.__path__, package.__name__ + "."):
         module = importlib.import_module(info.name)
         for name, cls in inspect.getmembers(module, inspect.isclass):
@@ -697,8 +696,70 @@ def test_every_real_usecase_and_request_implements_the_framework_contract():
                 assert not inspect.isabstract(cls), cls
                 assert "run" in cls.__dict__, cls
                 assert "execute" not in cls.__dict__, cls
+                from dataclasses import is_dataclass
+                from typing import get_type_hints
+
+                result_type = get_type_hints(cls.run)["return"]
+                assert result_type.__module__ == module.__name__, cls
+                assert (
+                    result_type.__name__
+                    == name.removesuffix("UseCase").removesuffix("Result") + "Result"
+                ), cls
+                assert is_dataclass(result_type) and result_type.__dataclass_params__.frozen, cls
+                results.append(result_type)
                 usecases.append(cls)
             elif name.endswith(("Command", "Query")):
                 assert issubclass(cls, (AbstractCommand, AbstractQuery)), cls
                 requests.append(cls)
-    assert len(usecases) == len(requests) == 16
+    assert len(usecases) == len(requests) == len(results) == 16
+
+
+@pytest.mark.parametrize(
+    ("module", "source", "rule"),
+    [
+        ("neurath.application.dto.task", "class TaskDTO: pass", "RESULT_LOCATION"),
+        ("neurath.transport.task_requests", "def get_task(request): pass", "TRANSPORT_PASSTHROUGH"),
+        (
+            "neurath.transport.session_requests",
+            "def register_session(request): pass",
+            "TRANSPORT_PASSTHROUGH",
+        ),
+        ("neurath.infrastructure.database", 'SCHEMA_REVISION = "core_0003"', "ALEMBIC_REVISION"),
+        ("neurath.infrastructure.database", 'CURRENT_HEAD: str = "core_0004"', "ALEMBIC_REVISION"),
+        (
+            "neurath.application.usecases.get_task",
+            "class GetTaskUseCase:\n def run(self, query) -> str: pass",
+            "RESULT_LOCATION",
+        ),
+        (
+            "neurath.application.usecases.get_task",
+            "from neurath.application.results import GetTaskResult\nclass GetTaskUseCase:\n def run(self, query) -> GetTaskResult: pass",
+            "RESULT_LOCATION",
+        ),
+    ],
+)
+def test_reviewed_result_placement_revision_and_relay_regressions_fail(module, source, rule):
+    errors = ArchitectureChecker({module: source}).check()
+    assert any(f" {rule}:" in error for error in errors), errors
+
+
+def test_local_input_result_and_handler_are_valid_together():
+    source = '''"""같은 모듈에 입출력 계약을 정의한다."""
+from collections.abc import Sequence
+from dataclasses import dataclass
+from spakky.domain import AbstractQuery, IQueryUseCase
+@dataclass(frozen=True)
+class GetNamesQuery(AbstractQuery):
+    """조회할 프로젝트를 지정한다."""
+    project_id: str
+@dataclass(frozen=True)
+class GetNamesResult:
+    """조회한 이름을 전달한다."""
+    names: Sequence[str]
+class GetNamesUseCase(IQueryUseCase[GetNamesQuery, GetNamesResult]):
+    """동일한 모듈의 입출력 계약을 구현한다."""
+    def run(self, query: GetNamesQuery) -> GetNamesResult:
+        """명시한 범위의 결과를 반환한다."""
+        return GetNamesResult(names=())
+'''
+    assert ArchitectureChecker({"neurath.application.usecases.get_names": source}).check() == []

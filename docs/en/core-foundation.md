@@ -16,7 +16,7 @@ Public CLI, hooks and installation remain subsequent implementation work.
 - `SchemaRegistry` resolves domain/table mappings from Table tags. Repositories do not maintain another mapping registry.
 - `ApplicationContext` composes `@UseCase`, `@Repository`, observation Pods and the framework's `ConnectionManager`, `SessionManager`, `Transaction`, and `AggregateCollector`.
 - Callers resolve a use case in the request container, open the standard `Transaction`, and invoke `run(command/query)`. Spakky owns commit, rollback and session closure. No pass-through `transport` package or custom unit of work is provided.
-- Every use case implements Spakky `ICommandUseCase` or `IQueryUseCase`; inputs inherit `AbstractCommand` or `AbstractQuery`. Response DTOs live in `application/dto` and are application data, not a new domain concept.
+- Every use case implements Spakky `ICommandUseCase` or `IQueryUseCase`; inputs inherit `AbstractCommand` or `AbstractQuery`. Each module defines its Command/Query, Result DTO, and UseCase together. The framework result parameter and run return annotation reference that local Result. There is no separate DTO package or shared response hierarchy.
 - The request boundary maps framework missing-entity and version-conflict errors to `ContextNotFound` and `RevisionConflict`. Use cases ask the domain to validate session/project scope.
 
 SQL for basic CRUD, merge, flush and aggregate collection belongs to the framework.
@@ -49,7 +49,7 @@ is a domain change token and does not replace the existing integer request `revi
 SQLAlchemy `version_id_col` uses integer revision to reject stale detached saves and
 flush races. Projects receive a storage revision as well.
 
-Entities are detached from ORM lifetimes; request responses are immutable snapshots.
+Result DTOs carry data; use cases compose query results. A frozen result prevents field reassignment without making its domain payload immutable. Returned domain objects are detached from ORM lifetimes, so changing them outside a request does not persist changes.
 Timestamps round-trip through UTC. Explicit conversion between SQLite storage and
 UTC domain values prevents unchanged timestamps from causing an UPDATE. Same-directory
 moves and repeated location association preserve change tokens, timestamps and revisions.

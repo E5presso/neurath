@@ -7,9 +7,9 @@ from typing import override
 from spakky.core.stereotype.usecase import UseCase
 from spakky.domain.application.query import AbstractQuery, IQueryUseCase
 
-from neurath.application.dto.task import SourceDTO
 from neurath.application.ports.repositories.request_source import IRequestSourceRepository
 from neurath.application.ports.repositories.session import ISessionRepository
+from neurath.domain.aggregates.request_source import RequestSource
 
 
 @dataclass(frozen=True)
@@ -25,8 +25,19 @@ class GetSourcesQuery(AbstractQuery):
     session_id: str
 
 
+@dataclass(frozen=True)
+class GetSourcesResult:
+    """이 유스케이스의 처리 결과를 전달한다.
+
+    Attributes:
+        sources: 프로젝트에 보존한 원문과 정정 계보.
+    """
+
+    sources: Sequence[RequestSource]
+
+
 @UseCase()
-class GetSourcesUseCase(IQueryUseCase[GetSourcesQuery, Sequence[SourceDTO]]):
+class GetSourcesUseCase(IQueryUseCase[GetSourcesQuery, GetSourcesResult]):
     """프레임워크 저장 계약으로 한 요청의 도메인 동작을 조정한다."""
 
     def __init__(self, sessions: ISessionRepository, sources: IRequestSourceRepository) -> None:
@@ -40,16 +51,14 @@ class GetSourcesUseCase(IQueryUseCase[GetSourcesQuery, Sequence[SourceDTO]]):
         self.sources = sources
 
     @override
-    def run(self, query: GetSourcesQuery) -> Sequence[SourceDTO]:
-        """명시한 요청을 적용하고 불변 결과를 반환한다.
+    def run(self, query: GetSourcesQuery) -> GetSourcesResult:
+        """명시한 요청을 적용하고 결과를 반환한다.
 
         Args:
             query: 원문·범위·관찰에 연결된 입력.
 
         Returns:
-            Sequence[SourceDTO]: 현재 상태를 나타내는 불변 결과.
+            GetSourcesResult: 처리한 원장과 현재 상태.
         """
         self.sessions.get(query.session_id).require_project(query.project_id)
-        return tuple(
-            SourceDTO.from_entity(source) for source in self.sources.list(query.project_id)
-        )
+        return GetSourcesResult(sources=self.sources.list(query.project_id))

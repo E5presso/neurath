@@ -6,7 +6,7 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 - 코어는 hook·CLI 요청마다 사용자 단위 단일 SQLite의 상태를 조회해 처리하는 stateless service다. 프로젝트·세션은 DB 안에서 구분한다. 지속 상태를 상주 코어 메모리에 의존시키지 않는다.
 - 설치된 rules가 기본 진입점이며 에이전트가 요청에 맞는 스킬을 선택한다. 사용자 지정 스킬은 그 지정을 따르고 단순 대화에는 강제하지 않는다. 선택한 스킬은 CLI로 시작하며 phase는 기존 runner가 관리한다.
 - 태스크/TODO의 완료 여부는 종료 훅이 결정론적으로 검사한다. 사용자 의도 충족과 요청된 회고의 내용 평가는 별도 서브에이전트 또는 다른 provider에게 위탁한다. 결과 평가는 작업 묶음을 마무리하는 스킬의 phase로 관리하고 회고 제안·거절은 원래 작업 종료와 구분한다.
-- 도메인 규칙은 `src/neurath/domain`, 유스케이스는 `application`, SQLAlchemy·Alembic과 요청별 구성은 `infrastructure`에 둔다. 응답 DTO는 `application/dto`에 두며 현재 존재하지 않는 CLI·호스트 어댑터의 중계 계층은 만들지 않는다. 도메인은 외부 계층에 의존하지 않는다.
+- 도메인 규칙은 `src/neurath/domain`, 유스케이스는 `application`, SQLAlchemy·Alembic과 요청별 구성은 `infrastructure`에 둔다. 유스케이스의 Command/Query·Result DTO·UseCase는 같은 `application/usecases/<동작>.py` 모듈에 정의한다. 별도 `application/dto` 패키지나 공통 응답 기반을 만들지 않는다. 실제 CLI·호스트 프로토콜을 처리하지 않는 호출 중계 계층도 만들지 않는다. 도메인은 외부 계층에 의존하지 않는다.
 - 기존 데이터 이전은 `migration`의 명시적 보존 경계에서 수행한다. 원본 DB를 수정하거나 미완료 작업을 임의로 완료·취소하지 않는다.
 - 새 설계는 Python + Typer 기반 `neurath` CLI 전용이며 MCP 서버나 어댑터를 제공하지 않는다. 릴리스 시 실제 CLI 정의에서 가이드 프롬프트를 생성하고 설치 시 관리 영역에 반영한다. 네이티브 호스트의 실행 권한과 사용자 승인을 하네스 기록으로 대체하지 않는다.
 - `uv sync --locked`로 개발 환경을 준비하고 `uv run --locked python tools/check.py`로 필수 검사를 실행한다.
@@ -35,3 +35,7 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 
 - 동종 컬렉션의 포트·DTO·도메인 계약은 collections.abc.Sequence로 선언한다. Sequence 자체가 실행 시 불변성을 보장하지는 않으며 소유 이력의 저장 구현에는 tuple snapshot을 사용할 수 있다. 고정된 이종 쌍의 tuple과 구분한다.
 - 스키마 revision은 Alembic migration 파일과 version table만 관리한다. 일반 요청은 MigrationContext의 현재 heads와 ScriptDirectory의 배포 heads로 호환성을 확인하며 별도 최신 revision 상수를 유지하지 않는다. 일반 요청에서 자동 이전하지 않는다.
+
+- 결과 DTO는 입력 DTO와 마찬가지로 해당 유스케이스의 계약이다. `<동작>Result`를 같은 모듈에 정의하고 프레임워크 제네릭의 결과 타입과 run 반환 타입으로 사용한다. 반환할 데이터만 담고 상태 전이·의존 판단은 도메인, 조회 결과 구성은 해당 유스케이스가 담당한다. CLI·훅은 실제 호출자로서 출력 형식 변환을 담당한다. DTO 명칭이나 위치 변경만으로 책임 문제가 해결됐다고 판단하지 않는다.
+- 리뷰 지적은 해당 줄뿐 아니라 같은 패턴 전체를 조사하고, 수정·지침·정상/실패 회귀 fixture를 함께 반영한다. Sequence 계약, Spakky command/query·입력 기반 상속과 run, 유스케이스별 결과 배치, Alembic revision 단일 관리, 프로토콜 없는 transport 중계 제거를 공통 pre-commit/CI에서 확인한다. 구문 검사가 의미적 책임까지 입증한다고 주장하지 않는다.
+- 사용자 응대와 PR 답글은 한국어 존댓말로 작성한다. 자신을 가리킬 때는 저·제가·제 표현을 사용한다. 설명이 잘못됐으면 잘못된 판단을 명확히 정정하고 요청 범위를 바꾸지 않는다.

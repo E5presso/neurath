@@ -21,7 +21,12 @@ from neurath.infrastructure.database import (
     verify_schema,
 )
 from tests.conftest import initialize_git
-from tests.support.session_requests import get_session_context, move_session, register_session
+from tests.support.session_requests import (
+    get_session_context,
+    move_session,
+    register_session,
+    session_state,
+)
 
 
 def test_database_path_is_user_wide_and_relative_xdg_is_rejected(tmp_path, monkeypatch):
@@ -46,7 +51,9 @@ def test_missing_database_is_not_implicitly_created_and_initialize_is_idempotent
     initialize_database(database)
     first = register_session(str(tmp_path), "codex", "native", database_path=database)
     initialize_database(database)
-    assert get_session_context(first.project.id, first.session.id, database_path=database) == first
+    assert session_state(
+        get_session_context(first.project.id, first.session.id, database_path=database)
+    ) == session_state(first)
 
 
 def test_legacy_database_bytes_are_preserved_on_rejected_initialization(tmp_path):
@@ -90,7 +97,9 @@ def test_original_schema_records_are_readable_and_updatable_without_data_convers
     initialize_git(folder)
     child = folder / "child"
     child.mkdir()
-    assert register_session(str(folder), "codex", "native", database_path=path) == original
+    assert session_state(
+        register_session(str(folder), "codex", "native", database_path=path)
+    ) == session_state(original)
     changed = move_session(
         original.project.id, original.session.id, str(child), 7, database_path=path
     )
@@ -283,10 +292,9 @@ def test_metadata_downgrade_preserves_original_records_and_can_upgrade(database,
     finally:
         engine.dispose()
     initialize_database(database)
-    assert (
+    assert session_state(
         get_session_context(original.project.id, original.session.id, database_path=database)
-        == original
-    )
+    ) == session_state(original)
     with closing(sqlite3.connect(database)) as connection:
         assert connection.execute(
             "SELECT name FROM sqlite_master WHERE type='trigger'"
@@ -308,10 +316,9 @@ def test_destructive_downgrade_is_rejected_and_rolls_back_intermediate_metadata_
     finally:
         engine.dispose()
     assert database.read_bytes() == before
-    assert (
+    assert session_state(
         get_session_context(original.project.id, original.session.id, database_path=database)
-        == original
-    )
+    ) == session_state(original)
     with closing(sqlite3.connect(database)) as connection:
         assert connection.execute("SELECT version_num FROM core_schema_revision").fetchone() == (
             "core_0003",
@@ -367,7 +374,9 @@ def downgrade():
         get_session_context(first.project.id, first.session.id, database_path=database)
     assert database.read_bytes() == before
     initialize_database(database)
-    assert get_session_context(first.project.id, first.session.id, database_path=database) == first
+    assert session_state(
+        get_session_context(first.project.id, first.session.id, database_path=database)
+    ) == session_state(first)
     with closing(sqlite3.connect(database)) as connection:
         assert connection.execute("SELECT version_num FROM core_schema_revision").fetchone() == (
             "core_0004_review_probe",

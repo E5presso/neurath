@@ -60,8 +60,8 @@ def record(database, actor, kind=SourceKind.PROMPT, *, corrects_id=None, author=
     return run(
         RecordSourceUseCase,
         RecordSourceCommand(
-            actor.project.id,
-            actor.session.id,
+            actor.project.uid,
+            actor.session.uid,
             kind,
             "original requirement text",
             author,
@@ -69,7 +69,7 @@ def record(database, actor, kind=SourceKind.PROMPT, *, corrects_id=None, author=
             corrects_id,
         ),
         database_path=database,
-    )
+    ).source
 
 
 def create(
@@ -79,24 +79,24 @@ def create(
     return run(
         CreateTaskUseCase,
         CreateTaskCommand(
-            actor.project.id,
-            actor.session.id,
-            original.id,
+            actor.project.uid,
+            actor.session.uid,
+            original.uid,
             title,
             "artifact exists with required content",
             dependencies,
             follow_up_of,
         ),
         database_path=database,
-    )
+    ).task
 
 
 def start(database, task):
     return run(
         StartTaskUseCase,
-        StartTaskCommand(task.project_id, task.owner_session_id, task.id, task.revision),
+        StartTaskCommand(task.project_id, task.owner_session_id, task.uid, task.revision),
         database_path=database,
-    )
+    ).task
 
 
 def report(
@@ -109,7 +109,7 @@ def report(
     remaining=None,
     exit_code=0,
 ):
-    number = task.attempt.number if attempt is None else attempt
+    number = task.current_attempt_number if attempt is None else attempt
     result = TaskResult(
         outcome=outcome,
         summary="observed result",
@@ -120,23 +120,23 @@ def report(
     return run(
         ReportResultUseCase,
         ReportResultCommand(
-            task.project_id, task.owner_session_id, task.id, task.revision, number, result
+            task.project_id, task.owner_session_id, task.uid, task.revision, number, result
         ),
         database_path=database,
-    )
+    ).task
 
 
 def history(database, task):
     return run(
         GetTaskUseCase,
-        GetTaskQuery(task.project_id, task.owner_session_id, task.id),
+        GetTaskQuery(task.project_id, task.owner_session_id, task.uid),
         database_path=database,
-    )
+    ).task
 
 
 def board(database, actor):
     return run(
-        GetTasksUseCase, GetTasksQuery(actor.project.id, actor.session.id), database_path=database
+        GetTasksUseCase, GetTasksQuery(actor.project.uid, actor.session.uid), database_path=database
     )
 
 
@@ -162,22 +162,22 @@ def test_source_reuse_keeps_original_session_and_nonhuman_author_without_new_hum
     assert (
         run(
             GetSourcesUseCase,
-            GetSourcesQuery(first.project.id, first.session.id),
+            GetSourcesQuery(first.project.uid, first.session.uid),
             database_path=database,
-        )
+        ).sources
         == ()
     )
     source = record(database, first, kind, author="peer:existing assignment")
     work = create(database, peer, source=source)
-    assert work.owner_session_id == peer.session.id and work.definition.source_id == source.id
+    assert work.owner_session_id == peer.session.uid and work.definition.source_id == source.uid
     assert board(database, first).tasks == ()
     assert board(database, peer).tasks == (work,)
     sources = run(
         GetSourcesUseCase,
-        GetSourcesQuery(first.project.id, peer.session.id),
+        GetSourcesQuery(first.project.uid, peer.session.uid),
         database_path=database,
-    )
-    assert sources == (source,) and sources[0].session_id == first.session.id
+    ).sources
+    assert sources == (source,) and sources[0].session_id == first.session.uid
     assert sources[0].author == "peer:existing assignment"
     before = snapshot(database)
     with pytest.raises(ContextNotFound):
@@ -185,9 +185,9 @@ def test_source_reuse_keeps_original_session_and_nonhuman_author_without_new_hum
     with pytest.raises(ContextNotFound):
         run(
             GetTaskUseCase,
-            GetTaskQuery(work.project_id, first.session.id, work.id),
+            GetTaskQuery(work.project_id, first.session.uid, work.uid),
             database_path=database,
-        )
+        ).task
     assert snapshot(database) == before
 
 
@@ -201,11 +201,14 @@ def test_actual_failed_command_retry_and_followup_preserve_results_and_todo(
     submitted = run(
         SubmitResultUseCase,
         SubmitResultCommand(
-            active.project_id, active.owner_session_id, active.id, active.revision, 1, submission
+            active.project_id, active.owner_session_id, active.uid, active.revision, 1, submission
         ),
         database_path=database,
+    ).task
+    assert (
+        submitted.status is TaskStatus.ACTIVE
+        and submitted.attempt(submitted.current_attempt_number).result is None
     )
-    assert submitted.status is TaskStatus.ACTIVE and submitted.attempt.result is None
     before_stale = snapshot(database)
     with pytest.raises(RevisionConflict):
         report(database, active)
@@ -227,19 +230,19 @@ def test_actual_failed_command_retry_and_followup_preserve_results_and_todo(
     assert failed_board.tasks == (failed,)
     source = run(
         GetSourcesUseCase,
-        GetSourcesQuery(actor.project.id, actor.session.id),
+        GetSourcesQuery(actor.project.uid, actor.session.uid),
         database_path=database,
-    )[0]
+    ).sources[0]
     followup = create(
-        database, actor, source=source, title="validate produced artifact", follow_up_of=failed.id
+        database, actor, source=source, title="validate produced artifact", follow_up_of=failed.uid
     )
     assert (
-        followup.follow_up_of == failed.id
-        and history(database, failed).task.status is TaskStatus.FAILED
+        followup.follow_up_of == failed.uid
+        and history(database, failed).status is TaskStatus.FAILED
     )
-    assert followup.id in board(database, actor).ready_task_ids
+    assert followup.uid in board(database, actor).ready_task_ids
     retry = start(database, failed)
-    assert retry.attempt.number == 2
+    assert retry.current_attempt_number == 2
     artifact = tmp_path / "produced.txt"
     process = subprocess.run(
         [
@@ -284,24 +287,27 @@ def test_correction_only_changes_selected_fields_and_late_result_does_not_close_
         CorrectTaskCommand(
             active.project_id,
             active.owner_session_id,
-            active.id,
+            active.uid,
             active.revision,
-            correction.id,
+            correction.uid,
             required_result="corrected artifact",
         ),
         database_path=database,
-    )
+    ).task
     assert (
         corrected.definition.title == original.title
         and corrected.definition.dependencies == original.dependencies
     )
     late = report(database, corrected, attempt=1)
-    assert late.status is TaskStatus.PENDING and late.attempt is None
+    assert late.status is TaskStatus.PENDING and late.current_attempt_number is None
     saved = history(database, late)
     assert saved.definitions == (original, corrected.definition)
     assert saved.attempts[0].result.outcome is Outcome.SUCCEEDED
     now = report(database, start(database, late))
-    assert now.status is TaskStatus.SUCCEEDED and now.attempt.definition_number == 2
+    assert (
+        now.status is TaskStatus.SUCCEEDED
+        and now.attempt(now.current_attempt_number).definition_number == 2
+    )
     assert len(history(database, now).attempts) == 2
 
 
@@ -311,7 +317,10 @@ def test_partial_wait_resume_and_independent_task_keep_exact_same_attempt(
     actor, _, _ = actors
     active = start(database, create(database, actor))
     partial = report(database, active, Outcome.PARTIAL, remaining="finish remaining artifact")
-    assert partial.status is TaskStatus.PENDING and partial.attempt.result.remaining_work
+    assert (
+        partial.status is TaskStatus.PENDING
+        and partial.attempt(partial.current_attempt_number).result.remaining_work
+    )
     active = start(database, partial)
     independent = create(database, actor, title="independent requirement")
     target = tmp_path / "external-result"
@@ -325,13 +334,13 @@ def test_partial_wait_resume_and_independent_task_keep_exact_same_attempt(
     waiting = run(
         WaitTaskUseCase,
         WaitTaskCommand(
-            active.project_id, active.owner_session_id, active.id, active.revision, condition
+            active.project_id, active.owner_session_id, active.uid, active.revision, condition
         ),
         database_path=database,
-    )
+    ).task
     current = board(database, actor)
-    assert current.ready_task_ids == (independent.id,) and not current.all_terminal
-    assert next(item for item in current.tasks if item.id == waiting.id).external_wait == condition
+    assert current.ready_task_ids == (independent.uid,) and not current.all_terminal
+    assert next(item for item in current.tasks if item.uid == waiting.uid).waits[-1] == condition
     with pytest.raises(InvalidTaskState):
         start(database, waiting)
     target.write_text("external result")
@@ -340,13 +349,13 @@ def test_partial_wait_resume_and_independent_task_keep_exact_same_attempt(
         ResumeTaskCommand(
             waiting.project_id,
             waiting.owner_session_id,
-            waiting.id,
+            waiting.uid,
             waiting.revision,
             f"read:{target.read_text()}",
         ),
         database_path=database,
-    )
-    assert resumed.attempt.number == active.attempt.number == 2
+    ).task
+    assert resumed.current_attempt_number == active.current_attempt_number == 2
     saved = history(database, resumed)
     assert len(saved.attempts) == 2 and saved.waits[0].resolution == "read:external result"
     assert resumed.status is TaskStatus.ACTIVE
@@ -366,15 +375,15 @@ def test_status_question_and_summary_do_not_create_or_revise_goals(database, act
             CorrectTaskCommand(
                 work.project_id,
                 work.owner_session_id,
-                work.id,
+                work.uid,
                 work.revision,
-                informational.id,
+                informational.uid,
                 title="unrequested goal",
             ),
             database_path=database,
-        )
+        ).task
     assert snapshot(database) == before
-    assert history(database, work).task == work
+    assert history(database, work) == work
 
 
 def test_dependency_correction_rejects_cycle_and_keeps_previous_graph_and_other_tasks(
@@ -382,7 +391,7 @@ def test_dependency_correction_rejects_cycle_and_keeps_previous_graph_and_other_
 ):
     actor, _, _ = actors
     parent = create(database, actor, title="parent")
-    child = create(database, actor, title="child", dependencies=(parent.id,))
+    child = create(database, actor, title="child", dependencies=(parent.uid,))
     with pytest.raises(InvalidTaskState):
         start(database, child)
     correction = record(
@@ -395,37 +404,37 @@ def test_dependency_correction_rejects_cycle_and_keeps_previous_graph_and_other_
             CorrectTaskCommand(
                 parent.project_id,
                 parent.owner_session_id,
-                parent.id,
+                parent.uid,
                 parent.revision,
-                correction.id,
-                dependencies=(child.id,),
+                correction.uid,
+                dependencies=(child.uid,),
             ),
             database_path=database,
-        )
+        ).task
     with pytest.raises(ContextNotFound):
         create(database, actor, source=correction, dependencies=("missing",))
     assert snapshot(database) == before
     report(database, start(database, parent))
-    assert child.id in board(database, actor).ready_task_ids
+    assert child.uid in board(database, actor).ready_task_ids
     corrected = run(
         CorrectTaskUseCase,
         CorrectTaskCommand(
             child.project_id,
             child.owner_session_id,
-            child.id,
+            child.uid,
             child.revision,
             record(
                 database, actor, SourceKind.CORRECTION, corrects_id=child.definition.source_id
-            ).id,
+            ).uid,
             title="changed child",
             dependencies=(),
         ),
         database_path=database,
-    )
+    ).task
     saved = history(database, corrected)
-    assert saved.definitions[0].dependencies == (parent.id,)
+    assert saved.definitions[0].dependencies == (parent.uid,)
     assert saved.definitions[1].dependencies == ()
-    assert history(database, parent).task.status is TaskStatus.SUCCEEDED
+    assert history(database, parent).status is TaskStatus.SUCCEEDED
 
 
 def test_invalidated_task_never_revives_from_late_result_and_is_not_all_successful(
@@ -439,13 +448,13 @@ def test_invalidated_task_never_revives_from_late_result_and_is_not_all_successf
         InvalidateTaskCommand(
             active.project_id,
             active.owner_session_id,
-            active.id,
+            active.uid,
             active.revision,
-            change.id,
+            change.uid,
             "actual user correction",
         ),
         database_path=database,
-    )
+    ).task
     late = report(database, invalidated, attempt=1)
     assert late.status is TaskStatus.INVALIDATED
     current = board(database, actor)
@@ -466,7 +475,7 @@ def test_stale_mutation_and_duplicate_result_keep_current_revision(database, act
         report(database, done, Outcome.FAILED, remaining="contradictory report", exit_code=7)
     with pytest.raises(ContextNotFound):
         report(database, done, attempt=404)
-    assert history(database, done).task == done
+    assert history(database, done) == done
 
 
 def test_concurrent_start_has_one_winner_and_never_creates_duplicate_attempts(database, actors):
@@ -483,7 +492,7 @@ def test_concurrent_start_has_one_winner_and_never_creates_duplicate_attempts(da
         started = list(executor.map(begin, range(2)))
     assert sum(item is not None for item in started) == 1
     saved = history(database, work)
-    assert saved.task.status is TaskStatus.ACTIVE and len(saved.attempts) == 1
+    assert saved.status is TaskStatus.ACTIVE and len(saved.attempts) == 1
 
 
 def test_exception_after_generic_flush_rolls_back_attempt_definition_and_state(
@@ -510,19 +519,19 @@ def test_source_correction_and_followup_cannot_cross_project_scope(database, act
     foreign_task = create(database, outside, source=foreign)
     before = snapshot(database)
     with pytest.raises(ContextNotFound):
-        record(database, actor, SourceKind.CORRECTION, corrects_id=foreign.id)
+        record(database, actor, SourceKind.CORRECTION, corrects_id=foreign.uid)
     with pytest.raises(ContextNotFound):
         create(database, actor, source=foreign)
     local = record(database, actor)
     before = snapshot(database)
     with pytest.raises(ContextNotFound):
-        create(database, actor, source=local, follow_up_of=foreign_task.id)
+        create(database, actor, source=local, follow_up_of=foreign_task.uid)
     with pytest.raises(ContextNotFound):
         run(
             GetSourcesUseCase,
-            GetSourcesQuery(actor.project.id, outside.session.id),
+            GetSourcesQuery(actor.project.uid, outside.session.uid),
             database_path=database,
-        )
+        ).sources
     assert snapshot(database) == before
 
 
@@ -544,7 +553,7 @@ def test_source_and_task_repositories_inherit_all_basic_methods(database, actors
             assert method not in adapter.__dict__
             assert getattr(adapter, method) is getattr(AbstractGenericRepository, method)
     with storage_scope(database, write=False) as scope:
-        task = scope.get(ITaskRepository).get(work.id)
+        task = scope.get(ITaskRepository).get(work.uid)
         assert task.definitions[0].source_id == work.definition.source_id
         assert (
             scope.get(IRequestSourceRepository).get(task.definition.source_id).body
@@ -564,17 +573,17 @@ from dataclasses import asdict
 from pathlib import Path
 from neurath.application.usecases.get_tasks import GetTasksQuery, GetTasksUseCase
 from tests.support.requests import run
-print(json.dumps(asdict(run(GetTasksUseCase, GetTasksQuery(sys.argv[2],sys.argv[3]),database_path=Path(sys.argv[1])))))
+print(json.dumps(asdict(run(GetTasksUseCase, GetTasksQuery(sys.argv[2],sys.argv[3]),database_path=Path(sys.argv[1]))), default=str))
 """
     before = snapshot(database)
     process = subprocess.run(
-        [sys.executable, "-c", script, str(database), actor.project.id, actor.session.id],
+        [sys.executable, "-c", script, str(database), actor.project.uid, actor.session.uid],
         check=True,
         capture_output=True,
         text=True,
     )
     observed = json.loads(process.stdout)
-    assert observed["tasks"][0]["id"] == active.id
+    assert observed["tasks"][0]["uid"] == active.uid
     assert observed["tasks"][0]["status"] == "active"
     assert not observed["all_terminal"] and not observed["all_succeeded"]
     assert snapshot(database) == before
@@ -602,13 +611,13 @@ def test_missing_list_implementation_fails_instead_of_hiding_remaining_tasks(
         if operation == "sources":
             run(
                 GetSourcesUseCase,
-                GetSourcesQuery(actor.project.id, actor.session.id),
+                GetSourcesQuery(actor.project.uid, actor.session.uid),
                 database_path=database,
-            )
+            ).sources
         else:
             board(database, actor)
     assert snapshot(database) == before
-    assert history(database, work).task == work
+    assert history(database, work) == work
 
 
 def test_correction_does_not_rewrite_sibling_goal_or_original_source_and_noop_keeps_success(
@@ -623,34 +632,34 @@ def test_correction_does_not_rewrite_sibling_goal_or_original_source_and_noop_ke
     change = run(
         RecordSourceUseCase,
         RecordSourceCommand(
-            actor.project.id,
-            actor.session.id,
+            actor.project.uid,
+            actor.session.uid,
             SourceKind.CORRECTION,
             "Change only the first requirement title",
-            corrects_id=original.id,
+            corrects_id=original.uid,
         ),
         database_path=database,
-    )
+    ).source
     updated = run(
         CorrectTaskUseCase,
         CorrectTaskCommand(
             first.project_id,
             first.owner_session_id,
-            first.id,
+            first.uid,
             first.revision,
-            change.id,
+            change.uid,
             title="corrected first title",
         ),
         database_path=database,
-    )
+    ).task
     assert updated.definition.required_result == first.definition.required_result
-    assert history(database, sibling).task == sibling
+    assert history(database, sibling) == sibling
     assert (
         run(
             GetSourcesUseCase,
-            GetSourcesQuery(actor.project.id, actor.session.id),
+            GetSourcesQuery(actor.project.uid, actor.session.uid),
             database_path=database,
-        )[0]
+        ).sources[0]
         == original
     )
     done = report(database, start(database, updated))
@@ -661,10 +670,10 @@ def test_correction_does_not_rewrite_sibling_goal_or_original_source_and_noop_ke
     no_change = run(
         CorrectTaskUseCase,
         CorrectTaskCommand(
-            done.project_id, done.owner_session_id, done.id, done.revision, unchanged.id
+            done.project_id, done.owner_session_id, done.uid, done.revision, unchanged.uid
         ),
         database_path=database,
-    )
+    ).task
     assert no_change == done and snapshot(database) == before
 
 
@@ -678,7 +687,7 @@ def test_todo_contains_all_six_states_and_client_display_cannot_mutate_the_ledge
         WaitTaskCommand(
             to_wait.project_id,
             to_wait.owner_session_id,
-            to_wait.id,
+            to_wait.uid,
             to_wait.revision,
             ExternalWait(
                 target="external job",
@@ -688,7 +697,7 @@ def test_todo_contains_all_six_states_and_client_display_cannot_mutate_the_ledge
             ),
         ),
         database_path=database,
-    )
+    ).task
     succeeded = report(database, start(database, create(database, actor, title="succeeded")))
     failed = report(
         database,
@@ -706,29 +715,35 @@ def test_todo_contains_all_six_states_and_client_display_cannot_mutate_the_ledge
         InvalidateTaskCommand(
             original.project_id,
             original.owner_session_id,
-            original.id,
+            original.uid,
             original.revision,
-            change.id,
+            change.uid,
             "actual request removed",
         ),
         database_path=database,
-    )
+    ).task
     current = board(database, actor)
     assert {item.status for item in current.tasks} == set(TaskStatus)
-    assert {item.id for item in current.tasks} == {
-        pending.id,
-        active.id,
-        waiting.id,
-        succeeded.id,
-        failed.id,
-        invalidated.id,
+    assert {item.uid for item in current.tasks} == {
+        pending.uid,
+        active.uid,
+        waiting.uid,
+        succeeded.uid,
+        failed.uid,
+        invalidated.uid,
     }
-    assert set(current.ready_task_ids) == {pending.id, failed.id}
+    assert set(current.ready_task_ids) == {pending.uid, failed.uid}
     before = snapshot(database)
-    host_display = json.loads(json.dumps(asdict(current)))
+    host_display = json.loads(json.dumps(asdict(current), default=str))
     for item in host_display["tasks"]:
         item["status"] = "completed"
     host_display["tasks"].clear()
     assert board(database, actor) == current
     assert snapshot(database) == before
     assert not current.all_terminal and not current.all_succeeded
+    # 실제 반환 엔티티를 변경해도 저장소 밖의 조작으로 원장이 바뀌지 않아야 한다.
+    current.tasks[0].status = TaskStatus.SUCCEEDED
+    reread = board(database, actor)
+    assert {item.status for item in reread.tasks} == set(TaskStatus)
+    assert not reread.all_succeeded
+    assert snapshot(database) == before

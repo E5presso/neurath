@@ -58,7 +58,7 @@ prerequisites satisfy the start condition.
 
 Operations are individual use cases in `application/usecases`, invoked through `run(command/query)`.
 They implement Spakky `ICommandUseCase`/`IQueryUseCase` with `AbstractCommand`/`AbstractQuery` inputs.
-Response DTOs live in `application/dto/task.py`. Callers use the request container and standard
+Each use-case module defines its input and Result DTO together. Results carry domain data and query output without a separate DTO package. Callers use the request container and standard
 Transaction shown in the core example. There is no pass-through layer without a real CLI/host protocol. Mutations identify project, owner session,
 target and observed revision. Source/task creation returns new IDs.
 

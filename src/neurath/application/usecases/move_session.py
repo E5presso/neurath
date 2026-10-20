@@ -6,12 +6,13 @@ from typing import override
 from spakky.core.stereotype.usecase import UseCase
 from spakky.domain.application.command import AbstractCommand, ICommandUseCase
 
-from neurath.application.dto.session import SessionDTO
 from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.application.usecases.register_project import (
     RegisterProjectCommand,
     RegisterProjectUseCase,
 )
+from neurath.domain.aggregates.project import Project
+from neurath.domain.aggregates.session import HostSession
 from neurath.domain.errors import ContextNotFound
 from neurath.domain.observations import DirectoryObservation
 
@@ -33,8 +34,21 @@ class MoveSessionCommand(AbstractCommand):
     expected_revision: int
 
 
+@dataclass(frozen=True)
+class MoveSessionResult:
+    """이 유스케이스의 처리 결과를 전달한다.
+
+    Attributes:
+        project: 요청한 프로젝트.
+        session: 처리하거나 조회한 세션.
+    """
+
+    project: Project
+    session: HostSession
+
+
 @UseCase()
-class MoveSessionUseCase(ICommandUseCase[MoveSessionCommand, SessionDTO]):
+class MoveSessionUseCase(ICommandUseCase[MoveSessionCommand, MoveSessionResult]):
     """저장 수명을 소유하지 않고 프로젝트와 세션 규칙을 조정한다."""
 
     def __init__(self, projects: RegisterProjectUseCase, sessions: ISessionRepository) -> None:
@@ -48,23 +62,23 @@ class MoveSessionUseCase(ICommandUseCase[MoveSessionCommand, SessionDTO]):
         self.sessions = sessions
 
     @override
-    def run(self, command: MoveSessionCommand) -> SessionDTO:
-        """요청한 작업을 적용하고 분리된 불변 컨텍스트를 반환한다.
+    def run(self, command: MoveSessionCommand) -> MoveSessionResult:
+        """요청한 작업을 적용하고 분리된 처리 결과를 반환한다.
 
         Args:
             command: 요청 경계에서 전달한 명시적인 명령 또는 조회.
 
         Returns:
-            SessionDTO: 작업 후 프로젝트와 세션의 분리된 상태.
+            MoveSessionResult: 처리 후 프로젝트와 세션.
 
         Raises:
             ContextNotFound: 지정한 프로젝트 또는 세션이 요청한 범위에 없는 경우.
         """
         session = self.sessions.get(command.session_id)
         session.require_project(command.project_id)
-        project = self.projects.run(RegisterProjectCommand(command.observation))
+        project = self.projects.run(RegisterProjectCommand(command.observation)).project
         if project.id != command.project_id:
             raise ContextNotFound("Working directory belongs to another project")
         session.move(command.observation.working_directory, command.expected_revision)
         session = self.sessions.save(session)
-        return SessionDTO.from_entities(project, session)
+        return MoveSessionResult(project=project, session=session)

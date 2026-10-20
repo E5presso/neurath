@@ -6,8 +6,8 @@ from typing import override
 from spakky.core.stereotype.usecase import UseCase
 from spakky.domain.application.command import AbstractCommand, ICommandUseCase
 
-from neurath.application.dto.task import TaskDTO
 from neurath.application.ports.repositories.task import ITaskRepository
+from neurath.domain.aggregates.task import Task
 
 
 @dataclass(frozen=True)
@@ -29,8 +29,19 @@ class ResumeTaskCommand(AbstractCommand):
     resolution: str
 
 
+@dataclass(frozen=True)
+class ResumeTaskResult:
+    """이 유스케이스의 처리 결과를 전달한다.
+
+    Attributes:
+        task: 처리하거나 조회한 태스크와 보존된 전체 이력.
+    """
+
+    task: Task
+
+
 @UseCase()
-class ResumeTaskUseCase(ICommandUseCase[ResumeTaskCommand, TaskDTO]):
+class ResumeTaskUseCase(ICommandUseCase[ResumeTaskCommand, ResumeTaskResult]):
     """프레임워크 저장 계약으로 한 요청의 도메인 동작을 조정한다."""
 
     def __init__(self, tasks: ITaskRepository) -> None:
@@ -42,17 +53,17 @@ class ResumeTaskUseCase(ICommandUseCase[ResumeTaskCommand, TaskDTO]):
         self.tasks = tasks
 
     @override
-    def run(self, command: ResumeTaskCommand) -> TaskDTO:
-        """명시한 요청을 적용하고 불변 결과를 반환한다.
+    def run(self, command: ResumeTaskCommand) -> ResumeTaskResult:
+        """명시한 요청을 적용하고 결과를 반환한다.
 
         Args:
             command: 원문·범위·관찰에 연결된 입력.
 
         Returns:
-            TaskDTO: 현재 상태를 나타내는 불변 결과.
+            ResumeTaskResult: 처리한 원장과 현재 상태.
         """
         task = self.tasks.get(command.task_id)
         task.require_scope(command.project_id, command.session_id)
         task.require_revision(command.expected_revision)
         task.resume(command.resolution)
-        return TaskDTO.from_entity(self.tasks.save(task))
+        return ResumeTaskResult(task=self.tasks.save(task))

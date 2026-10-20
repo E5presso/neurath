@@ -6,7 +6,6 @@ from typing import override
 from spakky.core.stereotype.usecase import UseCase
 from spakky.domain.application.command import AbstractCommand, ICommandUseCase
 
-from neurath.application.dto.task import SourceDTO
 from neurath.application.ports.repositories.request_source import IRequestSourceRepository
 from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.domain.aggregates.request_source import RequestSource, SourceKind
@@ -35,8 +34,19 @@ class RecordSourceCommand(AbstractCommand):
     corrects_id: str | None = None
 
 
+@dataclass(frozen=True)
+class RecordSourceResult:
+    """이 유스케이스의 처리 결과를 전달한다.
+
+    Attributes:
+        source: 저장한 원문과 발신 맥락.
+    """
+
+    source: RequestSource
+
+
 @UseCase()
-class RecordSourceUseCase(ICommandUseCase[RecordSourceCommand, SourceDTO]):
+class RecordSourceUseCase(ICommandUseCase[RecordSourceCommand, RecordSourceResult]):
     """프레임워크 저장 계약으로 한 요청의 도메인 동작을 조정한다."""
 
     def __init__(self, sessions: ISessionRepository, sources: IRequestSourceRepository) -> None:
@@ -50,14 +60,14 @@ class RecordSourceUseCase(ICommandUseCase[RecordSourceCommand, SourceDTO]):
         self.sources = sources
 
     @override
-    def run(self, command: RecordSourceCommand) -> SourceDTO:
-        """명시한 요청을 적용하고 불변 결과를 반환한다.
+    def run(self, command: RecordSourceCommand) -> RecordSourceResult:
+        """명시한 요청을 적용하고 결과를 반환한다.
 
         Args:
             command: 원문·범위·관찰에 연결된 입력.
 
         Returns:
-            SourceDTO: 현재 상태를 나타내는 불변 결과.
+            RecordSourceResult: 처리한 원장과 현재 상태.
         """
         session = self.sessions.get(command.session_id)
         session.require_project(command.project_id)
@@ -73,4 +83,4 @@ class RecordSourceUseCase(ICommandUseCase[RecordSourceCommand, SourceDTO]):
         if command.corrects_id is not None:
             parent = self.sources.get(command.corrects_id)
             parent.require_project(command.project_id)
-        return SourceDTO.from_entity(self.sources.save(source))
+        return RecordSourceResult(source=self.sources.save(source))

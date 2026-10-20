@@ -6,9 +6,10 @@ from typing import override
 from spakky.core.stereotype.usecase import UseCase
 from spakky.domain.application.query import AbstractQuery, IQueryUseCase
 
-from neurath.application.dto.session import SessionDTO
 from neurath.application.ports.repositories.project import IProjectRepository
 from neurath.application.ports.repositories.session import ISessionRepository
+from neurath.domain.aggregates.project import Project
+from neurath.domain.aggregates.session import HostSession
 
 
 @dataclass(frozen=True)
@@ -24,8 +25,21 @@ class GetSessionContextQuery(AbstractQuery):
     session_id: str
 
 
+@dataclass(frozen=True)
+class GetSessionContextResult:
+    """이 유스케이스의 처리 결과를 전달한다.
+
+    Attributes:
+        project: 요청한 프로젝트.
+        session: 처리하거나 조회한 세션.
+    """
+
+    project: Project
+    session: HostSession
+
+
 @UseCase()
-class GetSessionContextUseCase(IQueryUseCase[GetSessionContextQuery, SessionDTO]):
+class GetSessionContextUseCase(IQueryUseCase[GetSessionContextQuery, GetSessionContextResult]):
     """저장 수명을 소유하지 않고 프로젝트와 세션 규칙을 조정한다."""
 
     def __init__(self, projects: IProjectRepository, sessions: ISessionRepository) -> None:
@@ -39,16 +53,16 @@ class GetSessionContextUseCase(IQueryUseCase[GetSessionContextQuery, SessionDTO]
         self.sessions = sessions
 
     @override
-    def run(self, query: GetSessionContextQuery) -> SessionDTO:
-        """요청한 작업을 적용하고 분리된 불변 컨텍스트를 반환한다.
+    def run(self, query: GetSessionContextQuery) -> GetSessionContextResult:
+        """요청한 작업을 적용하고 분리된 처리 결과를 반환한다.
 
         Args:
             query: 요청 경계에서 전달한 명시적인 명령 또는 조회.
 
         Returns:
-            SessionDTO: 작업 후 프로젝트와 세션의 분리된 상태.
+            GetSessionContextResult: 처리 후 프로젝트와 세션.
         """
         session = self.sessions.get(query.session_id)
         session.require_project(query.project_id)
         project = self.projects.get(query.project_id)
-        return SessionDTO.from_entities(project, session)
+        return GetSessionContextResult(project=project, session=session)

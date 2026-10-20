@@ -7,7 +7,6 @@ from typing import override
 from spakky.core.stereotype.usecase import UseCase
 from spakky.domain.application.command import AbstractCommand, ICommandUseCase
 
-from neurath.application.dto.task import TaskDTO
 from neurath.application.ports.repositories.request_source import IRequestSourceRepository
 from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.application.ports.repositories.task import ITaskRepository
@@ -38,8 +37,19 @@ class CreateTaskCommand(AbstractCommand):
     follow_up_of: str | None = None
 
 
+@dataclass(frozen=True)
+class CreateTaskResult:
+    """이 유스케이스의 처리 결과를 전달한다.
+
+    Attributes:
+        task: 처리하거나 조회한 태스크와 보존된 전체 이력.
+    """
+
+    task: Task
+
+
 @UseCase()
-class CreateTaskUseCase(ICommandUseCase[CreateTaskCommand, TaskDTO]):
+class CreateTaskUseCase(ICommandUseCase[CreateTaskCommand, CreateTaskResult]):
     """프레임워크 저장 계약으로 한 요청의 도메인 동작을 조정한다."""
 
     def __init__(
@@ -60,14 +70,14 @@ class CreateTaskUseCase(ICommandUseCase[CreateTaskCommand, TaskDTO]):
         self.tasks = tasks
 
     @override
-    def run(self, command: CreateTaskCommand) -> TaskDTO:
-        """명시한 요청을 적용하고 불변 결과를 반환한다.
+    def run(self, command: CreateTaskCommand) -> CreateTaskResult:
+        """명시한 요청을 적용하고 결과를 반환한다.
 
         Args:
             command: 원문·범위·관찰에 연결된 입력.
 
         Returns:
-            TaskDTO: 현재 상태를 나타내는 불변 결과.
+            CreateTaskResult: 처리한 원장과 현재 상태.
 
         Raises:
             ContextNotFound: 후속 작업의 원래 태스크가 다른 프로젝트에 속하는 경우.
@@ -90,4 +100,4 @@ class CreateTaskUseCase(ICommandUseCase[CreateTaskCommand, TaskDTO]):
             parent = self.tasks.get(command.follow_up_of)
             if parent.project_id != command.project_id:
                 raise ContextNotFound("Follow-up task belongs to another project")
-        return TaskDTO.from_entity(self.tasks.save(task))
+        return CreateTaskResult(task=self.tasks.save(task))

@@ -5,8 +5,7 @@
 Follow the approved specification and the responsibility boundaries in
 [core-foundation](docs/en/core-foundation.md). Domain aggregates contain invariants.
 Repository and observation ports use `ABC` and `@abstractmethod`; their adapters
-explicitly inherit those ports. Use cases are concrete classes without interfaces. Each use case accepts a named immutable
-command or query and exposes `execute`. ORM models use Spakky declarative table bases, `Mapped`,
+explicitly inherit those ports. Use cases implement Spakky `ICommandUseCase` or `IQueryUseCase`. Inputs inherit `AbstractCommand` or `AbstractQuery` and are handled through `run()`. Define Command/Query, Result DTO, and UseCase in the same module, without a local interface or shared DTO package. ORM models use Spakky declarative table bases, `Mapped`,
 `mapped_column`, `relationship`, and explicit domain conversion methods. Request adapters directly
 use the framework `Transaction`. Spakky Framework supplies `AbstractAggregateRoot`,
 `IGenericRepository`, `AbstractGenericRepository`, `@Table`/`AbstractMappableTable`,
@@ -56,7 +55,7 @@ forbidden layer imports, missing port ABC/abstractmethod declarations, non-nomin
 repository/observer implementations, and non-declarative ORM mappings. It also rejects locally invented use-case interfaces,
 frozen or implicit value-equality entity dataclasses, nonprimitive repository
 contracts, observation ports exposing entities, and direct adapter construction in
-host adapters. Every use case implements Spakky command/query contracts with run and framework request bases. Homogeneous variable-length collection contracts use Sequence, while fixed heterogeneous tuples remain valid. Responses belong to application/dto; there is no transport pass-through package without a real protocol. Project owns immutable `ProjectLocation` values; there is no independent
+host adapters. Every use case implements Spakky command/query contracts with run and framework request bases. Homogeneous variable-length collection contracts use Sequence, while fixed heterogeneous tuples remain valid. Result DTOs belong beside their own input and handler; there is no transport pass-through package without a real protocol. Project owns immutable `ProjectLocation` values; there is no independent
 location repository, DI registration, or lifecycle. The child table is mapped through
 an ORM relationship and saved atomically with its root. Root selection and promotion
 remain domain rules. All repository insertion and update paths use `save(entity) -> entity`;
@@ -101,7 +100,7 @@ relative paths and equivalent scope. Keep private paths and raw validation logs
 out of public documentation and packages.
 
 Ruff UP checks Python 3.14 syntax. Classmethod factories returning their own type use `Self`.
-The shared quality runner checks subclass construction, snapshot independence, full state
+The shared quality runner checks subclass construction, non-persistence of changes to returned objects outside a request, full state
 preservation after rejected requests, Spakky request isolation and bootstrap failure cleanup.
 
 The `FRAMEWORK_CRUD` guard rejects local basic repository implementations. The
@@ -124,3 +123,5 @@ downgrade, complete rollback of rejected destructive downgrade, invalid connecti
 unrelated integrity failures and incomplete observation adapters.
 
 Reports must also have `excluded_lines == 0`; a real report reaching 100% through exclusions is rejected.
+
+`RESULT_LOCATION` rejects moving use-case results into a separate package or returning another module's response. `ALEMBIC_REVISION` rejects parallel revision constants, and `TRANSPORT_PASSTHROUGH` rejects reintroducing the removed protocol-free relay modules. All actual use-case input/result contracts and result locations are inspected. These checks do not replace semantic review of responsibilities.

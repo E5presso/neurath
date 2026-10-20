@@ -118,6 +118,12 @@ class ArchitectureChecker:
         }
         for module, tree in self.trees.items():
             migration = ".infrastructure.migrations." in module
+            if module == "neurath.application.dto" or module.startswith("neurath.application.dto."):
+                errors.append(f"{module}:1 RESULT_LOCATION: define results beside their use case")
+            if module in {"neurath.transport.session_requests", "neurath.transport.task_requests"}:
+                errors.append(
+                    f"{module}:1 TRANSPORT_PASSTHROUGH: remove protocol-free request relays"
+                )
             if module.rsplit(".", 1)[-1] == "core" or (
                 module.rsplit(".", 1)[-1].startswith("core_") and not migration
             ):
@@ -191,6 +197,16 @@ class ArchitectureChecker:
                             errors.append(
                                 f"{location} EXPLICIT_IMPORT: wildcard imports obscure contracts"
                             )
+                if (
+                    module == "neurath.infrastructure.database"
+                    and isinstance(node, (ast.Assign, ast.AnnAssign))
+                    and isinstance(node.value, ast.Constant)
+                    and isinstance(node.value.value, str)
+                    and re.fullmatch(r"core_\d+", node.value.value)
+                ):
+                    errors.append(
+                        f"{location} ALEMBIC_REVISION: read the revision graph instead of a parallel constant"
+                    )
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                     if not ast.get_docstring(node):
                         errors.append(f"{location} DOCSTRING: document {node.name}")
@@ -394,6 +410,21 @@ class ArchitectureChecker:
                         errors.append(
                             f"{location} FRAMEWORK_USECASE: implement a Spakky command/query contract"
                         )
+                    if node.name.endswith("UseCase"):
+                        for method in node.body:
+                            if (
+                                isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef))
+                                and method.name == "run"
+                            ):
+                                result_symbol = f"{module}.{node.name.removesuffix('UseCase').removesuffix('Result')}Result"
+                                if (
+                                    result_symbol not in self.classes
+                                    or method.returns is None
+                                    or self._name(module, method.returns) != result_symbol
+                                ):
+                                    errors.append(
+                                        f"{location} RESULT_LOCATION: define and return this use case's local Result"
+                                    )
                     for suffix, contract in (
                         ("Command", "command.AbstractCommand"),
                         ("Query", "query.AbstractQuery"),

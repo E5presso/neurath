@@ -6,8 +6,8 @@ from typing import override
 from spakky.core.stereotype.usecase import UseCase
 from spakky.domain.application.query import AbstractQuery, IQueryUseCase
 
-from neurath.application.dto.task import TaskHistoryDTO
 from neurath.application.ports.repositories.task import ITaskRepository
+from neurath.domain.aggregates.task import Task
 
 
 @dataclass(frozen=True)
@@ -25,8 +25,19 @@ class GetTaskQuery(AbstractQuery):
     task_id: str
 
 
+@dataclass(frozen=True)
+class GetTaskResult:
+    """이 유스케이스의 처리 결과를 전달한다.
+
+    Attributes:
+        task: 처리하거나 조회한 태스크와 보존된 전체 이력.
+    """
+
+    task: Task
+
+
 @UseCase()
-class GetTaskUseCase(IQueryUseCase[GetTaskQuery, TaskHistoryDTO]):
+class GetTaskUseCase(IQueryUseCase[GetTaskQuery, GetTaskResult]):
     """프레임워크 저장 계약으로 한 요청의 도메인 동작을 조정한다."""
 
     def __init__(self, tasks: ITaskRepository) -> None:
@@ -38,15 +49,15 @@ class GetTaskUseCase(IQueryUseCase[GetTaskQuery, TaskHistoryDTO]):
         self.tasks = tasks
 
     @override
-    def run(self, query: GetTaskQuery) -> TaskHistoryDTO:
-        """명시한 요청을 적용하고 불변 결과를 반환한다.
+    def run(self, query: GetTaskQuery) -> GetTaskResult:
+        """명시한 요청을 적용하고 결과를 반환한다.
 
         Args:
             query: 원문·범위·관찰에 연결된 입력.
 
         Returns:
-            TaskHistoryDTO: 현재 상태를 나타내는 불변 결과.
+            GetTaskResult: 처리한 원장과 현재 상태.
         """
         task = self.tasks.get(query.task_id)
         task.require_scope(query.project_id, query.session_id)
-        return TaskHistoryDTO.from_entity(task)
+        return GetTaskResult(task=task)
