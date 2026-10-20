@@ -4,7 +4,7 @@
 
 Tracking: [#153](https://github.com/E5presso/neurath/issues/153).
 
-This is the ticketed implementation plan. Ticket creation and documentation coverage do not establish implemented or host-validated behavior.
+This plan records implementation order and requirement ownership. The [core foundation](core-foundation.md) and [task ledger](task-ledger.md) describe the current checkout. This table is not live GitHub issue/PR status and does not establish complete implementation or host validation.
 
 | Ticket | Dependencies | Requirement cases | Capability results |
 | --- | --- | --- | --- |

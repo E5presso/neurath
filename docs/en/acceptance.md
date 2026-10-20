@@ -2,7 +2,7 @@
 
 [Specification](specification.md) · [Architecture](architecture.md) · [Capability map](capability-continuity.md) · [한국어](../ko/acceptance.md)
 
-**These tests are not implemented or passed yet.** They verify implementation against the requirements; the inventory is not a new mandatory procedure for every run.
+These are full-product validation criteria. The [core foundation](core-foundation.md) and [task ledger](task-ledger.md) describe currently implemented test coverage. This inventory does not establish that every case is implemented/passing or require every case on each run.
 
 ## 1. Behavioral acceptance
 

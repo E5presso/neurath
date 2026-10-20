@@ -85,7 +85,7 @@ The 128 operations and 33 skills below are a **historical capability audit inven
 | `newsroom_peers` | get-context | CLI | One peer inventory | B17 |
 | `newsroom_seen` | article read receipt | internal | Record actual full-read delivery, not an agent assertion | B17 |
 | `artifact_put` | host artifact tools + internal reference ingestion | host+internal | Use host artifact storage; preserve references in reports/checkpoints | B18 |
-| `artifact_read` | read-memory / host artifact tools | CLI+host | memory_read resolves Neurath records; host tools read original files | B18 |
+| `artifact_read` | read-memory / host artifact tools | CLI+host | read-memory resolves Neurath records; host tools read original files | B18 |
 | `memory_recall` | search-memory / read-memory | CLI | Filter history/lessons by type/state, then read details | B18 |
 | `memory_checkpoint` | save-checkpoint | CLI | Saving a report needs no separate skill | B18 |
 | `memory_pull` | search-memory / read-memory / resume-session | CLI | Separate discovery/preview from adoption effects | B18 |

@@ -24,7 +24,7 @@ aggregates. Each request uses the actual `ConnectionManager`, `SessionManager` a
 Successful requests commit once; failures roll back all parent/child changes. Integer revisions
 and the inherited repository's optimistic checks reject stale mutations.
 
-Dependency scope, duplicates and cycles are checked by `Task.validate_dependencies()` against its own identity and current or proposed dependencies. Original-text, definition, observation and wait validation also belongs to each aggregate/value object. These placements follow the meaning of each rule, without imposing a blanket ban on function shapes or use-case exception handling.
+Dependency scope, duplicates and cycles are checked by `Task.validate_dependencies()` against its own identity and current or proposed dependencies. Original-text, definition, observation and wait validation also belongs to each aggregate/value object.
 
 ## States and observations
 
@@ -60,9 +60,11 @@ prerequisites satisfy the start condition.
 
 Operations are individual use cases in `application/usecases`, invoked through `run(command/query)`.
 They implement Spakky `ICommandUseCase`/`IQueryUseCase` with `AbstractCommand`/`AbstractQuery` inputs.
-Each use-case module defines its input and Result DTO together. Results carry domain data and query output without a separate DTO package. Callers use the request container and standard
-Transaction shown in the core example. There is no pass-through layer without a real CLI/host protocol. Mutations identify project, owner session,
-target and observed revision. Source/task creation returns new IDs.
+Each use-case module defines its input and Result DTO together. Results carry domain data and query output. Callers use the request container and standard
+Transaction shown in the core example. Mutations identify project, owner session,
+target and observed revision. Source creation returns a `RequestSource` through
+`RecordSourceResult.source`; task creation returns a `Task` through `CreateTaskResult.task`.
+Read the identifier from the returned object's `uid`.
 
 | Request | Behavior |
 | --- | --- |

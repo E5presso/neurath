@@ -15,8 +15,8 @@ Public CLI, hooks and installation remain subsequent implementation work.
 - Domain tables use `@Table(Domain)` and `AbstractMappableTable[Domain]` with explicit conversion. Owned location records use `AbstractTable` without a separate domain repository.
 - `SchemaRegistry` resolves domain/table mappings from Table tags. Repositories do not maintain another mapping registry.
 - `ApplicationContext` composes `@UseCase`, `@Repository`, observation Pods and the framework's `ConnectionManager`, `SessionManager`, `Transaction`, and `AggregateCollector`.
-- Callers resolve a use case in the request container, open the standard `Transaction`, and invoke `run(command/query)`. Spakky owns commit, rollback and session closure. No pass-through `transport` package or custom unit of work is provided.
-- Every use case implements Spakky `ICommandUseCase` or `IQueryUseCase`; inputs inherit `AbstractCommand` or `AbstractQuery`. Each module defines its Command/Query, Result DTO, and UseCase together. The framework result parameter and run return annotation reference that local Result. There is no separate DTO package or shared response hierarchy.
+- Callers resolve a use case in the request container, open the standard `Transaction`, and invoke `run(command/query)`. Spakky owns commit, rollback and session closure.
+- Every use case implements Spakky `ICommandUseCase` or `IQueryUseCase`; inputs inherit `AbstractCommand` or `AbstractQuery`. Each module defines its Command/Query, Result DTO, and UseCase together. The framework result parameter and run return annotation reference that local Result.
 - The request boundary maps framework missing-entity and version-conflict errors to `ContextNotFound` and `RevisionConflict`. Use cases ask the domain to validate session/project scope.
 
 SQL for basic CRUD, merge, flush and aggregate collection belongs to the framework.
@@ -61,10 +61,11 @@ The enclosing transaction rolls back both parent and child changes on failure.
 
 ## Schema and preservation
 
-The applied `core_0001` revision is unchanged. Explicit initialization applies
-`core_0002` to add metadata, project revision and location ownership enforcement.
-Existing IDs, session revisions, project/location/session values and dependent
-foreign keys are preserved.
+Explicit initialization upgrades through the distributed Alembic head, currently
+`core_0003`. `core_0002` adds metadata, project revision and location ownership enforcement;
+`core_0003` adds the [source/task ledger](task-ledger.md). Applied revisions remain
+unchanged, preserving existing IDs, session revisions, project/location/session values
+and dependent foreign keys.
 
 Old rows have no original timestamps, so epoch is an **unknown-time marker**, not a
 claim about creation time. Their initial change token is zero UUID; a domain mutation
@@ -114,7 +115,7 @@ collection, CRUD/batches/deletion, read isolation, no-op saves, stale writes and
 exception cleanup, ownership conflicts, independent processes, Git/worktree/clone
 identity and explicit/concurrent initialization. Migration tests retain original
 values and dependent records, repeat initialization and verify full rollback after
-migration failure. Shared pre-commit/CI tests verify current inherited methods and actual CRUD behavior. Domain semantics still require human review.
+migration failure. See [Contributing](../../CONTRIBUTING.md) for running the checks.
 
 Runner, host hooks, memory, collaboration, public CLI, actual user-data migration
 and installation remain subsequent tickets. `setup` rejects installation of this

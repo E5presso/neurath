@@ -15,8 +15,8 @@
 - 도메인 테이블은 `@Table(Domain)`과 `AbstractMappableTable[Domain]`으로 양방향 변환을 정의합니다. 위치 자식 테이블은 도메인 매핑이 없는 `AbstractTable`입니다.
 - `SchemaRegistry`가 Table 태그를 통해 도메인과 실제 테이블을 연결합니다. 저장소가 매핑을 별도로 추적하지 않습니다.
 - `ApplicationContext`가 `@UseCase`, `@Repository`, 관찰 Pod와 프레임워크의 `ConnectionManager`, `SessionManager`, `Transaction`, `AggregateCollector`를 구성합니다.
-- 호출자는 요청 컨테이너에서 표준 `Transaction`을 열고 개별 유스케이스의 `run(command/query)`를 호출합니다. 성공 시 commit, 예외 시 rollback, 세션 종료는 프레임워크가 수행합니다. 실제 프로토콜 변환이 없는 `transport` 중계 계층과 별도 UoW는 없습니다.
-- 모든 유스케이스는 Spakky의 `ICommandUseCase` 또는 `IQueryUseCase`를 구현하며 입력은 `AbstractCommand` 또는 `AbstractQuery`를 상속합니다. 각 모듈에 Command/Query·Result DTO·UseCase를 함께 정의합니다. 프레임워크 제네릭의 결과 타입과 `run()` 반환 타입은 해당 모듈의 Result를 가리킵니다. 별도 DTO 패키지나 공통 응답 기반은 없습니다.
+- 호출자는 요청 컨테이너에서 표준 `Transaction`을 열고 개별 유스케이스의 `run(command/query)`를 호출합니다. 성공 시 commit, 예외 시 rollback, 세션 종료는 프레임워크가 수행합니다.
+- 모든 유스케이스는 Spakky의 `ICommandUseCase` 또는 `IQueryUseCase`를 구현하며 입력은 `AbstractCommand` 또는 `AbstractQuery`를 상속합니다. 각 모듈에 Command/Query·Result DTO·UseCase를 함께 정의합니다. 프레임워크 제네릭의 결과 타입과 `run()` 반환 타입은 해당 모듈의 Result를 가리킵니다.
 - 요청 경계는 프레임워크의 미존재·버전 충돌 오류를 기존 `ContextNotFound`·`RevisionConflict`로 변환합니다. 세션이 요청한 프로젝트에 속하는지는 유스케이스가 도메인에 확인합니다.
 
 기본 CRUD의 SQL과 merge·flush·변경 aggregate 수집은 프레임워크 소유입니다.
@@ -57,9 +57,10 @@ Project 저장은 소유한 위치 관계까지 기본 merge로 반영합니다.
 
 ## 스키마와 보존
 
-이미 적용한 `core_0001`은 수정하지 않습니다. 명시적 초기화가 `core_0002`를 적용하여
-메타데이터·프로젝트 revision·위치 소유 제약을 추가합니다. 기존 ID, 세션 revision,
-프로젝트·위치·세션 데이터와 종속 외래 키는 유지합니다.
+명시적 초기화는 배포된 Alembic head까지 적용합니다. 현재 head는 `core_0003`입니다.
+`core_0002`는 메타데이터·프로젝트 revision·위치 소유 제약을, `core_0003`는
+[원문·태스크 원장](task-ledger.md)을 추가합니다. 적용된 이전 revision은 수정하지 않으며
+기존 ID·세션 revision·프로젝트·위치·세션 데이터와 종속 외래 키를 유지합니다.
 
 기존 행에는 원래 시각이 없으므로 epoch를 **미상 표식**으로 저장합니다. 이 값을 실제
 생성 시각으로 해석하지 않습니다. 기존 행의 변경 토큰은 초기 표식인 zero UUID이며,
@@ -104,7 +105,7 @@ with request_container(DatabaseSettings(path, write=False)) as scope:
 시험은 프레임워크 메서드 상속, 실제 registry·생성자 주입·aggregate 수집, 기본 CRUD·배치·삭제,
 조회 격리, 변경 없는 저장, 오래된 저장·경합, 예외 정리, 소유권 충돌, 독립 프로세스,
 Git/worktree/clone 구분과 명시적·동시 초기화를 검증합니다. 이전 스키마의 값·종속 자료 보존,
-반복 이전, 이전 도중 실패의 전체 롤백도 확인합니다. 현재 기본 CRUD 재사용은 공통 pre-commit·CI의 상속·실행 회귀 시험으로 확인합니다. 의미상 도메인 설계의 적절성은 사람 검토 사항입니다.
+반복 이전, 이전 도중 실패의 전체 롤백도 확인합니다. 검사 실행 방법은 [기여 안내](../../CONTRIBUTING.ko.md)를 참고하세요.
 
 runner·호스트 훅·기억·협업·공개 CLI·실제 사용자 자료 이전·설치는 후속 티켓입니다.
 `setup`은 이 기반 후보의 설치를 거부합니다. 실제 사용자 DB와 설치된 배포본은 이번 소스

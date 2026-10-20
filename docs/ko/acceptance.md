@@ -2,7 +2,7 @@
 
 [명세](specification.md) · [구조](architecture.md) · [기능 대조](capability-continuity.md) · [English](../en/acceptance.md)
 
-**아직 구현·통과한 시험이 아닙니다.** 명세의 요구사항대로 구현이 동작하는지 확인하기 위한 기준입니다. 시험 목록은 매 실행에 강제되는 새 절차가 아닙니다.
+전체 제품의 검증 기준입니다. 현재 구현된 기반·태스크 시험의 범위는 [코어 기반](core-foundation.md)과 [태스크 원장](task-ledger.md)에 설명합니다. 목록 전체의 구현·통과를 뜻하지 않으며 매 실행에 모든 사례를 강제하지 않습니다.
 
 ## 1. 실제 행동 수용 사례
 
