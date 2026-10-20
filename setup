@@ -1,15 +1,5 @@
 #!/bin/sh
 set -eu
-source_root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
-if [ "${1:-}" = "--self" ]; then
-    target_root=$source_root
-    shift
-elif [ $# -gt 0 ]; then
-    target_root=$1
-    shift
-else
-    printf '%s\n' 'Usage: setup --self | setup /target/project' >&2
-    exit 2
-fi
-[ $# -eq 0 ] || { printf '%s\n' 'Unexpected setup arguments' >&2; exit 2; }
-exec uv run --project "$source_root" --locked python -m neurath --root "$target_root" install --source "$source_root"
+printf '%s\n' 'This rewrite candidate is a project/session library, not a harness release.' >&2
+printf '%s\n' 'Installation is unavailable until CLI, migration, and installer tickets are complete.' >&2
+exit 2
