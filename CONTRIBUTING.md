@@ -53,10 +53,10 @@ fixture strings remain test data; translation quality still requires human revie
 The AST checker resolves import aliases and local inheritance to reject Protocol,
 Literal, Any/cast escapes, custom named transaction/UoW APIs, Core/core modules,
 forbidden layer imports, missing port ABC/abstractmethod declarations, non-nominal
-repository/observer implementations, and non-declarative ORM mappings. It also rejects use-case interfaces,
+repository/observer implementations, and non-declarative ORM mappings. It also rejects locally invented use-case interfaces,
 frozen or implicit value-equality entity dataclasses, nonprimitive repository
 contracts, observation ports exposing entities, and direct adapter construction in
-transport. Project owns immutable `ProjectLocation` values; there is no independent
+host adapters. Every use case implements Spakky command/query contracts with run and framework request bases. Homogeneous variable-length collection contracts use Sequence, while fixed heterogeneous tuples remain valid. Responses belong to application/dto; there is no transport pass-through package without a real protocol. Project owns immutable `ProjectLocation` values; there is no independent
 location repository, DI registration, or lifecycle. The child table is mapped through
 an ORM relationship and saved atomically with its root. Root selection and promotion
 remain domain rules. All repository insertion and update paths use `save(entity) -> entity`;

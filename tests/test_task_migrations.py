@@ -12,14 +12,14 @@ from sqlalchemy.exc import IntegrityError
 
 from neurath.application.ports.repositories.request_source import IRequestSourceRepository
 from neurath.application.ports.repositories.task import ITaskRepository
-from neurath.application.usecases.get_tasks import GetTasksQuery
+from neurath.application.usecases.get_tasks import GetTasksQuery, GetTasksUseCase
 from neurath.domain.aggregates.request_source import RequestSource, SourceKind
 from neurath.domain.aggregates.task import Task
 from neurath.domain.errors import StorageNotReady
 from neurath.infrastructure import database as storage
-from neurath.transport import task_requests as api
-from neurath.transport.session_requests import register_session
 from tests.conftest import storage_scope
+from tests.support.requests import run
+from tests.support.session_requests import register_session
 from tests.test_task_requests import create, record, snapshot
 
 
@@ -66,7 +66,7 @@ def test_core0002_upgrade_keeps_every_old_row_foreign_key_and_unfinished_origina
     before = snapshot(path)
     original_bytes = path.read_bytes()
     with pytest.raises(StorageNotReady):
-        api.get_tasks(GetTasksQuery("old-project", "old-session"), database_path=path)
+        run(GetTasksUseCase, GetTasksQuery("old-project", "old-session"), database_path=path)
     assert path.read_bytes() == original_bytes
     storage.initialize_database(path)
     after = snapshot(path)
@@ -76,7 +76,8 @@ def test_core0002_upgrade_keeps_every_old_row_foreign_key_and_unfinished_origina
     assert after["legacy_task"] == [("old-project", "unfinished original requirement", "waiting")]
     assert after["core_tasks"] == after["core_request_sources"] == []
     assert (
-        api.get_tasks(GetTasksQuery("old-project", "old-session"), database_path=path).tasks == ()
+        run(GetTasksUseCase, GetTasksQuery("old-project", "old-session"), database_path=path).tasks
+        == ()
     )
     with closing(sqlite3.connect(path)) as connection:
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []

@@ -1,5 +1,6 @@
 """태스크가 요구 개정·실행 시도·외부 대기 이력을 한 원장에서 관리한다."""
 
+from collections.abc import Sequence
 from dataclasses import replace
 from typing import Self, override
 from uuid import uuid4
@@ -40,10 +41,10 @@ class Task(AbstractAggregateRoot[str]):
 
     project_id: str
     owner_session_id: str
-    definitions: tuple[TaskDefinition, ...]
+    definitions: Sequence[TaskDefinition]
     status: TaskStatus = TaskStatus.PENDING
-    attempts: tuple[TaskAttempt, ...] = ()
-    waits: tuple[ExternalWait, ...] = ()
+    attempts: Sequence[TaskAttempt] = ()
+    waits: Sequence[ExternalWait] = ()
     current_attempt_number: int | None = None
     follow_up_of: str | None = None
     invalidated_reason: str | None = None
@@ -67,7 +68,7 @@ class Task(AbstractAggregateRoot[str]):
         source: RequestSource,
         title: str,
         required_result: str,
-        dependencies: tuple[str, ...] = (),
+        dependencies: Sequence[str] = (),
         follow_up_of: str | None = None,
     ) -> Self:
         """기존 출처를 재사용하면서 최초 요구를 정의한다.
@@ -145,7 +146,7 @@ class Task(AbstractAggregateRoot[str]):
         if self.revision != expected_revision:
             raise RevisionConflict("Task changed; read its current state before updating")
 
-    def ready(self, tasks: tuple[Self, ...]) -> bool:
+    def ready(self, tasks: Sequence[Self]) -> bool:
         """독립 작업과 실제 성공한 의존을 기준으로 실행 가능 여부를 계산한다.
 
         Args:
@@ -159,7 +160,7 @@ class Task(AbstractAggregateRoot[str]):
             statuses.get(uid) is TaskStatus.SUCCEEDED for uid in self.definition.dependencies
         )
 
-    def start(self, tasks: tuple[Self, ...]) -> None:
+    def start(self, tasks: Sequence[Self]) -> None:
         """현재 정의를 고정한 시도를 만들며 이전 외부 동작을 재제출하지 않는다.
 
         Args:
@@ -177,7 +178,7 @@ class Task(AbstractAggregateRoot[str]):
             definition_number=self.definition.number,
             session_id=self.owner_session_id,
         )
-        self.attempts = self.attempts + (attempt,)
+        self.attempts = tuple(self.attempts) + (attempt,)
         self.current_attempt_number = attempt.number
         self.status = TaskStatus.ACTIVE
 
@@ -250,7 +251,7 @@ class Task(AbstractAggregateRoot[str]):
         source: RequestSource,
         title: str | None = None,
         required_result: str | None = None,
-        dependencies: tuple[str, ...] | None = None,
+        dependencies: Sequence[str] | None = None,
     ) -> None:
         """지정한 필드만 정정하고 과거 정의·시도·결과를 유지한다.
 
@@ -278,7 +279,7 @@ class Task(AbstractAggregateRoot[str]):
             current.dependencies,
         ):
             return
-        self.definitions = self.definitions + (updated,)
+        self.definitions = tuple(self.definitions) + (updated,)
         self.status = TaskStatus.PENDING
         self.current_attempt_number = None
         self.invalidated_reason = None
@@ -294,7 +295,7 @@ class Task(AbstractAggregateRoot[str]):
         """
         if self.status is not TaskStatus.ACTIVE or condition.resolution is not None:
             raise InvalidTaskState("Only an active attempt can enter an unresolved external wait")
-        self.waits = self.waits + (condition,)
+        self.waits = tuple(self.waits) + (condition,)
         self.status = TaskStatus.WAITING
 
     def resume(self, resolution: str) -> None:
@@ -309,7 +310,7 @@ class Task(AbstractAggregateRoot[str]):
         require_text(resolution, "resolution")
         if self.status is not TaskStatus.WAITING:
             raise InvalidTaskState("Task is not waiting for an external dependency")
-        self.waits = self.waits[:-1] + (replace(self.waits[-1], resolution=resolution),)
+        self.waits = tuple(self.waits[:-1]) + (replace(self.waits[-1], resolution=resolution),)
         self.status = TaskStatus.ACTIVE
 
     def invalidate(self, source: RequestSource, reason: str) -> None:
@@ -322,7 +323,7 @@ class Task(AbstractAggregateRoot[str]):
         source.require_project(self.project_id)
         source.require_correction(self.definition.source_id)
         require_text(reason, "reason")
-        self.definitions = self.definitions + (
+        self.definitions = tuple(self.definitions) + (
             replace(self.definition, number=self.definition.number + 1, source_id=source.uid),
         )
         self.status = TaskStatus.INVALIDATED
@@ -330,9 +331,7 @@ class Task(AbstractAggregateRoot[str]):
         self.invalidated_reason = reason
 
 
-def validate_dependencies(
-    tasks: tuple[Task, ...], task_id: str, dependencies: tuple[str, ...]
-) -> None:
+def validate_dependencies(tasks: Sequence[Task], task_id: str, dependencies: Sequence[str]) -> None:
     """기존 프로젝트 그래프에 추가할 의존의 범위와 순환을 검사한다.
 
     Args:

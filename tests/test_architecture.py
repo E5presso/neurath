@@ -199,7 +199,7 @@ def test_only_external_ports_are_nominal_and_abstract():
     assert issubclass(ProjectRepository, IProjectRepository)
     assert issubclass(SessionRepository, ISessionRepository)
     assert issubclass(GitDirectoryObserver, IDirectoryObserver)
-    assert not hasattr(RegisterSessionUseCase, "__abstractmethods__")
+    assert RegisterSessionUseCase.__abstractmethods__ == frozenset()
 
 
 def test_new_source_files_are_discovered_without_whitelisting(tmp_path):
@@ -350,7 +350,8 @@ class Observation:
     working_directory: str
 ''',
         "neurath.application.usecases.example": '''"""구조 계약을 검증하는 테스트 대상이다."""
-class ExampleUseCase:
+from spakky.domain import ICommandUseCase
+class ExampleUseCase(ICommandUseCase):
     """구조 계약을 검증하는 테스트 대상이다."""
 ''',
     }
@@ -614,7 +615,8 @@ def delivery_fee(express):
 
 def test_invalidate_usecase_is_concrete_while_named_usecase_interface_still_rejected():
     concrete = '''"""무효화 동작을 구체 클래스로 선언하는 정상 사례다."""
-class InvalidateTaskUseCase:
+from spakky.domain import ICommandUseCase
+class InvalidateTaskUseCase(ICommandUseCase):
     """실제 정정을 반영하는 구체 유스케이스다."""
 '''
     assert (
@@ -628,3 +630,75 @@ class InvalidateTaskUseCase:
             {"neurath.application.usecases.invalidate_task": abstract}
         ).check()
     )
+
+
+@pytest.mark.parametrize(
+    ("source", "rule"),
+    [
+        ("class CreateTaskUseCase: pass", "FRAMEWORK_USECASE"),
+        ("class CreateTaskCommand: pass", "FRAMEWORK_REQUEST"),
+        ("class GetTasksQuery: pass", "FRAMEWORK_REQUEST"),
+        ("def records() -> tuple[str, ...]: pass", "COLLECTION_CONTRACT"),
+        (
+            "from builtins import tuple as T\ndef records() -> T[str, ...]: pass",
+            "COLLECTION_CONTRACT",
+        ),
+    ],
+)
+def test_reviewed_framework_and_sequence_contract_regressions_fail(source, rule):
+    errors = ArchitectureChecker({"neurath.application.usecases.example": source}).check()
+    assert any(f" {rule}:" in error for error in errors)
+
+
+def test_framework_contract_aliases_and_sequence_and_fixed_pairs_are_allowed():
+    source = '''"""프레임워크 계약의 별칭과 컬렉션을 검증한다."""
+from collections.abc import Sequence
+from spakky.domain.application.command import AbstractCommand as Command, ICommandUseCase as UseCase
+from spakky.domain.application.query import AbstractQuery as Query, IQueryUseCase as QueryUseCase
+class CreateTaskCommand(Command):
+    """작업 생성 명령이다."""
+class CreateTaskUseCase(UseCase):
+    """작업 생성 유스케이스다."""
+class GetTasksQuery(Query):
+    """작업 목록 조회다."""
+class GetTasksUseCase(QueryUseCase):
+    """작업 목록 유스케이스다."""
+def records() -> Sequence[str]:
+    """일반 시퀀스를 반환한다."""
+    return ()
+def pair() -> tuple[str, int]:
+    """서로 다른 두 값을 반환한다."""
+    return ("value", 1)
+'''.replace(
+        "프레임워크 계약의 별칭과 컬렉션을 검증한다.", "프레임워크 계약의 별칭과 컬렉션을 검증한다."
+    )
+    assert ArchitectureChecker({"neurath.application.usecases.example": source}).check() == []
+
+
+def test_every_real_usecase_and_request_implements_the_framework_contract():
+    import importlib
+    import inspect
+    import pkgutil
+
+    from spakky.domain.application.command import AbstractCommand, ICommandUseCase
+    from spakky.domain.application.query import AbstractQuery, IQueryUseCase
+
+    import neurath.application.usecases as package
+
+    usecases = []
+    requests = []
+    for info in pkgutil.iter_modules(package.__path__, package.__name__ + "."):
+        module = importlib.import_module(info.name)
+        for name, cls in inspect.getmembers(module, inspect.isclass):
+            if cls.__module__ != module.__name__:
+                continue
+            if name.endswith("UseCase"):
+                assert issubclass(cls, (ICommandUseCase, IQueryUseCase)), cls
+                assert not inspect.isabstract(cls), cls
+                assert "run" in cls.__dict__, cls
+                assert "execute" not in cls.__dict__, cls
+                usecases.append(cls)
+            elif name.endswith(("Command", "Query")):
+                assert issubclass(cls, (AbstractCommand, AbstractQuery)), cls
+                requests.append(cls)
+    assert len(usecases) == len(requests) == 16

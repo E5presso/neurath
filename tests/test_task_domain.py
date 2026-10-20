@@ -4,11 +4,11 @@ from dataclasses import FrozenInstanceError, replace
 
 import pytest
 
-from neurath.application.task_context import (
-    SourceContext,
-    TaskBoardContext,
-    TaskContext,
-    TaskHistoryContext,
+from neurath.application.dto.task import (
+    SourceDTO,
+    TaskBoardDTO,
+    TaskDTO,
+    TaskHistoryDTO,
 )
 from neurath.domain.aggregates.request_source import RequestSource, SourceKind
 from neurath.domain.aggregates.task import Task, validate_dependencies
@@ -71,7 +71,7 @@ def test_source_kinds_preserve_originals_and_distinguish_requirements(kind):
     assert original.body == "original text" and original.session_id == "session"
     assert original.reference == "ticket:140" and original.author == "peer"
     original.require_project("project")
-    snapshot = SourceContext.from_entity(original)
+    snapshot = SourceDTO.from_entity(original)
     assert snapshot.id == original.uid and snapshot.body == original.body
     if kind in (SourceKind.STATUS, SourceKind.SUMMARY):
         with pytest.raises(InvalidTaskState):
@@ -198,7 +198,7 @@ def test_submission_is_not_success_and_failed_attempt_can_retry_with_history():
     assert work.current_attempt_number == 2
     work.report(2, result(), 1)
     assert work.status is TaskStatus.SUCCEEDED and work.attempts[0].result == failed
-    history = TaskHistoryContext.from_entity(work)
+    history = TaskHistoryDTO.from_entity(work)
     assert history.attempts == work.attempts and history.task.attempt.number == 2
     with pytest.raises(InvalidTaskState):
         work.start((work,))
@@ -221,7 +221,7 @@ def test_partial_result_remains_actionable_and_late_old_result_cannot_close_corr
     work.report(2, result(), 1)
     assert work.status is TaskStatus.PENDING and work.current_attempt_number is None
     assert work.attempt(2).result.outcome is Outcome.SUCCEEDED
-    assert TaskContext.from_entity(work).attempt is None
+    assert TaskDTO.from_entity(work).attempt is None
     work.start((work,))
     work.report(3, result(), 1)
     assert work.status is TaskStatus.SUCCEEDED
@@ -251,7 +251,7 @@ def test_real_wait_preserves_same_attempt_and_independent_work():
         work.wait(replace(wait_condition(), resolution="already done"))
     work.wait(wait_condition())
     assert work.status is TaskStatus.WAITING
-    board = TaskBoardContext.from_entities((work, independent), "session")
+    board = TaskBoardDTO.from_entities((work, independent), "session")
     assert board.ready_task_ids == (independent.uid,) and not board.all_terminal
     assert board.tasks[0].external_wait.observation == "job:running"
     with pytest.raises(ValueError):
@@ -261,7 +261,7 @@ def test_real_wait_preserves_same_attempt_and_independent_work():
     assert work.status is TaskStatus.ACTIVE and len(work.attempts) == 1
     work.wait(wait_condition())
     work.report(1, result(), 1)
-    assert TaskContext.from_entity(work).external_wait is None
+    assert TaskDTO.from_entity(work).external_wait is None
 
 
 def test_invalidation_preserves_old_results_and_never_counts_as_success():
@@ -272,7 +272,7 @@ def test_invalidation_preserves_old_results_and_never_counts_as_success():
         work.invalidate(fixed, " ")
     work.invalidate(fixed, "actual correction removed this requirement")
     work.report(1, result(), 1)
-    board = TaskBoardContext.from_entities((work,), "session")
+    board = TaskBoardDTO.from_entities((work,), "session")
     assert work.status is TaskStatus.INVALIDATED and board.all_terminal and not board.all_succeeded
     assert work.attempt(1).result.outcome is Outcome.SUCCEEDED
     assert work.invalidated_reason and len(work.definitions) == 2
@@ -306,7 +306,27 @@ def test_dependencies_require_real_success_and_cycle_detection_handles_shared_an
     assert left.ready(graph) and right.ready(graph)
     leaf.correct(correction(leaf), dependencies=(root.uid,))
     assert leaf.ready(graph)
-    board = TaskBoardContext.from_entities((), "session")
+    board = TaskBoardDTO.from_entities((), "session")
     assert not board.all_terminal and not board.all_succeeded
     other = task(session_id="other")
-    assert TaskBoardContext.from_entities((other,), "session").tasks == ()
+    assert TaskBoardDTO.from_entities((other,), "session").tasks == ()
+
+
+def test_sequence_contracts_accept_lists_without_owning_the_callers_mutable_dependencies():
+    prerequisite = task()
+    dependencies = [prerequisite.uid]
+    work = task(dependencies=dependencies)
+    dependencies.clear()
+    assert work.definition.dependencies == (prerequisite.uid,)
+    validate_dependencies([prerequisite, work], work.uid, [prerequisite.uid])
+    assert not work.ready([prerequisite])
+    prerequisite.start([prerequisite])
+    prerequisite.report(1, result(), 1)
+    work.start([prerequisite, work])
+    assert work.status is TaskStatus.ACTIVE
+    correction_source = correction(work)
+    revised_dependencies = []
+    work.correct(correction_source, dependencies=revised_dependencies)
+    revised_dependencies.append(prerequisite.uid)
+    assert work.definition.dependencies == ()
+    assert len(work.definitions) == 2 and len(work.attempts) == 1

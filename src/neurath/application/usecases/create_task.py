@@ -1,19 +1,22 @@
 """CreateTask 요청의 조회·도메인 판단·저장 순서를 조정한다."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import override
 
 from spakky.core.stereotype.usecase import UseCase
+from spakky.domain.application.command import AbstractCommand, ICommandUseCase
 
+from neurath.application.dto.task import TaskDTO
 from neurath.application.ports.repositories.request_source import IRequestSourceRepository
 from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.application.ports.repositories.task import ITaskRepository
-from neurath.application.task_context import TaskContext
 from neurath.domain.aggregates.task import Task, validate_dependencies
 from neurath.domain.errors import ContextNotFound
 
 
 @dataclass(frozen=True)
-class CreateTaskCommand:
+class CreateTaskCommand(AbstractCommand):
     """요청 범위와 명시적인 입력이다.
 
     Attributes:
@@ -31,12 +34,12 @@ class CreateTaskCommand:
     source_id: str
     title: str
     required_result: str
-    dependencies: tuple[str, ...] = ()
+    dependencies: Sequence[str] = ()
     follow_up_of: str | None = None
 
 
 @UseCase()
-class CreateTaskUseCase:
+class CreateTaskUseCase(ICommandUseCase[CreateTaskCommand, TaskDTO]):
     """프레임워크 저장 계약으로 한 요청의 도메인 동작을 조정한다."""
 
     def __init__(
@@ -56,34 +59,35 @@ class CreateTaskUseCase:
         self.sources = sources
         self.tasks = tasks
 
-    def execute(self, request: CreateTaskCommand) -> TaskContext:
+    @override
+    def run(self, command: CreateTaskCommand) -> TaskDTO:
         """명시한 요청을 적용하고 불변 결과를 반환한다.
 
         Args:
-            request: 원문·범위·관찰에 연결된 입력.
+            command: 원문·범위·관찰에 연결된 입력.
 
         Returns:
-            TaskContext: 현재 상태를 나타내는 불변 결과.
+            TaskDTO: 현재 상태를 나타내는 불변 결과.
 
         Raises:
             ContextNotFound: 후속 작업의 원래 태스크가 다른 프로젝트에 속하는 경우.
         """
-        self.sessions.get(request.session_id).require_project(request.project_id)
-        source = self.sources.get(request.source_id)
+        self.sessions.get(command.session_id).require_project(command.project_id)
+        source = self.sources.get(command.source_id)
         task = Task.create(
-            request.project_id,
-            request.session_id,
+            command.project_id,
+            command.session_id,
             source,
-            request.title,
-            request.required_result,
-            request.dependencies,
-            request.follow_up_of,
+            command.title,
+            command.required_result,
+            command.dependencies,
+            command.follow_up_of,
         )
         validate_dependencies(
-            self.tasks.list(request.project_id), task.uid, task.definition.dependencies
+            self.tasks.list(command.project_id), task.uid, task.definition.dependencies
         )
-        if request.follow_up_of is not None:
-            parent = self.tasks.get(request.follow_up_of)
-            if parent.project_id != request.project_id:
+        if command.follow_up_of is not None:
+            parent = self.tasks.get(command.follow_up_of)
+            if parent.project_id != command.project_id:
                 raise ContextNotFound("Follow-up task belongs to another project")
-        return TaskContext.from_entity(self.tasks.save(task))
+        return TaskDTO.from_entity(self.tasks.save(task))

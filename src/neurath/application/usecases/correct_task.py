@@ -1,17 +1,20 @@
 """CorrectTask 요청의 조회·도메인 판단·저장 순서를 조정한다."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import override
 
 from spakky.core.stereotype.usecase import UseCase
+from spakky.domain.application.command import AbstractCommand, ICommandUseCase
 
+from neurath.application.dto.task import TaskDTO
 from neurath.application.ports.repositories.request_source import IRequestSourceRepository
 from neurath.application.ports.repositories.task import ITaskRepository
-from neurath.application.task_context import TaskContext
 from neurath.domain.aggregates.task import validate_dependencies
 
 
 @dataclass(frozen=True)
-class CorrectTaskCommand:
+class CorrectTaskCommand(AbstractCommand):
     """요청 범위와 명시적인 입력이다.
 
     Attributes:
@@ -32,11 +35,11 @@ class CorrectTaskCommand:
     source_id: str
     title: str | None = None
     required_result: str | None = None
-    dependencies: tuple[str, ...] | None = None
+    dependencies: Sequence[str] | None = None
 
 
 @UseCase()
-class CorrectTaskUseCase:
+class CorrectTaskUseCase(ICommandUseCase[CorrectTaskCommand, TaskDTO]):
     """프레임워크 저장 계약으로 한 요청의 도메인 동작을 조정한다."""
 
     def __init__(self, tasks: ITaskRepository, sources: IRequestSourceRepository) -> None:
@@ -49,26 +52,27 @@ class CorrectTaskUseCase:
         self.tasks = tasks
         self.sources = sources
 
-    def execute(self, request: CorrectTaskCommand) -> TaskContext:
+    @override
+    def run(self, command: CorrectTaskCommand) -> TaskDTO:
         """명시한 요청을 적용하고 불변 결과를 반환한다.
 
         Args:
-            request: 원문·범위·관찰에 연결된 입력.
+            command: 원문·범위·관찰에 연결된 입력.
 
         Returns:
-            TaskContext: 현재 상태를 나타내는 불변 결과.
+            TaskDTO: 현재 상태를 나타내는 불변 결과.
         """
-        task = self.tasks.get(request.task_id)
-        task.require_scope(request.project_id, request.session_id)
-        task.require_revision(request.expected_revision)
+        task = self.tasks.get(command.task_id)
+        task.require_scope(command.project_id, command.session_id)
+        task.require_revision(command.expected_revision)
         dependencies = (
-            task.definition.dependencies if request.dependencies is None else request.dependencies
+            task.definition.dependencies if command.dependencies is None else command.dependencies
         )
-        validate_dependencies(self.tasks.list(request.project_id), task.uid, dependencies)
+        validate_dependencies(self.tasks.list(command.project_id), task.uid, dependencies)
         task.correct(
-            self.sources.get(request.source_id),
-            request.title,
-            request.required_result,
-            request.dependencies,
+            self.sources.get(command.source_id),
+            command.title,
+            command.required_result,
+            command.dependencies,
         )
-        return TaskContext.from_entity(self.tasks.save(task))
+        return TaskDTO.from_entity(self.tasks.save(task))

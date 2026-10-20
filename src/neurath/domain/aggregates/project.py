@@ -1,5 +1,6 @@
 """프로젝트 aggregate가 위치 값과 식별·승격·소유권 규칙을 관리한다."""
 
+from collections.abc import Sequence
 from enum import StrEnum
 from typing import Self, override
 from uuid import uuid4
@@ -48,7 +49,7 @@ class Project(AbstractAggregateRoot[str]):
     """
 
     root_path: str
-    locations: tuple[ProjectLocation, ...] = ()
+    locations: Sequence[ProjectLocation] = ()
     revision: int = 1
 
     @property
@@ -92,14 +93,14 @@ class Project(AbstractAggregateRoot[str]):
         return observation.primary_worktree
 
     @classmethod
-    def identify(cls, observation: DirectoryObservation) -> tuple[ProjectLocation, ...]:
+    def identify(cls, observation: DirectoryObservation) -> Sequence[ProjectLocation]:
         """Git 승격에 필요한 기존 폴더 별칭을 포함하여 위치 후보를 도출한다.
 
         Args:
             observation: 연결 작업 트리 정보를 포함하는 정규화된 외부 관찰 사실.
 
         Returns:
-            tuple[ProjectLocation, ...]: 프로젝트 식별에 필요한 위치 값들.
+            Sequence[ProjectLocation]: 프로젝트 식별에 필요한 위치 값들.
         """
         folder = ProjectLocation(kind=ProjectKind.FOLDER, path=cls.root_for(observation))
         if observation.git_common_directory is None:
@@ -110,7 +111,7 @@ class Project(AbstractAggregateRoot[str]):
         )
 
     @classmethod
-    def owner_of(cls, owners: tuple[Self, ...]) -> Self | None:
+    def owner_of(cls, owners: Sequence[Self]) -> Self | None:
         """충돌하는 프로젝트를 병합하지 않고 후보 위치의 기존 소유자를 선택한다.
 
         Args:
@@ -142,7 +143,7 @@ class Project(AbstractAggregateRoot[str]):
             locations=cls.identify(observation),
         )
 
-    def associate(self, candidates: tuple[ProjectLocation, ...]) -> None:
+    def associate(self, candidates: Sequence[ProjectLocation]) -> None:
         """기존 Git 동일성을 교체하지 않고 호환되는 위치를 소유 목록에 추가한다.
 
         모든 충돌을 확인한 뒤에만 aggregate의 위치 상태를 변경한다.
@@ -153,7 +154,7 @@ class Project(AbstractAggregateRoot[str]):
         Raises:
             ProjectIdentityConflict: 기존 Git 동일성과 새 위치가 충돌하는 경우.
         """
-        locations = self.locations + candidates
+        locations = tuple(self.locations) + tuple(candidates)
         git_paths = {location.path for location in locations if location.kind is ProjectKind.GIT}
         if len(git_paths) > 1:
             raise ProjectIdentityConflict("Folder already belongs to another repository")

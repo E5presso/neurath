@@ -1,5 +1,6 @@
 """RequestSource의 기본 저장은 상속하고 프로젝트 목록만 조회한다."""
 
+from collections.abc import Sequence
 from typing import override
 
 from spakky.data.stereotype.repository import Repository
@@ -18,14 +19,14 @@ class RequestSourceRepository(
     """프레임워크 CRUD를 재구현하지 않는 저장소다."""
 
     @override
-    def list(self, project_id: str) -> tuple[RequestSource, ...]:
+    def list(self, project_id: str) -> Sequence[RequestSource]:
         """프로젝트 범위의 모든 현재 레코드를 조회한다.
 
         Args:
             project_id: 조회 프로젝트.
 
         Returns:
-            tuple[RequestSource, ...]: 원장과 같은 전체 자료.
+            Sequence[RequestSource]: 원장과 같은 전체 자료.
         """
         records = self._session_manager.session.scalars(
             select(RequestSourceModel)

@@ -1,5 +1,6 @@
 """원장에서 직접 생성하는 불변 출처·태스크·TODO 응답이다."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Self
 
@@ -9,7 +10,7 @@ from neurath.domain.task_records import ExternalWait, TaskAttempt, TaskDefinitio
 
 
 @dataclass(frozen=True)
-class SourceContext:
+class SourceDTO:
     """원문과 최초 발신 맥락을 반환한다.
 
     Attributes:
@@ -55,7 +56,7 @@ class SourceContext:
 
 
 @dataclass(frozen=True)
-class TaskContext:
+class TaskDTO:
     """태스크의 현재 요구·상태·시도를 그대로 표시한다.
 
     Attributes:
@@ -113,7 +114,7 @@ class TaskContext:
 
 
 @dataclass(frozen=True)
-class TaskHistoryContext:
+class TaskHistoryDTO:
     """현재 표시와 보존된 과거 정의·시도·대기를 함께 조회한다.
 
     Attributes:
@@ -123,10 +124,10 @@ class TaskHistoryContext:
         waits: 대기·해소 관찰 이력.
     """
 
-    task: TaskContext
-    definitions: tuple[TaskDefinition, ...]
-    attempts: tuple[TaskAttempt, ...]
-    waits: tuple[ExternalWait, ...]
+    task: TaskDTO
+    definitions: Sequence[TaskDefinition]
+    attempts: Sequence[TaskAttempt]
+    waits: Sequence[ExternalWait]
 
     @classmethod
     def from_entity(cls, task: Task) -> Self:
@@ -138,11 +139,11 @@ class TaskHistoryContext:
         Returns:
             Self: 재개와 회고에 사용할 실제 이력.
         """
-        return cls(TaskContext.from_entity(task), task.definitions, task.attempts, task.waits)
+        return cls(TaskDTO.from_entity(task), task.definitions, task.attempts, task.waits)
 
 
 @dataclass(frozen=True)
-class TaskBoardContext:
+class TaskBoardDTO:
     """전체 현재 목록을 TODO로 투영하며 별도 완료 원장을 만들지 않는다.
 
     Attributes:
@@ -152,13 +153,13 @@ class TaskBoardContext:
         all_succeeded: 비어 있지 않은 목록의 모든 요구가 성공했는지 여부.
     """
 
-    tasks: tuple[TaskContext, ...]
-    ready_task_ids: tuple[str, ...]
+    tasks: Sequence[TaskDTO]
+    ready_task_ids: Sequence[str]
     all_terminal: bool
     all_succeeded: bool
 
     @classmethod
-    def from_entities(cls, tasks: tuple[Task, ...], session_id: str) -> Self:
+    def from_entities(cls, tasks: Sequence[Task], session_id: str) -> Self:
         """현재 원장과 같은 태스크 목록에서 상태와 준비 여부를 계산한다.
 
         Args:
@@ -171,7 +172,7 @@ class TaskBoardContext:
         selected = tuple(task for task in tasks if task.owner_session_id == session_id)
         terminal = (TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.INVALIDATED)
         return cls(
-            tuple(TaskContext.from_entity(task) for task in selected),
+            tuple(TaskDTO.from_entity(task) for task in selected),
             tuple(task.uid for task in selected if task.ready(tasks)),
             bool(selected) and all(task.status in terminal for task in selected),
             bool(selected) and all(task.status is TaskStatus.SUCCEEDED for task in selected),

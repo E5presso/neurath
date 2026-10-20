@@ -1,16 +1,18 @@
 """GetTasks 요청의 조회·도메인 판단·저장 순서를 조정한다."""
 
 from dataclasses import dataclass
+from typing import override
 
 from spakky.core.stereotype.usecase import UseCase
+from spakky.domain.application.query import AbstractQuery, IQueryUseCase
 
+from neurath.application.dto.task import TaskBoardDTO
 from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.application.ports.repositories.task import ITaskRepository
-from neurath.application.task_context import TaskBoardContext
 
 
 @dataclass(frozen=True)
-class GetTasksQuery:
+class GetTasksQuery(AbstractQuery):
     """요청 범위와 명시적인 입력이다.
 
     Attributes:
@@ -23,7 +25,7 @@ class GetTasksQuery:
 
 
 @UseCase()
-class GetTasksUseCase:
+class GetTasksUseCase(IQueryUseCase[GetTasksQuery, TaskBoardDTO]):
     """프레임워크 저장 계약으로 한 요청의 도메인 동작을 조정한다."""
 
     def __init__(self, sessions: ISessionRepository, tasks: ITaskRepository) -> None:
@@ -36,16 +38,15 @@ class GetTasksUseCase:
         self.sessions = sessions
         self.tasks = tasks
 
-    def execute(self, request: GetTasksQuery) -> TaskBoardContext:
+    @override
+    def run(self, query: GetTasksQuery) -> TaskBoardDTO:
         """명시한 요청을 적용하고 불변 결과를 반환한다.
 
         Args:
-            request: 원문·범위·관찰에 연결된 입력.
+            query: 원문·범위·관찰에 연결된 입력.
 
         Returns:
-            TaskBoardContext: 현재 상태를 나타내는 불변 결과.
+            TaskBoardDTO: 현재 상태를 나타내는 불변 결과.
         """
-        self.sessions.get(request.session_id).require_project(request.project_id)
-        return TaskBoardContext.from_entities(
-            self.tasks.list(request.project_id), request.session_id
-        )
+        self.sessions.get(query.session_id).require_project(query.project_id)
+        return TaskBoardDTO.from_entities(self.tasks.list(query.project_id), query.session_id)

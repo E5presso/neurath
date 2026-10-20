@@ -15,18 +15,21 @@ from sqlalchemy import text
 
 from neurath.application.ports.repositories.request_source import IRequestSourceRepository
 from neurath.application.ports.repositories.task import ITaskRepository
-from neurath.application.usecases.correct_task import CorrectTaskCommand
-from neurath.application.usecases.create_task import CreateTaskCommand
-from neurath.application.usecases.get_sources import GetSourcesQuery
-from neurath.application.usecases.get_task import GetTaskQuery
-from neurath.application.usecases.get_tasks import GetTasksQuery
-from neurath.application.usecases.invalidate_task import InvalidateTaskCommand
-from neurath.application.usecases.record_source import RecordSourceCommand
-from neurath.application.usecases.report_result import ReportResultCommand
-from neurath.application.usecases.resume_task import ResumeTaskCommand
-from neurath.application.usecases.start_task import StartTaskCommand
-from neurath.application.usecases.submit_result import SubmitResultCommand
-from neurath.application.usecases.wait_task import WaitTaskCommand
+from neurath.application.usecases.correct_task import CorrectTaskCommand, CorrectTaskUseCase
+from neurath.application.usecases.create_task import CreateTaskCommand, CreateTaskUseCase
+from neurath.application.usecases.get_sources import GetSourcesQuery, GetSourcesUseCase
+from neurath.application.usecases.get_task import GetTaskQuery, GetTaskUseCase
+from neurath.application.usecases.get_tasks import GetTasksQuery, GetTasksUseCase
+from neurath.application.usecases.invalidate_task import (
+    InvalidateTaskCommand,
+    InvalidateTaskUseCase,
+)
+from neurath.application.usecases.record_source import RecordSourceCommand, RecordSourceUseCase
+from neurath.application.usecases.report_result import ReportResultCommand, ReportResultUseCase
+from neurath.application.usecases.resume_task import ResumeTaskCommand, ResumeTaskUseCase
+from neurath.application.usecases.start_task import StartTaskCommand, StartTaskUseCase
+from neurath.application.usecases.submit_result import SubmitResultCommand, SubmitResultUseCase
+from neurath.application.usecases.wait_task import WaitTaskCommand, WaitTaskUseCase
 from neurath.domain.aggregates.request_source import SourceKind
 from neurath.domain.errors import ContextNotFound, InvalidTaskState, RevisionConflict
 from neurath.domain.task_records import (
@@ -38,9 +41,9 @@ from neurath.domain.task_records import (
 )
 from neurath.infrastructure.repositories.request_source import RequestSourceRepository
 from neurath.infrastructure.repositories.task import TaskRepository
-from neurath.transport import task_requests as api
-from neurath.transport.session_requests import register_session
 from tests.conftest import storage_scope
+from tests.support.requests import run
+from tests.support.session_requests import register_session
 
 
 @pytest.fixture
@@ -54,7 +57,8 @@ def actors(database, repository, tmp_path):
 
 
 def record(database, actor, kind=SourceKind.PROMPT, *, corrects_id=None, author=None):
-    return api.record_source(
+    return run(
+        RecordSourceUseCase,
         RecordSourceCommand(
             actor.project.id,
             actor.session.id,
@@ -72,7 +76,8 @@ def create(
     database, actor, *, source=None, title="build artifact", dependencies=(), follow_up_of=None
 ):
     original = record(database, actor) if source is None else source
-    return api.create_task(
+    return run(
+        CreateTaskUseCase,
         CreateTaskCommand(
             actor.project.id,
             actor.session.id,
@@ -87,7 +92,8 @@ def create(
 
 
 def start(database, task):
-    return api.start_task(
+    return run(
+        StartTaskUseCase,
         StartTaskCommand(task.project_id, task.owner_session_id, task.id, task.revision),
         database_path=database,
     )
@@ -111,7 +117,8 @@ def report(
         remaining_work=remaining,
         exit_code=exit_code,
     )
-    return api.report_result(
+    return run(
+        ReportResultUseCase,
         ReportResultCommand(
             task.project_id, task.owner_session_id, task.id, task.revision, number, result
         ),
@@ -120,13 +127,17 @@ def report(
 
 
 def history(database, task):
-    return api.get_task(
-        GetTaskQuery(task.project_id, task.owner_session_id, task.id), database_path=database
+    return run(
+        GetTaskUseCase,
+        GetTaskQuery(task.project_id, task.owner_session_id, task.id),
+        database_path=database,
     )
 
 
 def board(database, actor):
-    return api.get_tasks(GetTasksQuery(actor.project.id, actor.session.id), database_path=database)
+    return run(
+        GetTasksUseCase, GetTasksQuery(actor.project.id, actor.session.id), database_path=database
+    )
 
 
 def snapshot(database):
@@ -149,7 +160,11 @@ def test_source_reuse_keeps_original_session_and_nonhuman_author_without_new_hum
 ):
     first, peer, outside = actors
     assert (
-        api.get_sources(GetSourcesQuery(first.project.id, first.session.id), database_path=database)
+        run(
+            GetSourcesUseCase,
+            GetSourcesQuery(first.project.id, first.session.id),
+            database_path=database,
+        )
         == ()
     )
     source = record(database, first, kind, author="peer:existing assignment")
@@ -157,8 +172,10 @@ def test_source_reuse_keeps_original_session_and_nonhuman_author_without_new_hum
     assert work.owner_session_id == peer.session.id and work.definition.source_id == source.id
     assert board(database, first).tasks == ()
     assert board(database, peer).tasks == (work,)
-    sources = api.get_sources(
-        GetSourcesQuery(first.project.id, peer.session.id), database_path=database
+    sources = run(
+        GetSourcesUseCase,
+        GetSourcesQuery(first.project.id, peer.session.id),
+        database_path=database,
     )
     assert sources == (source,) and sources[0].session_id == first.session.id
     assert sources[0].author == "peer:existing assignment"
@@ -166,8 +183,10 @@ def test_source_reuse_keeps_original_session_and_nonhuman_author_without_new_hum
     with pytest.raises(ContextNotFound):
         create(database, outside, source=source)
     with pytest.raises(ContextNotFound):
-        api.get_task(
-            GetTaskQuery(work.project_id, first.session.id, work.id), database_path=database
+        run(
+            GetTaskUseCase,
+            GetTaskQuery(work.project_id, first.session.id, work.id),
+            database_path=database,
         )
     assert snapshot(database) == before
 
@@ -179,7 +198,8 @@ def test_actual_failed_command_retry_and_followup_preserve_results_and_todo(
     work = create(database, actor)
     active = start(database, work)
     submission = SubmittedResult(summary="candidate output", references=("artifact:draft",))
-    submitted = api.submit_result(
+    submitted = run(
+        SubmitResultUseCase,
         SubmitResultCommand(
             active.project_id, active.owner_session_id, active.id, active.revision, 1, submission
         ),
@@ -205,8 +225,10 @@ def test_actual_failed_command_retry_and_followup_preserve_results_and_todo(
     failed_board = board(database, actor)
     assert failed_board.all_terminal and not failed_board.all_succeeded
     assert failed_board.tasks == (failed,)
-    source = api.get_sources(
-        GetSourcesQuery(actor.project.id, actor.session.id), database_path=database
+    source = run(
+        GetSourcesUseCase,
+        GetSourcesQuery(actor.project.id, actor.session.id),
+        database_path=database,
     )[0]
     followup = create(
         database, actor, source=source, title="validate produced artifact", follow_up_of=failed.id
@@ -257,7 +279,8 @@ def test_correction_only_changes_selected_fields_and_late_result_does_not_close_
         corrects_id=original.source_id,
         author="peer:forwarded correction",
     )
-    corrected = api.correct_task(
+    corrected = run(
+        CorrectTaskUseCase,
         CorrectTaskCommand(
             active.project_id,
             active.owner_session_id,
@@ -299,7 +322,8 @@ def test_partial_wait_resume_and_independent_task_keep_exact_same_attempt(
         resume_scope="read external result",
         observation="file absent",
     )
-    waiting = api.wait_task(
+    waiting = run(
+        WaitTaskUseCase,
         WaitTaskCommand(
             active.project_id, active.owner_session_id, active.id, active.revision, condition
         ),
@@ -311,7 +335,8 @@ def test_partial_wait_resume_and_independent_task_keep_exact_same_attempt(
     with pytest.raises(InvalidTaskState):
         start(database, waiting)
     target.write_text("external result")
-    resumed = api.resume_task(
+    resumed = run(
+        ResumeTaskUseCase,
         ResumeTaskCommand(
             waiting.project_id,
             waiting.owner_session_id,
@@ -336,7 +361,8 @@ def test_status_question_and_summary_do_not_create_or_revise_goals(database, act
     with pytest.raises(InvalidTaskState):
         create(database, actor, source=informational)
     with pytest.raises(InvalidTaskState):
-        api.correct_task(
+        run(
+            CorrectTaskUseCase,
             CorrectTaskCommand(
                 work.project_id,
                 work.owner_session_id,
@@ -364,7 +390,8 @@ def test_dependency_correction_rejects_cycle_and_keeps_previous_graph_and_other_
     )
     before = snapshot(database)
     with pytest.raises(InvalidTaskState):
-        api.correct_task(
+        run(
+            CorrectTaskUseCase,
             CorrectTaskCommand(
                 parent.project_id,
                 parent.owner_session_id,
@@ -380,7 +407,8 @@ def test_dependency_correction_rejects_cycle_and_keeps_previous_graph_and_other_
     assert snapshot(database) == before
     report(database, start(database, parent))
     assert child.id in board(database, actor).ready_task_ids
-    corrected = api.correct_task(
+    corrected = run(
+        CorrectTaskUseCase,
         CorrectTaskCommand(
             child.project_id,
             child.owner_session_id,
@@ -406,7 +434,8 @@ def test_invalidated_task_never_revives_from_late_result_and_is_not_all_successf
     actor, _, _ = actors
     active = start(database, create(database, actor))
     change = record(database, actor, SourceKind.CORRECTION, corrects_id=active.definition.source_id)
-    invalidated = api.invalidate_task(
+    invalidated = run(
+        InvalidateTaskUseCase,
         InvalidateTaskCommand(
             active.project_id,
             active.owner_session_id,
@@ -489,8 +518,10 @@ def test_source_correction_and_followup_cannot_cross_project_scope(database, act
     with pytest.raises(ContextNotFound):
         create(database, actor, source=local, follow_up_of=foreign_task.id)
     with pytest.raises(ContextNotFound):
-        api.get_sources(
-            GetSourcesQuery(actor.project.id, outside.session.id), database_path=database
+        run(
+            GetSourcesUseCase,
+            GetSourcesQuery(actor.project.id, outside.session.id),
+            database_path=database,
         )
     assert snapshot(database) == before
 
@@ -531,9 +562,9 @@ def test_independent_process_reads_same_todo_without_mutating_task_outcome(datab
 import json, sys
 from dataclasses import asdict
 from pathlib import Path
-from neurath.application.usecases.get_tasks import GetTasksQuery
-from neurath.transport.task_requests import get_tasks
-print(json.dumps(asdict(get_tasks(GetTasksQuery(sys.argv[2],sys.argv[3]),database_path=Path(sys.argv[1])))))
+from neurath.application.usecases.get_tasks import GetTasksQuery, GetTasksUseCase
+from tests.support.requests import run
+print(json.dumps(asdict(run(GetTasksUseCase, GetTasksQuery(sys.argv[2],sys.argv[3]),database_path=Path(sys.argv[1])))))
 """
     before = snapshot(database)
     process = subprocess.run(
@@ -569,8 +600,10 @@ def test_missing_list_implementation_fails_instead_of_hiding_remaining_tasks(
     before = snapshot(database)
     with pytest.raises(NotImplementedError):
         if operation == "sources":
-            api.get_sources(
-                GetSourcesQuery(actor.project.id, actor.session.id), database_path=database
+            run(
+                GetSourcesUseCase,
+                GetSourcesQuery(actor.project.id, actor.session.id),
+                database_path=database,
             )
         else:
             board(database, actor)
@@ -587,7 +620,8 @@ def test_correction_does_not_rewrite_sibling_goal_or_original_source_and_noop_ke
     sibling = start(
         database, create(database, actor, source=original, title="independent requirement")
     )
-    change = api.record_source(
+    change = run(
+        RecordSourceUseCase,
         RecordSourceCommand(
             actor.project.id,
             actor.session.id,
@@ -597,7 +631,8 @@ def test_correction_does_not_rewrite_sibling_goal_or_original_source_and_noop_ke
         ),
         database_path=database,
     )
-    updated = api.correct_task(
+    updated = run(
+        CorrectTaskUseCase,
         CorrectTaskCommand(
             first.project_id,
             first.owner_session_id,
@@ -611,8 +646,10 @@ def test_correction_does_not_rewrite_sibling_goal_or_original_source_and_noop_ke
     assert updated.definition.required_result == first.definition.required_result
     assert history(database, sibling).task == sibling
     assert (
-        api.get_sources(
-            GetSourcesQuery(actor.project.id, actor.session.id), database_path=database
+        run(
+            GetSourcesUseCase,
+            GetSourcesQuery(actor.project.id, actor.session.id),
+            database_path=database,
         )[0]
         == original
     )
@@ -621,7 +658,8 @@ def test_correction_does_not_rewrite_sibling_goal_or_original_source_and_noop_ke
         database, actor, SourceKind.CORRECTION, corrects_id=done.definition.source_id
     )
     before = snapshot(database)
-    no_change = api.correct_task(
+    no_change = run(
+        CorrectTaskUseCase,
         CorrectTaskCommand(
             done.project_id, done.owner_session_id, done.id, done.revision, unchanged.id
         ),
@@ -635,7 +673,8 @@ def test_todo_contains_all_six_states_and_client_display_cannot_mutate_the_ledge
     pending = create(database, actor, title="pending")
     active = start(database, create(database, actor, title="active"))
     to_wait = start(database, create(database, actor, title="waiting"))
-    waiting = api.wait_task(
+    waiting = run(
+        WaitTaskUseCase,
         WaitTaskCommand(
             to_wait.project_id,
             to_wait.owner_session_id,
@@ -662,7 +701,8 @@ def test_todo_contains_all_six_states_and_client_display_cannot_mutate_the_ledge
     change = record(
         database, actor, SourceKind.CORRECTION, corrects_id=original.definition.source_id
     )
-    invalidated = api.invalidate_task(
+    invalidated = run(
+        InvalidateTaskUseCase,
         InvalidateTaskCommand(
             original.project_id,
             original.owner_session_id,

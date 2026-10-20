@@ -10,7 +10,7 @@ from spakky.core.application.application_context import ApplicationContext
 from spakky.plugins.sqlalchemy.persistency.session_manager import SessionManager
 from sqlalchemy import event, text
 
-from neurath.application.context import SessionContext
+from neurath.application.dto.session import SessionDTO
 from neurath.application.ports.repositories.project import IProjectRepository
 from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.domain.aggregates.project import Project, ProjectKind, ProjectLocation
@@ -19,8 +19,8 @@ from neurath.domain.errors import ContextNotFound, ProjectIdentityConflict, Revi
 from neurath.domain.observations import DirectoryObservation
 from neurath.infrastructure import providers
 from neurath.infrastructure.providers import DatabaseSettings, request_container
-from neurath.transport.session_requests import get_session_context, move_session, register_session
 from tests.conftest import initialize_git, storage_scope
+from tests.support.session_requests import get_session_context, move_session, register_session
 
 
 def persisted_state(database):
@@ -38,7 +38,7 @@ def test_self_factories_preserve_the_invoked_subclass_and_snapshot_independence(
     class SpecializedSession(HostSession):
         pass
 
-    class SpecializedContext(SessionContext):
+    class SpecializedContext(SessionDTO):
         pass
 
     project = SpecializedProject.create(DirectoryObservation("/repo"))

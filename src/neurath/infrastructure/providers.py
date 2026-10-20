@@ -91,7 +91,7 @@ def request_container(settings: DatabaseSettings) -> Iterator[ApplicationContext
         support_async_mode=False,
     )
     connection = ConnectionManager(config)
-    configure_sqlite_engine(connection.connection, write=settings.write)
+    configure_sqlite_engine(connection.connection, write=settings.write, check_schema=True)
 
     @Pod()
     def request_config() -> SQLAlchemyConnectionConfig:

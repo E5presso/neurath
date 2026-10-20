@@ -1,5 +1,6 @@
 """태스크 정의·제출·관찰 결과·외부 대기를 표현하는 불변 기록이다."""
 
+from collections.abc import Sequence
 from enum import StrEnum
 from typing import override
 
@@ -73,7 +74,7 @@ class TaskDefinition(AbstractValueObject):
     source_id: str
     title: str
     required_result: str
-    dependencies: tuple[str, ...] = ()
+    dependencies: Sequence[str] = ()
 
     @override
     def validate(self) -> None:
@@ -98,7 +99,7 @@ class SubmittedResult(AbstractValueObject):
     """
 
     summary: str
-    references: tuple[str, ...] = ()
+    references: Sequence[str] = ()
 
     @override
     def validate(self) -> None:
@@ -122,7 +123,7 @@ class TaskResult(AbstractValueObject):
 
     outcome: Outcome
     summary: str
-    observations: tuple[str, ...]
+    observations: Sequence[str]
     remaining_work: str | None = None
     exit_code: int | None = None
 

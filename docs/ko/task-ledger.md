@@ -52,8 +52,10 @@ pending이 됩니다. 정정 전 시도의 늦은 결과는 이력에 저장하�
 
 ## 내부 요청 API
 
-모든 함수는 `neurath.transport.task_requests`에 있으며 입력은 해당 이름의 개별 use case
-모듈에 정의한 불변 Command/Query입니다. 쓰기 입력은 프로젝트·소유 세션·대상·관찰 revision을
+각 작업은 `application/usecases`의 개별 유스케이스가 제공하며 `run(command/query)`로 호출합니다.
+Spakky `ICommandUseCase`·`IQueryUseCase`와 `AbstractCommand`·`AbstractQuery` 계약을 사용합니다.
+응답은 `application/dto/task.py`의 DTO이며 호출 예제의 요청 컨테이너·표준 Transaction 경계를 사용합니다.
+실제 CLI·호스트 프로토콜 변환이 없는 중계 계층은 제공하지 않습니다. 쓰기 입력은 프로젝트·소유 세션·대상·관찰 revision을
 지정합니다. 원문 생성과 태스크 생성은 새 ID를 반환합니다.
 
 | 요청 | 기능 |
@@ -74,6 +76,10 @@ pending이 됩니다. 정정 전 시도의 늦은 결과는 이력에 저장하�
 TODO는 별도 원장이 아닙니다. `get_tasks`의 tasks는 소유 세션의 전체 현재 목록이며 준비 여부는
 같은 프로젝트의 선행 작업 상태에서 계산합니다. 모든 종료 상태와 모든 성공을 구분하고 빈 목록을
 완료 근거로 삼지 않습니다. 표시용 복사본이 상태를 축약하거나 표시가 실패해도 원장은 바뀌지 않습니다.
+
+동종 컬렉션의 저장소·도메인·응답 계약은 `Sequence[T]`입니다. Sequence는 조회 인터페이스이며
+그 자체로 실행 시 불변성을 강제하지 않습니다. 소유 이력과 응답 목록의 실제 저장은 tuple snapshot을
+사용하고, 의존 입력은 복사하여 호출자의 list 변경이 보존된 요구를 바꾸지 않게 합니다.
 
 ## 스키마·검증·경계
 

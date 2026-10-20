@@ -1,16 +1,19 @@
 """GetSources 요청의 조회·도메인 판단·저장 순서를 조정한다."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import override
 
 from spakky.core.stereotype.usecase import UseCase
+from spakky.domain.application.query import AbstractQuery, IQueryUseCase
 
+from neurath.application.dto.task import SourceDTO
 from neurath.application.ports.repositories.request_source import IRequestSourceRepository
 from neurath.application.ports.repositories.session import ISessionRepository
-from neurath.application.task_context import SourceContext
 
 
 @dataclass(frozen=True)
-class GetSourcesQuery:
+class GetSourcesQuery(AbstractQuery):
     """요청 범위와 명시적인 입력이다.
 
     Attributes:
@@ -23,7 +26,7 @@ class GetSourcesQuery:
 
 
 @UseCase()
-class GetSourcesUseCase:
+class GetSourcesUseCase(IQueryUseCase[GetSourcesQuery, Sequence[SourceDTO]]):
     """프레임워크 저장 계약으로 한 요청의 도메인 동작을 조정한다."""
 
     def __init__(self, sessions: ISessionRepository, sources: IRequestSourceRepository) -> None:
@@ -36,16 +39,17 @@ class GetSourcesUseCase:
         self.sessions = sessions
         self.sources = sources
 
-    def execute(self, request: GetSourcesQuery) -> tuple[SourceContext, ...]:
+    @override
+    def run(self, query: GetSourcesQuery) -> Sequence[SourceDTO]:
         """명시한 요청을 적용하고 불변 결과를 반환한다.
 
         Args:
-            request: 원문·범위·관찰에 연결된 입력.
+            query: 원문·범위·관찰에 연결된 입력.
 
         Returns:
-            tuple[SourceContext, ...]: 현재 상태를 나타내는 불변 결과.
+            Sequence[SourceDTO]: 현재 상태를 나타내는 불변 결과.
         """
-        self.sessions.get(request.session_id).require_project(request.project_id)
+        self.sessions.get(query.session_id).require_project(query.project_id)
         return tuple(
-            SourceContext.from_entity(source) for source in self.sources.list(request.project_id)
+            SourceDTO.from_entity(source) for source in self.sources.list(query.project_id)
         )

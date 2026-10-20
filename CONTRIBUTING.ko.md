@@ -47,9 +47,9 @@ Raises·Attributes를 signature와 대조하며 짧은 요약으로 검사를 �
 AST 검사는 import 별칭과 로컬 상속 관계를 해석해 Protocol, Literal, Any/cast,
 이름으로 드러나는 커스텀 transaction/UoW API, Core/core 모듈, 계층 위반 import,
 ABC/abstractmethod 없는 port, 명시 계약 상속이 없는 repository/observer,
-비선언형 ORM 매핑을 거부합니다. use case 인터페이스, frozen 또는 기본 값 동등성을 쓰는
+비선언형 ORM 매핑을 거부합니다. 직접 만든 use case 인터페이스, frozen 또는 기본 값 동등성을 쓰는
 엔티티 dataclass, 조회·저장을 넘어서는 repository 계약, 엔티티를 노출하는 관찰 port,
-transport의 직접 adapter 생성도 거부합니다. Project는 불변 ProjectLocation 값을 소유하며
+실제 호스트 어댑터에서의 직접 의존성 생성도 거부합니다. 모든 유스케이스는 Spakky command/query 계약과 run 메서드를 구현하고 입력도 프레임워크 기반을 상속해야 합니다. 동종 가변 길이 컬렉션 계약은 Sequence를 사용하며 고정 이종 tuple과 구분합니다. 응답은 application/dto에 두고 프로토콜이 없는 transport 중계 패키지는 두지 않습니다. Project는 불변 ProjectLocation 값을 소유하며
 위치 전용 repository·DI·생명주기를 만들지 않습니다. 자식 테이블은 ORM 관계로 매핑하여
 프로젝트와 원자적으로 저장합니다. 루트 선택·승격은 도메인 규칙입니다. 모든 저장소의
 삽입·갱신은 `save(entity) -> entity`로 통일하고 add·insert·create·update 저장 별칭은

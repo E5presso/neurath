@@ -15,7 +15,10 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from neurath.application.ports.repositories.session import ISessionRepository
-from neurath.application.usecases.register_project import RegisterProjectUseCase
+from neurath.application.usecases.register_project import (
+    RegisterProjectCommand,
+    RegisterProjectUseCase,
+)
 from neurath.domain.aggregates.session import HostSession
 from neurath.domain.errors import (
     ContextNotFound,
@@ -28,14 +31,14 @@ from neurath.infrastructure.database import create_database_engine
 from neurath.infrastructure.models.project import ProjectModel
 from neurath.infrastructure.models.session import SessionModel
 from neurath.infrastructure.repositories.session import SessionRepository
-from neurath.transport.session_requests import get_session_context, move_session, register_session
 from tests.conftest import git, initialize_git, storage_scope
+from tests.support.session_requests import get_session_context, move_session, register_session
 
 PROCESS = """
 import json, sys
 from pathlib import Path
 from dataclasses import asdict
-from neurath.transport.session_requests import register_session, get_session_context, move_session
+from tests.support.session_requests import register_session, get_session_context, move_session
 from neurath.domain.errors import RevisionConflict
 path = Path(sys.argv[1])
 mode = sys.argv[2]
@@ -262,12 +265,14 @@ def test_foreign_keys_and_positive_revisions_are_enforced(database):
 def test_identity_conflict_does_not_merge_or_modify_existing_aliases(database):
     with storage_scope(database) as scope:
         projects = scope.get(RegisterProjectUseCase)
-        first = projects.execute(DirectoryObservation("/one", "/one/.git", "/one"))
-        second = projects.execute(DirectoryObservation("/two"))
+        first = projects.run(
+            RegisterProjectCommand(DirectoryObservation("/one", "/one/.git", "/one"))
+        )
+        second = projects.run(RegisterProjectCommand(DirectoryObservation("/two")))
     with pytest.raises(ProjectIdentityConflict):
         with storage_scope(database) as scope:
-            scope.get(RegisterProjectUseCase).execute(
-                DirectoryObservation("/two", "/one/.git", "/two")
+            scope.get(RegisterProjectUseCase).run(
+                RegisterProjectCommand(DirectoryObservation("/two", "/one/.git", "/two"))
             )
     with storage_scope(database, write=False) as scope:
         assert set(scope.get(SessionManager).session.scalars(select(ProjectModel.id))) == {
@@ -276,8 +281,8 @@ def test_identity_conflict_does_not_merge_or_modify_existing_aliases(database):
         }
     with pytest.raises(ProjectIdentityConflict):
         with storage_scope(database) as scope:
-            scope.get(RegisterProjectUseCase).execute(
-                DirectoryObservation("/one", "/different/.git", "/one")
+            scope.get(RegisterProjectUseCase).run(
+                RegisterProjectCommand(DirectoryObservation("/one", "/different/.git", "/one"))
             )
 
 

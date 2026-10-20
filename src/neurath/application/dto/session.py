@@ -8,7 +8,7 @@ from neurath.domain.aggregates.session import HostSession
 
 
 @dataclass(frozen=True)
-class ProjectContext:
+class ProjectDTO:
     """완료된 한 요청에서 관찰한 프로젝트 상태를 나타낸다.
 
     Attributes:
@@ -21,7 +21,7 @@ class ProjectContext:
 
 
 @dataclass(frozen=True)
-class HostSessionContext:
+class HostSessionDTO:
     """완료된 한 요청에서 관찰한 세션 상태를 나타낸다.
 
     Attributes:
@@ -42,7 +42,7 @@ class HostSessionContext:
 
 
 @dataclass(frozen=True)
-class SessionContext:
+class SessionDTO:
     """엔티티 동일성 대신 상태로 동등성을 비교하는 결과 값이다.
 
     Attributes:
@@ -50,8 +50,8 @@ class SessionContext:
         session: 해당 프로젝트에 속한 세션의 불변 상태.
     """
 
-    project: ProjectContext
-    session: HostSessionContext
+    project: ProjectDTO
+    session: HostSessionDTO
 
     @classmethod
     def from_entities(cls, project: Project, session: HostSession) -> Self:
@@ -65,8 +65,8 @@ class SessionContext:
             Self: 살아 있는 엔티티나 ORM 참조가 없는 불변 스냅샷.
         """
         return cls(
-            ProjectContext(project.id, project.root_path),
-            HostSessionContext(
+            ProjectDTO(project.id, project.root_path),
+            HostSessionDTO(
                 session.id,
                 session.project_id,
                 session.provider,

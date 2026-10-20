@@ -56,8 +56,10 @@ prerequisites satisfy the start condition.
 
 ## Internal request API
 
-Functions live in `neurath.transport.task_requests`; immutable Command/Query inputs live in
-the corresponding individual use-case modules. Mutations identify project, owner session,
+Operations are individual use cases in `application/usecases`, invoked through `run(command/query)`.
+They implement Spakky `ICommandUseCase`/`IQueryUseCase` with `AbstractCommand`/`AbstractQuery` inputs.
+Response DTOs live in `application/dto/task.py`. Callers use the request container and standard
+Transaction shown in the core example. There is no pass-through layer without a real CLI/host protocol. Mutations identify project, owner session,
 target and observed revision. Source/task creation returns new IDs.
 
 | Request | Behavior |
@@ -79,6 +81,10 @@ TODO is not another ledger. `get_tasks` returns all current tasks owned by the r
 readiness uses prerequisite states across the same project. All-terminal differs from
 all-successful, and an empty list is not completion evidence. Client display copies, status
 simplification or rendering failure cannot mutate the ledger.
+
+Homogeneous collection contracts use `Sequence[T]` across repositories, domain inputs and responses.
+Sequence is a read interface, not a runtime immutability guarantee. Owned histories and response lists
+use concrete tuple snapshots; dependency inputs are copied so mutating a caller list cannot alter requirements.
 
 ## Schema, verification and boundaries
 

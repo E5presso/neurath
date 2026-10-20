@@ -15,7 +15,8 @@ Public CLI, hooks and installation remain subsequent implementation work.
 - Domain tables use `@Table(Domain)` and `AbstractMappableTable[Domain]` with explicit conversion. Owned location records use `AbstractTable` without a separate domain repository.
 - `SchemaRegistry` resolves domain/table mappings from Table tags. Repositories do not maintain another mapping registry.
 - `ApplicationContext` composes `@UseCase`, `@Repository`, observation Pods and the framework's `ConnectionManager`, `SessionManager`, `Transaction`, and `AggregateCollector`.
-- Request adapters use the standard `Transaction` for commit, rollback and session closure. There is no custom unit-of-work or transaction implementation.
+- Callers resolve a use case in the request container, open the standard `Transaction`, and invoke `run(command/query)`. Spakky owns commit, rollback and session closure. No pass-through `transport` package or custom unit of work is provided.
+- Every use case implements Spakky `ICommandUseCase` or `IQueryUseCase`; inputs inherit `AbstractCommand` or `AbstractQuery`. Response DTOs live in `application/dto` and are application data, not a new domain concept.
 - The request boundary maps framework missing-entity and version-conflict errors to `ContextNotFound` and `RevisionConflict`. Use cases ask the domain to validate session/project scope.
 
 SQL for basic CRUD, merge, flush and aggregate collection belongs to the framework.
@@ -75,21 +76,32 @@ Ordinary requests do not migrate storage and reject older or future revisions.
 `initialize_database` is the explicit migration boundary. Failure rolls back schema,
 rows and revision together. Legacy stores require a separate migration process.
 
+Alembic migration files and its version table define revisions. At the first database transaction, compatibility compares `MigrationContext.get_current_heads()` with `ScriptDirectory.get_heads()` without a separate latest-revision constant.
+
 ## Internal request API
 
 ```python
 from pathlib import Path
+from spakky.plugins.sqlalchemy.persistency.transaction import Transaction
+from neurath.application.ports.services.directory_observer import IDirectoryObserver
+from neurath.application.usecases.register_session import RegisterSessionCommand, RegisterSessionUseCase
+from neurath.application.usecases.get_session_context import GetSessionContextQuery, GetSessionContextUseCase
 from neurath.infrastructure.database import initialize_database
-from neurath.transport.session_requests import (
-    register_session, get_session_context, move_session,
-)
+from neurath.infrastructure.providers import DatabaseSettings, request_container
 
 path = Path("/explicit/isolated/core.sqlite3")
 initialize_database(path)
-opened = register_session("/project", "codex", "native-session", database_path=path)
-current = get_session_context(opened.project.id, opened.session.id, database_path=path)
-changed = move_session(current.project.id, current.session.id, "/project/subfolder",
-                       current.session.revision, database_path=path)
+with request_container(DatabaseSettings(path, write=True)) as scope:
+    observation = scope.get(IDirectoryObserver).observe("/project")
+    with scope.get(Transaction):
+        opened = scope.get(RegisterSessionUseCase).run(
+            RegisterSessionCommand(observation, "codex", "native-session")
+        )
+with request_container(DatabaseSettings(path, write=False)) as scope:
+    with scope.get(Transaction):
+        current = scope.get(GetSessionContextUseCase).run(
+            GetSessionContextQuery(opened.project.id, opened.session.id)
+        )
 ```
 
 The default path is `$XDG_DATA_HOME/neurath/core.sqlite3`, falling back to

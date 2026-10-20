@@ -7,14 +7,13 @@ from urllib.parse import quote
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, event, inspect, text
+from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
+from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.engine import URL, Connection, Engine
-from sqlalchemy.orm import Session
 from sqlalchemy.pool import ConnectionPoolEntry, NullPool
 
 from neurath.domain.errors import StorageNotReady
-
-SCHEMA_REVISION = "core_0003"
 
 
 def user_database_path() -> Path:
@@ -82,12 +81,13 @@ def database_url(path: Path | None = None, *, write: bool, create: bool = False)
     )
 
 
-def configure_sqlite_engine(engine: Engine, *, write: bool) -> None:
+def configure_sqlite_engine(engine: Engine, *, write: bool, check_schema: bool = False) -> None:
     """주어진 엔진의 모든 SQLite 연결에 무결성과 트랜잭션 정책을 적용한다.
 
     Args:
         engine: 프레임워크 또는 마이그레이션이 생성한 엔진.
         write: 상태 조회 전에 쓰기 권한을 예약할지 여부.
+        check_schema: 일반 요청의 트랜잭션에서 Alembic 스키마를 검사할지 여부.
     """
 
     def configure(connection: sqlite3.Connection, record: ConnectionPoolEntry) -> None:
@@ -109,6 +109,8 @@ def configure_sqlite_engine(engine: Engine, *, write: bool) -> None:
             connection: SQLite 트랜잭션 동작을 설정할 연결.
         """
         connection.exec_driver_sql("BEGIN IMMEDIATE" if write else "BEGIN")
+        if check_schema:
+            verify_schema(connection)
 
     event.listen(engine, "connect", configure)
     event.listen(engine, "begin", begin)
@@ -141,17 +143,22 @@ def initialize_database(path: Path | None = None) -> None:
         engine.dispose()
 
 
-def verify_schema(session: Session) -> None:
+def verify_schema(connection: Connection) -> None:
     """요청 중 마이그레이션을 실행하지 않고 없거나 호환되지 않는 스키마를 거부한다.
 
     Args:
-        session: 현재 요청의 SQLAlchemy 세션.
+        connection: 현재 요청의 SQLAlchemy 연결.
 
     Raises:
         StorageNotReady: 데이터베이스가 없거나 초기화되지 않았거나 패키지와 호환되지 않는 경우.
     """
-    if not inspect(session.connection()).has_table("core_schema_revision"):
+    if not inspect(connection).has_table("core_schema_revision"):
         raise StorageNotReady("Schema missing; initialize or migrate explicitly")
-    versions = session.scalars(text("SELECT version_num FROM core_schema_revision")).all()
-    if versions != [SCHEMA_REVISION]:
+    config = Config()
+    config.set_main_option("script_location", "neurath.infrastructure:migrations")
+    current_heads = MigrationContext.configure(
+        connection, opts={"version_table": "core_schema_revision"}
+    ).get_current_heads()
+    expected_heads = ScriptDirectory.from_config(config).get_heads()
+    if set(current_heads) != set(expected_heads):
         raise StorageNotReady("Schema version differs; use matching package or migrate")

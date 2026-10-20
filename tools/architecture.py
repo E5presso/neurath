@@ -132,6 +132,18 @@ class ArchitectureChecker:
             for node in ast.walk(tree):
                 line = getattr(node, "lineno", 1)
                 location = f"{module}:{line}"
+                if (
+                    isinstance(node, ast.Subscript)
+                    and self._name(module, node).rsplit(".", 1)[-1] == "tuple"
+                    and isinstance(node.slice, ast.Tuple)
+                    and any(
+                        isinstance(item, ast.Constant) and item.value is Ellipsis
+                        for item in node.slice.elts
+                    )
+                ):
+                    errors.append(
+                        f"{location} COLLECTION_CONTRACT: use Sequence for homogeneous collections"
+                    )
                 if isinstance(node, (ast.Name, ast.Attribute, ast.Subscript)):
                     name = self._name(module, node)
                     if name in forbidden:
@@ -317,7 +329,7 @@ class ArchitectureChecker:
                     and node.name.endswith("UseCase")
                 ):
                     errors.append(
-                        f"{location} USECASE_INTERFACE: keep concrete application use cases"
+                        f"{location} USECASE_INTERFACE: inherit Spakky contracts instead of defining local interfaces"
                     )
                 if node.name == "SqliteDatabase":
                     errors.append(
@@ -369,6 +381,32 @@ class ArchitectureChecker:
                                     )
                 symbol = f"{module}.{node.name}"
                 ancestors = self._ancestors(symbol)
+                if ".application.usecases." in module:
+                    framework_contracts = {
+                        "spakky.domain.application.command.ICommandUseCase",
+                        "spakky.domain.application.query.IQueryUseCase",
+                        "spakky.domain.ICommandUseCase",
+                        "spakky.domain.IQueryUseCase",
+                    }
+                    if node.name.endswith("UseCase") and not ancestors.intersection(
+                        framework_contracts
+                    ):
+                        errors.append(
+                            f"{location} FRAMEWORK_USECASE: implement a Spakky command/query contract"
+                        )
+                    for suffix, contract in (
+                        ("Command", "command.AbstractCommand"),
+                        ("Query", "query.AbstractQuery"),
+                    ):
+                        if node.name.endswith(suffix) and not ancestors.intersection(
+                            {
+                                f"spakky.domain.application.{contract}",
+                                f"spakky.domain.Abstract{suffix}",
+                            }
+                        ):
+                            errors.append(
+                                f"{location} FRAMEWORK_REQUEST: inherit Spakky Abstract{suffix}"
+                            )
                 service_adapter = any(".ports.services." in parent for parent in ancestors)
                 if service_adapter:
                     for child in ast.walk(node):

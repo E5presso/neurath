@@ -6,10 +6,9 @@ DB 트랜잭션 전에 Git 관찰을 마친다. 요청마다 표준 Transaction�
 
 from pathlib import Path
 
-from spakky.plugins.sqlalchemy.persistency.session_manager import SessionManager
 from spakky.plugins.sqlalchemy.persistency.transaction import Transaction
 
-from neurath.application.context import SessionContext
+from neurath.application.dto.session import SessionDTO
 from neurath.application.ports.services.directory_observer import IDirectoryObserver
 from neurath.application.usecases.get_session_context import (
     GetSessionContextQuery,
@@ -20,7 +19,6 @@ from neurath.application.usecases.register_session import (
     RegisterSessionCommand,
     RegisterSessionUseCase,
 )
-from neurath.infrastructure.database import verify_schema
 from neurath.infrastructure.providers import DatabaseSettings, request_container
 
 
@@ -30,7 +28,7 @@ def register_session(
     host_session_id: str,
     *,
     database_path: Path | None = None,
-) -> SessionContext:
+) -> SessionDTO:
     """더 최신인 작업 경로를 덮어쓰지 않고 네이티브 세션을 멱등적으로 등록한다.
 
     Args:
@@ -40,7 +38,7 @@ def register_session(
         database_path: 명시적인 저장소 경로이며 None이면 사용자 단위 기본 경로.
 
     Returns:
-        SessionContext: 기존 또는 새로 등록한 호스트 세션 컨텍스트.
+        SessionDTO: 기존 또는 새로 등록한 호스트 세션 컨텍스트.
     """
     with request_container(DatabaseSettings(database_path, write=True)) as scope:
         observation = scope.get(IDirectoryObserver).observe(working_directory)
@@ -48,13 +46,12 @@ def register_session(
             observation=observation, provider=provider, host_session_id=host_session_id
         )
         with scope.get(Transaction):
-            verify_schema(scope.get(SessionManager).session)
-            return scope.get(RegisterSessionUseCase).execute(request)
+            return scope.get(RegisterSessionUseCase).run(request)
 
 
 def get_session_context(
     project_id: str, session_id: str, *, database_path: Path | None = None
-) -> SessionContext:
+) -> SessionDTO:
     """SQLite 읽기 전용 연결로 지정한 프로젝트와 세션만 조회한다.
 
     Args:
@@ -63,13 +60,12 @@ def get_session_context(
         database_path: 명시적인 저장소 경로이며 None이면 사용자 단위 기본 경로.
 
     Returns:
-        SessionContext: 명시적으로 지정한 세션의 현재 상태.
+        SessionDTO: 명시적으로 지정한 세션의 현재 상태.
     """
     request = GetSessionContextQuery(project_id=project_id, session_id=session_id)
     with request_container(DatabaseSettings(database_path, write=False)) as scope:
         with scope.get(Transaction):
-            verify_schema(scope.get(SessionManager).session)
-            return scope.get(GetSessionContextUseCase).execute(request)
+            return scope.get(GetSessionContextUseCase).run(request)
 
 
 def move_session(
@@ -79,7 +75,7 @@ def move_session(
     expected_revision: int,
     *,
     database_path: Path | None = None,
-) -> SessionContext:
+) -> SessionDTO:
     """관찰한 버전이 현재와 일치할 때만 프로젝트 안에서 세션을 이동한다.
 
     Args:
@@ -90,7 +86,7 @@ def move_session(
         database_path: 명시적인 저장소 경로이며 None이면 사용자 단위 기본 경로.
 
     Returns:
-        SessionContext: 성공적으로 갱신한 세션 버전을 포함하는 컨텍스트.
+        SessionDTO: 성공적으로 갱신한 세션 버전을 포함하는 컨텍스트.
     """
     with request_container(DatabaseSettings(database_path, write=True)) as scope:
         observation = scope.get(IDirectoryObserver).observe(working_directory)
@@ -101,5 +97,4 @@ def move_session(
             expected_revision=expected_revision,
         )
         with scope.get(Transaction):
-            verify_schema(scope.get(SessionManager).session)
-            return scope.get(MoveSessionUseCase).execute(request)
+            return scope.get(MoveSessionUseCase).run(request)

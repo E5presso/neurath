@@ -15,7 +15,8 @@
 - 도메인 테이블은 `@Table(Domain)`과 `AbstractMappableTable[Domain]`으로 양방향 변환을 정의합니다. 위치 자식 테이블은 도메인 매핑이 없는 `AbstractTable`입니다.
 - `SchemaRegistry`가 Table 태그를 통해 도메인과 실제 테이블을 연결합니다. 저장소가 매핑을 별도로 추적하지 않습니다.
 - `ApplicationContext`가 `@UseCase`, `@Repository`, 관찰 Pod와 프레임워크의 `ConnectionManager`, `SessionManager`, `Transaction`, `AggregateCollector`를 구성합니다.
-- `transport/session_requests.py`는 표준 `Transaction`을 사용합니다. 성공 시 commit, 예외 시 rollback, 세션 종료는 프레임워크가 수행합니다. 별도의 UoW나 transaction 구현은 없습니다.
+- 호출자는 요청 컨테이너에서 표준 `Transaction`을 열고 개별 유스케이스의 `run(command/query)`를 호출합니다. 성공 시 commit, 예외 시 rollback, 세션 종료는 프레임워크가 수행합니다. 실제 프로토콜 변환이 없는 `transport` 중계 계층과 별도 UoW는 없습니다.
+- 모든 유스케이스는 Spakky의 `ICommandUseCase` 또는 `IQueryUseCase`를 구현하며 입력은 `AbstractCommand` 또는 `AbstractQuery`를 상속합니다. 요청 뒤 반환하는 값은 `application/dto`의 응답 DTO이며 새 도메인 구성요소가 아닙니다.
 - 요청 경계는 프레임워크의 미존재·버전 충돌 오류를 기존 `ContextNotFound`·`RevisionConflict`로 변환합니다. 세션이 요청한 프로젝트에 속하는지는 유스케이스가 도메인에 확인합니다.
 
 기본 CRUD의 SQL과 merge·flush·변경 aggregate 수집은 프레임워크 소유입니다.
@@ -65,7 +66,7 @@ Project 저장은 소유한 위치 관계까지 기본 merge로 반영합니다.
 도메인 변경 후 프레임워크가 새 토큰을 생성합니다. 새 aggregate는 실제 생성 시각과
 토큰을 사용합니다. 이전 기록을 새 권한·성공 근거로 만들지 않습니다.
 
-일반 요청은 스키마를 바꾸지 않으며 이전·미래 revision을 거부합니다. `initialize_database`
+Alembic migration 파일과 version table이 revision의 유일한 기준입니다. 별도 최신 revision 상수 없이 `MigrationContext.get_current_heads()`와 `ScriptDirectory.get_heads()`로 호환성을 검사합니다. 일반 요청의 첫 DB 트랜잭션에서 검사하며 스키마를 바꾸지 않고 이전·미래 revision을 거부합니다. `initialize_database`
 명령 경계에서만 마이그레이션을 수행합니다. 전체 과정이 실패하면 스키마·행·revision이
 함께 롤백됩니다. legacy DB는 별도 자료 이전 없이 초기화하지 않습니다.
 
@@ -73,17 +74,26 @@ Project 저장은 소유한 위치 관계까지 기본 merge로 반영합니다.
 
 ```python
 from pathlib import Path
+from spakky.plugins.sqlalchemy.persistency.transaction import Transaction
+from neurath.application.ports.services.directory_observer import IDirectoryObserver
+from neurath.application.usecases.register_session import RegisterSessionCommand, RegisterSessionUseCase
+from neurath.application.usecases.get_session_context import GetSessionContextQuery, GetSessionContextUseCase
 from neurath.infrastructure.database import initialize_database
-from neurath.transport.session_requests import (
-    register_session, get_session_context, move_session,
-)
+from neurath.infrastructure.providers import DatabaseSettings, request_container
 
 path = Path("/explicit/isolated/core.sqlite3")
 initialize_database(path)
-opened = register_session("/project", "codex", "native-session", database_path=path)
-current = get_session_context(opened.project.id, opened.session.id, database_path=path)
-changed = move_session(current.project.id, current.session.id, "/project/subfolder",
-                       current.session.revision, database_path=path)
+with request_container(DatabaseSettings(path, write=True)) as scope:
+    observation = scope.get(IDirectoryObserver).observe("/project")
+    with scope.get(Transaction):
+        opened = scope.get(RegisterSessionUseCase).run(
+            RegisterSessionCommand(observation, "codex", "native-session")
+        )
+with request_container(DatabaseSettings(path, write=False)) as scope:
+    with scope.get(Transaction):
+        current = scope.get(GetSessionContextUseCase).run(
+            GetSessionContextQuery(opened.project.id, opened.session.id)
+        )
 ```
 
 기본 경로는 `$XDG_DATA_HOME/neurath/core.sqlite3`이며 XDG가 없으면

@@ -1,16 +1,18 @@
 """ReportResult 요청의 조회·도메인 판단·저장 순서를 조정한다."""
 
 from dataclasses import dataclass
+from typing import override
 
 from spakky.core.stereotype.usecase import UseCase
+from spakky.domain.application.command import AbstractCommand, ICommandUseCase
 
+from neurath.application.dto.task import TaskDTO
 from neurath.application.ports.repositories.task import ITaskRepository
-from neurath.application.task_context import TaskContext
 from neurath.domain.task_records import TaskResult
 
 
 @dataclass(frozen=True)
-class ReportResultCommand:
+class ReportResultCommand(AbstractCommand):
     """요청 범위와 명시적인 입력이다.
 
     Attributes:
@@ -31,7 +33,7 @@ class ReportResultCommand:
 
 
 @UseCase()
-class ReportResultUseCase:
+class ReportResultUseCase(ICommandUseCase[ReportResultCommand, TaskDTO]):
     """프레임워크 저장 계약으로 한 요청의 도메인 동작을 조정한다."""
 
     def __init__(self, tasks: ITaskRepository) -> None:
@@ -42,16 +44,17 @@ class ReportResultUseCase:
         """
         self.tasks = tasks
 
-    def execute(self, request: ReportResultCommand) -> TaskContext:
+    @override
+    def run(self, command: ReportResultCommand) -> TaskDTO:
         """명시한 요청을 적용하고 불변 결과를 반환한다.
 
         Args:
-            request: 원문·범위·관찰에 연결된 입력.
+            command: 원문·범위·관찰에 연결된 입력.
 
         Returns:
-            TaskContext: 현재 상태를 나타내는 불변 결과.
+            TaskDTO: 현재 상태를 나타내는 불변 결과.
         """
-        task = self.tasks.get(request.task_id)
-        task.require_scope(request.project_id, request.session_id)
-        task.report(request.attempt_number, request.result, request.expected_revision)
-        return TaskContext.from_entity(self.tasks.save(task))
+        task = self.tasks.get(command.task_id)
+        task.require_scope(command.project_id, command.session_id)
+        task.report(command.attempt_number, command.result, command.expected_revision)
+        return TaskDTO.from_entity(self.tasks.save(task))
