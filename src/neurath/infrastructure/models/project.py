@@ -21,7 +21,7 @@ class ProjectModel(DatabaseModel):
     __tablename__ = "core_projects"
     id: Mapped[str] = mapped_column(String, primary_key=True)
     root_path: Mapped[str] = mapped_column(String, nullable=False)
-    locations: Mapped[list["ProjectLocationModel"]] = relationship(
+    locations: Mapped[list[ProjectLocationModel]] = relationship(
         cascade="all, delete-orphan",
         order_by="ProjectLocationModel.kind, ProjectLocationModel.path",
     )

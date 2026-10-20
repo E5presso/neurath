@@ -1,6 +1,7 @@
 """특정 프로젝트 안에서 가변 호스트 세션의 동일성과 버전 규칙을 관리한다."""
 
 from dataclasses import dataclass
+from typing import Self
 from uuid import uuid4
 
 from neurath.domain.errors import RevisionConflict
@@ -42,7 +43,7 @@ class HostSession:
     @classmethod
     def create(
         cls, project_id: str, provider: str, host_session_id: str, working_directory: str
-    ) -> "HostSession":
+    ) -> Self:
         """유효한 네이티브 식별자로 최초 관찰을 등록한다.
 
         Args:
@@ -52,7 +53,7 @@ class HostSession:
             working_directory: 관찰한 정규 디렉터리.
 
         Returns:
-            HostSession: 버전이 1인 새 세션.
+            Self: 버전이 1인 새 세션.
 
         Raises:
             ValueError: 공급자 또는 네이티브 식별자가 빈 문자열인 경우.

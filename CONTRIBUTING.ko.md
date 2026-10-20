@@ -8,7 +8,7 @@
 별도 인터페이스 없이 구체 클래스로 작성합니다. 각 use case는 이름이 있는 불변 command/query를 받아 `execute`합니다.
 ORM 모델은 `DeclarativeBase`, `Mapped`, `mapped_column`·`relationship`과 명시적인 도메인 변환을
 사용합니다. 요청 adapter는 `Session.begin()`을 직접 사용하며 별도 UoW·트랜잭션
-프레임워크나 DB 설정 wrapper를 추가하지 않습니다. Dishka가 의존성과 자원 수명을 관리합니다.
+프레임워크나 DB 설정 wrapper를 추가하지 않습니다. Spakky Framework의 `ApplicationContext`·`@Pod`·`@UseCase`·`@Repository`가 생성자 주입을 담당하며 요청 경계에서 ORM 자원을 정리합니다.
 
 ## 필수 개발 검사
 
@@ -83,3 +83,7 @@ DB 시험은 모두 임시 경로를 사용합니다. 이미 적용한 revision�
 
 공개 문서는 `docs/en`과 `docs/ko`의 같은 상대 경로에 같은 범위로 유지합니다.
 개인 경로와 검증 원문은 공개 문서와 패키지에 넣지 않습니다.
+
+Python 3.14 문법은 Ruff UP로 검사하고 classmethod의 자기 타입 반환은 `Self`를 사용합니다.
+실패·정상 구조 fixture와 함께 하위 클래스 생성, 스냅샷 독립성, 실패 요청의 전체 상태 보존,
+Spakky 요청 격리와 초기화 실패 시 자원 정리를 공통 품질 검사에서 실행합니다.

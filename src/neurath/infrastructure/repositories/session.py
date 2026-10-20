@@ -2,6 +2,7 @@
 
 from typing import override
 
+from spakky.data.stereotype.repository import Repository
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
@@ -12,6 +13,7 @@ from neurath.domain.errors import ContextNotFound, RevisionConflict
 from neurath.infrastructure.models.session import SessionModel
 
 
+@Repository()
 class SessionRepository(ISessionRepository):
     """ORM의 낙관적 버전 검사로 호스트 관찰을 저장한다."""
 

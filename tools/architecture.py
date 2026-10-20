@@ -245,7 +245,7 @@ class ArchitectureChecker:
                         ("Repository", "UseCase", "Observer")
                     ):
                         errors.append(
-                            f"{location} DEPENDENCY_COMPOSITION: resolve dependencies through Dishka"
+                            f"{location} DEPENDENCY_COMPOSITION: resolve dependencies through Spakky"
                         )
                     if (
                         ".infrastructure.repositories." in module
@@ -266,6 +266,21 @@ class ArchitectureChecker:
                         errors.append(f"{location} DECLARATIVE_ORM: use Mapped and mapped_column")
                 if not isinstance(node, ast.ClassDef):
                     continue
+                for method in node.body:
+                    if not isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        continue
+                    if not any(
+                        isinstance(decorator, ast.Name) and decorator.id == "classmethod"
+                        for decorator in method.decorator_list
+                    ):
+                        continue
+                    if method.returns is not None and any(
+                        isinstance(annotation, ast.Name) and annotation.id == node.name
+                        for annotation in ast.walk(method.returns)
+                    ):
+                        errors.append(
+                            f"{module}:{method.lineno} SELF_RETURN: use Self in class factories"
+                        )
                 if ".repositories." in module and node.name in {
                     "IProjectLocationRepository",
                     "ProjectLocationRepository",

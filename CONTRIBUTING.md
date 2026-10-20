@@ -8,7 +8,8 @@ Repository and observation ports use `ABC` and `@abstractmethod`; their adapters
 explicitly inherit those ports. Use cases are concrete classes without interfaces. Each use case accepts a named immutable
 command or query and exposes `execute`. ORM models use `DeclarativeBase`, `Mapped`,
 `mapped_column`, `relationship`, and explicit domain conversion methods. Request adapters directly
-use `Session.begin()`; Dishka supplies scoped dependencies and resource cleanup.
+use `Session.begin()`; Spakky Framework supplies constructor injection through `ApplicationContext`, `@Pod`,
+`@UseCase`, and `@Repository`. Each request owns and closes its ORM resources.
 Do not add a custom transaction/unit-of-work framework or a database configuration wrapper.
 
 ## Required development checks
@@ -96,3 +97,7 @@ implementation tickets. `setup` cannot install this incomplete candidate.
 Keep public documentation paired under `docs/en` and `docs/ko`, with the same
 relative paths and equivalent scope. Keep private paths and raw validation logs
 out of public documentation and packages.
+
+Ruff UP checks Python 3.14 syntax. Classmethod factories returning their own type use `Self`.
+The shared quality runner checks subclass construction, snapshot independence, full state
+preservation after rejected requests, Spakky request isolation and bootstrap failure cleanup.

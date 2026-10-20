@@ -5,11 +5,14 @@ import subprocess
 from pathlib import Path
 from typing import override
 
+from spakky.core.pod.annotations.pod import Pod
+
 from neurath.application.ports.services.directory_observer import IDirectoryObserver
 from neurath.domain.errors import NeurathError
 from neurath.domain.observations import DirectoryObservation
 
 
+@Pod()
 class GitDirectoryObserver(IDirectoryObserver):
     """프로젝트 동일성을 선택하지 않고 파일 시스템과 Git의 정규화된 사실을 읽는다."""
 

@@ -5,6 +5,7 @@ import sqlite3
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from dataclasses import asdict
 
 import pytest
@@ -131,7 +132,7 @@ def test_folder_to_git_promotion_preserves_foreign_keys_from_first_linked_reques
     plain = tmp_path / "plain"
     plain.mkdir()
     before = register_session(str(plain), "codex", "native", database_path=database)
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection, connection:
         connection.execute("PRAGMA foreign_keys=ON")
         connection.execute(
             "CREATE TABLE dependent_fixture (project_id TEXT REFERENCES core_projects(id), source TEXT)"
@@ -146,7 +147,7 @@ def test_folder_to_git_promotion_preserves_foreign_keys_from_first_linked_reques
     after = request(database, "register", linked, "codex", "another")
     assert after["project"]["id"] == before.project.id
     assert request(database, "read", before.project.id, before.session.id) == asdict(before)
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection, connection:
         assert connection.execute("SELECT * FROM dependent_fixture").fetchall() == [
             (before.project.id, "unfinished original source")
         ]
@@ -191,7 +192,7 @@ def test_failed_registration_rolls_back_project_alias_and_session(
     monkeypatch.setattr(SessionRepository, "save", fail_after_flush)
     with pytest.raises(RuntimeError, match="after flush"):
         register_session(str(repository), "codex", "native", database_path=database)
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection, connection:
         for table in ("core_projects", "core_project_locations", "core_sessions"):
             assert connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone() == (0,)
 
@@ -213,7 +214,7 @@ def test_related_changes_roll_back_together_using_actual_session(database, repos
     finally:
         engine.dispose()
     assert get_session_context(first.project.id, first.session.id, database_path=database) == first
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection, connection:
         assert connection.execute("SELECT COUNT(*) FROM core_sessions").fetchone() == (1,)
 
 

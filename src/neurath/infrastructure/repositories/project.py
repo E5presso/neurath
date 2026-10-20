@@ -2,6 +2,7 @@
 
 from typing import override
 
+from spakky.data.stereotype.repository import Repository
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -12,6 +13,7 @@ from neurath.domain.errors import ContextNotFound, ProjectIdentityConflict
 from neurath.infrastructure.models.project import ProjectLocationModel, ProjectModel
 
 
+@Repository()
 class ProjectRepository(IProjectRepository):
     """주어진 ORM 세션에서 프로젝트와 소유 위치를 함께 조회·저장한다."""
 

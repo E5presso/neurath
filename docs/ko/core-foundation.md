@@ -17,13 +17,13 @@ imperative table 매핑을 패키지에 남기지 않습니다.
 - `infrastructure/models`와 `repositories`: 선언형 레코드, 명시적 변환, 기본 영속성 구현.
 - `infrastructure/database.py`: engine 생성·스키마 확인·명시적 초기화 함수.
 - `infrastructure/directory_observer.py`: 정규 경로·Git common directory·primary worktree 사실만 반환하는 제한 시간 있는 I/O.
-- `infrastructure/providers.py`: Dishka 생성자 주입과 APP engine·REQUEST Session/repository/use case 수명 관리.
+- `infrastructure/providers.py`: Spakky ApplicationContext의 생성자 주입과 요청별 engine·Session·repository·use case 구성.
 - `transport/session_requests.py`: 요청 조정과 직접적인 `Session.begin()` 트랜잭션 소유권.
 
-domain과 application은 SQLAlchemy·Alembic·Dishka·호스트 adapter를 import하지 않습니다.
-호스트 요청마다 새 컨테이너를 만듭니다. APP scope는 자원 수명이며 상주 daemon이 아닙니다.
-DB Session을 resolve하기 전에 Git 관찰을 마칩니다. Dishka는 Session 종료·engine 폐기를
-담당하며 트랜잭션을 commit하지 않습니다. 자원 정리 후 독립된 불변 snapshot을 반환합니다.
+domain과 application은 SQLAlchemy·Alembic·호스트 adapter를 import하지 않습니다. application의 유스케이스는 Spakky `@UseCase`로 등록합니다.
+호스트 요청마다 새 Spakky 컨테이너를 만듭니다. 상주 daemon이나 공유 요청 상태를 두지 않습니다.
+DB 트랜잭션을 시작하기 전에 Git 관찰을 마칩니다. 요청 경계에서 Session 종료·engine 폐기를
+담당하며 Spakky는 생성자 의존성을 주입합니다. 자원 정리 후 독립된 불변 snapshot을 반환합니다.
 
 ## 내부 요청 API
 
@@ -57,7 +57,7 @@ XDG가 없으면 `~/.local/share/neurath/core.sqlite3`를 사용합니다. 상�
 
 ## SQLAlchemy와 이전
 
-각 요청은 Dishka로 pool 없는 engine과 실제 ORM `Session`을 resolve하고 요청
+각 요청은 Spakky로 pool 없는 engine과 실제 ORM `Session`을 resolve하고 요청
 adapter가 직접 `with session.begin():`을 사용합니다. 쓰기는 가변
 상태를 읽기 전에 `BEGIN IMMEDIATE`를 획득하고 조회는 SQLite 읽기 전용 모드를
 사용합니다. 모든 연결은 외래 키를 적용합니다. SQLite가 동시 작성을 조정하며

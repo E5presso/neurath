@@ -17,13 +17,13 @@ Protocol contract, or imperative runtime table mapping remains in the package.
 - `infrastructure/models` and `repositories`: declarative records, named conversions, and primitive persistence implementations.
 - `infrastructure/database.py`: engine creation, schema verification, and explicit initialization functions.
 - `infrastructure/directory_observer.py`: bounded Git/filesystem I/O returning canonical directory/common-directory/primary-worktree facts.
-- `infrastructure/providers.py`: Dishka constructor injection with APP engine and REQUEST Session/repository/use-case lifetimes.
+- `infrastructure/providers.py`: Spakky ApplicationContext constructor injection with a fresh engine, Session, repository and use-case graph per request.
 - `transport/session_requests.py`: request orchestration and direct `Session.begin()` transaction ownership.
 
-Domain and application layers do not import SQLAlchemy, Alembic, Dishka, or host adapters.
-A fresh container is built for every host request; APP scope is a resource lifetime,
-not a daemon. Git observation completes before resolving the database session.
-Dishka closes the Session and disposes the engine; it never commits a transaction.
+Domain and application layers do not import SQLAlchemy, Alembic, or host adapters. Application use cases declare Spakky `@UseCase` stereotypes.
+A fresh Spakky container is built for every host request, without a resident daemon
+or shared request state. Git observation completes before starting the database transaction.
+The request boundary closes the Session and disposes the engine; Spakky resolves the dependency graph and does not commit transactions.
 Request results are independent immutable snapshots returned after cleanup.
 
 ## Internal request API
@@ -59,7 +59,7 @@ become new folder projects.
 
 ## SQLAlchemy and migrations
 
-Each request resolves an unpooled engine and actual ORM `Session` through Dishka,
+Each request resolves an unpooled engine and actual ORM `Session` through Spakky,
 then the request adapter directly uses `with session.begin():`. Writes acquire
 `BEGIN IMMEDIATE` before reading mutable state; reads use SQLite read-only mode.
 Foreign keys are enabled on every connection. SQLite coordinates competing writers;

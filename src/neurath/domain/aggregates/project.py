@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Self
 from uuid import uuid4
 
 from neurath.domain.errors import ProjectIdentityConflict
@@ -96,15 +97,15 @@ class Project:
             return (folder,)
         return (ProjectLocation(ProjectKind.GIT, observation.git_common_directory), folder)
 
-    @staticmethod
-    def owner_of(owners: tuple["Project", ...]) -> "Project | None":
+    @classmethod
+    def owner_of(cls, owners: tuple[Self, ...]) -> Self | None:
         """충돌하는 프로젝트를 병합하지 않고 후보 위치의 기존 소유자를 선택한다.
 
         Args:
             owners: 후보 위치를 통해 조회한 기존 프로젝트들.
 
         Returns:
-            Project | None: 유일한 기존 소유자이며 새 위치라면 None.
+            Self | None: 유일한 기존 소유자이며 새 위치라면 None.
 
         Raises:
             ProjectIdentityConflict: 후보 위치들이 서로 다른 프로젝트에 속한 경우.
@@ -114,14 +115,14 @@ class Project:
         return next(iter(owners), None)
 
     @classmethod
-    def create(cls, observation: DirectoryObservation) -> "Project":
+    def create(cls, observation: DirectoryObservation) -> Self:
         """도메인의 루트와 위치 선택 규칙에 따라 새 프로젝트를 생성한다.
 
         Args:
             observation: 이번 요청의 정규 디렉터리와 Git 관찰 사실.
 
         Returns:
-            Project: 독립적으로 생성한 식별자와 소유 위치를 가진 새 프로젝트.
+            Self: 독립적으로 생성한 식별자와 소유 위치를 가진 새 프로젝트.
         """
         return cls(str(uuid4()), cls.root_for(observation), cls.identify(observation))
 

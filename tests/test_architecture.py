@@ -334,15 +334,13 @@ def test_resource_factories_and_frozen_values_are_not_transaction_or_entity_wrap
     sources = {
         "neurath.infrastructure.providers": '''"""구조 계약을 검증하는 테스트 대상이다."""
 from collections.abc import Iterator
-from dishka import Provider, Scope, provide
+from contextlib import contextmanager
 from sqlalchemy.orm import Session
-class ResourceProvider(Provider):
+@contextmanager
+def request_scope() -> Iterator[Session]:
     """구조 계약을 검증하는 테스트 대상이다."""
-    @provide(scope=Scope.REQUEST)
-    def session(self) -> Iterator[Session]:
-        """구조 계약을 검증하는 테스트 대상이다."""
-        with Session() as session:
-            yield session
+    with Session() as session:
+        yield session
 ''',
         "neurath.domain.observations": '''"""구조 계약을 검증하는 테스트 대상이다."""
 from dataclasses import dataclass
@@ -499,3 +497,60 @@ def select_record(existing, key, valid, ready):
     assert (
         ArchitectureChecker({"neurath.infrastructure.repositories.example": source}).check() == []
     )
+
+
+@pytest.mark.parametrize("return_type", ["Factory", "Factory | None", "tuple[Factory, ...]"])
+def test_class_factories_use_self_for_subclass_preserving_results(return_type):
+    source = f'''"""생성 메서드의 반환 계약을 검증한다."""
+class Factory:
+    """동적 생성 대상의 타입을 유지한다."""
+    @classmethod
+    def create(cls) -> {return_type}:
+        """생성한 결과를 반환한다."""
+        return cls()
+'''
+    errors = ArchitectureChecker({"neurath.application.factory": source}).check()
+    assert any("SELF_RETURN:" in error for error in errors)
+
+
+def test_self_factory_and_concrete_domain_conversion_have_distinct_return_contracts():
+    source = '''"""생성 및 변환 메서드의 서로 다른 반환 계약을 검증한다."""
+from typing import Self
+class Factory:
+    """생성 대상과 구체 변환 결과를 구분한다."""
+    @classmethod
+    def create(cls) -> Self:
+        """호출한 클래스의 새 인스턴스를 반환한다."""
+        return cls()
+    def to_domain(self) -> Factory:
+        """구체 도메인 결과로 변환한다."""
+        return Factory()
+'''
+    assert ArchitectureChecker({"neurath.application.factory": source}).check() == []
+
+
+def test_python_314_lint_rejects_quoted_and_legacy_typing_annotations(tmp_path):
+    source = tmp_path / "annotations.py"
+    source.write_text('from typing import List\ndef names() -> "List[str]":\n    return []\n')
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ruff",
+            "check",
+            "--config",
+            str(Path(__file__).resolve().parents[1] / "pyproject.toml"),
+            "--output-format",
+            "json",
+            str(source),
+        ],
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).resolve().parents[1],
+    )
+    import json
+
+    codes = {diagnostic["code"] for diagnostic in json.loads(result.stdout)}
+    assert result.returncode == 1
+    assert "UP006" in codes
+    assert "UP037" in codes

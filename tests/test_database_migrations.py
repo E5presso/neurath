@@ -4,6 +4,7 @@ import sqlite3
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -50,7 +51,7 @@ def test_missing_database_is_not_implicitly_created_and_initialize_is_idempotent
 
 def test_legacy_database_bytes_are_preserved_on_rejected_initialization(tmp_path):
     path = tmp_path / "legacy.sqlite3"
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection, connection:
         connection.execute("CREATE TABLE task (source TEXT)")
         connection.execute("INSERT INTO task VALUES ('unfinished original source')")
     before = path.read_bytes()
@@ -64,7 +65,7 @@ def test_original_schema_records_are_readable_and_updatable_without_data_convers
     folder = tmp_path / "project"
     folder.mkdir()
     fixture = Path(__file__).parent / "fixtures" / "core_0001.sql"
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection, connection:
         connection.executescript(fixture.read_text())
         connection.execute(
             "INSERT INTO core_projects VALUES ('original-project', ?)", (str(folder),)
@@ -110,7 +111,7 @@ def test_initialization_is_serialized_between_processes_and_unknown_revision_is_
 
     with ThreadPoolExecutor(max_workers=3) as pool:
         list(pool.map(initialize, range(3)))
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection, connection:
         connection.execute("UPDATE core_schema_revision SET version_num='future'")
     before = path.read_bytes()
     with pytest.raises(StorageNotReady, match="version"):

@@ -8,7 +8,7 @@ Neurath는 로컬 CLI 전용 에이전트 하네스로 전면 재작성 중입�
 #137의 사용자 단위 프로젝트·세션 영속성 기반입니다.
 
 현재 후보 패키지는 가변 도메인 엔티티와 불변 요청 값, 명시적인 애플리케이션 port와
-use case, 타입이 있는 SQLAlchemy ORM repository, Dishka 요청 scope의 세션 함수를 제공합니다.
+use case, 타입이 있는 SQLAlchemy ORM repository, Spakky Framework 요청별 세션 함수를 제공합니다.
 과거 MCP 서버, 공개 CLI, 설치기와 나머지 하네스 기능은 포함하지 않습니다.
 과거 실행 코드는 Git 기록에서 복구할 수 있습니다. 이 체크아웃을 수정하거나
 검증해도 기존 설치 배포본과 사용자 데이터베이스는 바뀌지 않습니다.

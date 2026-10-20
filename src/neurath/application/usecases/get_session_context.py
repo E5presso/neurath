@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from spakky.core.stereotype.usecase import UseCase
+
 from neurath.application.context import SessionContext
 from neurath.application.ports.repositories.project import IProjectRepository
 from neurath.application.ports.repositories.session import ISessionRepository
@@ -20,6 +22,7 @@ class GetSessionContextQuery:
     session_id: str
 
 
+@UseCase()
 class GetSessionContextUseCase:
     """저장 수명을 소유하지 않고 프로젝트와 세션 규칙을 조정한다."""
 

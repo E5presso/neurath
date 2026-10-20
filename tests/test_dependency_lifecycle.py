@@ -1,4 +1,4 @@
-"""실제 Dishka 범위와 SQLAlchemy 병합 버전 검사 및 예외 정리를 검증한다."""
+"""실제 Spakky 요청별 주입와 SQLAlchemy 병합 버전 검사 및 예외 정리를 검증한다."""
 
 from dataclasses import asdict
 
@@ -19,49 +19,40 @@ from neurath.infrastructure.repositories.session import SessionRepository
 from neurath.transport.session_requests import get_session_context, move_session, register_session
 
 
-def test_dishka_scopes_inject_one_session_per_request_and_close_it(database):
-    container = request_container(DatabaseSettings(database, write=True))
-    try:
-        with container() as first:
-            first_session = first.get(Session)
-            project_repo = first.get(IProjectRepository)
-            usecase = first.get(RegisterSessionUseCase)
-            assert usecase.projects.projects is project_repo
-            assert usecase.sessions is first.get(ISessionRepository)
-            assert usecase.sessions.session is project_repo.session is first_session
-            with first_session.begin():
-                first_session.execute(text("SELECT 1"))
-        with pytest.raises(InvalidRequestError, match="permanently closed"):
+def test_spakky_injects_one_session_per_request_and_closes_it(database):
+    with request_container(DatabaseSettings(database, write=True)) as first:
+        first_session = first.get(Session)
+        project_repo = first.get(IProjectRepository)
+        usecase = first.get(RegisterSessionUseCase)
+        assert usecase.projects.projects is project_repo
+        assert usecase.sessions is first.get(ISessionRepository)
+        assert usecase.sessions.session is project_repo.session is first_session
+        with first_session.begin():
             first_session.execute(text("SELECT 1"))
-        with container() as second:
-            assert second.get(Session) is not first_session
-            assert second.get(IProjectRepository) is not project_repo
-            assert second.get(RegisterSessionUseCase) is not usecase
-    finally:
-        container.close()
+    with pytest.raises(InvalidRequestError, match="permanently closed"):
+        first_session.execute(text("SELECT 1"))
+    with request_container(DatabaseSettings(database, write=True)) as second:
+        assert second.get(Session) is not first_session
+        assert second.get(IProjectRepository) is not project_repo
+        assert second.get(RegisterSessionUseCase) is not usecase
 
 
-def test_exception_rolls_back_and_di_closes_connection_without_commit(database):
-    container = request_container(DatabaseSettings(database, write=True))
+def test_exception_rolls_back_and_spakky_request_closes_without_commit(database):
     events = []
-    engine = container.get(Engine)
-    event.listen(engine, "commit", lambda connection: events.append("commit"))
-    event.listen(engine, "rollback", lambda connection: events.append("rollback"))
-    event.listen(engine, "close", lambda connection, record: events.append("close"))
-    event.listen(engine, "engine_disposed", lambda connection: events.append("disposed"))
-    try:
-        with pytest.raises(RuntimeError, match="abort"):
-            with container() as scope:
-                session = scope.get(Session)
-                with session.begin():
-                    session.execute(text("INSERT INTO core_projects VALUES ('abort', '/tmp')"))
-                    raise RuntimeError("abort")
-        assert events == ["rollback", "close"]
-        with pytest.raises(InvalidRequestError, match="permanently closed"):
-            session.execute(text("SELECT 1"))
-    finally:
-        container.close()
+    with pytest.raises(RuntimeError, match="abort"):
+        with request_container(DatabaseSettings(database, write=True)) as scope:
+            engine = scope.get(Engine)
+            event.listen(engine, "commit", lambda connection: events.append("commit"))
+            event.listen(engine, "rollback", lambda connection: events.append("rollback"))
+            event.listen(engine, "close", lambda connection, record: events.append("close"))
+            event.listen(engine, "engine_disposed", lambda connection: events.append("disposed"))
+            session = scope.get(Session)
+            with session.begin():
+                session.execute(text("INSERT INTO core_projects VALUES ('abort', '/tmp')"))
+                raise RuntimeError("abort")
     assert events == ["rollback", "close", "disposed"]
+    with pytest.raises(InvalidRequestError, match="permanently closed"):
+        session.execute(text("SELECT 1"))
     verification = create_database_engine(database, write=False)
     try:
         with verification.connect() as connection:

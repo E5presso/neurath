@@ -41,19 +41,15 @@ def register_session(
     Returns:
         SessionContext: 기존 또는 새로 등록한 호스트 세션 컨텍스트.
     """
-    container = request_container(DatabaseSettings(database_path, write=True))
-    try:
-        with container() as scope:
-            observation = scope.get(IDirectoryObserver).observe(working_directory)
-            request = RegisterSessionCommand(
-                observation=observation, provider=provider, host_session_id=host_session_id
-            )
-            session = scope.get(Session)
-            with session.begin():
-                verify_schema(session)
-                return scope.get(RegisterSessionUseCase).execute(request)
-    finally:
-        container.close()
+    with request_container(DatabaseSettings(database_path, write=True)) as scope:
+        observation = scope.get(IDirectoryObserver).observe(working_directory)
+        request = RegisterSessionCommand(
+            observation=observation, provider=provider, host_session_id=host_session_id
+        )
+        session = scope.get(Session)
+        with session.begin():
+            verify_schema(session)
+            return scope.get(RegisterSessionUseCase).execute(request)
 
 
 def get_session_context(
@@ -70,15 +66,11 @@ def get_session_context(
         SessionContext: 명시적으로 지정한 세션의 현재 상태.
     """
     request = GetSessionContextQuery(project_id=project_id, session_id=session_id)
-    container = request_container(DatabaseSettings(database_path, write=False))
-    try:
-        with container() as scope:
-            session = scope.get(Session)
-            with session.begin():
-                verify_schema(session)
-                return scope.get(GetSessionContextUseCase).execute(request)
-    finally:
-        container.close()
+    with request_container(DatabaseSettings(database_path, write=False)) as scope:
+        session = scope.get(Session)
+        with session.begin():
+            verify_schema(session)
+            return scope.get(GetSessionContextUseCase).execute(request)
 
 
 def move_session(
@@ -101,19 +93,15 @@ def move_session(
     Returns:
         SessionContext: 성공적으로 갱신한 세션 버전을 포함하는 컨텍스트.
     """
-    container = request_container(DatabaseSettings(database_path, write=True))
-    try:
-        with container() as scope:
-            observation = scope.get(IDirectoryObserver).observe(working_directory)
-            request = MoveSessionCommand(
-                project_id=project_id,
-                session_id=session_id,
-                observation=observation,
-                expected_revision=expected_revision,
-            )
-            session = scope.get(Session)
-            with session.begin():
-                verify_schema(session)
-                return scope.get(MoveSessionUseCase).execute(request)
-    finally:
-        container.close()
+    with request_container(DatabaseSettings(database_path, write=True)) as scope:
+        observation = scope.get(IDirectoryObserver).observe(working_directory)
+        request = MoveSessionCommand(
+            project_id=project_id,
+            session_id=session_id,
+            observation=observation,
+            expected_revision=expected_revision,
+        )
+        session = scope.get(Session)
+        with session.begin():
+            verify_schema(session)
+            return scope.get(MoveSessionUseCase).execute(request)

@@ -24,6 +24,7 @@ def main() -> None:
             "tests/test_quality_hook.py",
             "tests/test_domain.py",
             "tests/test_dependency_lifecycle.py",
+            "tests/test_core_boundaries.py",
         ],
     )
     for arguments in commands:

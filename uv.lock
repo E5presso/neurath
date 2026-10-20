@@ -58,15 +58,6 @@ wheels = [
 ]
 
 [[package]]
-name = "dishka"
-version = "1.10.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/97/da/b75b5fe665d16725e1d46e291c8dd4b0ed1731c7964f41087fda92f03d40/dishka-1.10.1.tar.gz", hash = "sha256:51fb624b9acc948b90f57128460061d1f3a1780121fe1c7d14c565e8bbff2083", size = 282008, upload-time = "2026-04-25T12:07:57.587Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/2c/08/dd3259a319ba45c48d975caf237c830c7873a203288cb4ab186cc5bef585/dishka-1.10.1-py3-none-any.whl", hash = "sha256:84f40c1115eb391ce3fb558fd7946c5bcaf6361c35b77b7a185b7697a5720ec7", size = 120062, upload-time = "2026-04-25T12:07:59.153Z" },
-]
-
-[[package]]
 name = "distlib"
 version = "0.4.3"
 source = { registry = "https://pypi.org/simple" }
@@ -195,7 +186,8 @@ version = "0.3.1"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
-    { name = "dishka" },
+    { name = "spakky" },
+    { name = "spakky-data" },
     { name = "sqlalchemy" },
 ]
 
@@ -212,7 +204,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = "==1.20.0" },
-    { name = "dishka", specifier = ">=1.10.1" },
+    { name = "spakky", specifier = "==8.1.0" },
+    { name = "spakky-data", specifier = "==8.1.0" },
     { name = "sqlalchemy", specifier = "==2.0.54" },
 ]
 
@@ -408,6 +401,42 @@ wheels = [
 ]
 
 [[package]]
+name = "spakky"
+version = "8.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "uuid7" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/19/05/37130580b191ae670ffada24bc8d8aa1f2df01e5136a537f2a7ad4a77817/spakky-8.1.0.tar.gz", hash = "sha256:95e96850a4922765a626a4c3678c47cedfbcdd9a3f44df1ee6ba33948b7bdfbf", size = 56187, upload-time = "2026-08-22T12:30:20.807Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/81/ee/f6dc93017869d54ac9585a6f4d5457e6ef91298a3f5e5fa680f97afad9ef/spakky-8.1.0-py3-none-any.whl", hash = "sha256:b7b16da3c7858e39ce70a9b10be19f4c18b6421c683ccde8e724efe9b5c724eb", size = 80050, upload-time = "2026-08-22T12:30:19.172Z" },
+]
+
+[[package]]
+name = "spakky-data"
+version = "8.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "spakky-domain" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c4/77/c1ae99d37a29a668cbb06ab2b2d94f227e372e8fc65db654603fab93c793/spakky_data-8.1.0.tar.gz", hash = "sha256:0fe35490bd5a3c454dc2d785737fc31079326e40cedcb71f3ab8b4a7172c2697", size = 8013, upload-time = "2026-08-22T12:30:20.794Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/10/af/e3752df29f2ddcb7a25e98a852f4a0fb016e9c48d9dd457871b53b4eaf84/spakky_data-8.1.0-py3-none-any.whl", hash = "sha256:01020b6e2338550870c51a517beebafae3e218500a73b3e5a2c2dcea1c95e2af", size = 12587, upload-time = "2026-08-22T12:30:19.689Z" },
+]
+
+[[package]]
+name = "spakky-domain"
+version = "8.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "spakky" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/38/54/eaafc4ebd37de767bdf385491cfbc37ba2f1c2e57964d124e801d074d27f/spakky_domain-8.1.0.tar.gz", hash = "sha256:62552ee3ea4aacced8322d98f67ad48d251c7329cffcf67d92e44f2ccecf46f4", size = 8051, upload-time = "2026-08-22T12:30:18.77Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f3/06/9e4cfded087349cbbad6ccbb23de38b66c7c7939adb279f749b6096eec5b/spakky_domain-8.1.0-py3-none-any.whl", hash = "sha256:834ecc2ff3c9a5560e4eb3c1049365208393c27d3b5218b83e6dad7e5140b140", size = 13290, upload-time = "2026-08-22T12:30:17.681Z" },
+]
+
+[[package]]
 name = "sqlalchemy"
 version = "2.0.54"
 source = { registry = "https://pypi.org/simple" }
@@ -441,6 +470,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f6/cc/6253133b5bb138fc3306cebfbda2c520f545d36b5be2c7255cc528bb45d6/typing_extensions-4.16.0.tar.gz", hash = "sha256:dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5", size = 113555, upload-time = "2026-07-02T08:40:05.92Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/49/d3/b8441a820a491ddfc024b0b0cf0393375b75ea13866d9c66727e54c2fc80/typing_extensions-4.16.0-py3-none-any.whl", hash = "sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8", size = 45571, upload-time = "2026-07-02T08:40:04.659Z" },
+]
+
+[[package]]
+name = "uuid7"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/5c/19/7472bd526591e2192926247109dbf78692e709d3e56775792fec877a7720/uuid7-0.1.0.tar.gz", hash = "sha256:8c57aa32ee7456d3cc68c95c4530bc571646defac01895cfc73545449894a63c", size = 14052, upload-time = "2021-12-29T01:38:21.897Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b5/77/8852f89a91453956582a85024d80ad96f30a41fed4c2b3dce0c9f12ecc7e/uuid7-0.1.0-py2.py3-none-any.whl", hash = "sha256:5e259bb63c8cb4aded5927ff41b444a80d0c7124e8a0ced7cf44efa1f5cccf61", size = 7477, upload-time = "2021-12-29T01:38:20.418Z" },
 ]
 
 [[package]]

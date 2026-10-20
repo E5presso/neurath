@@ -1,6 +1,7 @@
 """가변 도메인 엔티티와 분리된 불변 요청 결과 스냅샷을 제공한다."""
 
 from dataclasses import dataclass
+from typing import Self
 
 from neurath.domain.aggregates.project import Project
 from neurath.domain.aggregates.session import HostSession
@@ -53,7 +54,7 @@ class SessionContext:
     session: HostSessionContext
 
     @classmethod
-    def from_entities(cls, project: Project, session: HostSession) -> "SessionContext":
+    def from_entities(cls, project: Project, session: HostSession) -> Self:
         """엔티티를 안정적이고 독립적인 요청 결과로 복사한다.
 
         Args:
@@ -61,7 +62,7 @@ class SessionContext:
             session: 저장 또는 조회를 마친 세션 엔티티.
 
         Returns:
-            SessionContext: 살아 있는 엔티티나 ORM 참조가 없는 불변 스냅샷.
+            Self: 살아 있는 엔티티나 ORM 참조가 없는 불변 스냅샷.
         """
         return cls(
             ProjectContext(project.id, project.root_path),
