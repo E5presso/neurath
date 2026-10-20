@@ -16,3 +16,5 @@ The 2026-10-13 design was rewritten from the complete harness baseline, connecti
 | [Earlier workflows](workflows.md) | Earlier 0.3.x implementation guidance, not a replacement for the new requirements. |
 | [Existing recovery guidance](recovery.md) | Data preservation and existing installation recovery. |
 | [Historical candidate verification](candidate-status.md) | Dated observations, not evidence of redesign completion. |
+
+[Sources, tasks and TODO ledger](task-ledger.md) — #140 internal APIs and preservation/validation boundary.

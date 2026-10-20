@@ -39,3 +39,5 @@ All 84 requirement cases and 27 capability results have a primary implementation
 The internal request-scoped identity/storage foundation for #137 is described in
 [Core foundation](core-foundation.md). Isolated tests do not establish live hook,
 CLI, migration, or deployment completion; those remain in their assigned tickets.
+
+[Task ledger implementation](task-ledger.md) is the current #140 scope, not completion of subsequent runner/host/CLI work.

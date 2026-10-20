@@ -313,6 +313,7 @@ class ArchitectureChecker:
                 if ".ports.usecases." in module or (
                     ".application.usecases." in module
                     and node.name.startswith("I")
+                    and node.name[1:2].isupper()
                     and node.name.endswith("UseCase")
                 ):
                     errors.append(

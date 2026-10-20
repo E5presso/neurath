@@ -16,7 +16,7 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 - 코드·설치 수정은 승인된 로컬 작업이다. 공개 push·PR·배포는 사용자의 별도 요청 없이 수행하지 않는다.
 - 도메인 aggregate, 명시적 ABC port, 개별 command/query use case, 구체 repository adapter와 declarative ORM 모델의 책임을 구분한다. 참고 구조의 과거 Protocol·불필요한 use case 인터페이스·UoW는 복제하지 않는다. Spakky Framework 8.1.0의 AbstractAggregateRoot·AbstractValueObject·IGenericRepository·AbstractGenericRepository·AbstractMappableTable·Table·SchemaRegistry와 ConnectionManager·SessionManager·Transaction을 사용한다. 기본 CRUD·배치 메서드를 포트나 어댑터에 다시 정의하지 않는다. 트랜잭션은 표준 Transaction이 소유하며 Neurath용 UoW나 트랜잭션 구현을 추가하지 않는다.
 - 전체 현재 src와 tools에 strict Pyrefly·Google 형식 pydoclint·Ruff 검사를 적용한다. pre-commit과 CI는 tools/quality.py를 공유한다. 모듈 의미와 문서의 유용성은 별도 사람 검토 사항이다. 저장소는 조회·저장만 제공하며 위치 식별·승격·충돌 규칙은 Project aggregate가 소유한다. 엔티티는 가변 상태·동일성을 가지며 불변 관찰·명령·응답 값과 구분한다.
-- 현재 후보는 #137의 기반 라이브러리다. 이전 MCP runtime은 Git 기록에 있으며 새 패키지에는 포함하지 않는다. 공개 CLI·설치·기존 자료 변환은 후속 티켓이며 이 후보를 실설치하지 않는다.
+- 현재 후보는 #137의 프로젝트·세션 기반과 #140의 원문·태스크 원장 라이브러리다. 이전 MCP runtime은 Git 기록에 있으며 새 패키지에는 포함하지 않는다. 공개 CLI·설치·기존 자료 변환은 후속 티켓이며 이 후보를 실설치하지 않는다.
 
 - ProjectLocation은 Project.locations에 종속된 불변 값이다. 별도 위치 repository·DI·생명주기를 만들지 않는다. 물리적 자식 테이블은 선언형 ORM 관계로 매핑하고 프로젝트 저장 시 원자적으로 반영한다. 소유자 선택·승격은 도메인에 두고 repository에는 조회·저장 매핑만 둔다.
 - repository는 신규·기존 엔티티를 모두 save(entity) -> entity로 저장한다. add/insert/create/update 저장 별칭을 만들지 않는다. 도메인의 create와 SQLAlchemy Session.add는 이 계약 명칭 규칙과 구분한다. 세션의 ORM 버전 검사·동일 값 no-op·분리된 오래된 엔티티 충돌을 보존한다.
@@ -30,3 +30,5 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 - `tools/check.py`는 `src/neurath` 전체의 라인·분기 커버리지를 각각 100%로 강제한다. Alembic 동적 로드 파일도 소스 경로로 계측한다. 미실행 라인·분기 개수가 하나라도 있으면 실패하며 반올림한 비율로 통과하지 않는다. omit·커스텀 제외·pragma no cover/no branch로 기준을 우회하지 않는다. 커버리지 보고서는 coverage-out에 생성한다.
 
 - 최종 커버리지 보고서의 excluded_lines도 0이어야 한다. 추상 포트의 기본 본문으로 잘못 위임한 어댑터는 명시적으로 실패하며 등록 트랜잭션을 롤백해야 한다.
+
+- #140의 Task가 정의·의존·실행 시도·외부 대기 이력을 소유한다. 이 자식들에 별도 repository를 만들지 않는다. 상태 질문·과거 요약을 새 목표로 승격하지 않고 실제 정정은 지정한 작업·필드만 변경한다. 후보 제출은 성공이 아니며 오래된 개정의 결과는 보존하되 현재 요구를 닫지 않는다. TODO는 현재 전체 원장의 투영이며 별도 완료 권한이 아니다.

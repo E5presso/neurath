@@ -19,3 +19,7 @@ class ProjectIdentityConflict(NeurathError):
 
 class StorageNotReady(NeurathError):
     """데이터베이스에 명시적인 초기화 또는 호환 마이그레이션이 필요한 경우다."""
+
+
+class InvalidTaskState(NeurathError):
+    """원문·현재 개정·시도 또는 상태 전이의 조건이 맞지 않는 경우다."""

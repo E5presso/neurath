@@ -610,3 +610,21 @@ def delivery_fee(express):
 '''
     errors = ArchitectureChecker({"neurath.application.delivery": source}).check()
     assert any("SUPPRESSION:" in error for error in errors)
+
+
+def test_invalidate_usecase_is_concrete_while_named_usecase_interface_still_rejected():
+    concrete = '''"""무효화 동작을 구체 클래스로 선언하는 정상 사례다."""
+class InvalidateTaskUseCase:
+    """실제 정정을 반영하는 구체 유스케이스다."""
+'''
+    assert (
+        ArchitectureChecker({"neurath.application.usecases.invalidate_task": concrete}).check()
+        == []
+    )
+    abstract = concrete.replace("InvalidateTaskUseCase", "IInvalidationUseCase")
+    assert any(
+        "USECASE_INTERFACE:" in error
+        for error in ArchitectureChecker(
+            {"neurath.application.usecases.invalidate_task": abstract}
+        ).check()
+    )

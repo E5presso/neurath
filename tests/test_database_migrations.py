@@ -314,7 +314,7 @@ def test_destructive_downgrade_is_rejected_and_rolls_back_intermediate_metadata_
     )
     with closing(sqlite3.connect(database)) as connection:
         assert connection.execute("SELECT version_num FROM core_schema_revision").fetchone() == (
-            "core_0002",
+            "core_0003",
         )
         assert connection.execute(
             "SELECT name FROM sqlite_master WHERE type='trigger'"

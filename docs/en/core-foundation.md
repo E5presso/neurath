@@ -105,6 +105,8 @@ values and dependent records, repeat initialization and verify full rollback aft
 migration failure. The shared pre-commit/CI `FRAMEWORK_CRUD` guard rejects local basic
 CRUD implementations. Domain semantics still require human review.
 
-Tasks, runner, host hooks, memory, collaboration, public CLI, actual user-data migration
+Runner, host hooks, memory, collaboration, public CLI, actual user-data migration
 and installation remain subsequent tickets. `setup` rejects installation of this
 foundation candidate. Source changes do not alter user databases or installed distributions.
+
+[Task ledger](task-ledger.md) documents the source/correction/attempt/TODO implementation added by #140.

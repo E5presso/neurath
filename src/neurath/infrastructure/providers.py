@@ -17,17 +17,39 @@ from spakky.plugins.sqlalchemy.persistency.session_manager import SessionManager
 from spakky.plugins.sqlalchemy.persistency.transaction import Transaction
 from sqlalchemy.exc import IntegrityError
 
+from neurath.application.usecases.correct_task import CorrectTaskUseCase
+from neurath.application.usecases.create_task import CreateTaskUseCase
 from neurath.application.usecases.get_session_context import GetSessionContextUseCase
+from neurath.application.usecases.get_sources import GetSourcesUseCase
+from neurath.application.usecases.get_task import GetTaskUseCase
+from neurath.application.usecases.get_tasks import GetTasksUseCase
+from neurath.application.usecases.invalidate_task import InvalidateTaskUseCase
 from neurath.application.usecases.move_session import MoveSessionUseCase
+from neurath.application.usecases.record_source import RecordSourceUseCase
 from neurath.application.usecases.register_project import RegisterProjectUseCase
 from neurath.application.usecases.register_session import RegisterSessionUseCase
+from neurath.application.usecases.report_result import ReportResultUseCase
+from neurath.application.usecases.resume_task import ResumeTaskUseCase
+from neurath.application.usecases.start_task import StartTaskUseCase
+from neurath.application.usecases.submit_result import SubmitResultUseCase
+from neurath.application.usecases.wait_task import WaitTaskUseCase
 from neurath.domain.errors import ContextNotFound, ProjectIdentityConflict, RevisionConflict
 from neurath.infrastructure.database import configure_sqlite_engine, database_url
 from neurath.infrastructure.directory_observer import GitDirectoryObserver
 from neurath.infrastructure.models.project import ProjectLocationModel, ProjectModel
+from neurath.infrastructure.models.request_source import RequestSourceModel
 from neurath.infrastructure.models.session import SessionModel
+from neurath.infrastructure.models.task import (
+    TaskAttemptModel,
+    TaskDefinitionModel,
+    TaskDependencyModel,
+    TaskModel,
+    TaskWaitModel,
+)
 from neurath.infrastructure.repositories.project import ProjectRepository
+from neurath.infrastructure.repositories.request_source import RequestSourceRepository
 from neurath.infrastructure.repositories.session import SessionRepository
+from neurath.infrastructure.repositories.task import TaskRepository
 
 
 @dataclass(frozen=True)
@@ -105,20 +127,44 @@ def request_container(settings: DatabaseSettings) -> Iterator[ApplicationContext
             RegisterSessionUseCase,
             MoveSessionUseCase,
             GetSessionContextUseCase,
+            RequestSourceRepository,
+            TaskRepository,
+            RecordSourceUseCase,
+            CreateTaskUseCase,
+            StartTaskUseCase,
+            SubmitResultUseCase,
+            ReportResultUseCase,
+            CorrectTaskUseCase,
+            WaitTaskUseCase,
+            ResumeTaskUseCase,
+            InvalidateTaskUseCase,
+            GetTasksUseCase,
+            GetTaskUseCase,
+            GetSourcesUseCase,
         ):
             context.add(pod)
-        for model in (ProjectModel, ProjectLocationModel, SessionModel):
+        for model in (
+            ProjectModel,
+            ProjectLocationModel,
+            SessionModel,
+            RequestSourceModel,
+            TaskModel,
+            TaskDefinitionModel,
+            TaskDependencyModel,
+            TaskAttemptModel,
+            TaskWaitModel,
+        ):
             context.register_tag(Table.get(model))
         context.start()
         try:
             yield context
         except EntityNotFoundError as error:
             raise ContextNotFound(
-                "Project or session does not exist in the requested scope"
+                "Requested record does not exist in the requested scope"
             ) from error
         except VersionConflictError as error:
             raise RevisionConflict(
-                "Session changed; read current context before updating"
+                "Stored record changed; read current context before updating"
             ) from error
         except IntegrityError as error:
             if "Location already belongs to another project" in str(error.orig):
