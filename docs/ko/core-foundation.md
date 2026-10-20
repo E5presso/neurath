@@ -104,8 +104,7 @@ with request_container(DatabaseSettings(path, write=False)) as scope:
 시험은 프레임워크 메서드 상속, 실제 registry·생성자 주입·aggregate 수집, 기본 CRUD·배치·삭제,
 조회 격리, 변경 없는 저장, 오래된 저장·경합, 예외 정리, 소유권 충돌, 독립 프로세스,
 Git/worktree/clone 구분과 명시적·동시 초기화를 검증합니다. 이전 스키마의 값·종속 자료 보존,
-반복 이전, 이전 도중 실패의 전체 롤백도 확인합니다. 기본 CRUD 재구현은 공통 pre-commit·CI의
-`FRAMEWORK_CRUD` 검사로 거부합니다. 의미상 도메인 설계의 적절성은 사람 검토 사항입니다.
+반복 이전, 이전 도중 실패의 전체 롤백도 확인합니다. 현재 기본 CRUD 재사용은 공통 pre-commit·CI의 상속·실행 회귀 시험으로 확인합니다. 의미상 도메인 설계의 적절성은 사람 검토 사항입니다.
 
 runner·호스트 훅·기억·협업·공개 CLI·실제 사용자 자료 이전·설치는 후속 티켓입니다.
 `setup`은 이 기반 후보의 설치를 거부합니다. 실제 사용자 DB와 설치된 배포본은 이번 소스

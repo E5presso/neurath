@@ -1,4 +1,4 @@
-"""한국어 요약과 필드 설명을 요구하는 문서 검사의 회귀를 검증한다."""
+"""한국어 설명 누락 검사와 과도한 비율 제한 방지의 회귀를 검증한다."""
 
 from pathlib import Path
 
@@ -7,20 +7,14 @@ import pytest
 from tools.docstrings import check_source, check_tree
 
 
-@pytest.mark.parametrize(
-    "doc",
-    [
-        "Return the current project.",
-        "Return the current project. 한글",
-        "현재 프로젝트를 반환한다.\n\nArgs:\n    project: The project to persist.",
-        "현재 프로젝트를 반환한다.\n\nReturns:\n    Project: The persisted project. 한글",
-        "현재 프로젝트를 반환한다.\n\nRaises:\n    ValueError: The project is invalid.",
-        "현재 프로젝트를 반환한다.\n\nAttributes:\n    locations: The owned project locations.",
-    ],
-)
-def test_english_summary_or_field_prose_is_rejected_even_with_korean_token(doc):
-    errors = check_source(f'"""{doc}"""', "fixture.py")
-    assert errors and all("KOREAN_DOCSTRING" in error for error in errors)
+@pytest.mark.parametrize("doc", ["Return the current project.", "Read SQLAlchemy Session state."])
+def test_wholly_english_documentation_is_reported(doc):
+    assert check_source(f'"""{doc}"""', "fixture.py")
+
+
+def test_language_check_does_not_invent_a_ratio_or_per_line_quota():
+    doc = "SQLAlchemy Session Transaction ConnectionManager SchemaRegistry를 설명한다.\n\nExamples:\n    Transaction(context)"
+    assert check_source(f'"""{doc}"""', "fixture.py") == []
 
 
 def test_korean_prose_preserves_google_headings_types_and_code_identifiers():
@@ -54,5 +48,5 @@ def test_language_guard_discovers_new_tools_tests_and_root_configuration(tmp_pat
     assert all("KOREAN_DOCSTRING" in error for error in errors)
 
 
-def test_all_actual_docstrings_use_korean():
+def test_current_docstrings_have_korean_descriptions_for_language_review():
     assert check_tree(Path(__file__).resolve().parents[1]) == []

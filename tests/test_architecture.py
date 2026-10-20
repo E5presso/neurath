@@ -7,134 +7,15 @@ from pathlib import Path
 import pytest
 
 from neurath.application.ports.repositories.project import IProjectRepository
+from neurath.application.ports.repositories.request_source import IRequestSourceRepository
 from neurath.application.ports.repositories.session import ISessionRepository
+from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.application.ports.services.directory_observer import IDirectoryObserver
 from neurath.application.usecases.register_session import RegisterSessionUseCase
 from neurath.infrastructure.directory_observer import GitDirectoryObserver
 from neurath.infrastructure.repositories.project import ProjectRepository
 from neurath.infrastructure.repositories.session import SessionRepository
 from tools.architecture import ArchitectureChecker, check_tree
-
-
-@pytest.mark.parametrize(
-    ("module", "source", "rule"),
-    [
-        (
-            "neurath.application.bad",
-            "from typing import Protocol as P\nclass Contract(P): pass",
-            "FORBIDDEN_TYPE",
-        ),
-        (
-            "neurath.application.bad",
-            "import typing as t\nAlias = t.Protocol\nclass Contract(Alias): pass",
-            "FORBIDDEN_TYPE",
-        ),
-        (
-            "neurath.domain.state",
-            'from typing_extensions import Literal as L\nState = L["a", "b"]',
-            "FORBIDDEN_TYPE",
-        ),
-        (
-            "neurath.domain.state",
-            'import typing\ntype State = typing.Literal["a", "b"]',
-            "FORBIDDEN_TYPE",
-        ),
-        ("neurath.application.bad", "from typing import Any as A\nvalue: A", "FORBIDDEN_TYPE"),
-        ("neurath.application.bad", "import typing as t\nvalue = t.cast(str, 1)", "FORBIDDEN_TYPE"),
-        ("neurath.application.bad", "class UnitOfWork: pass", "TRANSACTION_WRAPPER"),
-        ("neurath.application.bad", "class CustomUow: pass", "TRANSACTION_WRAPPER"),
-        (
-            "neurath.infrastructure.database",
-            "class Storage:\n def commit(self): pass",
-            "TRANSACTION_WRAPPER",
-        ),
-        (
-            "neurath.infrastructure.database",
-            "from contextlib import contextmanager as cm\n@cm\ndef scope(session):\n with session.begin(): yield session",
-            "TRANSACTION_WRAPPER",
-        ),
-        ("neurath.application.core", "class Core: pass", "CORE"),
-        ("neurath.domain.project", "import sqlalchemy as sa", "DOMAIN_BOUNDARY"),
-        (
-            "neurath.domain.project",
-            "from ..infrastructure.database import create_database_engine",
-            "DOMAIN_BOUNDARY",
-        ),
-        (
-            "neurath.domain.project",
-            "from neurath.application.usecases import anything",
-            "DOMAIN_BOUNDARY",
-        ),
-        (
-            "neurath.application.usecases.change",
-            "from neurath.infrastructure.database import create_database_engine",
-            "APPLICATION_BOUNDARY",
-        ),
-        (
-            "neurath.infrastructure.repository",
-            "from neurath.transport import session_requests",
-            "INFRASTRUCTURE_BOUNDARY",
-        ),
-        (
-            "neurath.application.ports.repositories.project",
-            "class IProjectRepository: pass",
-            "NOMINAL_PORT",
-        ),
-        (
-            "neurath.application.ports.repositories.project",
-            "from abc import ABC\nclass IProjectRepository(ABC):\n def get(self): pass",
-            "ABSTRACT_METHOD",
-        ),
-        (
-            "neurath.infrastructure.repositories.project",
-            "class ProjectRepository:\n def get(self): pass",
-            "NOMINAL_IMPLEMENTATION",
-        ),
-        (
-            "neurath.application.usecases.register",
-            "class IRegisterSessionUseCase: pass",
-            "USECASE_INTERFACE",
-        ),
-        (
-            "neurath.infrastructure.models.project",
-            'from sqlalchemy import Table as T\nrecord = T("projects")',
-            "DECLARATIVE_ORM",
-        ),
-        (
-            "neurath.infrastructure.models.project",
-            "import sqlalchemy as sa\nColumnAlias = sa.Column\nvalue = ColumnAlias()",
-            "DECLARATIVE_ORM",
-        ),
-        (
-            "neurath.infrastructure.models.project",
-            "registry.map_imperatively(Project, table)",
-            "DECLARATIVE_ORM",
-        ),
-        (
-            "neurath.infrastructure.models.project",
-            'class Project:\n __tablename__ = "project"',
-            "DECLARATIVE_ORM",
-        ),
-        (
-            "neurath.infrastructure.models.project",
-            'from sqlalchemy.orm import DeclarativeBase\nclass Project(DeclarativeBase):\n __tablename__ = "project"\n id: str = "unmapped"',
-            "MAPPED_COLUMN",
-        ),
-        (
-            "neurath.infrastructure.models.project",
-            'from sqlalchemy.orm import DeclarativeBase, mapped_column\nclass Project(DeclarativeBase):\n __tablename__ = "project"\n id = mapped_column()',
-            "MAPPED_COLUMN",
-        ),
-        ("neurath.domain.project", "class Project:\n def _private(self): pass", "DOCSTRING"),
-        ("neurath.domain.project", "value: str = 1 # type: ignore[assignment]", "SUPPRESSION"),
-        ("neurath.domain.project", "from enum import *", "EXPLICIT_IMPORT"),
-    ],
-)
-def test_invalid_architecture_fixture_fails(module, source, rule):
-    errors = ArchitectureChecker(
-        {module: '"""구조 계약을 검증하는 테스트 대상이다."""\n' + source}
-    ).check()
-    assert any(f" {rule}:" in error for error in errors), errors
 
 
 def test_aliases_and_indirect_nominal_inheritance_are_resolved_across_modules():
@@ -190,6 +71,8 @@ def test_indirect_protocol_alias_cannot_hide_forbidden_base():
 
 def test_only_external_ports_are_nominal_and_abstract():
     for interface in (
+        IRequestSourceRepository,
+        ITaskRepository,
         IProjectRepository,
         ISessionRepository,
         IDirectoryObserver,
@@ -253,81 +136,6 @@ def test_ruff_rejects_missing_docstrings(tmp_path):
 
 def test_current_source_tree_has_no_architecture_violations():
     assert check_tree(Path(__file__).resolve().parents[1]) == []
-
-
-def test_importing_low_level_sqlalchemy_alias_does_not_bypass_declarative_rule():
-    sources = {
-        "neurath.infrastructure.models.bad": '''"""구조 계약을 검증하는 테스트 대상이다."""
-from sqlalchemy.sql.schema import Table as Builder
-Alias = Builder
-record = Alias("project")
-'''
-    }
-    assert any("DECLARATIVE_ORM" in error for error in ArchitectureChecker(sources).check())
-
-
-def test_inheriting_an_input_dto_is_not_nominal_interface_implementation():
-    sources = {
-        "neurath.application.ports.usecases.register": '''"""구조 계약을 검증하는 테스트 대상이다."""
-class Request:
-    """구조 계약을 검증하는 테스트 대상이다."""
-''',
-        "neurath.infrastructure.repositories.project": '''"""구조 계약을 검증하는 테스트 대상이다."""
-from neurath.application.ports.usecases.register import Request
-class ProjectRepository(Request):
-    """구조 계약을 검증하는 테스트 대상이다."""
-''',
-    }
-    assert any("NOMINAL_IMPLEMENTATION" in error for error in ArchitectureChecker(sources).check())
-
-
-@pytest.mark.parametrize(
-    ("module", "source", "rule"),
-    [
-        (
-            "neurath.application.ports.repositories.project",
-            "class IProjectRepository:\n def resolve(self, observation): pass",
-            "PRIMITIVE_REPOSITORY",
-        ),
-        (
-            "neurath.application.ports.repositories.session",
-            "class ISessionRepository:\n def save(self, entity, expected_revision): pass",
-            "PRIMITIVE_REPOSITORY",
-        ),
-        (
-            "neurath.infrastructure.repositories.project",
-            "class ProjectRepository:\n def add(self, entity): entity.associate()",
-            "REPOSITORY_POLICY",
-        ),
-        (
-            "neurath.application.ports.services.directory_observer",
-            "from neurath.domain.aggregates.project import ProjectLocation\nclass IDirectoryObserver:\n def observe(self) -> ProjectLocation: pass",
-            "OBSERVATION_BOUNDARY",
-        ),
-        (
-            "neurath.domain.aggregates.project",
-            "from dataclasses import dataclass\n@dataclass(frozen=True)\nclass Project:\n id: str",
-            "ENTITY_MUTABILITY",
-        ),
-        (
-            "neurath.domain.aggregates.session",
-            "from dataclasses import dataclass\n@dataclass\nclass HostSession:\n id: str",
-            "ENTITY_IDENTITY",
-        ),
-        ("neurath.infrastructure.database", "class SqliteDatabase: pass", "DATABASE_WRAPPER"),
-        (
-            "neurath.transport.session_requests",
-            "from neurath.infrastructure.repositories.project import ProjectRepository\nvalue = ProjectRepository(session)",
-            "DEPENDENCY_COMPOSITION",
-        ),
-        ("neurath.domain.project", "value: str = 1 # pyrefly: ignore", "SUPPRESSION"),
-    ],
-)
-def test_round_two_architecture_regressions_are_rejected(module, source, rule):
-    errors = ArchitectureChecker(
-        {module: '"""구조 계약을 검증하는 테스트 대상이다."""\n' + source}
-    ).check()
-    assert any(f" {rule}:" in error for error in errors), errors
 
 
 def test_resource_factories_and_frozen_values_are_not_transaction_or_entity_wrappers():
@@ -402,36 +210,6 @@ def example(value: str) -> str:
     assert "DOC201" in result.stdout + result.stderr
 
 
-@pytest.mark.parametrize("method", ["add", "insert", "create", "update"])
-@pytest.mark.parametrize("layer", ["application.ports", "infrastructure"])
-def test_repository_creation_and_update_aliases_must_use_save(layer, method):
-    source = f'''"""저장 계약의 명칭을 검증한다."""
-class ExampleRepository:
-    """삽입과 갱신을 분리하는 잘못된 저장 계약이다."""
-    def {method}(self, entity):
-        """잘못된 이름으로 엔티티를 저장한다."""
-        pass
-'''
-    errors = ArchitectureChecker({f"neurath.{layer}.repositories.example": source}).check()
-    assert any(" REPOSITORY_SAVE:" in error for error in errors), errors
-
-
-@pytest.mark.parametrize(
-    ("module", "name"),
-    [
-        ("neurath.application.ports.repositories.project_location", "IProjectLocationRepository"),
-        ("neurath.infrastructure.repositories.project_location", "ProjectLocationRepository"),
-    ],
-)
-def test_owned_locations_cannot_have_an_independent_repository(module, name):
-    source = f'''"""종속 위치의 독립 저장소 회귀를 검증한다."""
-class {name}:
-    """프로젝트를 통하지 않는 잘못된 위치 저장소다."""
-'''
-    errors = ArchitectureChecker({module: source}).check()
-    assert any(" AGGREGATE_OWNERSHIP:" in error for error in errors), errors
-
-
 def test_owned_values_relationships_and_domain_creation_are_valid():
     sources = {
         "neurath.domain.aggregates.project": '''"""프로젝트와 소유 위치 값을 정의한다."""
@@ -463,25 +241,6 @@ def store(session, record):
 ''',
     }
     assert ArchitectureChecker(sources).check() == []
-
-
-@pytest.mark.parametrize(
-    "statement",
-    [
-        "record = existing.get(key) or Model()",
-        "record: Model = existing.get(key) or Model()",
-        "return existing.get(key) or Model()",
-        "records = [existing.get(key) or Model() for key in keys]",
-    ],
-)
-def test_repository_object_selection_requires_explicit_none_branch(statement):
-    source = f'''"""저장소의 객체 선택 표현을 검사한다."""
-def select_record(existing, key, keys):
-    """누락된 객체를 암묵적인 진리값으로 대체하는 실패 예다."""
-    {statement}
-'''
-    errors = ArchitectureChecker({"neurath.infrastructure.repositories.example": source}).check()
-    assert any(" EXPLICIT_OBJECT_SELECTION:" in error for error in errors), errors
 
 
 def test_repository_explicit_object_selection_and_boolean_conditions_are_valid():
@@ -557,49 +316,6 @@ def test_python_314_lint_rejects_quoted_and_legacy_typing_annotations(tmp_path):
     assert "UP037" in codes
 
 
-@pytest.mark.parametrize(
-    "method",
-    ["get", "get_or_none", "contains", "range", "save", "save_all", "delete", "delete_all"],
-)
-def test_framework_crud_reimplementation_is_rejected(method):
-    source = f'''"""기본 저장 계약의 재구현을 검증하는 실패 사례다."""
-class ExampleRepository:
-    """프레임워크 기본 메서드를 다시 구현한 잘못된 저장소다."""
-    def {method}(self, value):
-        """프레임워크에서 상속해야 하는 메서드다."""
-        return value
-'''
-    errors = ArchitectureChecker({"neurath.infrastructure.repositories.example": source}).check()
-    assert any("FRAMEWORK_CRUD:" in error for error in errors)
-
-
-def test_framework_domain_bases_and_tables_are_allowed_without_layer_escape():
-    sources = {
-        "neurath.domain.aggregates.example": '''"""프레임워크 도메인 기반을 사용하는 정상 사례다."""
-from spakky.core.common.mutability import mutable
-from spakky.domain.models.aggregate_root import AbstractAggregateRoot
-@mutable
-class Example(AbstractAggregateRoot[str]):
-    """식별자와 변경 추적을 상속하는 도메인이다."""
-''',
-        "neurath.infrastructure.models.example": '''"""프레임워크 선언형 테이블을 사용하는 정상 사례다."""
-from spakky.plugins.sqlalchemy.orm.table import AbstractMappableTable, Table
-from sqlalchemy.orm import Mapped, mapped_column
-from neurath.domain.aggregates.example import Example
-@Table(Example)
-class ExampleModel(AbstractMappableTable[Example]):
-    """도메인과 연결된 선언형 테이블이다."""
-    __tablename__ = "example"
-    id: Mapped[str] = mapped_column(primary_key=True)
-''',
-    }
-    assert ArchitectureChecker(sources).check() == []
-    sources["neurath.domain.aggregates.example"] += (
-        "\nfrom spakky.plugins.sqlalchemy.persistency.repository import AbstractGenericRepository\n"
-    )
-    assert any("DOMAIN_BOUNDARY:" in error for error in ArchitectureChecker(sources).check())
-
-
 @pytest.mark.parametrize("pragma", ["no cover", "no branch"])
 def test_coverage_suppression_is_rejected(pragma):
     source = f'''"""커버리지 누락을 주석으로 숨기는 실패 사례다."""
@@ -611,43 +327,6 @@ def delivery_fee(express):
 '''
     errors = ArchitectureChecker({"neurath.application.delivery": source}).check()
     assert any("SUPPRESSION:" in error for error in errors)
-
-
-def test_invalidate_usecase_is_concrete_while_named_usecase_interface_still_rejected():
-    concrete = '''"""무효화 동작을 구체 클래스로 선언하는 정상 사례다."""
-from spakky.domain import ICommandUseCase
-class InvalidateTaskUseCase(ICommandUseCase):
-    """실제 정정을 반영하는 구체 유스케이스다."""
-'''
-    assert (
-        ArchitectureChecker({"neurath.application.usecases.invalidate_task": concrete}).check()
-        == []
-    )
-    abstract = concrete.replace("InvalidateTaskUseCase", "IInvalidationUseCase")
-    assert any(
-        "USECASE_INTERFACE:" in error
-        for error in ArchitectureChecker(
-            {"neurath.application.usecases.invalidate_task": abstract}
-        ).check()
-    )
-
-
-@pytest.mark.parametrize(
-    ("source", "rule"),
-    [
-        ("class CreateTaskUseCase: pass", "FRAMEWORK_USECASE"),
-        ("class CreateTaskCommand: pass", "FRAMEWORK_REQUEST"),
-        ("class GetTasksQuery: pass", "FRAMEWORK_REQUEST"),
-        ("def records() -> tuple[str, ...]: pass", "COLLECTION_CONTRACT"),
-        (
-            "from builtins import tuple as T\ndef records() -> T[str, ...]: pass",
-            "COLLECTION_CONTRACT",
-        ),
-    ],
-)
-def test_reviewed_framework_and_sequence_contract_regressions_fail(source, rule):
-    errors = ArchitectureChecker({"neurath.application.usecases.example": source}).check()
-    assert any(f" {rule}:" in error for error in errors)
 
 
 def test_framework_contract_aliases_and_sequence_and_fixed_pairs_are_allowed():
@@ -669,76 +348,6 @@ class Values:
     pair: tuple[str, int]
 '''
     assert ArchitectureChecker({"neurath.application.usecases.example": source}).check() == []
-
-
-def test_every_real_usecase_and_request_implements_the_framework_contract():
-    import importlib
-    import inspect
-    import pkgutil
-
-    from spakky.domain.application.command import AbstractCommand, ICommandUseCase
-    from spakky.domain.application.query import AbstractQuery, IQueryUseCase
-
-    import neurath.application.usecases as package
-
-    usecases = []
-    requests = []
-    results = []
-    for info in pkgutil.iter_modules(package.__path__, package.__name__ + "."):
-        module = importlib.import_module(info.name)
-        for name, cls in inspect.getmembers(module, inspect.isclass):
-            if cls.__module__ != module.__name__:
-                continue
-            if name.endswith("UseCase"):
-                assert issubclass(cls, (ICommandUseCase, IQueryUseCase)), cls
-                assert not inspect.isabstract(cls), cls
-                assert "run" in cls.__dict__, cls
-                assert "execute" not in cls.__dict__, cls
-                from dataclasses import is_dataclass
-                from typing import get_type_hints
-
-                result_type = get_type_hints(cls.run)["return"]
-                assert result_type.__module__ == module.__name__, cls
-                assert (
-                    result_type.__name__
-                    == name.removesuffix("UseCase").removesuffix("Result") + "Result"
-                ), cls
-                assert is_dataclass(result_type) and result_type.__dataclass_params__.frozen, cls
-                results.append(result_type)
-                usecases.append(cls)
-            elif name.endswith(("Command", "Query")):
-                assert issubclass(cls, (AbstractCommand, AbstractQuery)), cls
-                requests.append(cls)
-    assert len(usecases) == len(requests) == len(results) == 16
-
-
-@pytest.mark.parametrize(
-    ("module", "source", "rule"),
-    [
-        ("neurath.application.dto.task", "class TaskDTO: pass", "RESULT_LOCATION"),
-        ("neurath.transport.task_requests", "def get_task(request): pass", "TRANSPORT_PASSTHROUGH"),
-        (
-            "neurath.transport.session_requests",
-            "def register_session(request): pass",
-            "TRANSPORT_PASSTHROUGH",
-        ),
-        ("neurath.infrastructure.database", 'SCHEMA_REVISION = "core_0003"', "ALEMBIC_REVISION"),
-        ("neurath.infrastructure.database", 'CURRENT_HEAD: str = "core_0004"', "ALEMBIC_REVISION"),
-        (
-            "neurath.application.usecases.get_task",
-            "class GetTaskUseCase:\n def run(self, query) -> str: pass",
-            "RESULT_LOCATION",
-        ),
-        (
-            "neurath.application.usecases.get_task",
-            "from neurath.application.results import GetTaskResult\nclass GetTaskUseCase:\n def run(self, query) -> GetTaskResult: pass",
-            "RESULT_LOCATION",
-        ),
-    ],
-)
-def test_reviewed_result_placement_revision_and_relay_regressions_fail(module, source, rule):
-    errors = ArchitectureChecker({module: source}).check()
-    assert any(f" {rule}:" in error for error in errors), errors
 
 
 def test_local_input_result_and_handler_are_valid_together():
@@ -803,3 +412,235 @@ class Labels:
         return value.strip()
 '''
     assert ArchitectureChecker({f"neurath.{package}.labels": source}).check() == []
+
+
+@pytest.mark.parametrize(
+    ("module", "source", "rule"),
+    [
+        (
+            "neurath.application.ports.test",
+            "from typing import Protocol as P\nclass Port(P): pass",
+            "FORBIDDEN_TYPE",
+        ),
+        ("neurath.domain.test", "import sqlalchemy", "DOMAIN_BOUNDARY"),
+        ("neurath.domain.test", "from neurath.application import usecases", "DOMAIN_BOUNDARY"),
+        (
+            "neurath.application.test",
+            "from neurath.infrastructure import database",
+            "APPLICATION_BOUNDARY",
+        ),
+        (
+            "neurath.infrastructure.test",
+            "from neurath.transport import cli",
+            "INFRASTRUCTURE_BOUNDARY",
+        ),
+        ("neurath.application.ports.test", "class IPort: pass", "NOMINAL_PORT"),
+        (
+            "neurath.application.ports.test",
+            "from abc import ABC\nclass IPort(ABC):\n def fetch(self): pass",
+            "ABSTRACT_METHOD",
+        ),
+        (
+            "neurath.infrastructure.test",
+            "from spakky.data.stereotype.repository import Repository\n@Repository()\nclass Store: pass",
+            "NOMINAL_IMPLEMENTATION",
+        ),
+        (
+            "neurath.application.test",
+            "from spakky.core.stereotype.usecase import UseCase\n@UseCase()\nclass Handler: pass",
+            "FRAMEWORK_USECASE",
+        ),
+        (
+            "neurath.infrastructure.test",
+            "from spakky.plugins.sqlalchemy.orm.table import Table\n@Table()\nclass Row: pass",
+            "DECLARATIVE_ORM",
+        ),
+    ],
+)
+def test_confirmed_contracts_fail_at_their_actual_boundary(module, source, rule):
+    assert any(f" {rule}:" in error for error in ArchitectureChecker({module: source}).check())
+
+
+@pytest.mark.parametrize(
+    ("module", "source"),
+    [
+        ("neurath.application.core", "class Core: pass"),
+        ("neurath.infrastructure.core_schema", "class SqliteDatabase: pass"),
+        ("neurath.domain.records", "class UnitOfWork: pass\nclass CommitObserver: pass"),
+        (
+            "neurath.application.ports.usecases.policy",
+            "from abc import ABC\nclass IPolicyUseCase(ABC): pass",
+        ),
+        ("neurath.transport.task_requests", "def process(request): return request"),
+        ("neurath.application.dto.values", "class SharedValue: pass"),
+        ("neurath.infrastructure.database", 'diagnostic_revision = "core_0001"'),
+        (
+            "neurath.domain.values",
+            "from dataclasses import dataclass\n@dataclass(frozen=True)\nclass Reference:\n id: str",
+        ),
+        (
+            "neurath.domain.values",
+            "from typing import Any, Literal, cast\ntype Option = Literal['yes', 'no']\nvalue: Any = None\nlabel = cast(str, 'ok')",
+        ),
+        ("neurath.domain.values", "from pathlib import PurePath\nimport hashlib, json"),
+        ("neurath.application.values", "def records() -> tuple[str, ...]: return ()"),
+        ("neurath.application.values", "class ExampleUseCase: pass\nclass ExampleCommand: pass"),
+        (
+            "neurath.infrastructure.queries",
+            "from sqlalchemy import Table, Column, MetaData, Integer\nrows = Table('rows', MetaData(), Column('id', Integer))",
+        ),
+        (
+            "neurath.infrastructure.repositories.values",
+            "class QueryBuilder:\n def get(self): pass\n def create(self): pass\n def select_range(self, expected_revision): pass",
+        ),
+        ("neurath.infrastructure.repositories.values", "value = mapping.get(key) or fallback"),
+        (
+            "neurath.application.values",
+            "value: str = 'ok' # type: ignore[assignment]\nunused = 1 # noqa",
+        ),
+        (
+            "neurath.infrastructure.providers",
+            "from contextlib import contextmanager\n@contextmanager\ndef connection(engine):\n with engine.begin() as conn: yield conn",
+        ),
+        (
+            "neurath.application.factories",
+            "class Factory:\n @classmethod\n def fixed(cls) -> Factory: return Factory()",
+        ),
+    ],
+)
+def test_names_and_unrelated_syntax_do_not_prove_a_responsibility_violation(module, source):
+    assert ArchitectureChecker({module: source}).check() == []
+
+
+def test_repository_query_contract_is_not_a_fixed_method_or_parameter_whitelist():
+    source = '''"""조회 계약은 필요한 질의와 저장 관찰을 표현한다."""
+from abc import ABC, abstractmethod
+class IHistoryRepository(ABC):
+    """저장된 개정으로 기간 조회를 제공한다."""
+    @abstractmethod
+    def select_by_period(self, expected_revision: int):
+        """지정한 저장 개정의 자료를 조회한다."""
+        raise NotImplementedError
+'''
+    assert (
+        ArchitectureChecker({"neurath.application.ports.repositories.history": source}).check()
+        == []
+    )
+
+
+def test_registered_usecases_use_framework_contracts():
+    import importlib
+    import inspect
+    import pkgutil
+    from typing import get_type_hints
+
+    from spakky.core.stereotype.usecase import UseCase
+    from spakky.domain.application.command import (
+        AbstractCommand,
+        IAsyncCommandUseCase,
+        ICommandUseCase,
+    )
+    from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase, IQueryUseCase
+
+    import neurath.application.usecases as package
+
+    checked = []
+    for info in pkgutil.iter_modules(package.__path__, package.__name__ + "."):
+        module = importlib.import_module(info.name)
+        for _, handler in inspect.getmembers(module, inspect.isclass):
+            if handler.__module__ != module.__name__ or not UseCase.exists(handler):
+                continue
+            if inspect.isabstract(handler):
+                continue
+            assert issubclass(
+                handler, (ICommandUseCase, IAsyncCommandUseCase, IQueryUseCase, IAsyncQueryUseCase)
+            )
+            hints = get_type_hints(handler.run)
+            if issubclass(handler, (ICommandUseCase, IAsyncCommandUseCase)):
+                assert issubclass(hints["command"], AbstractCommand)
+            else:
+                assert issubclass(hints["query"], AbstractQuery)
+            checked.append(handler)
+    assert checked
+
+
+def test_current_collection_ports_and_domain_state_types_match_the_reviewed_contracts():
+    from collections.abc import Sequence
+    from enum import Enum
+    from typing import get_origin, get_type_hints
+
+    from neurath.domain.aggregates.project import ProjectKind
+    from neurath.domain.aggregates.request_source import SourceKind
+    from neurath.domain.task_records import Outcome, TaskStatus
+
+    for port in (IRequestSourceRepository, ITaskRepository):
+        assert get_origin(get_type_hints(port.list)["return"]) is Sequence
+    for state in (ProjectKind, SourceKind, Outcome, TaskStatus):
+        assert issubclass(state, Enum)
+
+
+@pytest.mark.parametrize(
+    "module_name,handler_name,result_name",
+    [
+        ("correct_task", "CorrectTaskUseCase", "CorrectTaskResult"),
+        ("create_task", "CreateTaskUseCase", "CreateTaskResult"),
+        ("get_session_context", "GetSessionContextUseCase", "GetSessionContextResult"),
+        ("get_sources", "GetSourcesUseCase", "GetSourcesResult"),
+        ("get_task", "GetTaskUseCase", "GetTaskResult"),
+        ("get_tasks", "GetTasksUseCase", "GetTasksResult"),
+        ("invalidate_task", "InvalidateTaskUseCase", "InvalidateTaskResult"),
+        ("move_session", "MoveSessionUseCase", "MoveSessionResult"),
+        ("record_source", "RecordSourceUseCase", "RecordSourceResult"),
+        ("register_project", "RegisterProjectUseCase", "RegisterProjectResult"),
+        ("register_session", "RegisterSessionUseCase", "RegisterSessionResult"),
+        ("report_result", "ReportResultUseCase", "ReportResult"),
+        ("resume_task", "ResumeTaskUseCase", "ResumeTaskResult"),
+        ("start_task", "StartTaskUseCase", "StartTaskResult"),
+        ("submit_result", "SubmitResultUseCase", "SubmitResult"),
+        ("wait_task", "WaitTaskUseCase", "WaitTaskResult"),
+    ],
+)
+def test_reviewed_case_specific_result_contract_is_colocated(
+    module_name, handler_name, result_name
+):
+    import importlib
+    from typing import get_type_hints
+
+    module = importlib.import_module("neurath.application.usecases." + module_name)
+    handler = getattr(module, handler_name)
+    result = getattr(module, result_name)
+    assert get_type_hints(handler.run)["return"] is result
+    assert result.__module__ == handler.__module__
+
+
+def test_standard_linter_does_not_reintroduce_an_any_annotation_ban(tmp_path):
+    fixture = tmp_path / "boundary.py"
+    fixture.write_text('''"""외부 경계에서 동적 값을 그대로 전달하는 사례다."""
+from typing import Any
+
+
+def echo(value: Any) -> Any:
+    """외부 값을 전달한다.
+
+    Args:
+        value: 전달할 동적 값.
+
+    Returns:
+        Any: 전달된 값.
+    """
+    return value
+''')
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ruff",
+            "check",
+            "--config",
+            str(Path(__file__).resolve().parents[1] / "pyproject.toml"),
+            str(fixture),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

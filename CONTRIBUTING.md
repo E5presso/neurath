@@ -5,13 +5,13 @@
 Follow the approved specification and the responsibility boundaries in
 [core-foundation](docs/en/core-foundation.md). Domain aggregates contain invariants.
 Repository and observation ports use `ABC` and `@abstractmethod`; their adapters
-explicitly inherit those ports. Use cases implement Spakky `ICommandUseCase` or `IQueryUseCase`. Inputs inherit `AbstractCommand` or `AbstractQuery` and are handled through `run()`. Define Command/Query, Result DTO, and UseCase in the same module, without a local interface or shared DTO package. ORM models use Spakky declarative table bases, `Mapped`,
+explicitly inherit those ports. Use cases implement Spakky `ICommandUseCase` or `IQueryUseCase`. Inputs inherit `AbstractCommand` or `AbstractQuery` and are handled through `run()`. Define Command/Query, Result DTO, and UseCase in the same module, without imposing a name-based ban on other interfaces or shared data types. ORM models use Spakky declarative table bases, `Mapped`,
 `mapped_column`, `relationship`, and explicit domain conversion methods. Request adapters directly
 use the framework `Transaction`. Spakky Framework supplies `AbstractAggregateRoot`,
 `IGenericRepository`, `AbstractGenericRepository`, `@Table`/`AbstractMappableTable`,
 `SchemaRegistry`, `ConnectionManager`, `SessionManager`, and constructor injection.
 Ports and adapters inherit basic CRUD and batch methods without redefining them.
-Do not add a custom transaction/unit-of-work framework or a database configuration wrapper.
+Reuse existing request management rather than duplicating its behavior in wrappers; evaluate any additional adapter by its actual responsibility.
 
 ## Required development checks
 
@@ -32,8 +32,7 @@ The pre-commit configuration and required runner execute the same
 architectural AST checks, and negative/positive guard fixtures. CI executes the
 required runner, followed within that runner by all behavioral tests and a wheel
 build. The success marker is `NEURATH_CHECK_OK`. There is no current-source module
-allowlist, old-source suppression baseline, `Any` escape hatch, or type/lint-ignore
-policy. All future Python files under `src` are discovered. Tests are linted and formatted but do not require new docstrings or annotations.
+allowlist or legacy exclusion baseline. Any, cast and ordinary suppression comments are not blanket semantic errors; assess actual tool results and meaning. All future Python files under `src` are discovered. Tests are linted and formatted but do not require new docstrings or annotations.
 All existing code docstrings, including tests and root Python configuration, use Korean
 summaries and natural-language field descriptions. Production and development tools
 have strict annotations and Google-style docstrings. Pydoclint
@@ -47,39 +46,13 @@ letters after excluding identifiers and inline code. English prose with a token
 Korean word is a negative fixture, not an accepted translation. Deliberate invalid
 fixture strings remain test data; translation quality still requires human review.
 
-## Mechanically checked rules and review limits
+## Mechanical checks and semantic review
 
-The AST checker resolves import aliases and local inheritance to reject Protocol,
-Literal, Any/cast escapes, custom named transaction/UoW APIs, Core/core modules,
-forbidden layer imports, missing port ABC/abstractmethod declarations, non-nominal
-repository/observer implementations, and non-declarative ORM mappings. It also rejects locally invented use-case interfaces,
-frozen or implicit value-equality entity dataclasses, nonprimitive repository
-contracts, observation ports exposing entities, and direct adapter construction in
-host adapters. Every use case implements Spakky command/query contracts with run and framework request bases. Homogeneous variable-length collection contracts use Sequence, while fixed heterogeneous tuples remain valid. Result DTOs belong beside their own input and handler; there is no transport pass-through package without a real protocol. Project owns immutable `ProjectLocation` values; there is no independent
-location repository, DI registration, or lifecycle. The child table is mapped through
-an ORM relationship and saved atomically with its root. Root selection and promotion
-remain domain rules. All repository insertion and update paths use `save(entity) -> entity`;
-`add`, `insert`, `create`, and `update` persistence aliases are rejected. Domain `create`
-methods and SQLAlchemy `Session.add` calls are permitted. Owned child values and
-mapped relationships have positive regression fixtures; aggregate semantics still
-require review. Resource providers may yield and close resources; transaction-owning
-generator wrappers are rejected. Pure-domain and actual DI/ORM lifecycle regression
-tests run in the shared quality hook alongside syntax and checker negative fixtures.
-The ORM rule applies to runtime models; immutable Alembic revisions use SQLAlchemy
-DDL constructs intentionally. Fixtures prove rejection, including import aliases,
-indirect inheritance, DTO masquerading as a port, and newly added modules.
+The [complete harness-rule audit](docs/en/harness-rule-audit.md) records original intent and corrected scope for every prior diagnostic. AST checks cover confirmed contracts such as Protocol exclusion, dependency direction, and actual registered Spakky component bases. There is no blanket prohibition on Any/cast/Literal, names, context managers, or exception use.
 
-These checks establish concrete syntax and type relationships. They cannot prove
-that a name describes a meaningful responsibility, a docstring is informative,
-a generic class is not a disguised facade, or a renamed transaction abstraction
-is semantically appropriate. Reviewers must inspect cohesion, invariants, transaction
-scope, and whether additional abstractions are justified. Do not claim lint proves
-those judgments. Deliberate dynamic code generation or reflective bypasses are not
-an accepted substitute for explicit implementation.
+Concrete tests cover current Sequence list contracts, inherited repository methods and CRUD, registered use-case inputs/framework contracts, current dedicated DTO colocation, actual mapping/resource lifetimes, and real Alembic upgrades. They do not prescribe a DTO, suffix, frozen result, or fixed component count for every operation.
 
-Object selection in repository mappings uses named variables and explicit `is None`
-branches. The narrow AST rule rejects value assignments, returns, or comprehension
-items using `mapping.get(...) or replacement`; ordinary boolean conditions remain valid.
+Korean documentation remains required. Its minimal language check reports documentation with no Korean prose; it imposes no character quota, English/Korean ratio, or per-line language ratio. Correct language, meaning, ownership and the need for an abstraction require semantic review, not a claim that syntax proves them.
 
 ## Preservation and implementation scope
 
@@ -103,7 +76,7 @@ Ruff UP checks Python 3.14 syntax. Classmethod factories returning their own typ
 The shared quality runner checks subclass construction, non-persistence of changes to returned objects outside a request, full state
 preservation after rejected requests, Spakky request isolation and bootstrap failure cleanup.
 
-The `FRAMEWORK_CRUD` guard rejects local basic repository implementations. The
+Current default-method reuse is verified by inheritance and behavior tests. The
 `core_0002` migration retains existing IDs, revisions and dependent records, using
 epoch as an unknown-time marker for old metadata. Regression tests cover inherited
 CRUD and schema/data/revision rollback after migration failure.
@@ -124,6 +97,5 @@ unrelated integrity failures and incomplete observation adapters.
 
 Reports must also have `excluded_lines == 0`; a real report reaching 100% through exclusions is rejected.
 
-`RESULT_LOCATION` rejects moving use-case results into a separate package or returning another module's response. `ALEMBIC_REVISION` rejects parallel revision constants, and `TRANSPORT_PASSTHROUGH` rejects reintroducing the removed protocol-free relay modules. All actual use-case input/result contracts and result locations are inspected. These checks do not replace semantic review of responsibilities.
 
 Domain rules belong to the objects owning their state and meaning; request/query/storage orchestration belongs to use cases. Review responsibility through actual behavior and call flow. Use cases may raise, propagate, or translate domain exceptions. Functions, static methods, and raise statements are not forbidden by their shape. Dependency cycles, scope, correction preservation, and atomicity remain covered by domain/integration behavior tests. Syntax checks do not establish semantic ownership.

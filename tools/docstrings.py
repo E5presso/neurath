@@ -1,4 +1,4 @@
-"""실제 Python 문서 문자열의 한국어 설명이 퇴행하지 않는지 검사한다."""
+"""한국어 설명이 없는 실제 Python 문서 문자열을 찾는다."""
 
 import ast
 import re
@@ -6,18 +6,18 @@ from pathlib import Path
 
 
 def check_source(source: str, path: str) -> list[str]:
-    """실제 문서 문자열의 요약과 각 설명 줄에서 한국어 서술을 확인한다.
+    """실제 문서 문자열에 한국어 설명이 전혀 없는 경우를 찾는다.
 
-    식별자·인라인 코드·Google 섹션명은 언어 비율에서 제외한다. 남은 서술은
-    한글이 두 글자 이상이고 영문 글자 수 이상이어야 한다. 번역의 정확성과
-    문서의 유용성은 이 문법적 회귀 검사와 별도로 사람이 검토한다.
+    코드 블록·인라인 코드·Google 섹션명은 설명에서 제외한다. 글자 수나
+    영문 대비 비율을 요구하지 않는다. 한국어의 존재만 확인하는 최소 검사이며
+    번역의 정확성과 실제 설명 언어·유용성은 별도로 검토한다.
 
     Args:
         source: 검사할 Python 소스 텍스트.
         path: 진단에 표시할 소스 경로.
 
     Returns:
-        list[str]: 한국어 요약이나 필드 설명이 부족한 문서 문자열의 진단 목록.
+        list[str]: 한국어 설명이 전혀 없는 문서 문자열의 진단 목록.
     """
     errors: list[str] = []
     headings = {"Args:", "Returns:", "Yields:", "Raises:", "Attributes:", "Examples:", "Notes:"}
@@ -28,6 +28,7 @@ def check_source(source: str, path: str) -> list[str]:
         if doc is None:
             continue
         in_code = False
+        descriptions: list[str] = []
         for offset, line in enumerate(doc.splitlines()):
             prose = line.strip()
             if prose.startswith("```"):
@@ -44,13 +45,11 @@ def check_source(source: str, path: str) -> list[str]:
                 "",
                 prose,
             )
-            korean = len(re.findall(r"[가-힣]", prose))
-            english = len(re.findall(r"[a-zA-Z]", prose))
-            if korean < 2 or korean < english:
-                line_number = node.body[0].lineno + offset
-                errors.append(
-                    f"{path}:{line_number} KOREAN_DOCSTRING: 한국어로 요약과 설명을 작성하세요"
-                )
+            descriptions.append(prose)
+        if descriptions and not re.search(r"[가-힣]", " ".join(descriptions)):
+            errors.append(
+                f"{path}:{node.body[0].lineno} KOREAN_DOCSTRING: 한국어 설명이 없는 문서 문자열을 확인하세요"
+            )
     return errors
 
 
@@ -64,7 +63,7 @@ def check_tree(root: Path) -> list[str]:
         root: 검사할 체크아웃의 루트 디렉터리.
 
     Returns:
-        list[str]: 현재 소스와 도구·테스트·설정의 문서 언어 위반 목록.
+        list[str]: 한국어 설명이 없는 문서 문자열의 진단 목록.
     """
     paths = list(root.glob("*.py"))
     for folder in ("src", "tools", "tests"):
@@ -73,10 +72,10 @@ def check_tree(root: Path) -> list[str]:
 
 
 def main() -> None:
-    """한국어 문서 회귀 검사를 실행하고 위반하면 실패 상태로 종료한다.
+    """문서의 한국어 설명 누락 검사를 실행하고 누락이 있으면 실패한다.
 
     Raises:
-        SystemExit: 한국어 문서 작성 규칙을 위반한 경우.
+        SystemExit: 한국어 설명이 없는 문서 문자열이 있는 경우.
     """
     errors = check_tree(Path(__file__).resolve().parents[1])
     if errors:

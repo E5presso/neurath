@@ -114,8 +114,7 @@ collection, CRUD/batches/deletion, read isolation, no-op saves, stale writes and
 exception cleanup, ownership conflicts, independent processes, Git/worktree/clone
 identity and explicit/concurrent initialization. Migration tests retain original
 values and dependent records, repeat initialization and verify full rollback after
-migration failure. The shared pre-commit/CI `FRAMEWORK_CRUD` guard rejects local basic
-CRUD implementations. Domain semantics still require human review.
+migration failure. Shared pre-commit/CI tests verify current inherited methods and actual CRUD behavior. Domain semantics still require human review.
 
 Runner, host hooks, memory, collaboration, public CLI, actual user-data migration
 and installation remain subsequent tickets. `setup` rejects installation of this

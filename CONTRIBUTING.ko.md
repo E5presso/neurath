@@ -4,12 +4,12 @@
 
 승인된 명세와 [기반 구조](docs/ko/core-foundation.md)의 책임 경계를 따릅니다.
 도메인 엔티티는 불변식과 상태 전이를 담당합니다. repository·관찰 port는 `ABC`와
-`@abstractmethod`를 사용하며 해당 adapter가 명시적으로 상속합니다. 유스케이스는 Spakky의 `ICommandUseCase` 또는 `IQueryUseCase`를 구현합니다. 입력은 `AbstractCommand` 또는 `AbstractQuery`를 상속하고 `run()`으로 처리합니다. Command/Query·Result DTO·UseCase를 같은 모듈에 정의하며 자체 인터페이스나 공통 DTO 패키지를 추가하지 않습니다.
+`@abstractmethod`를 사용하며 해당 adapter가 명시적으로 상속합니다. 유스케이스는 Spakky의 `ICommandUseCase` 또는 `IQueryUseCase`를 구현합니다. 입력은 `AbstractCommand` 또는 `AbstractQuery`를 상속하고 `run()`으로 처리합니다. 유스케이스 전용 입력·결과 DTO를 같은 모듈에 정의합니다. 이름만으로 다른 인터페이스·공유 자료형을 금지하지 않습니다.
 도메인은 Spakky의 `AbstractAggregateRoot`·`AbstractValueObject`를 사용합니다. 저장 포트와
 adapter는 `IGenericRepository`·`AbstractGenericRepository`의 기본 CRUD와 배치 메서드를
-다시 정의하지 않습니다. `@Table`·`AbstractMappableTable`·`SchemaRegistry`로 매핑하고
+불필요하게 재작성하지 않고 재사용합니다. `@Table`·`AbstractMappableTable`·`SchemaRegistry`로 매핑하고
 표준 `ConnectionManager`·`SessionManager`·`Transaction`을 사용합니다. 요청 경계는
-엔진 수명을 정리하며 별도 UoW나 트랜잭션 구현을 추가하지 않습니다.
+엔진 수명을 정리하며 프레임워크 수명을 중복 구현하는 불필요한 래퍼를 추가하지 않습니다.
 
 ## 필수 개발 검사
 
@@ -29,7 +29,7 @@ pre-commit과 필수 runner는 동일한 `tools/quality.py`를 실행합니다. 
 lint·docstring·타입 표기·포맷, strict Pyrefly, Google 형식 pydoclint 계약 문서, 구조 AST 규칙, 정상·실패 fixture를
 검사합니다. CI도 필수 runner를 실행하며, runner는 이어서 전체 동작 시험과
 휠 생성을 수행합니다. 성공 표시는 `NEURATH_CHECK_OK`입니다. 현재 소스의 모듈
-허용 목록, 과거 소스 예외 baseline, `Any` 우회, 타입·lint 무시 정책은 없습니다.
+현재 소스 전체의 타입·형식·문서를 검사합니다. Any·cast·일반 무시 주석의 존재만으로 오류라고 판정하는 별도 금지는 두지 않습니다. 실제 오류와 주석의 적절성은 해당 도구 결과와 의미로 검토합니다.
 `src` 아래 앞으로 추가되는 Python 파일도 모두 발견합니다. 시험은 lint·포맷을 적용하며 새 문서 문자열·타입 표기 작성은 강제하지 않습니다.
 시험과 루트 Python 설정을 포함한 모든 기존 docstring의 요약·자연어 필드 설명은 한국어로 작성합니다. 제품 소스와 개발 도구는
 엄격한 타입 표기와 Google 형식 docstring을 적용합니다. Pydoclint는 Args·Returns·Yields·
@@ -41,33 +41,13 @@ Raises·Attributes를 signature와 대조하며 짧은 요약으로 검사를 �
 실패 fixture입니다. 의도적으로 잘못 작성한 fixture 문자열은 테스트 데이터로 구분하며
 번역 정확성과 문서 유용성은 사람이 검토합니다.
 
-## 기계 검사 규칙과 사람 검토의 경계
+## 기계 검사와 의미적 검토
 
-AST 검사는 import 별칭과 로컬 상속 관계를 해석해 Protocol, Literal, Any/cast,
-이름으로 드러나는 커스텀 transaction/UoW API, Core/core 모듈, 계층 위반 import,
-ABC/abstractmethod 없는 port, 명시 계약 상속이 없는 repository/observer,
-비선언형 ORM 매핑을 거부합니다. 직접 만든 use case 인터페이스, frozen 또는 기본 값 동등성을 쓰는
-엔티티 dataclass, 조회·저장을 넘어서는 repository 계약, 엔티티를 노출하는 관찰 port,
-실제 호스트 어댑터에서의 직접 의존성 생성도 거부합니다. 모든 유스케이스는 Spakky command/query 계약과 run 메서드를 구현하고 입력도 프레임워크 기반을 상속해야 합니다. 동종 가변 길이 컬렉션 계약은 Sequence를 사용하며 고정 이종 tuple과 구분합니다. 결과 DTO는 해당 유스케이스의 입력·처리와 같은 모듈에 두고 프로토콜이 없는 transport 중계 패키지는 두지 않습니다. Project는 불변 ProjectLocation 값을 소유하며
-위치 전용 repository·DI·생명주기를 만들지 않습니다. 자식 테이블은 ORM 관계로 매핑하여
-프로젝트와 원자적으로 저장합니다. 루트 선택·승격은 도메인 규칙입니다. 모든 저장소의
-삽입·갱신은 `save(entity) -> entity`로 통일하고 add·insert·create·update 저장 별칭은
-거부합니다. 도메인의 create와 SQLAlchemy Session.add는 허용합니다. 소유된 자식 값과
-선언형 관계는 정상 fixture로 검증하며 aggregate 의미 자체는 사람 검토에 남깁니다. 자원을 yield·정리하는 provider는 허용하며
-트랜잭션까지 소유하는 generator wrapper는 거부합니다. 공통 품질 hook은 순수 도메인과
-실제 DI/ORM 수명 회귀 시험도 구문·checker 실패 fixture와 함께 실행합니다. ORM 규칙은 실행 모델에 적용하며 불변 Alembic
-revision의 DDL에는 SQLAlchemy Column을 의도적으로 사용합니다. 별칭, 간접 상속,
-port처럼 가장한 DTO, 새 모듈 등 실패·정상 fixture로 규칙을 검증합니다.
+[하네스 규칙 전수 감사](docs/ko/harness-rule-audit.md)에 각 규칙의 원래 요구와 정정 근거를 기록했습니다. Protocol 제외와 계층 의존 방향, 실제 등록 Spakky 구성요소의 타입 관계 등 확인 가능한 계약만 AST에서 검사합니다. 일반 Any/cast/Literal, 모듈·클래스·메서드 이름, contextmanager, 예외 사용을 일괄 금지하지 않습니다.
 
-검사는 구체적인 구문과 타입 관계를 확인합니다. 이름이 실제 책임을 나타내는지,
-docstring이 유용한지, 일반 클래스가 숨겨진 façade인지, 이름을 바꾼 트랜잭션
-추상화가 의미상 적절한지는 증명하지 못합니다. 응집도·불변식·트랜잭션 범위와
-추상화의 필요성은 사람이 검토해야 합니다. lint가 이 판단까지 증명한다고
-주장하지 않습니다. 동적 코드 생성·리플렉션 우회는 명시적 구현의 대안이 아닙니다.
+현재 저장소의 Sequence 목록 계약·기본 메서드 상속·실제 CRUD, 등록 유스케이스의 입력·프레임워크 계약, 현재 전용 결과 DTO의 같은 모듈 배치, 실제 ORM 매핑·자원 수명·Alembic 이전을 구체적인 시험으로 확인합니다. 모든 결과에 DTO·접미사·frozen을 강제하거나 새 구성요소 수를 고정하지 않습니다.
 
-저장소 매핑의 객체 선택은 이름 있는 변수와 명시적 `is None` 분기를 사용합니다.
-좁은 AST 규칙은 대입·반환·comprehension 요소에서 `mapping.get(...) or 대체객체`를
-거부하며 일반적인 boolean 조건은 허용합니다.
+한국어 docstring 요구는 유지합니다. 최소 자동 검사는 한국어 설명이 전혀 없는 문서를 찾으며 글자 수·한영 비율·줄별 언어 비중을 요구하지 않습니다. 실제 문서 언어와 정확성, 도메인 책임·추상화의 필요성은 의미를 검토합니다. 문법 검사의 통과를 이 의미적 판단의 증명으로 사용하지 않습니다.
 
 ## 보존과 구현 범위
 
@@ -89,7 +69,7 @@ Python 3.14 문법은 Ruff UP로 검사하고 classmethod의 자기 타입 반�
 실패·정상 구조 fixture와 함께 하위 클래스 생성, 요청 밖 반환 객체 변경의 비영속성, 실패 요청의 전체 상태 보존,
 Spakky 요청 격리와 초기화 실패 시 자원 정리를 공통 품질 검사에서 실행합니다.
 
-기본 저장 동작은 `FRAMEWORK_CRUD` 검사로 재구현을 거부합니다. `core_0002` 이전은 기존
+현재 기본 저장 동작의 상속과 실제 수행은 회귀 시험으로 확인합니다. `core_0002` 이전은 기존
 ID·revision·종속 자료를 유지하고 원래 시각이 없는 행에는 epoch 미상 표식을 사용합니다.
 이전 실패의 스키마·자료·revision 롤백과 실제 상속 CRUD를 회귀 시험으로 확인합니다.
 
@@ -107,6 +87,5 @@ omit, 커스텀 제외 규칙, `pragma: no cover`·`pragma: no branch`로 수치
 
 보고서의 `excluded_lines`도 0이어야 합니다. 제외로 100%가 된 실제 보고서도 게이트가 거부합니다.
 
-유스케이스별 Result가 별도 패키지로 이동하거나 다른 모듈의 응답으로 대체되면 `RESULT_LOCATION` 검사가 실패합니다. 고정 revision 상수의 재도입은 `ALEMBIC_REVISION`, 제거한 프로토콜 없는 중계 모듈의 재도입은 `TRANSPORT_PASSTHROUGH`로 검사합니다. 모든 실제 유스케이스·입력의 프레임워크 상속과 결과 배치도 순회 검증합니다. 이 검사는 업무 책임의 의미적 적절성을 대신하지 않습니다.
 
 도메인 규칙은 그 상태와 의미를 소유하는 객체에, 유스케이스의 조회·호출·저장 조정은 유스케이스에 둡니다. 책임 배치는 실제 동작과 호출 흐름으로 검토합니다. 유스케이스에서도 도메인 예외의 발생·전파·변환이 가능하며, 함수·정적 메서드·raise 문 자체를 금지하지 않습니다. 의존 순환·범위·정정 보존·원자성은 기존 도메인·통합 동작 시험으로 확인합니다. 문법 검사만으로 이 책임 배치가 옳다고 주장하지 않습니다.
