@@ -2,13 +2,13 @@
 
 import os
 import subprocess
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
 
 import pytest
-from spakky.plugins.sqlalchemy.persistency.transaction import Transaction
+from spakky.plugins.sqlalchemy.persistency.transaction import AsyncTransaction
 
 from neurath.infrastructure.database import initialize_database
-from neurath.infrastructure.providers import DatabaseSettings, request_container
+from tests.support.application import spakky_context
 
 
 def git(directory, *arguments):
@@ -37,9 +37,9 @@ def initialize_git(directory):
 
 
 @pytest.fixture
-def database(tmp_path):
+async def database(tmp_path):
     database = tmp_path / "user" / "identity.sqlite3"
-    initialize_database(database)
+    await initialize_database(database)
     return database
 
 
@@ -51,8 +51,8 @@ def repository(tmp_path):
     return repository
 
 
-@contextmanager
-def storage_scope(database, *, write=True):
-    with request_container(DatabaseSettings(database, write=write)) as scope:
-        with scope.get(Transaction):
+@asynccontextmanager
+async def storage_scope(database, *, write=True):
+    async with spakky_context(database, write=write) as scope:
+        async with scope.get(AsyncTransaction):
             yield scope

@@ -3,8 +3,9 @@
 from dataclasses import dataclass
 from typing import override
 
+from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.command import AbstractCommand, ICommandUseCase
+from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.domain.aggregates.task import Task
@@ -43,8 +44,8 @@ class SubmitResult:
     task: Task
 
 
-@UseCase()
-class SubmitResultUseCase(ICommandUseCase[SubmitResultCommand, SubmitResult]):
+@UseCase(scope=Pod.Scope.CONTEXT)
+class SubmitResultUseCase(IAsyncCommandUseCase[SubmitResultCommand, SubmitResult]):
     """미확정 시도에 후보 자료를 저장하며 성공 판정은 report_result에 남긴다.
 
     정정 전 시도에도 후보를 기록할 수 있다. 같은 후보는 변경 없이 유지하고
@@ -60,7 +61,7 @@ class SubmitResultUseCase(ICommandUseCase[SubmitResultCommand, SubmitResult]):
         self.tasks = tasks
 
     @override
-    def run(self, command: SubmitResultCommand) -> SubmitResult:
+    async def run(self, command: SubmitResultCommand) -> SubmitResult:
         """소유 범위·revision을 확인하고 지정 시도의 후보 자료를 저장한다.
 
         Args:
@@ -69,8 +70,8 @@ class SubmitResultUseCase(ICommandUseCase[SubmitResultCommand, SubmitResult]):
         Returns:
             SubmitResult: 지정 시도의 submission이 갱신된 태스크. 제출만으로 상태가 바뀌지 않는다.
         """
-        task = self.tasks.get(command.task_id)
+        task = await self.tasks.get(command.task_id)
         task.require_scope(command.project_id, command.session_id)
         task.require_revision(command.expected_revision)
         task.submit(command.attempt_number, command.submission)
-        return SubmitResult(task=self.tasks.save(task))
+        return SubmitResult(task=(await self.tasks.save(task)))

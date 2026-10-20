@@ -3,8 +3,9 @@
 from dataclasses import dataclass
 from typing import override
 
+from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.command import AbstractCommand, ICommandUseCase
+from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.project import IProjectRepository
 from neurath.domain.aggregates.project import Project
@@ -33,8 +34,8 @@ class RegisterProjectResult:
     project: Project
 
 
-@UseCase()
-class RegisterProjectUseCase(ICommandUseCase[RegisterProjectCommand, RegisterProjectResult]):
+@UseCase(scope=Pod.Scope.CONTEXT)
+class RegisterProjectUseCase(IAsyncCommandUseCase[RegisterProjectCommand, RegisterProjectResult]):
     """관찰 위치의 기존 소유 프로젝트를 찾고, 없으면 새 프로젝트를 등록한다.
 
     Git 공통 디렉터리와 기본 작업 트리의 폴더 위치를 함께 조회하여 linked worktree와
@@ -51,7 +52,7 @@ class RegisterProjectUseCase(ICommandUseCase[RegisterProjectCommand, RegisterPro
         self.projects = projects
 
     @override
-    def run(self, command: RegisterProjectCommand) -> RegisterProjectResult:
+    async def run(self, command: RegisterProjectCommand) -> RegisterProjectResult:
         """위치 후보의 소유자를 선택하고 새로 확인한 위치를 프로젝트에 연결해 저장한다.
 
         Args:
@@ -63,11 +64,11 @@ class RegisterProjectUseCase(ICommandUseCase[RegisterProjectCommand, RegisterPro
         candidates = Project.identify(command.observation)
         owners: list[Project] = []
         for location in candidates:
-            owner = self.projects.find_by_location(location)
+            owner = await self.projects.find_by_location(location)
             if owner is not None:
                 owners.append(owner)
         project = Project.owner_of(owners)
         if project is None:
             project = Project.create(command.observation)
         project.associate(candidates)
-        return RegisterProjectResult(project=self.projects.save(project))
+        return RegisterProjectResult(project=(await self.projects.save(project)))

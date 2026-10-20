@@ -10,14 +10,14 @@ Public CLI, hooks and installation remain subsequent implementation work.
 
 - `Project` and `HostSession` use `@mutable` and `AbstractAggregateRoot[str]` for identity, equality and change tracking. Project owns `ProjectLocation` as an `AbstractValueObject`.
 - The existing `id` reference remains a read-only compatibility property over `uid`. Identity selection, folder promotion, ownership conflicts, session scope and movement remain domain rules.
-- Repository ports inherit `IGenericRepository`, adding only location-owner and project/provider/native-session lookup.
-- `SQLAlchemyProjectRepository` and `SQLAlchemySessionRepository` inherit `AbstractGenericRepository`. They do not redefine constructors, `get`, `get_or_none`, `contains`, `range`, `save`, `save_all`, `delete`, or `delete_all`.
+- Repository ports inherit `IAsyncGenericRepository`, adding only location-owner and project/provider/native-session lookup.
+- `SQLAlchemyProjectRepository` and `SQLAlchemySessionRepository` inherit `AbstractAsyncGenericRepository`. They do not redefine constructors, `get`, `get_or_none`, `contains`, `range`, `save`, `save_all`, `delete`, or `delete_all`.
 - Domain tables use `@Table(Domain)` and `AbstractMappableTable[Domain]` with explicit conversion. Owned location records use `AbstractTable` without a separate domain repository.
 - `SchemaRegistry` resolves domain/table mappings from Table tags. Repositories do not maintain another mapping registry.
-- `ApplicationContext` composes `@UseCase`, `@Repository`, observation Pods and the framework's `ConnectionManager`, `SessionManager`, `Transaction`, and `AggregateCollector`.
-- Callers resolve a use case in the request container, open the standard `Transaction`, and invoke `run(command/query)`. Spakky owns commit, rollback and session closure.
-- Every use case implements Spakky `ICommandUseCase` or `IQueryUseCase`; inputs inherit `AbstractCommand` or `AbstractQuery`. Each module defines its Command/Query, Result DTO, and UseCase together. The framework result parameter and run return annotation reference that local Result.
-- The request boundary maps framework missing-entity and version-conflict errors to `ContextNotFound` and `RevisionConflict`. Use cases ask the domain to validate session/project scope.
+- `ApplicationContext` composes `@UseCase`, `@Repository`, observation Pods and the framework's `AsyncConnectionManager`, `AsyncSessionManager`, `AsyncTransaction`, and `AggregateCollector`.
+- Callers resolve use cases from the application container. For use cases without an owned transaction, callers enter the standard `AsyncTransaction` and await `run(command/query)`. Entry use cases that own transactions are called directly; Spakky owns commit, rollback and session closure.
+- Every use case implements Spakky `IAsyncCommandUseCase` or `IAsyncQueryUseCase`; inputs inherit `AbstractCommand` or `AbstractQuery`. Dedicated Command/Query and Result DTOs live with their owning UseCase. Returning an existing domain type does not require an extra DTO.
+- Framework missing-entity and storage version-conflict errors propagate through their original contracts. Use cases ask the domain to validate session/project scope.
 
 SQL for basic CRUD, merge, flush and aggregate collection belongs to the framework.
 Local repository SQL implements only the two additional lookups. The domain imports
@@ -25,18 +25,23 @@ pure Spakky domain bases and mutability declarations, without SQLAlchemy or pers
 
 ## Request lifetime and SQLite
 
-Each request owns an independent container, configuration and connection manager.
-A module-level `request_config` Pod factory supplies configuration without modifying
-process environment variables. Bind configuration in a ContextVar only while constructing
-the engine, then restore it; each container receives its own configuration. Register the
-framework ConnectionManager directly and apply SQLite policies to its engine. The request
-boundary disposes it on normal completion or bootstrap failure. No resident daemon is used.
+The CLI process uses `SpakkyApplication.load_plugins().scan(...).start()`.
+Default plugin discovery and package scanning register Pods, Tables and Controllers.
+Alembic execution modules and the composition root are excluded from scanning. Use cases,
+repositories and CLI Controllers use the framework's `CONTEXT` scope; spakky-typer resets
+that context at the command boundary.
 
-Git observation completes before the database transaction begins. Writers acquire
-`BEGIN IMMEDIATE` before their first read. Readers use SQLite URI `mode=ro` and
-`query_only`. Every connection enforces foreign keys; the default lock timeout is
-five seconds. There are no hidden retries. Nested independent requests have separate
-SessionManagers and transactions.
+SQLite uses `sqlite+aiosqlite`, `AsyncSessionManager` and `AsyncTransaction`. Use-case and
+repository calls are awaited. Owned relationships use `selectin` loading to avoid implicit
+synchronous queries during mapping. Migrations run Alembic through an async connection's
+`run_sync` bridge. Engine, session and transaction implementations come from Spakky and
+are cleaned up on normal and exceptional completion.
+
+Git observation finishes before the database transaction begins. The composition root
+attaches SQLite policies to the async engine's `sync_engine` events. Writers use `BEGIN IMMEDIATE`;
+readers use URI `mode=ro` and `query_only`. All connections enforce foreign keys. There are
+no hidden retries. Framework repository not-found/version-conflict errors propagate to the
+CLI boundary, which presents host-protocol responses.
 
 Native identifiers are scoped by `(project_id, provider, host_session_id)`.
 Re-registration preserves the latest working directory. Linked worktrees and their
@@ -84,26 +89,16 @@ Alembic migration files and its version table define revisions. At the first dat
 ## Internal request API
 
 ```python
-from pathlib import Path
-from spakky.plugins.sqlalchemy.persistency.transaction import Transaction
-from neurath.application.ports.services.directory_observer import IDirectoryObserverService
-from neurath.application.usecases.register_session import RegisterSessionCommand, RegisterSessionUseCase
+from spakky.core.pod.interfaces.container import IContainer
+from spakky.plugins.sqlalchemy.persistency.transaction import AsyncTransaction
 from neurath.application.usecases.get_session_context import GetSessionContextQuery, GetSessionContextUseCase
-from neurath.infrastructure.database import initialize_database
-from neurath.infrastructure.providers import DatabaseSettings, request_container
 
-path = Path("/explicit/isolated/core.sqlite3")
-initialize_database(path)
-with request_container(DatabaseSettings(path, write=True)) as scope:
-    observation = scope.get(IDirectoryObserverService).observe("/project")
-    with scope.get(Transaction):
-        opened = scope.get(RegisterSessionUseCase).run(
-            RegisterSessionCommand(observation, "codex", "native-session")
-        )
-with request_container(DatabaseSettings(path, write=False)) as scope:
-    with scope.get(Transaction):
-        current = scope.get(GetSessionContextUseCase).run(
-            GetSessionContextQuery(opened.project.id, opened.session.id)
+
+async def read_session(scope: IContainer, project_id: str, session_id: str):
+    # scope is the container of the application bootstrapped by neurath.bootstrap.
+    async with scope.get(AsyncTransaction):
+        return await scope.get(GetSessionContextUseCase).run(
+            GetSessionContextQuery(project_id, session_id)
         )
 ```
 
@@ -119,7 +114,7 @@ identity and explicit/concurrent initialization. Migration tests retain original
 values and dependent records, repeat initialization and verify full rollback after
 migration failure. See [Contributing](../../CONTRIBUTING.md) for running the checks.
 
-Host hooks, memory, collaboration, public CLI, actual user-data migration
+Hook installation, memory, collaboration, business CLI, actual user-data migration
 and installation remain subsequent tickets. `setup` rejects installation of this
 foundation candidate. Source changes do not alter user databases or installed distributions.
 

@@ -3,16 +3,16 @@
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
-from spakky.data.persistency.repository import IGenericRepository
+from spakky.data.persistency.repository import IAsyncGenericRepository
 
 from neurath.domain.aggregates.request_source import RequestSource
 
 
-class IRequestSourceRepository(IGenericRepository[RequestSource, str], ABC):
+class IRequestSourceRepository(IAsyncGenericRepository[RequestSource, str], ABC):
     """원문·정정 aggregate의 기본 저장 계약과 프로젝트 전체 목록 조회를 제공한다."""
 
     @abstractmethod
-    def list(self, project_id: str) -> Sequence[RequestSource]:
+    async def list(self, project_id: str) -> Sequence[RequestSource]:
         """세션·상태로 필터링하지 않은 프로젝트의 전체 원문·정정 목록을 조회한다.
 
         Args:

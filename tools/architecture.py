@@ -132,8 +132,11 @@ class ArchitectureChecker:
                     "neurath.application",
                     "neurath.infrastructure",
                     "neurath.transport",
+                    "neurath.bootstrap",
                     "sqlalchemy",
                     "alembic",
+                    "typer",
+                    "spakky.plugins.typer",
                     "spakky.data",
                     "spakky.plugins.sqlalchemy",
                 )
@@ -143,15 +146,28 @@ class ArchitectureChecker:
                 (
                     "neurath.infrastructure",
                     "neurath.transport",
+                    "neurath.bootstrap",
                     "sqlalchemy",
                     "alembic",
+                    "typer",
+                    "spakky.plugins.typer",
                 )
             ):
                 errors.append(f"{location} APPLICATION_BOUNDARY: {imported}")
             if module.startswith("neurath.infrastructure.") and imported.startswith(
-                ("neurath.transport",)
+                ("neurath.transport", "neurath.bootstrap")
             ):
                 errors.append(f"{location} INFRASTRUCTURE_BOUNDARY: {imported}")
+            if module.startswith("neurath.transport.") and imported.startswith(
+                (
+                    "neurath.infrastructure",
+                    "neurath.bootstrap",
+                    "sqlalchemy",
+                    "alembic",
+                    "spakky.plugins.sqlalchemy",
+                )
+            ):
+                errors.append(f"{location} TRANSPORT_BOUNDARY: {imported}")
         if (
             isinstance(node, ast.ImportFrom)
             and node.module in {"typing", "typing_extensions"}
@@ -286,7 +302,9 @@ class ArchitectureChecker:
         }
         repository_bases = {
             "spakky.data.persistency.repository.IGenericRepository",
+            "spakky.data.persistency.repository.IAsyncGenericRepository",
             "spakky.plugins.sqlalchemy.persistency.repository.AbstractGenericRepository",
+            "spakky.plugins.sqlalchemy.persistency.repository.AbstractAsyncGenericRepository",
         }
         symbol = f"{module}.{node.name}"
         ancestors = self._ancestors(symbol)
@@ -294,6 +312,11 @@ class ArchitectureChecker:
             self._name(module, item.func if isinstance(item, ast.Call) else item)
             for item in node.decorator_list
         }
+        if (
+            "spakky.plugins.typer.stereotypes.cli_controller.CliController" in decorators
+            and not module.startswith("neurath.transport.")
+        ):
+            errors.append(f"{location} CLI_BOUNDARY: CLI controllers belong to transport")
         errors.extend(self._check_port(module, node, ancestors))
         errors.extend(self._check_role_name(module, node, ancestors, decorators))
         has_port = any(

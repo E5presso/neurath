@@ -3,8 +3,9 @@
 from dataclasses import dataclass
 from typing import override
 
+from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.command import AbstractCommand, ICommandUseCase
+from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.application.ports.repositories.workflow import IWorkflowRepository
@@ -44,8 +45,8 @@ class ReportResult:
     task: Task
 
 
-@UseCase()
-class ReportResultUseCase(ICommandUseCase[ReportResultCommand, ReportResult]):
+@UseCase(scope=Pod.Scope.CONTEXT)
+class ReportResultUseCase(IAsyncCommandUseCase[ReportResultCommand, ReportResult]):
     """시도의 관찰 결과를 확정하고 현재 요구 개정의 결과만 태스크 상태에 반영한다.
 
     성공은 succeeded, 실패는 failed, 부분 수행은 pending이 된다. 정정 전 시도의
@@ -65,7 +66,7 @@ class ReportResultUseCase(ICommandUseCase[ReportResultCommand, ReportResult]):
         self.workflows = workflows
 
     @override
-    def run(self, command: ReportResultCommand) -> ReportResult:
+    async def run(self, command: ReportResultCommand) -> ReportResult:
         """시도의 결과를 기록하고 현재 요구에 적용되는 상태 변경을 저장한다.
 
         Args:
@@ -74,7 +75,7 @@ class ReportResultUseCase(ICommandUseCase[ReportResultCommand, ReportResult]):
         Returns:
             ReportResult: 시도 결과와 현재 요구의 상태를 보존한 태스크.
         """
-        task = self.tasks.get(command.task_id)
+        task = await self.tasks.get(command.task_id)
         task.require_scope(command.project_id, command.session_id)
         attempt = task.attempt(command.attempt_number)
         workflow = None
@@ -83,8 +84,8 @@ class ReportResultUseCase(ICommandUseCase[ReportResultCommand, ReportResult]):
             and attempt.definition_number == task.definition.number
             and attempt.result is None
         ):
-            workflow = self.workflows.find_by_task(task.uid)
+            workflow = await self.workflows.find_by_task(task.uid)
         if workflow is not None:
             workflow.require_complete(task.definition.number)
         task.report(command.attempt_number, command.result, command.expected_revision)
-        return ReportResult(task=self.tasks.save(task))
+        return ReportResult(task=(await self.tasks.save(task)))

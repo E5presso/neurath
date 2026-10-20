@@ -4,8 +4,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import override
 
+from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.query import AbstractQuery, IQueryUseCase
+from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
 
 from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.application.ports.repositories.task import ITaskRepository
@@ -43,8 +44,8 @@ class GetTasksResult:
     all_succeeded: bool
 
 
-@UseCase()
-class GetTasksUseCase(IQueryUseCase[GetTasksQuery, GetTasksResult]):
+@UseCase(scope=Pod.Scope.CONTEXT)
+class GetTasksUseCase(IAsyncQueryUseCase[GetTasksQuery, GetTasksResult]):
     """세션의 모든 태스크를 조회하고 같은 프로젝트의 선행 작업으로 시작 가능 여부를 계산한다.
 
     완료·실패·무효 태스크도 목록에 포함한다. all_terminal은 성공·실패·무효를,
@@ -63,7 +64,7 @@ class GetTasksUseCase(IQueryUseCase[GetTasksQuery, GetTasksResult]):
         self.tasks = tasks
 
     @override
-    def run(self, query: GetTasksQuery) -> GetTasksResult:
+    async def run(self, query: GetTasksQuery) -> GetTasksResult:
         """프로젝트 전체 의존 상태를 읽고 소유 세션의 TODO 조회 결과를 구성한다.
 
         Args:
@@ -72,8 +73,8 @@ class GetTasksUseCase(IQueryUseCase[GetTasksQuery, GetTasksResult]):
         Returns:
             GetTasksResult: 전체 소유 태스크, 시작 가능한 ID와 비어 있지 않은 목록의 종료·성공 판정.
         """
-        self.sessions.get(query.session_id).require_project(query.project_id)
-        tasks = self.tasks.list(query.project_id)
+        (await self.sessions.get(query.session_id)).require_project(query.project_id)
+        tasks = await self.tasks.list(query.project_id)
         selected = tuple(task for task in tasks if task.owner_session_id == query.session_id)
         terminal = (TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.INVALIDATED)
         return GetTasksResult(

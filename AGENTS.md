@@ -14,16 +14,16 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 - 설치는 관련 없는 사용자 설정·훅·지침을 보존하며, 변경 전에 복구 사본을 남긴다.
 - 공개 문서는 `docs/en`과 `docs/ko`의 같은 상대 경로에 함께 작성한다. README와 CONTRIBUTING은 영어·한국어 쌍을 유지한다. 개인 경로와 검증 원문은 공개 문서나 패키지에 넣지 않는다.
 - 코드·설치 수정은 승인된 로컬 작업이다. 공개 push·PR·배포는 사용자의 별도 요청 없이 수행하지 않는다.
-- 도메인 aggregate, 명시적 ABC port, 개별 command/query use case, 구체 repository adapter와 declarative ORM 모델의 책임을 구분한다. Protocol은 사용하지 않고 명시적 상속·추상 계약을 사용한다. 참고 구조의 불필요한 중복 유스케이스 인터페이스나 ORM 수명 구현을 복제하지 않는다. 이름만으로 인터페이스·클래스의 필요성을 단정하지 않는다. 모든 유스케이스는 Spakky의 ICommandUseCase 또는 IQueryUseCase와 run 계약을 구현하고 입력은 AbstractCommand 또는 AbstractQuery를 상속한다. Spakky Framework 8.1.0의 AbstractAggregateRoot·AbstractValueObject·IGenericRepository·AbstractGenericRepository·AbstractMappableTable·Table·SchemaRegistry와 ConnectionManager·SessionManager·Transaction을 사용한다. 현재 저장소의 기본 CRUD·배치는 프레임워크 구현을 재사용한다. 추가 질의·확장이 필요하면 실제 책임과 차이를 확인한다. 현재 요청의 트랜잭션은 표준 Transaction이 소유하며, 동일한 수명을 다시 구현하는 불필요한 래퍼를 만들지 않는다. 메서드 이름·클래스 이름이나 contextmanager 문법 자체를 금지하지 않는다.
+- 도메인 aggregate, 명시적 ABC port, 개별 command/query use case, 구체 repository adapter와 declarative ORM 모델의 책임을 구분한다. Protocol은 사용하지 않고 명시적 상속·추상 계약을 사용한다. 참고 구조의 불필요한 중복 유스케이스 인터페이스나 ORM 수명 구현을 복제하지 않는다. 이름만으로 인터페이스·클래스의 필요성을 단정하지 않는다. 모든 유스케이스는 Spakky의 IAsyncCommandUseCase 또는 IQueryUseCase와 run 계약을 구현하고 입력은 AbstractCommand 또는 AbstractQuery를 상속한다. Spakky Framework 8.1.0의 AbstractAggregateRoot·AbstractValueObject·IAsyncGenericRepository·AbstractAsyncGenericRepository·AbstractMappableTable·Table·SchemaRegistry와 AsyncConnectionManager·AsyncSessionManager·Transaction을 사용한다. 현재 저장소의 기본 CRUD·배치는 프레임워크 구현을 재사용한다. 추가 질의·확장이 필요하면 실제 책임과 차이를 확인한다. 현재 요청의 트랜잭션은 표준 Transaction이 소유하며, 동일한 수명을 다시 구현하는 불필요한 래퍼를 만들지 않는다. 메서드 이름·클래스 이름이나 contextmanager 문법 자체를 금지하지 않는다.
 - 전체 현재 src와 tools에 strict Pyrefly·Google 형식 pydoclint·Ruff 검사를 적용한다. pre-commit과 CI는 tools/quality.py를 공유한다. 모듈 의미와 문서의 유용성은 별도 사람 검토 사항이다. 저장소는 조회·저장만 제공하며 위치 식별·승격·충돌 규칙은 Project aggregate가 소유한다. 엔티티는 가변 상태·동일성을 가지며 불변 관찰·명령·응답 값과 구분한다.
-- 현재 후보는 #137의 프로젝트·세션 기반, #140의 원문·태스크 원장, #141의 단계 실행 및 #142의 호스트 런타임 라이브러리다. 이전 MCP runtime은 Git 기록에 있으며 새 패키지에는 포함하지 않는다. 공개 CLI·설치·기존 자료 변환은 후속 티켓이며 이 후보를 실설치하지 않는다.
+- 현재 후보는 #137의 프로젝트·세션 기반, #140의 원문·태스크 원장, #141의 단계 실행 및 #142의 호스트 런타임 라이브러리다. 이전 MCP runtime은 Git 기록에 있으며 새 패키지에는 포함하지 않는다. 훅 CLI는 spakky-typer로 제공한다. 나머지 업무 CLI·설치·기존 자료 변환은 후속 티켓이며 이 후보를 실설치하지 않는다.
 
 - ProjectLocation은 Project.locations에 종속된 불변 값이다. 별도 위치 repository·DI·생명주기를 만들지 않는다. 물리적 자식 테이블은 선언형 ORM 관계로 매핑하고 프로젝트 저장 시 원자적으로 반영한다. 소유자 선택·승격은 도메인에 두고 repository에는 조회·저장 매핑만 둔다.
 - repository는 신규·기존 엔티티를 모두 save(entity) -> entity로 저장한다. add/insert/create/update 저장 별칭을 만들지 않는다. 도메인의 create와 SQLAlchemy Session.add는 이 계약 명칭 규칙과 구분한다. 세션의 ORM 버전 검사·동일 값 no-op·분리된 오래된 엔티티 충돌을 보존한다.
 - src·tools·tests 및 루트 Python 설정의 실제 docstring은 요약과 자연어 필드 설명까지 한국어로 작성한다. Google 섹션명과 코드·타입 식별자는 유지한다. 영문 오류 fixture는 의도된 테스트 데이터로만 둔다. tools/docstrings.py는 한국어 설명이 전혀 없는 문서 문자열을 찾는 최소 검사다. 한영 글자 비율·줄별 글자 수 기준을 만들지 않는다. 실제 설명 언어·번역 정확성과 aggregate 의미는 별도로 검토한다.
 - 객체 선택은 None과 거짓 값의 의미가 드러나게 작성한다. 명시성을 요구한 지적을 or 연산자나 특정 표현식 전체의 금지로 바꾸지 않는다.
 
-- 지원 Python 3.14 문법은 Ruff UP 규칙으로 검사한다. 호출한 하위 클래스 타입을 유지하는 classmethod 생성·변환 메서드는 Self를 사용한다. 구체 도메인 타입으로 변환하는 인스턴스 메서드의 반환 타입은 그대로 명시한다. Spakky 컨테이너는 요청마다 새로 구성하고 엔진·세션은 요청 경계에서 항상 정리한다.
+- 지원 Python 3.14 문법은 Ruff UP 규칙으로 검사한다. 호출한 하위 클래스 타입을 유지하는 classmethod 생성·변환 메서드는 Self를 사용한다. 구체 도메인 타입으로 변환하는 인스턴스 메서드의 반환 타입은 그대로 명시한다. 애플리케이션은 Spakky의 기본 load_plugins()와 패키지 scan()으로 구성한다. 개별 Pod·Table 수동 등록 목록이나 요청마다 컨테이너를 다시 조립하는 팩토리를 유지하지 않는다. 요청별 유스케이스·저장소·CLI Controller는 공식 CONTEXT scope를 사용하고 세션·트랜잭션은 표준 비동기 구현으로 정리한다.
 
 - 도메인의 uid와 변경 메타데이터는 프레임워크 기반을 사용한다. 기존 id 참조와 정수 revision은 보존하며 ORM의 version_id_col은 정수 revision에 연결한다. UUID version은 도메인 변경 토큰으로 저장한다. SQLite 시각을 UTC로 왕복하되 변경 없는 저장이 UPDATE를 만들지 않게 매핑한다. core_0001은 수정하지 않고 core_0002로 기존 행과 외래 키를 보존한다. 이전 시각이 없으면 epoch를 미상 표식으로 저장하며 원래 생성 시각으로 해석하지 않는다.
 
@@ -49,4 +49,6 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 
 - 제품 코드의 서비스 이름은 Service, 저장소 이름은 Repository로 끝낸다. 인터페이스는 I를 접두어로 사용하고 구현체는 그 I를 실제 기술 스택 이름으로 대체한다. 예: IDirectoryObserverService → GitDirectoryObserverService, IPhaseExecutorService → SubprocessPhaseExecutorService, IProjectRepository → SQLAlchemyProjectRepository. import·DI 등록·타입 표기·문서도 같은 이름을 사용하며 이전 이름의 호환 별칭을 남기지 않는다. tools/architecture.py가 전체 소스의 포트·등록·별칭·간접 상속을 추적해 명명 위반을 실패시키고, 이 검사는 공통 pre-commit·필수 CI에서 실행된다. 현재 기술 접두어는 Git·Subprocess·Stderr·Posix·SQLAlchemy이며 새 기술 구현을 도입할 때 그 접두어와 회귀 시험을 함께 반영한다.
 
-- 유스케이스는 UseCase 접미사만 강제한다. 서비스·저장소의 기술 접두어 규칙을 유스케이스에 확대 적용하거나 명명을 위해 유스케이스별 인터페이스를 새로 만들지 않는다. 기존 Spakky ICommandUseCase·IQueryUseCase 계약을 유지하며, 공통 구조 검사는 데코레이터·직접 및 간접 상속으로 유스케이스를 찾아 접미사 누락을 거절한다.
+- 유스케이스는 UseCase 접미사만 강제한다. 서비스·저장소의 기술 접두어 규칙을 유스케이스에 확대 적용하거나 명명을 위해 유스케이스별 인터페이스를 새로 만들지 않는다. 기존 Spakky IAsyncCommandUseCase·IAsyncQueryUseCase 계약을 유지하며, 공통 구조 검사는 데코레이터·직접 및 간접 상속으로 유스케이스를 찾아 접미사 누락을 거절한다.
+
+- SQLite 접근은 aiosqlite와 Spakky IAsyncGenericRepository·AbstractAsyncGenericRepository·AsyncSessionManager·AsyncTransaction을 사용한다. DB 유스케이스와 Typer 훅 명령은 async def로 선언하고 호출을 await한다. Alembic은 async connection.run_sync로 실행한다. 관계 매핑은 비동기 조회 안에서 selectin으로 적재하여 암묵적 lazy SQL을 만들지 않는다. CLI 입출력은 transport, 외부 기술 구현은 infrastructure, 의존성 조립은 구성 루트가 담당한다. CONTEXT scope와 scan 발견, 실제 CLI·롤백·경합 시험 및 await 누락 실패를 공통 pre-commit/CI에서 확인한다.

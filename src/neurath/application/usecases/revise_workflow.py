@@ -3,8 +3,9 @@
 from dataclasses import dataclass
 from typing import override
 
+from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.command import AbstractCommand, ICommandUseCase
+from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.application.ports.repositories.workflow import IWorkflowRepository
@@ -44,8 +45,8 @@ class ReviseWorkflowResult:
     run: WorkflowRun
 
 
-@UseCase()
-class ReviseWorkflowUseCase(ICommandUseCase[ReviseWorkflowCommand, ReviseWorkflowResult]):
+@UseCase(scope=Pod.Scope.CONTEXT)
+class ReviseWorkflowUseCase(IAsyncCommandUseCase[ReviseWorkflowCommand, ReviseWorkflowResult]):
     """현재 태스크 요구에 맞춘 절차를 추가하고 영향 없는 단계 결과를 유지한다.
 
     태스크의 실제 요구 개정에 새 정의를 연결하고 이전 정의·실패를 보존한다.
@@ -64,7 +65,7 @@ class ReviseWorkflowUseCase(ICommandUseCase[ReviseWorkflowCommand, ReviseWorkflo
         self.tasks = tasks
 
     @override
-    def run(self, command: ReviseWorkflowCommand) -> ReviseWorkflowResult:
+    async def run(self, command: ReviseWorkflowCommand) -> ReviseWorkflowResult:
         """현재 태스크 요구에 맞춘 절차를 추가하고 영향 없는 단계 결과를 유지한다.
 
         Args:
@@ -73,10 +74,10 @@ class ReviseWorkflowUseCase(ICommandUseCase[ReviseWorkflowCommand, ReviseWorkflo
         Returns:
             ReviseWorkflowResult: 이전 정의·실패 이력을 보존한 run. 같은 단계 정의의 유효 결과는 재사용한다.
         """
-        run = self.workflows.get(command.run_id)
+        run = await self.workflows.get(command.run_id)
         run.require_scope(command.project_id, command.session_id)
         run.require_revision(command.expected_revision)
-        task = self.tasks.get(run.task_id)
+        task = await self.tasks.get(run.task_id)
         task.require_scope(command.project_id, command.session_id)
         run.revise(command.definition, task.definition.number, command.reason)
-        return ReviseWorkflowResult(run=self.workflows.save(run))
+        return ReviseWorkflowResult(run=(await self.workflows.save(run)))

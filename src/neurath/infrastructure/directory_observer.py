@@ -87,3 +87,24 @@ class GitDirectoryObserverService(IDirectoryObserverService):
             git_common_directory=str(Path(common.stdout.strip()).resolve()),
             primary_worktree=str(root),
         )
+
+    @override
+    def workspace(self, working_directory: str) -> str:
+        """같은 작업 트리의 하위 경로를 하나의 정규 작성 범위로 묶는다.
+
+        Args:
+            working_directory: 실제 호출의 작업 디렉터리.
+
+        Returns:
+            str: 현재 Git 작업 트리의 루트이며 일반 폴더에서는 정규 입력 경로.
+
+        Raises:
+            NeurathError: Git이 저장소 부재 외의 오류를 반환한 경우.
+        """
+        directory = Path(working_directory).expanduser().resolve(strict=True)
+        result = self._git(directory, "rev-parse", "--show-toplevel")
+        if result.returncode == 0:
+            return str(Path(result.stdout.strip()).resolve())
+        if "not a git repository" in result.stderr:
+            return str(directory)
+        raise NeurathError(f"Cannot inspect working tree: {result.stderr.strip()}")

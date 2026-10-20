@@ -6,6 +6,8 @@ import subprocess
 from collections.abc import Mapping
 from typing import override
 
+from spakky.core.pod.annotations.pod import Pod
+
 from neurath.application.ports.services.execution_controller import IExecutionControllerService
 from neurath.application.ports.services.writer_observer import IWriterObserverService
 from neurath.domain.aggregates.execution import Execution
@@ -13,6 +15,7 @@ from neurath.domain.aggregates.writer import Writer
 from neurath.domain.runtime_records import Liveness
 
 
+@Pod()
 class PosixWriterObserverService(IWriterObserverService, IExecutionControllerService):
     """실행기가 격리된 새 프로세스 그룹으로 직접 시작한 호출만 제어한다.
 
@@ -22,13 +25,15 @@ class PosixWriterObserverService(IWriterObserverService, IExecutionControllerSer
     지속 상태는 SQLite에서 요청마다 읽는다.
     """
 
-    def __init__(self, processes: Mapping[tuple[str, str, str], subprocess.Popen[bytes]]) -> None:
+    def __init__(
+        self, processes: Mapping[tuple[str, str, str], subprocess.Popen[bytes]] | None = None
+    ) -> None:
         """실행기가 직접 시작한 프로세스 핸들을 실제 호출 식별자에 연결한다.
 
         Args:
-            processes: 실행·턴·도구 호출별로 소유한 새 세션 프로세스 핸들.
+            processes: 실행·턴·도구 호출별 소유 핸들이며 미등록이면 관찰 결과는 UNKNOWN.
         """
-        self.processes = processes
+        self.processes = {} if processes is None else processes
 
     @override
     def observe(self, writer: Writer) -> Liveness:

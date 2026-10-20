@@ -2,16 +2,18 @@
 
 from abc import ABC, abstractmethod
 
-from spakky.data.persistency.repository import IGenericRepository
+from spakky.data.persistency.repository import IAsyncGenericRepository
 
 from neurath.domain.aggregates.session import HostSession
 
 
-class ISessionRepository(IGenericRepository[HostSession, str], ABC):
+class ISessionRepository(IAsyncGenericRepository[HostSession, str], ABC):
     """기본 저장 계약과 프로젝트·공급자별 네이티브 식별자 조회를 제공한다."""
 
     @abstractmethod
-    def find(self, project_id: str, provider: str, host_session_id: str) -> HostSession | None:
+    async def find(
+        self, project_id: str, provider: str, host_session_id: str
+    ) -> HostSession | None:
         """지정한 범위의 네이티브 세션을 조회한다.
 
         Args:

@@ -538,9 +538,8 @@ def test_registered_usecases_use_framework_contracts():
     from spakky.domain.application.command import (
         AbstractCommand,
         IAsyncCommandUseCase,
-        ICommandUseCase,
     )
-    from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase, IQueryUseCase
+    from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
 
     import neurath.application.usecases as package
 
@@ -552,11 +551,10 @@ def test_registered_usecases_use_framework_contracts():
                 continue
             if inspect.isabstract(handler):
                 continue
-            assert issubclass(
-                handler, (ICommandUseCase, IAsyncCommandUseCase, IQueryUseCase, IAsyncQueryUseCase)
-            )
+            assert issubclass(handler, (IAsyncCommandUseCase, IAsyncQueryUseCase))
+            assert inspect.iscoroutinefunction(handler.run)
             hints = get_type_hints(handler.run)
-            if issubclass(handler, (ICommandUseCase, IAsyncCommandUseCase)):
+            if issubclass(handler, IAsyncCommandUseCase):
                 assert issubclass(hints["command"], AbstractCommand)
             else:
                 assert issubclass(hints["query"], AbstractQuery)
@@ -605,6 +603,7 @@ def test_current_collection_ports_and_domain_state_types_match_the_reviewed_cont
         ("revise_workflow", "ReviseWorkflowUseCase", "ReviseWorkflowResult"),
         ("skip_phase", "SkipPhaseUseCase", "SkipPhaseResult"),
         ("execute_phase", "ExecutePhaseUseCase", "ExecutePhaseResult"),
+        ("receive_hook", "ReceiveHookUseCase", "ReceiveHookResult"),
     ],
 )
 def test_reviewed_case_specific_result_contract_is_colocated(
@@ -912,4 +911,38 @@ def test_usecase_suffix_follows_decorator_alias_and_indirect_framework_contract(
     sources["neurath.application.usecases.create_task"] = sources[
         "neurath.application.usecases.create_task"
     ].replace("class CreateTask(", "class CreateTaskUseCase(")
+    assert ArchitectureChecker(sources).check() == []
+
+
+@pytest.mark.parametrize(
+    "module,source,code",
+    [
+        (
+            "neurath.infrastructure.hooks",
+            'from spakky.plugins.typer.stereotypes.cli_controller import CliController as CLI\n@CLI("hook")\nclass HookCliController: pass',
+            "CLI_BOUNDARY",
+        ),
+        (
+            "neurath.transport.cli.hooks",
+            "from neurath.infrastructure.providers import request_container",
+            "TRANSPORT_BOUNDARY",
+        ),
+        (
+            "neurath.transport.cli.hooks",
+            "import spakky.plugins.sqlalchemy.persistency.transaction",
+            "TRANSPORT_BOUNDARY",
+        ),
+        ("neurath.application.usecases.hook", "import typer", "APPLICATION_BOUNDARY"),
+        ("neurath.domain.hook", "import spakky.plugins.typer", "DOMAIN_BOUNDARY"),
+    ],
+)
+def test_cli_boundary_keeps_protocol_in_transport_and_composition_outside(module, source, code):
+    assert any(code in error for error in ArchitectureChecker({module: source}).check())
+
+
+def test_spakky_cli_controller_and_bootstrap_composition_are_allowed():
+    sources = {
+        "neurath.transport.cli.hooks": 'from spakky.plugins.typer.stereotypes.cli_controller import CliController\n@CliController("hook")\nclass HookCliController: pass',
+        "neurath.bootstrap": "from neurath.transport.cli.hooks import HookCliController\nfrom neurath.infrastructure.providers import request_container",
+    }
     assert ArchitectureChecker(sources).check() == []

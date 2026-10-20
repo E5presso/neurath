@@ -3,8 +3,9 @@
 from dataclasses import dataclass
 from typing import override
 
+from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.command import AbstractCommand, ICommandUseCase
+from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.application.ports.repositories.workflow import IWorkflowRepository
@@ -44,8 +45,8 @@ class StartWorkflowResult:
     run: WorkflowRun
 
 
-@UseCase()
-class StartWorkflowUseCase(ICommandUseCase[StartWorkflowCommand, StartWorkflowResult]):
+@UseCase(scope=Pod.Scope.CONTEXT)
+class StartWorkflowUseCase(IAsyncCommandUseCase[StartWorkflowCommand, StartWorkflowResult]):
     """선택한 절차를 현재 태스크에 연결하고 첫 실행을 준비한다.
 
     이미 같은 정의가 연결돼 있으면 해당 run을 반환한다. 새 run은 태스크의 현재
@@ -64,7 +65,7 @@ class StartWorkflowUseCase(ICommandUseCase[StartWorkflowCommand, StartWorkflowRe
         self.workflows = workflows
 
     @override
-    def run(self, command: StartWorkflowCommand) -> StartWorkflowResult:
+    async def run(self, command: StartWorkflowCommand) -> StartWorkflowResult:
         """선택한 절차를 현재 태스크에 연결하고 첫 실행을 준비한다.
 
         Args:
@@ -76,9 +77,9 @@ class StartWorkflowUseCase(ICommandUseCase[StartWorkflowCommand, StartWorkflowRe
         Raises:
             InvalidWorkflowState: 다른 정의로 이미 연결된 run을 시작하려 한 경우.
         """
-        task = self.tasks.get(command.task_id)
+        task = await self.tasks.get(command.task_id)
         task.require_scope(command.project_id, command.session_id)
-        existing = self.workflows.find_by_task(task.uid)
+        existing = await self.workflows.find_by_task(task.uid)
         if existing is not None and (
             existing.definition != command.definition
             or existing.revisions[-1].task_definition_number != task.definition.number
@@ -88,8 +89,8 @@ class StartWorkflowUseCase(ICommandUseCase[StartWorkflowCommand, StartWorkflowRe
             return StartWorkflowResult(run=existing)
         task.require_revision(command.expected_task_revision)
         if task.status is not TaskStatus.ACTIVE:
-            task.start(self.tasks.list(command.project_id))
-            self.tasks.save(task)
+            task.start(await self.tasks.list(command.project_id))
+            (await self.tasks.save(task))
         run = WorkflowRun.create(
             command.project_id,
             command.session_id,
@@ -97,4 +98,4 @@ class StartWorkflowUseCase(ICommandUseCase[StartWorkflowCommand, StartWorkflowRe
             task.definition.number,
             command.definition,
         )
-        return StartWorkflowResult(run=self.workflows.save(run))
+        return StartWorkflowResult(run=(await self.workflows.save(run)))

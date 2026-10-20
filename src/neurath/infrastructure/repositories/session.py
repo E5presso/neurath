@@ -2,8 +2,9 @@
 
 from typing import override
 
+from spakky.core.pod.annotations.pod import Pod
 from spakky.data.stereotype.repository import Repository
-from spakky.plugins.sqlalchemy.persistency.repository import AbstractGenericRepository
+from spakky.plugins.sqlalchemy.persistency.repository import AbstractAsyncGenericRepository
 from sqlalchemy import select
 
 from neurath.application.ports.repositories.session import ISessionRepository
@@ -11,12 +12,16 @@ from neurath.domain.aggregates.session import HostSession
 from neurath.infrastructure.models.session import SessionModel
 
 
-@Repository()
-class SQLAlchemySessionRepository(AbstractGenericRepository[HostSession, str], ISessionRepository):
+@Repository(scope=Pod.Scope.CONTEXT)
+class SQLAlchemySessionRepository(
+    AbstractAsyncGenericRepository[HostSession, str], ISessionRepository
+):
     """기본 메서드를 상속하고 프로젝트·공급자·네이티브 ID 조회만 확장한다."""
 
     @override
-    def find(self, project_id: str, provider: str, host_session_id: str) -> HostSession | None:
+    async def find(
+        self, project_id: str, provider: str, host_session_id: str
+    ) -> HostSession | None:
         """프로젝트와 공급자 범위 안에서만 네이티브 식별자를 찾는다.
 
         Args:
@@ -27,7 +32,7 @@ class SQLAlchemySessionRepository(AbstractGenericRepository[HostSession, str], I
         Returns:
             HostSession | None: 해당 프로젝트·공급자 범위의 세션이며 없으면 None.
         """
-        record = self._session_manager.session.scalar(
+        record = await self._session_manager.session.scalar(
             select(SessionModel).where(
                 SessionModel.project_id == project_id,
                 SessionModel.provider == provider,

@@ -2,8 +2,9 @@
 
 from typing import override
 
+from spakky.core.pod.annotations.pod import Pod
 from spakky.data.stereotype.repository import Repository
-from spakky.plugins.sqlalchemy.persistency.repository import AbstractGenericRepository
+from spakky.plugins.sqlalchemy.persistency.repository import AbstractAsyncGenericRepository
 from sqlalchemy import select
 
 from neurath.application.ports.repositories.execution import IExecutionRepository
@@ -11,14 +12,14 @@ from neurath.domain.aggregates.execution import Execution
 from neurath.infrastructure.models.execution import ExecutionModel
 
 
-@Repository()
+@Repository(scope=Pod.Scope.CONTEXT)
 class SQLAlchemyExecutionRepository(
-    AbstractGenericRepository[Execution, str], IExecutionRepository
+    AbstractAsyncGenericRepository[Execution, str], IExecutionRepository
 ):
     """세션과 실제 자식 식별자로 실행 상태를 조회한다."""
 
     @override
-    def find(self, session_id: str, agent_id: str) -> Execution | None:
+    async def find(self, session_id: str, agent_id: str) -> Execution | None:
         """세션과 실제 자식 식별자로 실행 상태를 조회한다.
 
         Args:
@@ -28,7 +29,7 @@ class SQLAlchemyExecutionRepository(
         Returns:
             Execution | None: 일치하는 기록이며 없으면 None.
         """
-        record = self._session_manager.session.scalar(
+        record = await self._session_manager.session.scalar(
             select(ExecutionModel).where(
                 ExecutionModel.session_id == session_id, ExecutionModel.agent_id == agent_id
             )

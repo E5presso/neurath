@@ -3,8 +3,9 @@
 from dataclasses import dataclass
 from typing import override
 
+from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.command import AbstractCommand, ICommandUseCase
+from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.execution import IExecutionRepository
 from neurath.domain.aggregates.execution import Execution
@@ -23,8 +24,8 @@ class ResumeExecutionCommand(AbstractCommand):
     turn_id: str
 
 
-@UseCase()
-class ResumeExecutionUseCase(ICommandUseCase[ResumeExecutionCommand, Execution]):
+@UseCase(scope=Pod.Scope.CONTEXT)
+class ResumeExecutionUseCase(IAsyncCommandUseCase[ResumeExecutionCommand, Execution]):
     """현재 턴의 실행 정지만 해제하고 이전 작성 임대·태스크 이력은 보존한다.
 
     일반 UserPromptSubmit에서 자동 호출하지 않는다. resume-session을 담당하는
@@ -41,7 +42,7 @@ class ResumeExecutionUseCase(ICommandUseCase[ResumeExecutionCommand, Execution])
         self.executions = executions
 
     @override
-    def run(self, command: ResumeExecutionCommand) -> Execution:
+    async def run(self, command: ResumeExecutionCommand) -> Execution:
         """지정 턴을 검사하고 실행 정지를 해제한 상태를 저장한다.
 
         Args:
@@ -50,6 +51,6 @@ class ResumeExecutionUseCase(ICommandUseCase[ResumeExecutionCommand, Execution])
         Returns:
             Execution: 현재 턴에서 다시 실행할 수 있는 실행 상태.
         """
-        execution = self.executions.get(command.execution_id)
+        execution = await self.executions.get(command.execution_id)
         execution.resume(command.turn_id)
-        return self.executions.save(execution)
+        return await self.executions.save(execution)

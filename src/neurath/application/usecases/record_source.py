@@ -3,8 +3,9 @@
 from dataclasses import dataclass
 from typing import override
 
+from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.command import AbstractCommand, ICommandUseCase
+from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.request_source import IRequestSourceRepository
 from neurath.application.ports.repositories.session import ISessionRepository
@@ -45,8 +46,8 @@ class RecordSourceResult:
     source: RequestSource
 
 
-@UseCase()
-class RecordSourceUseCase(ICommandUseCase[RecordSourceCommand, RecordSourceResult]):
+@UseCase(scope=Pod.Scope.CONTEXT)
+class RecordSourceUseCase(IAsyncCommandUseCase[RecordSourceCommand, RecordSourceResult]):
     """호출 세션의 프로젝트에 원문을 새 출처로 기록한다.
 
     정정 출처는 같은 프로젝트의 기존 출처를 가리켜야 한다. 원문 저장만으로
@@ -65,7 +66,7 @@ class RecordSourceUseCase(ICommandUseCase[RecordSourceCommand, RecordSourceResul
         self.sources = sources
 
     @override
-    def run(self, command: RecordSourceCommand) -> RecordSourceResult:
+    async def run(self, command: RecordSourceCommand) -> RecordSourceResult:
         """원문 용도·정정 참조와 프로젝트 범위를 확인하고 새 출처를 저장한다.
 
         Args:
@@ -74,7 +75,7 @@ class RecordSourceUseCase(ICommandUseCase[RecordSourceCommand, RecordSourceResul
         Returns:
             RecordSourceResult: 새 uid와 최초 기록 세션을 가진 출처.
         """
-        session = self.sessions.get(command.session_id)
+        session = await self.sessions.get(command.session_id)
         session.require_project(command.project_id)
         source = RequestSource.create(
             command.project_id,
@@ -86,6 +87,6 @@ class RecordSourceUseCase(ICommandUseCase[RecordSourceCommand, RecordSourceResul
             command.corrects_id,
         )
         if command.corrects_id is not None:
-            parent = self.sources.get(command.corrects_id)
+            parent = await self.sources.get(command.corrects_id)
             parent.require_project(command.project_id)
-        return RecordSourceResult(source=self.sources.save(source))
+        return RecordSourceResult(source=(await self.sources.save(source)))

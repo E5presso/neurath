@@ -1,11 +1,13 @@
 """시도 저장과 결과 반영 사이에 DB 잠금 없이 외부 실행·복구를 수행한다."""
 
+import asyncio
 from dataclasses import dataclass
 from typing import override
 
+from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
-from spakky.data.persistency.transaction import AbstractTransaction
-from spakky.domain.application.command import AbstractCommand, ICommandUseCase
+from spakky.data.persistency.transaction import AbstractAsyncTransaction
+from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.application.ports.repositories.workflow import IWorkflowRepository
@@ -48,8 +50,8 @@ class ExecutePhaseResult:
     request_id: str | None
 
 
-@UseCase()
-class ExecutePhaseUseCase(ICommandUseCase[ExecutePhaseCommand, ExecutePhaseResult]):
+@UseCase(scope=Pod.Scope.CONTEXT)
+class ExecutePhaseUseCase(IAsyncCommandUseCase[ExecutePhaseCommand, ExecutePhaseResult]):
     """시도를 먼저 커밋하고 외부 실행 후 별도 트랜잭션으로 결과를 저장한다.
 
     호출자가 바깥 트랜잭션을 열지 않고 run을 호출한다. 재개 시 먼저 동일 시도를
@@ -60,7 +62,7 @@ class ExecutePhaseUseCase(ICommandUseCase[ExecutePhaseCommand, ExecutePhaseResul
         self,
         workflows: IWorkflowRepository,
         tasks: ITaskRepository,
-        transaction: AbstractTransaction,
+        transaction: AbstractAsyncTransaction,
         executor: IPhaseExecutorService,
         notifier: IWorkflowNotifierService,
         report: ReportPhaseUseCase,
@@ -83,7 +85,7 @@ class ExecutePhaseUseCase(ICommandUseCase[ExecutePhaseCommand, ExecutePhaseResul
         self.report = report
 
     @override
-    def run(self, command: ExecutePhaseCommand) -> ExecutePhaseResult:
+    async def run(self, command: ExecutePhaseCommand) -> ExecutePhaseResult:
         """다음 단계를 실행하거나 기존 시도의 결과를 조회하여 조정한다.
 
         Args:
@@ -92,8 +94,8 @@ class ExecutePhaseUseCase(ICommandUseCase[ExecutePhaseCommand, ExecutePhaseResul
         Returns:
             ExecutePhaseResult: 완료·실패·대기와 실제 처리한 시도의 ID.
         """
-        with self.transaction:
-            run = self.workflows.get(command.run_id)
+        async with self.transaction:
+            run = await self.workflows.get(command.run_id)
             run.require_scope(command.project_id, command.session_id)
             phase = run.current
             if phase is None:
@@ -108,32 +110,38 @@ class ExecutePhaseUseCase(ICommandUseCase[ExecutePhaseCommand, ExecutePhaseResul
                 None,
             )
             fresh = attempt is None
-            run.require_task(self.tasks.get(run.task_id), recovering=not fresh)
+            run.require_task((await self.tasks.get(run.task_id)), recovering=not fresh)
             if attempt is None:
                 run.require_revision(command.expected_revision)
                 attempt = run.begin()
-                self.workflows.save(run)
+                (await self.workflows.save(run))
             phase = run.phase_for(attempt)
         request_id = f"{run.uid}:{attempt.number}"
         try:
-            result = self._execute_or_reconcile(request_id, phase, attempt, fresh=fresh)
+            result = await self._execute_or_reconcile(request_id, phase, attempt, fresh=fresh)
         except Exception as error:
             result = PhaseResult(
                 status=PhaseStatus.WAITING,
                 target_revision=phase.target_revision,
                 summary=f"External result is unconfirmed: {type(error).__name__}: {error}",
             )
-        with self.transaction:
-            current = self.report.run(
-                ReportPhaseCommand(
-                    command.project_id, command.session_id, command.run_id, attempt.number, result
+        async with self.transaction:
+            current = (
+                await self.report.run(
+                    ReportPhaseCommand(
+                        command.project_id,
+                        command.session_id,
+                        command.run_id,
+                        attempt.number,
+                        result,
+                    )
                 )
             ).run
         if result.status is PhaseStatus.WAITING and result != attempt.result:
             self.notifier.waiting(request_id, result.summary)
         return ExecutePhaseResult(run=current, request_id=request_id)
 
-    def _execute_or_reconcile(
+    async def _execute_or_reconcile(
         self,
         request_id: str,
         phase: PhaseDefinition,
@@ -156,12 +164,12 @@ class ExecutePhaseUseCase(ICommandUseCase[ExecutePhaseCommand, ExecutePhaseResul
             PhaseResult: 실제 실행·조회 결과 또는 보존할 결과 불명 상태.
         """
         if fresh:
-            return self.executor.execute(request_id, phase)
-        result = self.executor.lookup(request_id, phase)
+            return await asyncio.to_thread(self.executor.execute, request_id, phase)
+        result = await asyncio.to_thread(self.executor.lookup, request_id, phase)
         if result is not None:
             return result
         if self.executor.supports_deduplication:
-            result = self.executor.execute(request_id, phase)
+            result = await asyncio.to_thread(self.executor.execute, request_id, phase)
         if result is not None:
             return result
         if attempt.result is not None:

@@ -2,7 +2,7 @@
 
 [문서 안내](index.md) · [실행 구조](architecture.md) · [English](../en/workflow-runner.md)
 
-#141은 선택한 스킬 정의와 단계 실행을 태스크 원장에 연결하는 내부 Python API입니다. 실제 로컬 프로세스 어댑터를 제공하며, 공개 CLI·네이티브 훅·provider 위임 연결은 후속 범위입니다.
+#141은 선택한 스킬 정의와 단계 실행을 태스크 원장에 연결하는 내부 Python API입니다. 실제 로컬 프로세스 어댑터를 제공하며, 훅 CLI는 #142에서 제공합니다. 업무 CLI·provider 위임·실설치 연결은 후속 범위입니다.
 
 ## 정의와 결과
 
@@ -26,7 +26,7 @@
 | ReviseWorkflow | 현재 태스크 요구에 수정한 정의 연결. 이전 정의·실패·영향 없는 결과 보존 |
 | SkipPhase | 현재 선택 단계의 조건부 생략 기록 |
 
-ExecutePhase는 프레임워크 `AbstractTransaction`으로 두 저장 구간을 직접 관리하므로 **바깥 트랜잭션 없이 호출합니다.** 나머지 유스케이스는 기존 요청의 표준 Transaction 안에서 호출합니다. 업무 상태 전이는 도메인에, 실행·조회·저장 구간의 조정은 유스케이스에 있습니다.
+ExecutePhase는 프레임워크 `AbstractTransaction`으로 두 저장 구간을 직접 관리하므로 **바깥 트랜잭션 없이 호출합니다.** 나머지 유스케이스는 기존 요청의 표준 AsyncTransaction 안에서 호출합니다. 업무 상태 전이는 도메인에, 실행·조회·저장 구간의 조정은 유스케이스에 있습니다.
 
 아래 예제는 이미 저장된 태스크에서 실행합니다. 요청을 처음부터 다시 만들지 않으며, 반환된 run의 완료는 태스크 목표의 성공 보고와 별개입니다.
 
@@ -34,15 +34,15 @@ ExecutePhase는 프레임워크 `AbstractTransaction`으로 두 저장 구간을
 from pathlib import Path
 import sys
 
-from spakky.plugins.sqlalchemy.persistency.transaction import Transaction
+from spakky.plugins.sqlalchemy.persistency.transaction import AsyncTransaction
 from neurath.application.usecases.get_task import GetTaskQuery, GetTaskUseCase
 from neurath.application.usecases.start_workflow import StartWorkflowCommand, StartWorkflowUseCase
 from neurath.application.usecases.execute_phase import ExecutePhaseCommand, ExecutePhaseResult, ExecutePhaseUseCase
 from neurath.domain.workflow_records import PhaseDefinition, WorkflowDefinition
-from neurath.infrastructure.providers import DatabaseSettings, request_container
+from spakky.core.pod.interfaces.container import IContainer
 
 
-def execute_check(database: Path, project_id: str, session_id: str,
+async def execute_check(scope: IContainer, project_id: str, session_id: str,
                   task_id: str, directory: Path, target_revision: str) -> ExecutePhaseResult:
     phase = PhaseDefinition(
         key="check", purpose="프로그램 정상 종료 확인",
@@ -52,17 +52,16 @@ def execute_check(database: Path, project_id: str, session_id: str,
     definition = WorkflowDefinition(
         skill="qa", version="example-1", phases=(phase,), inputs=(),
     )
-    with request_container(DatabaseSettings(database, write=True)) as scope:
-        with scope.get(Transaction):
-            task = scope.get(GetTaskUseCase).run(
-                GetTaskQuery(project_id, session_id, task_id)
-            ).task
-            flow = scope.get(StartWorkflowUseCase).run(
-                StartWorkflowCommand(project_id, session_id, task_id, task.revision, definition)
-            ).run
-        return scope.get(ExecutePhaseUseCase).run(
-            ExecutePhaseCommand(project_id, session_id, flow.uid, flow.revision)
-        )
+    async with scope.get(AsyncTransaction):
+        task = (await scope.get(GetTaskUseCase).run(
+            GetTaskQuery(project_id, session_id, task_id)
+        )).task
+        flow = (await scope.get(StartWorkflowUseCase).run(
+            StartWorkflowCommand(project_id, session_id, task_id, task.revision, definition)
+        )).run
+    return await scope.get(ExecutePhaseUseCase).run(
+        ExecutePhaseCommand(project_id, session_id, flow.uid, flow.revision)
+    )
 ```
 
 ## 실행·복구와 태스크 상태

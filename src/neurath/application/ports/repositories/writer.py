@@ -2,16 +2,16 @@
 
 from abc import ABC, abstractmethod
 
-from spakky.data.persistency.repository import IGenericRepository
+from spakky.data.persistency.repository import IAsyncGenericRepository
 
 from neurath.domain.aggregates.writer import Writer
 
 
-class IWriterRepository(IGenericRepository[Writer, str], ABC):
+class IWriterRepository(IAsyncGenericRepository[Writer, str], ABC):
     """정규 작업 폴더의 현재 작성 소유자를 조회한다."""
 
     @abstractmethod
-    def find(self, resource: str) -> Writer | None:
+    async def find(self, resource: str) -> Writer | None:
         """정규 작업 폴더의 현재 작성 소유자를 조회한다.
 
         Args:

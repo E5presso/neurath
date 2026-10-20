@@ -3,8 +3,9 @@
 from dataclasses import dataclass
 from typing import override
 
+from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.command import AbstractCommand, ICommandUseCase
+from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.application.usecases.register_project import (
@@ -44,8 +45,8 @@ class RegisterSessionResult:
     session: HostSession
 
 
-@UseCase()
-class RegisterSessionUseCase(ICommandUseCase[RegisterSessionCommand, RegisterSessionResult]):
+@UseCase(scope=Pod.Scope.CONTEXT)
+class RegisterSessionUseCase(IAsyncCommandUseCase[RegisterSessionCommand, RegisterSessionResult]):
     """프로젝트를 식별하고 공급자·네이티브 ID가 같은 세션을 재사용하거나 등록한다.
 
     세션 키는 프로젝트·provider·host_session_id의 조합이다. 재등록 시 기존 세션의
@@ -63,7 +64,7 @@ class RegisterSessionUseCase(ICommandUseCase[RegisterSessionCommand, RegisterSes
         self.sessions = sessions
 
     @override
-    def run(self, command: RegisterSessionCommand) -> RegisterSessionResult:
+    async def run(self, command: RegisterSessionCommand) -> RegisterSessionResult:
         """프로젝트를 등록·조회한 뒤 동일한 네이티브 세션을 재사용하거나 새로 저장한다.
 
         Args:
@@ -72,8 +73,8 @@ class RegisterSessionUseCase(ICommandUseCase[RegisterSessionCommand, RegisterSes
         Returns:
             RegisterSessionResult: 관찰한 위치의 프로젝트와 재사용하거나 생성한 호스트 세션.
         """
-        project = self.projects.run(RegisterProjectCommand(command.observation)).project
-        session = self.sessions.find(project.id, command.provider, command.host_session_id)
+        project = (await self.projects.run(RegisterProjectCommand(command.observation))).project
+        session = await self.sessions.find(project.id, command.provider, command.host_session_id)
         if session is None:
             session = HostSession.create(
                 project_id=project.id,
@@ -81,5 +82,5 @@ class RegisterSessionUseCase(ICommandUseCase[RegisterSessionCommand, RegisterSes
                 host_session_id=command.host_session_id,
                 working_directory=command.observation.working_directory,
             )
-            session = self.sessions.save(session)
+            session = await self.sessions.save(session)
         return RegisterSessionResult(project=project, session=session)

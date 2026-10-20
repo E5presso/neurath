@@ -42,6 +42,7 @@ class ProjectModel(AbstractMappableTable[Project]):
 
     __mapper_args__ = {"version_id_col": revision}
     locations: Mapped[list[ProjectLocationModel]] = relationship(
+        lazy="selectin",
         cascade="all, delete-orphan",
         order_by="ProjectLocationModel.kind, ProjectLocationModel.path",
     )

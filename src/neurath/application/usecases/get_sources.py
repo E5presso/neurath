@@ -4,8 +4,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import override
 
+from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.query import AbstractQuery, IQueryUseCase
+from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
 
 from neurath.application.ports.repositories.request_source import IRequestSourceRepository
 from neurath.application.ports.repositories.session import ISessionRepository
@@ -36,8 +37,8 @@ class GetSourcesResult:
     sources: Sequence[RequestSource]
 
 
-@UseCase()
-class GetSourcesUseCase(IQueryUseCase[GetSourcesQuery, GetSourcesResult]):
+@UseCase(scope=Pod.Scope.CONTEXT)
+class GetSourcesUseCase(IAsyncQueryUseCase[GetSourcesQuery, GetSourcesResult]):
     """호출 세션의 프로젝트를 확인한 뒤 프로젝트 전체 출처를 조회한다.
 
     다른 세션이 기록한 출처도 포함하므로 기존 원문을 재사용하고 정정 계보를
@@ -55,7 +56,7 @@ class GetSourcesUseCase(IQueryUseCase[GetSourcesQuery, GetSourcesResult]):
         self.sources = sources
 
     @override
-    def run(self, query: GetSourcesQuery) -> GetSourcesResult:
+    async def run(self, query: GetSourcesQuery) -> GetSourcesResult:
         """세션의 프로젝트 소속을 확인하고 해당 프로젝트의 모든 출처를 반환한다.
 
         Args:
@@ -64,5 +65,5 @@ class GetSourcesUseCase(IQueryUseCase[GetSourcesQuery, GetSourcesResult]):
         Returns:
             GetSourcesResult: 최초 기록 세션에 관계없이 프로젝트에 보존된 출처 목록.
         """
-        self.sessions.get(query.session_id).require_project(query.project_id)
-        return GetSourcesResult(sources=self.sources.list(query.project_id))
+        (await self.sessions.get(query.session_id)).require_project(query.project_id)
+        return GetSourcesResult(sources=(await self.sources.list(query.project_id)))

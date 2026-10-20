@@ -4,37 +4,41 @@
 
 #137은 사용자 단위 SQLite 안에서 프로젝트와 세션을 요청별로 관리합니다.
 현재 기반은 Spakky Framework 8.1.0의 도메인·영속성 구성요소를 사용합니다.
-패키지는 기반 라이브러리이며 공개 CLI·훅·설치 전환은 후속 구현 범위입니다.
+패키지는 비동기 기반과 훅 CLI를 제공합니다. 업무 CLI·설치 전환은 후속 구현 범위입니다.
 
 ## 프레임워크 사용과 책임
 
 - `Project`, `HostSession`은 `@mutable`과 `AbstractAggregateRoot[str]`로 식별자·동일성·변경 추적을 상속합니다. `ProjectLocation`은 Project가 소유하는 `AbstractValueObject`입니다.
 - 기존 `id` 참조는 `uid`를 읽는 호환 속성으로 유지합니다. 프로젝트 식별·폴더 승격·위치 충돌과 세션 범위·이동 규칙은 도메인에 있습니다.
-- 저장 포트는 `IGenericRepository`를 상속합니다. 프로젝트 위치 조회와 범위가 있는 네이티브 ID 조회만 확장합니다.
-- `SQLAlchemyProjectRepository`, `SQLAlchemySessionRepository`는 `AbstractGenericRepository`를 상속합니다. `get`, `get_or_none`, `contains`, `range`, `save`, `save_all`, `delete`, `delete_all`과 생성자는 재구현하지 않습니다.
+- 저장 포트는 `IAsyncGenericRepository`를 상속합니다. 프로젝트 위치 조회와 범위가 있는 네이티브 ID 조회만 확장합니다.
+- `SQLAlchemyProjectRepository`, `SQLAlchemySessionRepository`는 `AbstractAsyncGenericRepository`를 상속합니다. `get`, `get_or_none`, `contains`, `range`, `save`, `save_all`, `delete`, `delete_all`과 생성자는 재구현하지 않습니다.
 - 도메인 테이블은 `@Table(Domain)`과 `AbstractMappableTable[Domain]`으로 양방향 변환을 정의합니다. 위치 자식 테이블은 도메인 매핑이 없는 `AbstractTable`입니다.
 - `SchemaRegistry`가 Table 태그를 통해 도메인과 실제 테이블을 연결합니다. 저장소가 매핑을 별도로 추적하지 않습니다.
-- `ApplicationContext`가 `@UseCase`, `@Repository`, 관찰 Pod와 프레임워크의 `ConnectionManager`, `SessionManager`, `Transaction`, `AggregateCollector`를 구성합니다.
-- 호출자는 요청 컨테이너에서 표준 `Transaction`을 열고 개별 유스케이스의 `run(command/query)`를 호출합니다. 성공 시 commit, 예외 시 rollback, 세션 종료는 프레임워크가 수행합니다.
-- 모든 유스케이스는 Spakky의 `ICommandUseCase` 또는 `IQueryUseCase`를 구현하며 입력은 `AbstractCommand` 또는 `AbstractQuery`를 상속합니다. 각 모듈에 Command/Query·Result DTO·UseCase를 함께 정의합니다. 프레임워크 제네릭의 결과 타입과 `run()` 반환 타입은 해당 모듈의 Result를 가리킵니다.
-- 요청 경계는 프레임워크의 미존재·버전 충돌 오류를 기존 `ContextNotFound`·`RevisionConflict`로 변환합니다. 세션이 요청한 프로젝트에 속하는지는 유스케이스가 도메인에 확인합니다.
+- `ApplicationContext`가 `@UseCase`, `@Repository`, 관찰 Pod와 프레임워크의 `AsyncConnectionManager`, `AsyncSessionManager`, `AsyncTransaction`, `AggregateCollector`를 구성합니다.
+- 호출자는 요청 컨테이너에서 표준 `AsyncTransaction`을 열고 개별 유스케이스의 `run(command/query)`를 호출합니다. 성공 시 commit, 예외 시 rollback, 세션 종료는 프레임워크가 수행합니다.
+- 모든 유스케이스는 Spakky의 `IAsyncCommandUseCase` 또는 `IAsyncQueryUseCase`를 구현하며 입력은 `AbstractCommand` 또는 `AbstractQuery`를 상속합니다. 전용 Command/Query·Result DTO는 해당 UseCase 모듈에 정의합니다. 기존 도메인 타입을 반환할 때는 별도 DTO를 강제하지 않습니다.
+- 프레임워크의 미존재·저장 버전 충돌 오류는 해당 기본 계약으로 전파합니다. 세션이 요청한 프로젝트에 속하는지는 유스케이스가 도메인에 확인합니다.
 
 기본 CRUD의 SQL과 merge·flush·변경 aggregate 수집은 프레임워크 소유입니다.
-Neurath 저장소의 SQL은 추가한 두 조회 메서드에만 있습니다. 도메인은 프레임워크의
+프로젝트·세션 저장소의 SQL은 추가한 위치·네이티브 ID 조회에만 있습니다. 도메인은 프레임워크의
 순수 도메인 기반과 mutability 선언만 사용하며 SQLAlchemy와 저장 어댑터에 의존하지 않습니다.
 
 ## 요청 수명과 SQLite
 
-각 요청은 독립된 컨테이너·설정·연결 관리자를 만듭니다. 전역 환경변수를 바꾸지 않고
-모듈 수준의 `request_config` Pod 팩토리가 설정 객체를 제공합니다. 요청의 설정은 엔진 구성 동안만
-ContextVar에 바인딩하고 즉시 복원하며 컨테이너마다 별도로 주입합니다. 프레임워크의
-ConnectionManager를 직접 등록하여 생성한 엔진에 SQLite 연결 정책을
-설정하며, 요청 종료나 초기화 실패 시 엔진을 폐기합니다. 상주 daemon은 없습니다.
+CLI 프로세스는 `SpakkyApplication.load_plugins().scan(...).start()`로 구성합니다.
+설치된 플러그인을 기본 로딩하고, 패키지 스캔으로 Pod·Table·Controller를 발견합니다.
+Alembic 실행 파일과 구성 루트는 스캔 대상에서 제외합니다. 유스케이스·저장소·CLI Controller는
+프레임워크의 `CONTEXT` scope를 사용하며 spakky-typer가 명령 경계에서 컨텍스트를 갱신합니다.
 
-Git 관찰은 DB 트랜잭션 시작 전에 마칩니다. 쓰기 연결은 첫 조회 전에 `BEGIN IMMEDIATE`를
-획득하고 읽기 연결은 SQLite URI의 `mode=ro`와 `query_only`를 사용합니다. 외래 키를
-모든 연결에 적용하며 SQLite 잠금 기본 대기는 5초입니다. 숨은 재시도는 없습니다.
-중첩된 독립 요청도 각자의 SessionManager와 트랜잭션을 사용합니다.
+SQLite는 `sqlite+aiosqlite`와 `AsyncSessionManager`·`AsyncTransaction`으로 접근합니다.
+유스케이스·저장소 호출은 `await`하고, 소유 관계는 `selectin`으로 조회하여 변환 중 암묵적
+동기 조회를 발생시키지 않습니다. 마이그레이션은 비동기 연결의 `run_sync`로 Alembic을 실행합니다.
+엔진과 세션·트랜잭션은 Spakky 구현을 재사용하며 정상·실패 종료에서 정리합니다.
+
+Git 관찰은 DB 트랜잭션 전에 끝냅니다. SQLite 연결 정책은 구성 루트가
+비동기 엔진의 `sync_engine` 이벤트에 연결합니다. 쓰기는 `BEGIN IMMEDIATE`, 읽기는 URI의
+`mode=ro`와 `query_only`를 사용하고 모든 연결에서 외래 키를 강제합니다. 숨은 재시도는 없습니다.
+프레임워크 저장소의 부재·낙관적 충돌 오류는 그대로 전파하며 CLI 경계에서 호스트 응답으로 표현합니다.
 
 네이티브 ID는 `(project_id, provider, host_session_id)`로 구분합니다. 재등록은 최신 작업
 경로를 덮어쓰지 않습니다. linked worktree와 하위 폴더는 같은 프로젝트이며 같은 원격의
@@ -76,26 +80,16 @@ Alembic migration 파일과 version table이 revision의 유일한 기준입니�
 ## 내부 요청 API
 
 ```python
-from pathlib import Path
-from spakky.plugins.sqlalchemy.persistency.transaction import Transaction
-from neurath.application.ports.services.directory_observer import IDirectoryObserverService
-from neurath.application.usecases.register_session import RegisterSessionCommand, RegisterSessionUseCase
+from spakky.core.pod.interfaces.container import IContainer
+from spakky.plugins.sqlalchemy.persistency.transaction import AsyncTransaction
 from neurath.application.usecases.get_session_context import GetSessionContextQuery, GetSessionContextUseCase
-from neurath.infrastructure.database import initialize_database
-from neurath.infrastructure.providers import DatabaseSettings, request_container
 
-path = Path("/explicit/isolated/core.sqlite3")
-initialize_database(path)
-with request_container(DatabaseSettings(path, write=True)) as scope:
-    observation = scope.get(IDirectoryObserverService).observe("/project")
-    with scope.get(Transaction):
-        opened = scope.get(RegisterSessionUseCase).run(
-            RegisterSessionCommand(observation, "codex", "native-session")
-        )
-with request_container(DatabaseSettings(path, write=False)) as scope:
-    with scope.get(Transaction):
-        current = scope.get(GetSessionContextUseCase).run(
-            GetSessionContextQuery(opened.project.id, opened.session.id)
+
+async def read_session(scope: IContainer, project_id: str, session_id: str):
+    # scope는 neurath.bootstrap에서 구성한 애플리케이션의 컨테이너다.
+    async with scope.get(AsyncTransaction):
+        return await scope.get(GetSessionContextUseCase).run(
+            GetSessionContextQuery(project_id, session_id)
         )
 ```
 
@@ -109,7 +103,7 @@ with request_container(DatabaseSettings(path, write=False)) as scope:
 Git/worktree/clone 구분과 명시적·동시 초기화를 검증합니다. 이전 스키마의 값·종속 자료 보존,
 반복 이전, 이전 도중 실패의 전체 롤백도 확인합니다. 검사 실행 방법은 [기여 안내](../../CONTRIBUTING.ko.md)를 참고하세요.
 
-호스트 훅·기억·협업·공개 CLI·실제 사용자 자료 이전·설치는 후속 티켓입니다.
+훅 CLI의 실제 설치 연결, 기억·협업·업무 CLI·사용자 자료 이전은 후속 티켓입니다.
 `setup`은 이 기반 후보의 설치를 거부합니다. 실제 사용자 DB와 설치된 배포본은 이번 소스
 수정으로 변경하지 않습니다.
 

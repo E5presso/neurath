@@ -2,7 +2,7 @@
 
 [문서 목록](index.md) · [태스크 원장](task-ledger.md) · [단계 실행](workflow-runner.md) · [English](../en/host-runtime.md)
 
-이 모듈은 #142의 요청별 런타임 라이브러리입니다. 현재 설치된 Codex·Claude 설정을 바꾸지 않습니다. 공개 Typer 진입점, 관리 명령, 설치 연결은 각각 #148·#147·#151에서 이 유스케이스를 호출합니다.
+이 모듈은 #142의 요청별 런타임 라이브러리입니다. 현재 설치된 Codex·Claude 설정을 바꾸지 않습니다. 훅 진입점은 spakky-typer로 제공합니다. 나머지 업무 CLI·관리 명령·설치 연결은 #148·#147·#151에서 이어갑니다.
 
 ## 실행과 작성의 구분
 
@@ -10,13 +10,13 @@
 
 Codex의 `turn_id`, Claude의 `prompt_id`를 그대로 저장합니다. 식별자가 없는 구형 호스트도 읽기·진단은 가능하지만 현재 턴을 확정해야 하는 변경·종료는 미확인으로 중지합니다. 새 메시지는 턴만 갱신합니다. 취소·중지된 작업을 자동 재개하지 않으며, 실제 재개 지시는 `ResumeExecutionUseCase`가 처리합니다. 재개는 이전 작성의 종료를 대신하지 않습니다.
 
-`Writer`는 공유 작업 폴더의 작성 실행·턴·도구 호출·세대를 관리합니다. 같은 Git 작업 트리의 하위 디렉터리는 하나의 작성 범위이며 서로 다른 worktree는 분리됩니다. 읽기·진단·자식의 조회에는 작성 임대를 요구하지 않습니다. 설치 어댑터는 실제 도구 정의에 맞게 `write_tools`를 지정하며, 기본값은 `Edit`·`Write`·`Bash`·`apply_patch`·`exec_command`입니다. 다른 작업 폴더 작성 도구를 연결할 때도 그 효과를 명시합니다. 작업 트리 생성·삭제·보관은 호스트 도구의 책임입니다.
+`Writer`는 공유 작업 폴더의 작성 실행·턴·도구 호출·세대를 관리합니다. 같은 Git 작업 트리의 하위 디렉터리는 하나의 작성 범위이며 서로 다른 worktree는 분리됩니다. 읽기·진단·자식의 조회에는 작성 임대를 요구하지 않습니다. 현재 작업 폴더 작성 도구로 해석하는 이름은 `Edit`·`Write`·`Bash`·`apply_patch`·`exec_command`입니다. 다른 작업 폴더 작성 도구를 연결할 때도 그 효과를 명시합니다. 작업 트리 생성·삭제·보관은 호스트 도구의 책임입니다.
 
 두 요청의 동시 취득은 기존 SQLite 쓰기 트랜잭션과 저장소 버전 검사로 직렬화합니다. 같은 호출의 재전달은 동일 세대를 반환하며 다른 호출은 충돌합니다. 오래된 소유자·세대의 회수는 현재 임대를 해제하지 못합니다.
 
 ## 훅 계약
 
-`NativeHookAdapter.handle(payload, bypass=False)`는 호스트 JSON을 받아 매번 새 요청 컨테이너와 트랜잭션으로 처리합니다. 지원 계약은 [Codex 훅 스키마](https://github.com/openai/codex/blob/main/codex-rs/hooks/src/schema.rs)와 [Claude 훅 문서](https://code.claude.com/docs/en/hooks)에 근거합니다.
+`neurath hook handle --provider codex` 또는 `--provider claude`는 stdin의 호스트 JSON을 읽고 stdout에 제어 JSON 하나를 반환합니다. `HookCliController`는 `@CliController`·`@command`로 스캔되며 비동기 `ReceiveHookUseCase`를 직접 주입받습니다. 세션 등록·훅 적용은 유스케이스의 `AsyncTransaction`에서 수행합니다. 지원 계약은 [Codex 훅 스키마](https://github.com/openai/codex/blob/main/codex-rs/hooks/src/schema.rs)와 [Claude 훅 문서](https://code.claude.com/docs/en/hooks)에 근거합니다.
 
 | 사건 | 처리 |
 | --- | --- |
@@ -41,10 +41,12 @@ Claude의 동기 `Bash` 결과는 `stdout`·`stderr`·`interrupted` 계약을 �
 
 `RecoverWriterUseCase`는 DB 잠금 밖에서 실제 생존을 조회한 뒤 소유자·세대를 다시 확인합니다. `CancelExecutionUseCase`는 먼저 추가 쓰기를 중지하고 `IExecutionControllerService`로 정확한 턴의 중단을 요청합니다. 실제 종료가 확인돼야 cancelled이며 응답 유실은 paused입니다. 오래된 중단 응답은 새 턴을 취소하지 못합니다. 두 유스케이스는 자체 트랜잭션을 사용하므로 외부 트랜잭션으로 감싸지 않습니다. 구체 실행 어댑터는 호출자가 주입합니다.
 
-DB·훅 장애는 `continue:false`와 복구 안내로 반환합니다. 관리 경로의 명시적 `bypass=True`는 DB 없이 동작하며 원장을 바꾸지 않습니다. 이 인자를 네이티브 승인으로 사용하지 않습니다. 반환된 `stopReason`·TODO는 호스트에 전달할 본문이며 JSON 생성만으로 사용자가 알림을 수신했다고 기록하지 않습니다. 알림 전달·관리 UI의 연결은 #146·#147·#151의 범위입니다.
+DB·훅 장애는 `continue:false`와 복구 안내로 반환합니다. 관리 경로의 명시적 `--bypass`는 DB 없이 동작하며 원장을 바꾸지 않습니다. 이 인자를 네이티브 승인으로 사용하지 않습니다. 반환된 `stopReason`·TODO는 호스트에 전달할 본문이며 JSON 생성만으로 사용자가 알림을 수신했다고 기록하지 않습니다. 알림 전달·관리 UI의 연결은 #146·#147·#151의 범위입니다.
 
 ## 저장과 검증
 
 `core_0005`는 실행과 작성 임대 테이블을 추가합니다. 이전 세션에서 현재 실행·승인·성공을 추정해 채우지 않습니다. 실행 또는 임대 기록이 있으면 파괴적인 downgrade를 거부합니다.
 
 회귀 시험은 실제 SQLite 동시 취득·재시작·늦은 결과·취소·명시적 재개·자식 읽기·phase 진전·외부 대기·DB 장애·우회를 확인합니다. 실제 프로세스로 중단 대상 분리와 종료 관찰을 검증합니다. 이 시험을 통과한 것을 사용자 호스트에 설치·활성화됐다는 증거로 보고하지 않습니다.
+
+SQLite 기본 URL은 `sqlite+aiosqlite`입니다. 명시적 연결 설정은 Spakky의 `SPAKKY_SQLALCHEMY__CONNECTION_STRING`을 사용하며, Spakky의 기본 비동기 지원을 끄지 않습니다. 도움말과 `--bypass`는 DB 트랜잭션을 열지 않습니다. 설치 스크립트가 사용자 훅에 이 명령을 연결하는 작업은 아직 수행하지 않았습니다.

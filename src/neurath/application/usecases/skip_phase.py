@@ -3,8 +3,9 @@
 from dataclasses import dataclass
 from typing import override
 
+from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.command import AbstractCommand, ICommandUseCase
+from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.workflow import IWorkflowRepository
 from neurath.domain.aggregates.workflow import WorkflowRun
@@ -42,8 +43,8 @@ class SkipPhaseResult:
     run: WorkflowRun
 
 
-@UseCase()
-class SkipPhaseUseCase(ICommandUseCase[SkipPhaseCommand, SkipPhaseResult]):
+@UseCase(scope=Pod.Scope.CONTEXT)
+class SkipPhaseUseCase(IAsyncCommandUseCase[SkipPhaseCommand, SkipPhaseResult]):
     """현재 선택 단계의 생략 조건과 근거를 기록한다.
 
     현재 단계가 선택 단계이고 조건이 일치할 때만 skipped 이력을 추가한다.
@@ -59,7 +60,7 @@ class SkipPhaseUseCase(ICommandUseCase[SkipPhaseCommand, SkipPhaseResult]):
         self.workflows = workflows
 
     @override
-    def run(self, command: SkipPhaseCommand) -> SkipPhaseResult:
+    async def run(self, command: SkipPhaseCommand) -> SkipPhaseResult:
         """현재 선택 단계의 생략 조건과 근거를 기록한다.
 
         Args:
@@ -68,8 +69,8 @@ class SkipPhaseUseCase(ICommandUseCase[SkipPhaseCommand, SkipPhaseResult]):
         Returns:
             SkipPhaseResult: 생략 이력이 추가된 run. 필수 단계나 미확정 실행은 생략하지 않는다.
         """
-        run = self.workflows.get(command.run_id)
+        run = await self.workflows.get(command.run_id)
         run.require_scope(command.project_id, command.session_id)
         run.require_revision(command.expected_revision)
         run.skip(command.condition, command.reason)
-        return SkipPhaseResult(run=self.workflows.save(run))
+        return SkipPhaseResult(run=(await self.workflows.save(run)))

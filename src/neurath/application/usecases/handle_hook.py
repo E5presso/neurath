@@ -4,8 +4,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import override
 
+from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.command import AbstractCommand, ICommandUseCase
+from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.execution import IExecutionRepository
 from neurath.application.ports.repositories.session import ISessionRepository
@@ -69,8 +70,8 @@ class HandleHookResult:
     generation: int | None = None
 
 
-@UseCase()
-class HandleHookUseCase(ICommandUseCase[HandleHookCommand, HandleHookResult]):
+@UseCase(scope=Pod.Scope.CONTEXT)
+class HandleHookUseCase(IAsyncCommandUseCase[HandleHookCommand, HandleHookResult]):
     """매 요청마다 최신 원장을 읽고 실제 사건에 해당하는 상태만 저장한다.
 
     SessionStart 재개는 취소를 자동으로 풀지 않는다. 새 UserPromptSubmit은 다음 턴을 기록하며 중지 해제는 명시적인 재개가 담당한다. 읽기에는 작성 임대를 요구하지 않으며 Stop으로 임대를 일괄 해제하지 않는다.
@@ -101,7 +102,7 @@ class HandleHookUseCase(ICommandUseCase[HandleHookCommand, HandleHookResult]):
         self.workflows = workflows
 
     @override
-    def run(self, command: HandleHookCommand) -> HandleHookResult:
+    async def run(self, command: HandleHookCommand) -> HandleHookResult:
         """사건을 적용하고 이전 턴 사건은 현재 실행을 바꾸지 않고 중지 응답한다.
 
         Args:
@@ -110,26 +111,26 @@ class HandleHookUseCase(ICommandUseCase[HandleHookCommand, HandleHookResult]):
         Returns:
             HandleHookResult: 최신 상태로 계산한 호스트 제어와 TODO 표시 내용.
         """
-        self.sessions.get(command.session_id).require_project(command.project_id)
-        execution = self.executions.find(command.session_id, command.agent_id)
+        (await self.sessions.get(command.session_id)).require_project(command.project_id)
+        execution = await self.executions.find(command.session_id, command.agent_id)
         if execution is None:
             execution = Execution.create(command.session_id, command.agent_id)
-            execution = self.executions.save(execution)
+            execution = await self.executions.save(execution)
         tasks = tuple(
             t
-            for t in self.tasks.list(command.project_id)
+            for t in (await self.tasks.list(command.project_id))
             if t.owner_session_id == command.session_id and not command.agent_id
         )
         todo = "\n".join(f"{t.uid}: {t.status.value} — {t.definition.title}" for t in tasks)
         try:
-            action, generation = self._apply(command, execution, tasks)
+            action, generation = await self._apply(command, execution, tasks)
         except InvalidExecutionState as error:
             return HandleHookResult(HookAction.PAUSE, f"{error}\n{todo}", execution.uid)
-        execution = self.executions.save(execution)
+        execution = await self.executions.save(execution)
         message = f"{execution.reason}\n{todo}".strip()
         return HandleHookResult(action, message, execution.uid, generation)
 
-    def _apply(
+    async def _apply(
         self, command: HandleHookCommand, execution: Execution, tasks: Sequence[Task]
     ) -> tuple[HookAction, int | None]:
         """수명 사건과 도구 사건을 해당 도메인 규칙에 전달한다.
@@ -168,27 +169,27 @@ class HandleHookUseCase(ICommandUseCase[HandleHookCommand, HandleHookResult]):
         if command.event in ("Stop", "SubagentStop"):
             progress = []
             for task in tasks:
-                workflow = self.workflows.find_by_task(task.uid)
+                workflow = await self.workflows.find_by_task(task.uid)
                 if workflow is not None:
                     progress.append((workflow.uid, workflow.revision))
             return execution.decide_stop(tasks, repeated=command.repeated, progress=progress), None
         if command.event == "PreToolUse":
             if execution.status is not ExecutionStatus.RUNNING:
                 return HookAction.PAUSE, None
-            writer = self.writers.find(command.resource)
+            writer = await self.writers.find(command.resource)
             if writer is None:
                 writer = Writer.create(command.resource)
             generation = writer.acquire(execution.uid, command.turn_id, command.tool_use_id)
-            self.writers.save(writer)
+            (await self.writers.save(writer))
             return HookAction.ALLOW, generation
         if command.event in ("PostToolUse", "PostToolUseFailure"):
-            self._finish_write(command, execution)
+            (await self._finish_write(command, execution))
             if command.interrupted:
                 execution.cancel(command.turn_id, command.reason or "Host interrupted execution")
             return HookAction.ALLOW, None
         raise InvalidExecutionState("Unsupported host event")
 
-    def _finish_write(self, command: HandleHookCommand, execution: Execution) -> None:
+    async def _finish_write(self, command: HandleHookCommand, execution: Execution) -> None:
         """완료된 도구 사건이 가리키는 동일 작성 호출만 해제한다.
 
         Args:
@@ -197,7 +198,7 @@ class HandleHookUseCase(ICommandUseCase[HandleHookCommand, HandleHookResult]):
         """
         if not command.resource or not command.finished:
             return
-        writer = self.writers.find(command.resource)
+        writer = await self.writers.find(command.resource)
         if writer is None:
             return
         if (writer.execution_id, writer.turn_id, writer.tool_use_id) != (
@@ -207,4 +208,4 @@ class HandleHookUseCase(ICommandUseCase[HandleHookCommand, HandleHookResult]):
         ):
             return
         writer.release(execution.uid, writer.generation, Liveness.STOPPED)
-        self.writers.save(writer)
+        (await self.writers.save(writer))

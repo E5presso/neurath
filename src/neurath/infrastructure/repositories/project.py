@@ -2,8 +2,9 @@
 
 from typing import override
 
+from spakky.core.pod.annotations.pod import Pod
 from spakky.data.stereotype.repository import Repository
-from spakky.plugins.sqlalchemy.persistency.repository import AbstractGenericRepository
+from spakky.plugins.sqlalchemy.persistency.repository import AbstractAsyncGenericRepository
 from sqlalchemy import select
 
 from neurath.application.ports.repositories.project import IProjectRepository
@@ -11,12 +12,12 @@ from neurath.domain.aggregates.project import Project, ProjectLocation
 from neurath.infrastructure.models.project import ProjectLocationModel, ProjectModel
 
 
-@Repository()
-class SQLAlchemyProjectRepository(AbstractGenericRepository[Project, str], IProjectRepository):
+@Repository(scope=Pod.Scope.CONTEXT)
+class SQLAlchemyProjectRepository(AbstractAsyncGenericRepository[Project, str], IProjectRepository):
     """기본 조회·저장·삭제는 상속하고 위치 소유 조회만 확장한다."""
 
     @override
-    def find_by_location(self, location: ProjectLocation) -> Project | None:
+    async def find_by_location(self, location: ProjectLocation) -> Project | None:
         """위치 값을 소유하는 프로젝트 전체를 조회한다.
 
         Args:
@@ -25,7 +26,7 @@ class SQLAlchemyProjectRepository(AbstractGenericRepository[Project, str], IProj
         Returns:
             Project | None: 해당 위치의 소유자이며 없으면 None.
         """
-        record = self._session_manager.session.scalar(
+        record = await self._session_manager.session.scalar(
             select(ProjectModel)
             .join(ProjectModel.locations)
             .where(

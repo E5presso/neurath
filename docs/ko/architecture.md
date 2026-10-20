@@ -142,7 +142,7 @@ PR·외부 작업 모니터는 요청된 외부 상태 변화를 확인하고 �
 | Domain | task/outcome, workflow run/phase attempt, assignment, current fact, review의 의미와 전이 |
 | Application | Work, WorkflowRunner, Runtime, Knowledge, Collaboration, Maintenance 유스케이스 |
 | Infrastructure | SQLite + SQLAlchemy 저장, Alembic 이전, 호스트 사건 저장, 제한된 전달 큐 |
-| Transport | Skill/rules 설치, Python + Typer 기반 `neurath` CLI, 상태 기반 훅, 호스트 입력·도구 실행·중단·TODO·알림, 설치와 복구 |
+| Transport | Skill/rules 설치, Python + spakky-typer (Typer) 기반 `neurath` CLI, 상태 기반 훅, 호스트 입력·도구 실행·중단·TODO·알림, 설치와 복구 |
 
 이 묶음은 배포 서비스 수가 아닙니다. 코어는 각 hook·CLI 요청에서 DB를 조회하는 stateless 유스케이스로 구성합니다. 같은 관계를 여러 완료 원장에 복제하지 않습니다. WorkflowRunner는 Work와 결과를 연결하고, Collaboration은 실제 외부 실행과 독립 평가를 연결합니다.
 

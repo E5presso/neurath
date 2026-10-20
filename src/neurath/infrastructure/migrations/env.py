@@ -1,46 +1,13 @@
 """초기화가 명시적으로 전달한 연결에서만 마이그레이션을 실행한다."""
 
 from alembic import context
+from spakky.core.application.application import SpakkyApplication
+from spakky.core.application.application_context import ApplicationContext
 from spakky.plugins.sqlalchemy.orm.table import AbstractTable
 from sqlalchemy.engine import Connection
 
-from neurath.infrastructure.models.execution import ExecutionModel
-from neurath.infrastructure.models.project import ProjectLocationModel, ProjectModel
-from neurath.infrastructure.models.request_source import RequestSourceModel
-from neurath.infrastructure.models.session import SessionModel
-from neurath.infrastructure.models.task import (
-    TaskAttemptModel,
-    TaskDefinitionModel,
-    TaskDependencyModel,
-    TaskModel,
-    TaskWaitModel,
-)
-from neurath.infrastructure.models.workflow import (
-    PhaseAttemptModel,
-    PhaseDefinitionModel,
-    WorkflowModel,
-    WorkflowRevisionModel,
-)
-from neurath.infrastructure.models.writer import WriterModel
-
-# 모델을 import해야 공유 metadata에 테이블이 등록되어 Alembic이 전체 스키마를 볼 수 있다.
-MODEL_TYPES = (
-    ExecutionModel,
-    WriterModel,
-    WorkflowModel,
-    WorkflowRevisionModel,
-    PhaseDefinitionModel,
-    PhaseAttemptModel,
-    ProjectModel,
-    ProjectLocationModel,
-    SessionModel,
-    RequestSourceModel,
-    TaskModel,
-    TaskDefinitionModel,
-    TaskDependencyModel,
-    TaskAttemptModel,
-    TaskWaitModel,
-)
+# 애플리케이션과 같은 스캔 규칙으로 새 @Table 모델까지 metadata에 반영한다.
+SpakkyApplication(ApplicationContext()).scan("neurath.infrastructure.models")
 connection = context.config.attributes["connection"]
 if not isinstance(connection, Connection):
     raise TypeError("Migration requires an explicit SQLAlchemy Connection")

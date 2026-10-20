@@ -2,16 +2,16 @@
 
 from abc import ABC, abstractmethod
 
-from spakky.data.persistency.repository import IGenericRepository
+from spakky.data.persistency.repository import IAsyncGenericRepository
 
 from neurath.domain.aggregates.execution import Execution
 
 
-class IExecutionRepository(IGenericRepository[Execution, str], ABC):
+class IExecutionRepository(IAsyncGenericRepository[Execution, str], ABC):
     """세션과 실제 자식 식별자로 실행 상태를 조회한다."""
 
     @abstractmethod
-    def find(self, session_id: str, agent_id: str) -> Execution | None:
+    async def find(self, session_id: str, agent_id: str) -> Execution | None:
         """세션과 실제 자식 식별자로 실행 상태를 조회한다.
 
         Args:

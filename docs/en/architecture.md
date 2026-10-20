@@ -142,7 +142,7 @@ Distinguish notification creation, submission, failure, and observable delivery.
 | Domain | Meaning/transitions of task/outcome, workflow run/phase attempt, assignment, current fact, review |
 | Application | Work, WorkflowRunner, Runtime, Knowledge, Collaboration, Maintenance use cases |
 | Infrastructure | SQLite + SQLAlchemy/Alembic, host event storage, bounded delivery queue |
-| Transport | Skill/rules installation, Python + Typer `neurath` CLI, state-based hooks, host input/tool execution/interruption/TODO/notification, installation/recovery |
+| Transport | Skill/rules installation, Python + spakky-typer (Typer) `neurath` CLI, state-based hooks, host input/tool execution/interruption/TODO/notification, installation/recovery |
 
 These groups are not deployment service counts. Implement the core as stateless use cases reading DB state on each hook/CLI request. Do not duplicate relations across completion ledgers. WorkflowRunner links procedures to Work results; Collaboration connects actual external execution and independent evaluation.
 

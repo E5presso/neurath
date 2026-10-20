@@ -2,7 +2,7 @@
 
 [Documentation](index.md) · [한국어](../ko/workflows.md)
 
-These are planned workflows under the [product specification](specification.md). Public CLI and host integration are not yet implemented in this checkout. Available internal APIs are documented in the [project/session foundation](core-foundation.md) and [task ledger](task-ledger.md).
+These are planned workflows under the [product specification](specification.md). The hook CLI is implemented; business CLI commands and installed host wiring remain subsequent work. Available internal APIs are documented in the [project/session foundation](core-foundation.md) and [task ledger](task-ledger.md).
 
 ## Request work and inspect progress
 

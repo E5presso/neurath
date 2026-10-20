@@ -3,8 +3,9 @@
 from dataclasses import dataclass
 from typing import override
 
+from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.command import AbstractCommand, ICommandUseCase
+from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.application.ports.repositories.workflow import IWorkflowRepository
@@ -43,8 +44,8 @@ class ReportPhaseResult:
     run: WorkflowRun
 
 
-@UseCase()
-class ReportPhaseUseCase(ICommandUseCase[ReportPhaseCommand, ReportPhaseResult]):
+@UseCase(scope=Pod.Scope.CONTEXT)
+class ReportPhaseUseCase(IAsyncCommandUseCase[ReportPhaseCommand, ReportPhaseResult]):
     """시도에 관찰 결과를 반영하고 충족한 단계만 다음 순서로 진행시킨다.
 
     현재 단계에 적용되는 결과 불명은 연결 태스크도 외부 대기로 전환한다.
@@ -63,7 +64,7 @@ class ReportPhaseUseCase(ICommandUseCase[ReportPhaseCommand, ReportPhaseResult])
         self.tasks = tasks
 
     @override
-    def run(self, command: ReportPhaseCommand) -> ReportPhaseResult:
+    async def run(self, command: ReportPhaseCommand) -> ReportPhaseResult:
         """시도에 관찰 결과를 반영하고 충족한 단계만 다음 순서로 진행시킨다.
 
         Args:
@@ -72,15 +73,15 @@ class ReportPhaseUseCase(ICommandUseCase[ReportPhaseCommand, ReportPhaseResult])
         Returns:
             ReportPhaseResult: 결과가 저장된 run. 옛 정의의 결과는 보존하되 현재 단계에 자동 적용하지 않는다.
         """
-        run = self.workflows.get(command.run_id)
+        run = await self.workflows.get(command.run_id)
         run.require_scope(command.project_id, command.session_id)
         run.report(command.attempt_number, command.result)
-        task = self.tasks.get(run.task_id)
+        task = await self.tasks.get(run.task_id)
         if (
             not run.applies_to_current(command.attempt_number)
             or task.definition.number != run.revisions[-1].task_definition_number
         ):
-            return ReportPhaseResult(run=self.workflows.save(run))
+            return ReportPhaseResult(run=(await self.workflows.save(run)))
         request_id = f"{run.uid}:{command.attempt_number}"
         if command.result.status is PhaseStatus.WAITING and task.status is TaskStatus.ACTIVE:
             task.wait(
@@ -97,5 +98,5 @@ class ReportPhaseUseCase(ICommandUseCase[ReportPhaseCommand, ReportPhaseResult])
             and task.waits[-1].target == request_id
         ):
             task.resume(command.result.summary)
-        self.tasks.save(task)
-        return ReportPhaseResult(run=self.workflows.save(run))
+        (await self.tasks.save(task))
+        return ReportPhaseResult(run=(await self.workflows.save(run)))

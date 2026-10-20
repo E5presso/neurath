@@ -51,7 +51,7 @@ The skill completing a body of work runs the [outcome-evaluation phase](architec
 
 ## 3. CLI-only interface
 
-**The CLI stack is Python + Typer.** Define the `neurath` entrypoint and business/maintenance commands as a Typer application. Use Python type hints and Typer command/argument/option/help definitions; delegate domain behavior to Application use cases. Keep Typer dependencies in the CLI transport layer, outside Domain. [Official Typer documentation](https://typer.tiangolo.com/).
+**The CLI stack is Python + spakky-typer (Typer).** Define the `neurath` entrypoint and business/maintenance commands as a Typer application. Use Python type hints and Typer command/argument/option/help definitions; delegate domain behavior to Application use cases. Keep Typer dependencies in the CLI transport layer, outside Domain. [Official Typer documentation](https://typer.tiangolo.com/).
 
 Business command names use **verb-object** kebab-case. Action-named skills use kebab-case; established workflow names `autopilot` and `qa` remain.
 

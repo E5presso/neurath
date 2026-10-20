@@ -3,16 +3,16 @@
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
-from spakky.data.persistency.repository import IGenericRepository
+from spakky.data.persistency.repository import IAsyncGenericRepository
 
 from neurath.domain.aggregates.task import Task
 
 
-class ITaskRepository(IGenericRepository[Task, str], ABC):
+class ITaskRepository(IAsyncGenericRepository[Task, str], ABC):
     """태스크 aggregate의 기본 저장 계약과 프로젝트 전체 목록 조회를 제공한다."""
 
     @abstractmethod
-    def list(self, project_id: str) -> Sequence[Task]:
+    async def list(self, project_id: str) -> Sequence[Task]:
         """세션·상태로 필터링하지 않은 프로젝트의 전체 태스크 목록을 조회한다.
 
         Args:

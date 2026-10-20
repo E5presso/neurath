@@ -3,8 +3,9 @@
 from dataclasses import dataclass
 from typing import override
 
+from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.command import AbstractCommand, ICommandUseCase
+from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.domain.aggregates.task import Task
@@ -40,8 +41,8 @@ class ResumeTaskResult:
     task: Task
 
 
-@UseCase()
-class ResumeTaskUseCase(ICommandUseCase[ResumeTaskCommand, ResumeTaskResult]):
+@UseCase(scope=Pod.Scope.CONTEXT)
+class ResumeTaskUseCase(IAsyncCommandUseCase[ResumeTaskCommand, ResumeTaskResult]):
     """waiting 태스크의 마지막 대기를 해소하고 같은 시도를 active로 되돌린다.
 
     해소 관찰은 비어 있지 않아야 한다. 새 시도를 만들거나 외부 실행을 다시
@@ -57,7 +58,7 @@ class ResumeTaskUseCase(ICommandUseCase[ResumeTaskCommand, ResumeTaskResult]):
         self.tasks = tasks
 
     @override
-    def run(self, command: ResumeTaskCommand) -> ResumeTaskResult:
+    async def run(self, command: ResumeTaskCommand) -> ResumeTaskResult:
         """소유 범위·revision·대기 상태를 확인하고 해소 관찰을 저장한다.
 
         Args:
@@ -66,8 +67,8 @@ class ResumeTaskUseCase(ICommandUseCase[ResumeTaskCommand, ResumeTaskResult]):
         Returns:
             ResumeTaskResult: 마지막 대기에 resolution이 기록된 active 태스크.
         """
-        task = self.tasks.get(command.task_id)
+        task = await self.tasks.get(command.task_id)
         task.require_scope(command.project_id, command.session_id)
         task.require_revision(command.expected_revision)
         task.resume(command.resolution)
-        return ResumeTaskResult(task=self.tasks.save(task))
+        return ResumeTaskResult(task=(await self.tasks.save(task)))

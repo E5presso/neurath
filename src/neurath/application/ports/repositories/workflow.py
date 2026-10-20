@@ -2,16 +2,16 @@
 
 from abc import ABC, abstractmethod
 
-from spakky.data.persistency.repository import IGenericRepository
+from spakky.data.persistency.repository import IAsyncGenericRepository
 
 from neurath.domain.aggregates.workflow import WorkflowRun
 
 
-class IWorkflowRepository(IGenericRepository[WorkflowRun, str], ABC):
+class IWorkflowRepository(IAsyncGenericRepository[WorkflowRun, str], ABC):
     """run 전체를 저장하고 태스크에 연결한 절차를 조회한다."""
 
     @abstractmethod
-    def find_by_task(self, task_id: str) -> WorkflowRun | None:
+    async def find_by_task(self, task_id: str) -> WorkflowRun | None:
         """태스크가 선택한 절차를 정의·시도 이력과 함께 찾는다.
 
         Args:

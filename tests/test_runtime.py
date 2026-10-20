@@ -1,13 +1,14 @@
 """실제 SQLite와 프로세스로 호스트 제어·작성 충돌·미완료 보존을 검증한다."""
 
+import asyncio
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from alembic import command as alembic_command
-from spakky.data.persistency.transaction import AbstractTransaction
-from spakky.plugins.sqlalchemy.persistency.session_manager import SessionManager
+from spakky.data.persistency.transaction import AbstractAsyncTransaction
+from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionManager
 from sqlalchemy import text
 
 from neurath.application.ports.repositories.execution import IExecutionRepository
@@ -18,164 +19,157 @@ from neurath.domain.aggregates.execution import Execution
 from neurath.domain.aggregates.writer import Writer
 from neurath.domain.errors import InvalidExecutionState
 from neurath.domain.runtime_records import ExecutionStatus, HookAction, Liveness
-from neurath.infrastructure.hooks import NativeHookAdapter
 from neurath.infrastructure.process_observer import PosixWriterObserverService
-from neurath.infrastructure.providers import DatabaseSettings, request_container
 from tests.conftest import storage_scope
+from tests.support.application import spakky_context
+from tests.support.hook_cli import HookCliClient
 from tests.support.session_requests import register_session
 from tests.test_task_migrations import migration_config
 from tests.test_task_requests import create
 
 
 @pytest.fixture
-def native(database, tmp_path):
+async def native(database, tmp_path):
     folder = tmp_path / "runtime-project"
     folder.mkdir()
-    actor = register_session(str(folder), "codex", "native-session", database_path=database)
+    actor = await register_session(str(folder), "codex", "native-session", database_path=database)
     payload = dict(
         session_id="native-session",
         cwd=str(folder),
         turn_id="turn-1",
         hook_event_name="UserPromptSubmit",
     )
-    adapter = NativeHookAdapter("codex", database)
-    assert adapter.handle(payload) == {}
+    adapter = HookCliClient("codex", database)
+    assert (await adapter.handle(payload)) == {}
     return actor, adapter, payload
 
 
-def send(native, event, **fields):
+async def send(native, event, **fields):
     actor, adapter, payload = native
-    return adapter.handle(dict(payload, hook_event_name=event, **fields))
+    return await adapter.handle(dict(payload, hook_event_name=event, **fields))
 
 
-def execution(database, actor, agent=""):
-    with storage_scope(database, write=False) as scope:
-        return scope.get(IExecutionRepository).find(actor.session.uid, agent)
+async def execution(database, actor, agent=""):
+    async with storage_scope(database, write=False) as scope:
+        return await scope.get(IExecutionRepository).find(actor.session.uid, agent)
 
 
-def writer(database, native):
-    with storage_scope(database, write=False) as scope:
-        return scope.get(IWriterRepository).find(native[2]["cwd"])
+async def writer(database, native):
+    async with storage_scope(database, write=False) as scope:
+        return await scope.get(IWriterRepository).find(native[2]["cwd"])
 
 
-def test_stop_feedback_once_preserves_tasks_and_cancelled_turn(database, native):
+async def test_stop_feedback_once_preserves_tasks_and_cancelled_turn(database, native):
     actor = native[0]
-    task = create(database, actor)
-    feedback = send(native, "Stop", stop_hook_active=False)
+    task = await create(database, actor)
+    feedback = await send(native, "Stop", stop_hook_active=False)
     assert feedback["decision"] == "block"
     assert task.uid in feedback["reason"]
-    paused = send(native, "Stop", stop_hook_active=True)
+    paused = await send(native, "Stop", stop_hook_active=True)
     assert paused["continue"] is False
     assert "No progress" in paused["stopReason"]
-    assert execution(database, actor).status is ExecutionStatus.PAUSED
-    assert send(native, "Stop")["continue"] is False
-    assert send(native, "SessionStart", source="resume") == {}
-    assert execution(database, actor).status is ExecutionStatus.PAUSED
-    assert send(native, "UserPromptSubmit", turn_id="turn-2") == {}
-    assert send(native, "Interrupt", turn_id="turn-2")["continue"] is False
-    assert execution(database, actor).status is ExecutionStatus.CANCELLED
-    assert send(native, "UserPromptSubmit", turn_id="turn-2") == {}
+    assert (await execution(database, actor)).status is ExecutionStatus.PAUSED
+    assert (await send(native, "Stop"))["continue"] is False
+    assert (await send(native, "SessionStart", source="resume")) == {}
+    assert (await execution(database, actor)).status is ExecutionStatus.PAUSED
+    assert (await send(native, "UserPromptSubmit", turn_id="turn-2")) == {}
+    assert (await send(native, "Interrupt", turn_id="turn-2"))["continue"] is False
+    assert (await execution(database, actor)).status is ExecutionStatus.CANCELLED
+    assert (await send(native, "UserPromptSubmit", turn_id="turn-2")) == {}
     assert (
-        send(native, "PreToolUse", turn_id="turn-2", tool_name="Edit", tool_use_id="edit")[
-            "continue"
-        ]
-        is False
-    )
-    assert writer(database, native) is None
-    assert send(native, "PreToolUse", turn_id="turn-2", tool_name="Read", tool_use_id="read") == {}
-    assert send(native, "Stop", turn_id="turn-1")["continue"] is False
-    assert execution(database, actor).turn_id == "turn-2"
-    assert send(native, "SessionEnd", reason="prompt_input_exit") == {}
-    assert execution(database, actor).status is ExecutionStatus.ENDED
+        await send(native, "PreToolUse", turn_id="turn-2", tool_name="Edit", tool_use_id="edit")
+    )["continue"] is False
+    assert (await writer(database, native)) is None
+    assert (
+        await send(native, "PreToolUse", turn_id="turn-2", tool_name="Read", tool_use_id="read")
+    ) == {}
+    assert (await send(native, "Stop", turn_id="turn-1"))["continue"] is False
+    assert (await execution(database, actor)).turn_id == "turn-2"
+    assert (await send(native, "SessionEnd", reason="prompt_input_exit")) == {}
+    assert (await execution(database, actor)).status is ExecutionStatus.ENDED
 
 
-def test_writer_exclusion_and_child_read_regression_133(database, native):
-    assert send(native, "PreToolUse", tool_name="Edit", tool_use_id="root-edit") == {}
-    first = writer(database, native)
+async def test_writer_exclusion_and_child_read_regression_133(database, native):
+    assert (await send(native, "PreToolUse", tool_name="Edit", tool_use_id="root-edit")) == {}
+    first = await writer(database, native)
     assert first.generation == 1
-    assert send(native, "PreToolUse", tool_name="Edit", tool_use_id="root-edit") == {}
-    assert writer(database, native).generation == 1
-    assert send(native, "SubagentStart", agent_id="native-child") == {}
+    assert (await send(native, "PreToolUse", tool_name="Edit", tool_use_id="root-edit")) == {}
+    assert (await writer(database, native)).generation == 1
+    assert (await send(native, "SubagentStart", agent_id="native-child")) == {}
     assert (
-        send(
+        await send(
             native,
             "PreToolUse",
             agent_id="native-child",
             tool_name="Read",
             tool_use_id="child-read",
         )
-        == {}
-    )
-    child = execution(database, native[0], "native-child")
+    ) == {}
+    child = await execution(database, native[0], "native-child")
     assert child.turn_id == "turn-1"
     assert child.uid != first.execution_id
     assert (
-        send(
+        await send(
             native,
             "PreToolUse",
             agent_id="native-child",
             tool_name="Write",
             tool_use_id="child-write",
-        )["continue"]
-        is False
-    )
-    assert send(native, "SubagentStop", agent_id="native-child") == {}
-    assert writer(database, native).execution_id == first.execution_id
+        )
+    )["continue"] is False
+    assert (await send(native, "SubagentStop", agent_id="native-child")) == {}
+    assert (await writer(database, native)).execution_id == first.execution_id
     assert (
-        send(
+        await send(
             native,
             "PostToolUse",
             agent_id="native-child",
             tool_name="Write",
             tool_use_id="root-edit",
         )
-        == {}
-    )
-    assert writer(database, native).execution_id == first.execution_id
-    assert send(native, "PostToolUse", tool_name="Edit", tool_use_id="root-edit") == {}
-    assert writer(database, native).execution_id is None
+    ) == {}
+    assert (await writer(database, native)).execution_id == first.execution_id
+    assert (await send(native, "PostToolUse", tool_name="Edit", tool_use_id="root-edit")) == {}
+    assert (await writer(database, native)).execution_id is None
     assert (
-        send(
+        await send(
             native,
             "PreToolUse",
             agent_id="native-child",
             tool_name="Write",
             tool_use_id="child-write",
         )
-        == {}
-    )
-    assert writer(database, native).generation == 2
-    assert send(native, "PostToolUse", tool_name="Edit", tool_use_id="root-edit") == {}
-    assert writer(database, native).execution_id == child.uid
+    ) == {}
+    assert (await writer(database, native)).generation == 2
+    assert (await send(native, "PostToolUse", tool_name="Edit", tool_use_id="root-edit")) == {}
+    assert (await writer(database, native)).execution_id == child.uid
 
 
-def test_unconfirmed_shell_completion_does_not_release_and_failure_cancels(database, native):
-    assert send(native, "PreToolUse", tool_name="exec_command", tool_use_id="shell") == {}
+async def test_unconfirmed_shell_completion_does_not_release_and_failure_cancels(database, native):
+    assert (await send(native, "PreToolUse", tool_name="exec_command", tool_use_id="shell")) == {}
     assert (
-        send(
+        await send(
             native,
             "PostToolUse",
             tool_name="exec_command",
             tool_use_id="shell",
             tool_response={"session_id": 42},
         )
-        == {}
-    )
-    assert writer(database, native).execution_id is not None
+    ) == {}
+    assert (await writer(database, native)).execution_id is not None
     assert (
-        send(
+        await send(
             native,
             "PostToolUse",
             tool_name="exec_command",
             tool_use_id="shell",
             tool_response={"exit_code": 0},
         )
-        == {}
-    )
-    assert writer(database, native).execution_id is None
-    assert send(native, "PreToolUse", tool_name="Write", tool_use_id="write") == {}
+    ) == {}
+    assert (await writer(database, native)).execution_id is None
+    assert (await send(native, "PreToolUse", tool_name="Write", tool_use_id="write")) == {}
     assert (
-        send(
+        await send(
             native,
             "PostToolUseFailure",
             tool_name="Write",
@@ -183,27 +177,52 @@ def test_unconfirmed_shell_completion_does_not_release_and_failure_cancels(datab
             is_interrupt=True,
             error="user abort",
         )
-        == {}
-    )
-    assert execution(database, native[0]).status is ExecutionStatus.CANCELLED
-    assert writer(database, native).execution_id is None
+    ) == {}
+    assert (await execution(database, native[0])).status is ExecutionStatus.CANCELLED
+    assert (await writer(database, native)).execution_id is None
 
 
-def test_two_actual_requests_have_only_one_writer(database, native):
+async def test_two_actual_requests_have_only_one_writer(database, native):
     def claim(call):
-        return send(native, "PreToolUse", tool_name="Write", tool_use_id=call)
+        import json
+        import os
+        from pathlib import Path
+
+        from neurath.infrastructure.database import sqlite_url
+
+        payload = dict(native[2], hook_event_name="PreToolUse", tool_name="Write", tool_use_id=call)
+        result = subprocess.run(
+            [
+                str(Path(sys.executable).with_name("neurath")),
+                "hook",
+                "handle",
+                "--provider",
+                "codex",
+            ],
+            env={
+                **os.environ,
+                "SPAKKY_SQLALCHEMY__CONNECTION_STRING": sqlite_url(database, "rw").render_as_string(
+                    hide_password=False
+                ),
+            },
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return json.loads(result.stdout)
 
     with ThreadPoolExecutor(2) as pool:
         results = list(pool.map(claim, ("a", "b")))
     assert results.count({}) == 1
     assert sum(r.get("continue") is False for r in results) == 1
-    assert writer(database, native).generation == 1
+    assert (await writer(database, native)).generation == 1
 
 
-def test_codec_validation_failure_bypass_and_claude_prompt_identity(database, native):
+async def test_codec_validation_failure_bypass_and_claude_prompt_identity(database, native):
     actor, adapter, payload = native
     with pytest.raises(ValueError):
-        NativeHookAdapter("unknown", database)
+        HookCliClient("unknown", database)
     for bad in (
         {},
         dict(payload, session_id=None),
@@ -211,24 +230,24 @@ def test_codec_validation_failure_bypass_and_claude_prompt_identity(database, na
         dict(payload, is_interrupt=1),
         dict(payload, hook_event_name="PreToolUse"),
     ):
-        result = adapter.handle(bad)
+        result = await adapter.handle(bad)
         assert result["continue"] is False
         assert "hook failure" in result["stopReason"]
-    assert "systemMessage" in adapter.handle({}, bypass=True)
-    assert execution(database, actor).status is ExecutionStatus.RUNNING
-    missing = NativeHookAdapter("claude", database.parent / "missing.db")
-    assert missing.handle(payload)["continue"] is False
-    assert "systemMessage" in missing.handle({}, bypass=True)
-    claude = NativeHookAdapter("claude", database)
+    assert "systemMessage" in (await adapter.handle({}, bypass=True))
+    assert (await execution(database, actor)).status is ExecutionStatus.RUNNING
+    missing = HookCliClient("claude", database.parent / "missing.db")
+    assert (await missing.handle(payload))["continue"] is False
+    assert "systemMessage" in (await missing.handle({}, bypass=True))
+    claude = HookCliClient("claude", database)
     cp = dict(payload, prompt_id="prompt-actual", hook_event_name="UserPromptSubmit")
-    assert claude.handle(cp) == {}
+    assert (await claude.handle(cp)) == {}
     cp["hook_event_name"] = "Stop"
-    assert claude.handle(cp) == {}
+    assert (await claude.handle(cp)) == {}
     cp.pop("prompt_id")
-    assert claude.handle(cp)["continue"] is False
-    assert send(native, "UnrecognizedEvent")["continue"] is False
-    assert send(native, "StopFailure", error="provider unavailable")["continue"] is False
-    assert execution(database, actor).reason == "provider unavailable"
+    assert (await claude.handle(cp))["continue"] is False
+    assert (await send(native, "UnrecognizedEvent"))["continue"] is False
+    assert (await send(native, "StopFailure", error="provider unavailable"))["continue"] is False
+    assert (await execution(database, actor)).reason == "provider unavailable"
 
 
 @pytest.mark.parametrize(
@@ -248,7 +267,7 @@ def test_codec_validation_failure_bypass_and_claude_prompt_identity(database, na
 def test_codec_only_confirms_observed_termination(
     database, native, event, tool, response, expected
 ):
-    command, _, _ = native[1].decode(
+    command = native[1].decode(
         dict(
             native[2],
             hook_event_name=event,
@@ -304,9 +323,9 @@ def test_execution_domain_does_not_resume_cancelled_or_ended_and_empty_is_not_su
     assert current.status is ExecutionStatus.RUNNING
 
 
-def test_real_process_liveness_recovery_and_generation_recheck(database, native):
-    send(native, "PreToolUse", tool_name="exec_command", tool_use_id="process")
-    lease = writer(database, native)
+async def test_real_process_liveness_recovery_and_generation_recheck(database, native):
+    (await send(native, "PreToolUse", tool_name="exec_command", tool_use_id="process"))
+    lease = await writer(database, native)
     process = subprocess.Popen(
         [sys.executable, "-c", "import time; time.sleep(30)"], start_new_session=True
     )
@@ -316,99 +335,121 @@ def test_real_process_liveness_recovery_and_generation_recheck(database, native)
     assert PosixWriterObserverService({}).observe(lease) is Liveness.UNKNOWN
     assert observer.observe(lease) is Liveness.RUNNING
     try:
-        with request_container(DatabaseSettings(database, write=True)) as scope:
+        async with spakky_context(database, write=True) as scope:
             recovery = RecoverWriterUseCase(
-                scope.get(IWriterRepository), observer, scope.get(AbstractTransaction)
+                scope.get(IWriterRepository), observer, scope.get(AbstractAsyncTransaction)
             )
             with pytest.raises(InvalidExecutionState):
-                recovery.run(RecoverWriterCommand(lease.uid, lease.generation + 1))
+                (await recovery.run(RecoverWriterCommand(lease.uid, lease.generation + 1)))
             with pytest.raises(InvalidExecutionState):
-                recovery.run(RecoverWriterCommand(lease.uid, lease.generation))
+                (await recovery.run(RecoverWriterCommand(lease.uid, lease.generation)))
             process.terminate()
             process.wait(timeout=5)
             assert observer.observe(lease) is Liveness.STOPPED
             assert (
-                recovery.run(RecoverWriterCommand(lease.uid, lease.generation)).execution_id is None
-            )
+                await recovery.run(RecoverWriterCommand(lease.uid, lease.generation))
+            ).execution_id is None
             with pytest.raises(InvalidExecutionState):
-                recovery.run(RecoverWriterCommand(lease.uid, lease.generation))
+                (await recovery.run(RecoverWriterCommand(lease.uid, lease.generation)))
     finally:
         if process.poll() is None:
             process.kill()
             process.wait()
 
 
-def test_recovery_cannot_release_new_generation_during_external_observation(database, native):
-    send(native, "PreToolUse", tool_name="Write", tool_use_id="first")
-    lease = writer(database, native)
+async def test_recovery_cannot_release_new_generation_during_external_observation(database, native):
+    (await send(native, "PreToolUse", tool_name="Write", tool_use_id="first"))
+    lease = await writer(database, native)
 
     class RacingObserver(IWriterObserverService):
         def observe(self, old):
-            send(native, "PostToolUse", tool_name="Write", tool_use_id="first")
-            send(native, "PreToolUse", tool_name="Write", tool_use_id="second")
+            asyncio.run(send(native, "PostToolUse", tool_name="Write", tool_use_id="first"))
+            asyncio.run(send(native, "PreToolUse", tool_name="Write", tool_use_id="second"))
             return Liveness.STOPPED
 
-    with request_container(DatabaseSettings(database, write=True)) as scope:
+    async with spakky_context(database, write=True) as scope:
         recovery = RecoverWriterUseCase(
-            scope.get(IWriterRepository), RacingObserver(), scope.get(AbstractTransaction)
+            scope.get(IWriterRepository), RacingObserver(), scope.get(AbstractAsyncTransaction)
         )
         with pytest.raises(InvalidExecutionState):
-            recovery.run(RecoverWriterCommand(lease.uid, lease.generation))
-    assert writer(database, native).generation == 2
-    assert writer(database, native).execution_id == lease.execution_id
+            (await recovery.run(RecoverWriterCommand(lease.uid, lease.generation)))
+    assert (await writer(database, native)).generation == 2
+    assert (await writer(database, native)).execution_id == lease.execution_id
 
 
-def test_migration_preserves_runtime_history_and_empty_downgrade(database, native, tmp_path):
+async def test_migration_preserves_runtime_history_and_empty_downgrade(database, native, tmp_path):
     from neurath.infrastructure.database import create_database_engine, initialize_database
 
     engine = create_database_engine(database, write=True)
     try:
-        with pytest.raises(RuntimeError, match="history"), engine.begin() as connection:
-            alembic_command.downgrade(migration_config(connection), "core_0004")
+        with pytest.raises(RuntimeError, match="history"):
+            async with engine.begin() as connection:
+                await connection.run_sync(
+                    lambda sync_connection: alembic_command.downgrade(
+                        migration_config(sync_connection), "core_0004"
+                    )
+                )
     finally:
-        engine.dispose()
-    assert execution(database, native[0]).turn_id == "turn-1"
+        (await engine.dispose())
+    assert (await execution(database, native[0])).turn_id == "turn-1"
     empty = tmp_path / "empty.db"
-    initialize_database(empty)
+    (await initialize_database(empty))
     engine = create_database_engine(empty, write=True)
     try:
-        with engine.begin() as connection:
-            config = migration_config(connection)
-            alembic_command.downgrade(config, "core_0004")
-            alembic_command.upgrade(config, "head")
-        with storage_scope(empty) as scope:
-            scope.get(SessionManager).session.execute(
-                text(
-                    "INSERT INTO core_writers (id, version, created_at, updated_at, revision, resource, turn_id, tool_use_id, generation) VALUES ('orphan', '00000000000000000000000000000000', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1, '/w', '', '', 0)"
+        async with engine.begin() as connection:
+            await connection.run_sync(
+                lambda sync_connection: alembic_command.downgrade(
+                    migration_config(sync_connection), "core_0004"
                 )
             )
-        with pytest.raises(RuntimeError, match="history"), engine.begin() as connection:
-            alembic_command.downgrade(migration_config(connection), "core_0004")
+            await connection.run_sync(
+                lambda sync_connection: alembic_command.upgrade(
+                    migration_config(sync_connection), "head"
+                )
+            )
+        async with storage_scope(empty) as scope:
+            (
+                await scope.get(AsyncSessionManager).session.execute(
+                    text(
+                        "INSERT INTO core_writers (id, version, created_at, updated_at, revision, resource, turn_id, tool_use_id, generation) VALUES ('orphan', '00000000000000000000000000000000', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1, '/w', '', '', 0)"
+                    )
+                )
+            )
+        with pytest.raises(RuntimeError, match="history"):
+            async with engine.begin() as connection:
+                await connection.run_sync(
+                    lambda sync_connection: alembic_command.downgrade(
+                        migration_config(sync_connection), "core_0004"
+                    )
+                )
     finally:
-        engine.dispose()
+        (await engine.dispose())
 
 
-def test_abstract_contracts_fail_explicitly():
+async def test_abstract_contracts_fail_explicitly():
     for method, args in [
         (IExecutionRepository.find, (None, "s", "a")),
         (IWriterRepository.find, (None, "w")),
-        (IWriterObserverService.observe, (None, None)),
     ]:
         with pytest.raises(NotImplementedError):
-            method(*args)
+            await method(*args)
+    with pytest.raises(NotImplementedError):
+        IWriterObserverService.observe(None, None)
 
 
-def test_waiting_only_yields_but_independent_work_continues(database, native):
+async def test_waiting_only_yields_but_independent_work_continues(database, native):
     from neurath.application.usecases.start_task import StartTaskCommand, StartTaskUseCase
     from neurath.application.usecases.wait_task import WaitTaskCommand, WaitTaskUseCase
     from neurath.domain.task_records import ExternalWait
     from tests.support.requests import run
 
-    task = create(database, native[0])
-    active = run(
-        StartTaskUseCase,
-        StartTaskCommand(native[0].project.uid, native[0].session.uid, task.uid, task.revision),
-        database_path=database,
+    task = await create(database, native[0])
+    active = (
+        await run(
+            StartTaskUseCase,
+            StartTaskCommand(native[0].project.uid, native[0].session.uid, task.uid, task.revision),
+            database_path=database,
+        )
     ).task
     condition = ExternalWait(
         target="external job",
@@ -416,51 +457,56 @@ def test_waiting_only_yields_but_independent_work_continues(database, native):
         resume_scope="read its result",
         observation="job status running",
     )
-    run(
-        WaitTaskUseCase,
-        WaitTaskCommand(
-            native[0].project.uid, native[0].session.uid, active.uid, active.revision, condition
-        ),
-        database_path=database,
+    (
+        await run(
+            WaitTaskUseCase,
+            WaitTaskCommand(
+                native[0].project.uid, native[0].session.uid, active.uid, active.revision, condition
+            ),
+            database_path=database,
+        )
     )
-    assert send(native, "Stop")["continue"] is False
-    assert "External dependencies" in execution(database, native[0]).reason
-    send(native, "UserPromptSubmit", turn_id="turn-2")
+    assert (await send(native, "Stop"))["continue"] is False
+    assert "External dependencies" in (await execution(database, native[0])).reason
+    (await send(native, "UserPromptSubmit", turn_id="turn-2"))
     from neurath.application.usecases.resume_execution import (
         ResumeExecutionCommand,
         ResumeExecutionUseCase,
     )
 
-    current = execution(database, native[0])
-    run(
-        ResumeExecutionUseCase,
-        ResumeExecutionCommand(current.uid, "turn-2"),
-        database_path=database,
+    current = await execution(database, native[0])
+    (
+        await run(
+            ResumeExecutionUseCase,
+            ResumeExecutionCommand(current.uid, "turn-2"),
+            database_path=database,
+        )
     )
-    other = create(database, native[0], title="independent")
-    result = send(native, "Stop", turn_id="turn-2")
+    other = await create(database, native[0], title="independent")
+    result = await send(native, "Stop", turn_id="turn-2")
     assert result["decision"] == "block"
     assert other.uid in result["reason"]
 
 
-def test_finished_event_without_writer_and_fresh_child_without_start(database, native):
-    assert send(native, "PostToolUse", tool_name="Write", tool_use_id="unknown") == {}
+async def test_finished_event_without_writer_and_fresh_child_without_start(database, native):
+    assert (await send(native, "PostToolUse", tool_name="Write", tool_use_id="unknown")) == {}
     assert (
-        send(native, "PreToolUse", agent_id="child-from-host", tool_name="Read", tool_use_id="r")
-        == {}
-    )
-    assert execution(database, native[0], "child-from-host").turn_id == "turn-1"
+        await send(
+            native, "PreToolUse", agent_id="child-from-host", tool_name="Read", tool_use_id="r"
+        )
+    ) == {}
+    assert (await execution(database, native[0], "child-from-host")).turn_id == "turn-1"
 
 
-def test_read_only_query_stays_available_when_other_execution_writes(database, native):
+async def test_read_only_query_stays_available_when_other_execution_writes(database, native):
     from neurath.application.usecases.get_session_context import (
         GetSessionContextQuery,
         GetSessionContextUseCase,
     )
     from tests.support.requests import run
 
-    assert send(native, "PreToolUse", tool_name="Write", tool_use_id="writing") == {}
-    context = run(
+    assert (await send(native, "PreToolUse", tool_name="Write", tool_use_id="writing")) == {}
+    context = await run(
         GetSessionContextUseCase,
         GetSessionContextQuery(native[0].project.uid, native[0].session.uid),
         database_path=database,
@@ -471,23 +517,29 @@ def test_read_only_query_stays_available_when_other_execution_writes(database, n
 def test_workspace_normalization_and_missing_git(database, repository, monkeypatch):
     child = repository / "nested"
     child.mkdir()
-    assert NativeHookAdapter._workspace(str(child)) == str(repository)
+    from neurath.infrastructure.directory_observer import GitDirectoryObserverService
+
+    service = GitDirectoryObserverService()
+    assert service.workspace(str(child)) == str(repository)
 
     def missing(*args, **kwargs):
         raise FileNotFoundError("no git")
 
     monkeypatch.setattr(subprocess, "run", missing)
-    assert NativeHookAdapter._workspace(str(child)) == str(child)
+    from neurath.domain.errors import NeurathError
+
+    with pytest.raises(NeurathError, match="Cannot inspect"):
+        service.workspace(str(child))
 
 
-def test_real_targeted_cancellation_preserves_other_process_and_writes(database, native):
+async def test_real_targeted_cancellation_preserves_other_process_and_writes(database, native):
     from neurath.application.usecases.cancel_execution import (
         CancelExecutionCommand,
         CancelExecutionUseCase,
     )
 
-    send(native, "PreToolUse", tool_name="exec_command", tool_use_id="process")
-    current = execution(database, native[0])
+    (await send(native, "PreToolUse", tool_name="exec_command", tool_use_id="process"))
+    current = await execution(database, native[0])
     process = subprocess.Popen(
         [sys.executable, "-c", "import time; time.sleep(30)"], start_new_session=True
     )
@@ -498,15 +550,15 @@ def test_real_targeted_cancellation_preserves_other_process_and_writes(database,
         {(current.uid, current.turn_id, "process"): process, ("other", "other-turn", "call"): other}
     )
     try:
-        with request_container(DatabaseSettings(database, write=True)) as scope:
+        async with spakky_context(database, write=True) as scope:
             cancel = CancelExecutionUseCase(
-                scope.get(IExecutionRepository), controller, scope.get(AbstractTransaction)
+                scope.get(IExecutionRepository), controller, scope.get(AbstractAsyncTransaction)
             )
-            result = cancel.run(CancelExecutionCommand(current.uid, current.turn_id))
+            result = await cancel.run(CancelExecutionCommand(current.uid, current.turn_id))
             assert result.status is ExecutionStatus.CANCELLED
         assert process.poll() is not None
         assert other.poll() is None
-        assert writer(database, native).execution_id == current.uid
+        assert (await writer(database, native)).execution_id == current.uid
         assert controller.interrupt(current) is Liveness.STOPPED
         assert PosixWriterObserverService({}).interrupt(current) is Liveness.UNKNOWN
     finally:
@@ -516,44 +568,43 @@ def test_real_targeted_cancellation_preserves_other_process_and_writes(database,
             child.wait()
 
 
-def test_unknown_cancellation_and_late_response_cannot_cancel_new_turn(database, native):
+async def test_unknown_cancellation_and_late_response_cannot_cancel_new_turn(database, native):
     from neurath.application.ports.services.execution_controller import IExecutionControllerService
     from neurath.application.usecases.cancel_execution import (
         CancelExecutionCommand,
         CancelExecutionUseCase,
     )
 
-    current = execution(database, native[0])
-    with request_container(DatabaseSettings(database, write=True)) as scope:
+    current = await execution(database, native[0])
+    async with spakky_context(database, write=True) as scope:
         cancel = CancelExecutionUseCase(
             scope.get(IExecutionRepository),
             PosixWriterObserverService({}),
-            scope.get(AbstractTransaction),
+            scope.get(AbstractAsyncTransaction),
         )
         assert (
-            cancel.run(CancelExecutionCommand(current.uid, current.turn_id)).status
-            is ExecutionStatus.PAUSED
-        )
+            await cancel.run(CancelExecutionCommand(current.uid, current.turn_id))
+        ).status is ExecutionStatus.PAUSED
 
     class LateController(IExecutionControllerService):
         def interrupt(self, current):
-            send(native, "UserPromptSubmit", turn_id="new-turn")
+            asyncio.run(send(native, "UserPromptSubmit", turn_id="new-turn"))
             return Liveness.STOPPED
 
-    with request_container(DatabaseSettings(database, write=True)) as scope:
+    async with spakky_context(database, write=True) as scope:
         cancel = CancelExecutionUseCase(
-            scope.get(IExecutionRepository), LateController(), scope.get(AbstractTransaction)
+            scope.get(IExecutionRepository), LateController(), scope.get(AbstractAsyncTransaction)
         )
         with pytest.raises(InvalidExecutionState):
-            cancel.run(CancelExecutionCommand(current.uid, current.turn_id))
-    assert execution(database, native[0]).turn_id == "new-turn"
-    assert execution(database, native[0]).status is ExecutionStatus.PAUSED
+            (await cancel.run(CancelExecutionCommand(current.uid, current.turn_id)))
+    assert (await execution(database, native[0])).turn_id == "new-turn"
+    assert (await execution(database, native[0])).status is ExecutionStatus.PAUSED
     with pytest.raises(NotImplementedError):
         IExecutionControllerService.interrupt(None, None)
 
 
-def test_process_control_never_signals_shared_group(database, native):
-    current = execution(database, native[0])
+async def test_process_control_never_signals_shared_group(database, native):
+    current = await execution(database, native[0])
     process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
     controller = PosixWriterObserverService({(current.uid, current.turn_id, "process"): process})
     try:
@@ -579,11 +630,13 @@ def test_process_observation_requires_group_gone_and_handles_os_error(monkeypatc
     assert PosixWriterObserverService._observe(process) is Liveness.UNKNOWN
 
 
-def test_process_interrupt_escalates_and_reports_unconfirmed_failure(database, native, monkeypatch):
+async def test_process_interrupt_escalates_and_reports_unconfirmed_failure(
+    database, native, monkeypatch
+):
     import os
     import signal
 
-    current = execution(database, native[0])
+    current = await execution(database, native[0])
     process = subprocess.Popen(
         [sys.executable, "-c", "import time; time.sleep(30)"], start_new_session=True
     )
@@ -624,92 +677,93 @@ def test_process_interrupt_escalates_and_reports_unconfirmed_failure(database, n
     other.wait()
 
 
-def test_actual_normalized_codex_bash_terminal_hook_releases_without_parsing_text(database, native):
-    assert send(native, "PreToolUse", tool_name="Bash", tool_use_id="shell-real") == {}
-    assert writer(database, native).execution_id is not None
+async def test_actual_normalized_codex_bash_terminal_hook_releases_without_parsing_text(
+    database, native
+):
+    assert (await send(native, "PreToolUse", tool_name="Bash", tool_use_id="shell-real")) == {}
+    assert (await writer(database, native)).execution_id is not None
     # Codex는 unified-exec 프로세스가 끝났을 때 이 사건을 발생시킨다.
     # 잘린 출력은 전체 읽음이나 명령 성공의 근거로 사용하지 않는다.
     assert (
-        send(
+        await send(
             native,
             "PostToolUse",
             tool_name="Bash",
             tool_use_id="shell-real",
             tool_response="[truncated output]",
         )
-        == {}
-    )
-    assert writer(database, native).execution_id is None
+    ) == {}
+    assert (await writer(database, native)).execution_id is None
 
 
-def test_claude_bash_result_shape_interrupt_and_background_are_distinct(database, native):
-    adapter = NativeHookAdapter("claude", database)
+async def test_claude_bash_result_shape_interrupt_and_background_are_distinct(database, native):
+    adapter = HookCliClient("claude", database)
     base = dict(
         native[2],
         session_id="claude-shell",
         prompt_id="prompt-a",
         hook_event_name="UserPromptSubmit",
     )
-    assert adapter.handle(base) == {}
+    assert (await adapter.handle(base)) == {}
     pre = dict(base, hook_event_name="PreToolUse", tool_name="Bash", tool_use_id="bash")
-    assert adapter.handle(pre) == {}
+    assert (await adapter.handle(pre)) == {}
     post = dict(
         pre,
         hook_event_name="PostToolUse",
         tool_response={"stdout": "done", "stderr": "", "interrupted": False},
     )
-    assert adapter.handle(post) == {}
-    assert writer(database, native).execution_id is None
+    assert (await adapter.handle(post)) == {}
+    assert (await writer(database, native)).execution_id is None
     post["tool_response"] = {"stdout": "", "stderr": "", "interrupted": True}
-    assert adapter.handle(dict(pre, tool_use_id="interrupt")) == {}
-    assert adapter.handle(dict(post, tool_use_id="interrupt")) == {}
-    assert adapter.handle(dict(base, hook_event_name="Stop"))["continue"] is False
+    assert (await adapter.handle(dict(pre, tool_use_id="interrupt"))) == {}
+    assert (await adapter.handle(dict(post, tool_use_id="interrupt"))) == {}
+    assert (await adapter.handle(dict(base, hook_event_name="Stop")))["continue"] is False
     for response in (
         {},
         {"stdout": ""},
         {"stdout": "", "stderr": ""},
         {"stdout": "", "stderr": "", "interrupted": False, "backgroundTaskId": "background"},
     ):
-        normalized, _, _ = adapter.decode(dict(post, tool_response=response))
+        normalized = adapter.decode(dict(post, tool_response=response))
         assert normalized.finished is False
     # prompt_id가 없는 구형 호스트도 읽기·진단에는 임대를 요구하지 않는다.
     older = dict(base, hook_event_name="PreToolUse", tool_name="Read", tool_use_id="read-only")
     older.pop("prompt_id")
-    assert adapter.handle(older) == {}
+    assert (await adapter.handle(older)) == {}
 
 
-def test_resume_keeps_cancelled_work_paused_until_explicit_request(database, native):
+async def test_resume_keeps_cancelled_work_paused_until_explicit_request(database, native):
     from neurath.application.usecases.resume_execution import (
         ResumeExecutionCommand,
         ResumeExecutionUseCase,
     )
     from tests.support.requests import run
 
-    send(native, "Interrupt")
-    send(native, "UserPromptSubmit", turn_id="status-question")
-    current = execution(database, native[0])
+    (await send(native, "Interrupt"))
+    (await send(native, "UserPromptSubmit", turn_id="status-question"))
+    current = await execution(database, native[0])
     assert current.status is ExecutionStatus.CANCELLED
     assert (
-        send(
+        await send(
             native, "PreToolUse", turn_id="status-question", tool_name="Write", tool_use_id="write"
-        )["continue"]
-        is False
-    )
-    resumed = run(
+        )
+    )["continue"] is False
+    resumed = await run(
         ResumeExecutionUseCase,
         ResumeExecutionCommand(current.uid, current.turn_id),
         database_path=database,
     )
     assert resumed.status is ExecutionStatus.RUNNING
     assert (
-        send(
+        await send(
             native, "PreToolUse", turn_id="status-question", tool_name="Write", tool_use_id="write"
         )
-        == {}
-    )
+    ) == {}
 
 
-def test_stop_recognizes_actual_phase_progress_without_task_revision_change(database, tmp_path):
+async def test_stop_recognizes_actual_phase_progress_without_task_revision_change(
+    database, tmp_path
+):
     from neurath.application.usecases.prepare_phase import PreparePhaseCommand, PreparePhaseUseCase
     from neurath.application.usecases.start_workflow import (
         StartWorkflowCommand,
@@ -720,8 +774,8 @@ def test_stop_recognizes_actual_phase_progress_without_task_revision_change(data
 
     folder = tmp_path / "phase-progress"
     folder.mkdir()
-    actor = register_session(str(folder), "codex", "phase-progress", database_path=database)
-    task = create(database, actor)
+    actor = await register_session(str(folder), "codex", "phase-progress", database_path=database)
+    task = await create(database, actor)
     phase = PhaseDefinition(
         key="check",
         purpose="검사",
@@ -729,36 +783,40 @@ def test_stop_recognizes_actual_phase_progress_without_task_revision_change(data
         directory=str(folder),
         target_revision="revision-a",
     )
-    workflow = run(
-        StartWorkflowUseCase,
-        StartWorkflowCommand(
-            actor.project.uid,
-            actor.session.uid,
-            task.uid,
-            task.revision,
-            WorkflowDefinition(skill="implement-spec", version="1", phases=(phase,), inputs=()),
-        ),
-        database_path=database,
+    workflow = (
+        await run(
+            StartWorkflowUseCase,
+            StartWorkflowCommand(
+                actor.project.uid,
+                actor.session.uid,
+                task.uid,
+                task.revision,
+                WorkflowDefinition(skill="implement-spec", version="1", phases=(phase,), inputs=()),
+            ),
+            database_path=database,
+        )
     ).run
-    adapter = NativeHookAdapter("codex", database)
+    adapter = HookCliClient("codex", database)
     base = dict(
         session_id="phase-progress",
         cwd=str(folder),
         turn_id="turn",
         hook_event_name="UserPromptSubmit",
     )
-    assert adapter.handle(base) == {}
-    assert adapter.handle(dict(base, hook_event_name="Stop"))["decision"] == "block"
-    run(
-        PreparePhaseUseCase,
-        PreparePhaseCommand(actor.project.uid, actor.session.uid, workflow.uid, workflow.revision),
-        database_path=database,
+    assert (await adapter.handle(base)) == {}
+    assert (await adapter.handle(dict(base, hook_event_name="Stop")))["decision"] == "block"
+    (
+        await run(
+            PreparePhaseUseCase,
+            PreparePhaseCommand(
+                actor.project.uid, actor.session.uid, workflow.uid, workflow.revision
+            ),
+            database_path=database,
+        )
     )
-    assert (
-        adapter.handle(dict(base, hook_event_name="Stop", stop_hook_active=True))["decision"]
-        == "block"
-    )
-    assert (
-        adapter.handle(dict(base, hook_event_name="Stop", stop_hook_active=True))["continue"]
-        is False
-    )
+    assert (await adapter.handle(dict(base, hook_event_name="Stop", stop_hook_active=True)))[
+        "decision"
+    ] == "block"
+    assert (await adapter.handle(dict(base, hook_event_name="Stop", stop_hook_active=True)))[
+        "continue"
+    ] is False

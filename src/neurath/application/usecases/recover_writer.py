@@ -1,11 +1,13 @@
 """DB 잠금 밖에서 실제 작성 종료를 관찰하고 같은 세대만 회수한다."""
 
+import asyncio
 from dataclasses import dataclass
 from typing import override
 
+from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
-from spakky.data.persistency.transaction import AbstractTransaction
-from spakky.domain.application.command import AbstractCommand, ICommandUseCase
+from spakky.data.persistency.transaction import AbstractAsyncTransaction
+from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.writer import IWriterRepository
 from neurath.application.ports.services.writer_observer import IWriterObserverService
@@ -26,8 +28,8 @@ class RecoverWriterCommand(AbstractCommand):
     generation: int
 
 
-@UseCase()
-class RecoverWriterUseCase(ICommandUseCase[RecoverWriterCommand, Writer]):
+@UseCase(scope=Pod.Scope.CONTEXT)
+class RecoverWriterUseCase(IAsyncCommandUseCase[RecoverWriterCommand, Writer]):
     """실제 종료 관찰과 재조회한 소유자·세대가 일치할 때만 해제한다.
 
     이 유스케이스는 자체 트랜잭션을 사용한다. 생존을 관찰하는 동안 DB 잠금을
@@ -38,7 +40,7 @@ class RecoverWriterUseCase(ICommandUseCase[RecoverWriterCommand, Writer]):
         self,
         writers: IWriterRepository,
         observer: IWriterObserverService,
-        transaction: AbstractTransaction,
+        transaction: AbstractAsyncTransaction,
     ) -> None:
         """임대 저장소·호스트 생존 관찰·요청 트랜잭션을 받는다.
 
@@ -52,7 +54,7 @@ class RecoverWriterUseCase(ICommandUseCase[RecoverWriterCommand, Writer]):
         self.transaction = transaction
 
     @override
-    def run(self, command: RecoverWriterCommand) -> Writer:
+    async def run(self, command: RecoverWriterCommand) -> Writer:
         """생존 상태를 조회하고 바뀌지 않은 임대의 실제 종료만 저장한다.
 
         Args:
@@ -64,12 +66,12 @@ class RecoverWriterUseCase(ICommandUseCase[RecoverWriterCommand, Writer]):
         Raises:
             InvalidExecutionState: 회수 대상이 없거나 조회한 세대가 오래된 경우.
         """
-        with self.transaction:
-            before = self.writers.get(command.writer_id)
+        async with self.transaction:
+            before = await self.writers.get(command.writer_id)
             if before.execution_id is None or before.generation != command.generation:
                 raise InvalidExecutionState("No matching active writer to recover")
-        liveness = self.observer.observe(before)
-        with self.transaction:
-            current = self.writers.get(command.writer_id)
+        liveness = await asyncio.to_thread(self.observer.observe, before)
+        async with self.transaction:
+            current = await self.writers.get(command.writer_id)
             current.release(before.execution_id, command.generation, liveness)
-            return self.writers.save(current)
+            return await self.writers.save(current)

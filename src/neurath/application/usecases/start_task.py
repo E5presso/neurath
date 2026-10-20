@@ -3,8 +3,9 @@
 from dataclasses import dataclass
 from typing import override
 
+from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.command import AbstractCommand, ICommandUseCase
+from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.domain.aggregates.task import Task
@@ -38,8 +39,8 @@ class StartTaskResult:
     task: Task
 
 
-@UseCase()
-class StartTaskUseCase(ICommandUseCase[StartTaskCommand, StartTaskResult]):
+@UseCase(scope=Pod.Scope.CONTEXT)
+class StartTaskUseCase(IAsyncCommandUseCase[StartTaskCommand, StartTaskResult]):
     """pending 또는 failed 태스크에 현재 요구를 기준으로 새 시도를 만든다.
 
     같은 프로젝트의 모든 선행 작업이 성공해야 하며 이미 active·waiting인 작업은
@@ -55,7 +56,7 @@ class StartTaskUseCase(ICommandUseCase[StartTaskCommand, StartTaskResult]):
         self.tasks = tasks
 
     @override
-    def run(self, command: StartTaskCommand) -> StartTaskResult:
+    async def run(self, command: StartTaskCommand) -> StartTaskResult:
         """소유 범위·revision·선행 성공을 확인하고 새 시도를 가진 태스크를 저장한다.
 
         Args:
@@ -64,8 +65,8 @@ class StartTaskUseCase(ICommandUseCase[StartTaskCommand, StartTaskResult]):
         Returns:
             StartTaskResult: 이전 시도를 보존하고 새 시도가 추가된 active 태스크.
         """
-        task = self.tasks.get(command.task_id)
+        task = await self.tasks.get(command.task_id)
         task.require_scope(command.project_id, command.session_id)
         task.require_revision(command.expected_revision)
-        task.start(self.tasks.list(command.project_id))
-        return StartTaskResult(task=self.tasks.save(task))
+        task.start(await self.tasks.list(command.project_id))
+        return StartTaskResult(task=(await self.tasks.save(task)))

@@ -1,11 +1,13 @@
 """대상 턴을 먼저 정지시키고 실제 실행기의 중단 확인을 같은 턴에만 적용한다."""
 
+import asyncio
 from dataclasses import dataclass
 from typing import override
 
+from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
-from spakky.data.persistency.transaction import AbstractTransaction
-from spakky.domain.application.command import AbstractCommand, ICommandUseCase
+from spakky.data.persistency.transaction import AbstractAsyncTransaction
+from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.execution import IExecutionRepository
 from neurath.application.ports.services.execution_controller import IExecutionControllerService
@@ -26,8 +28,8 @@ class CancelExecutionCommand(AbstractCommand):
     turn_id: str
 
 
-@UseCase()
-class CancelExecutionUseCase(ICommandUseCase[CancelExecutionCommand, Execution]):
+@UseCase(scope=Pod.Scope.CONTEXT)
+class CancelExecutionUseCase(IAsyncCommandUseCase[CancelExecutionCommand, Execution]):
     """새 작성은 즉시 막고 외부 실행의 실제 중단 확인 후 취소를 기록한다.
 
     외부 호출 동안 DB 트랜잭션을 유지하지 않는다. 응답이 늦어 새 턴이 열렸다면
@@ -38,7 +40,7 @@ class CancelExecutionUseCase(ICommandUseCase[CancelExecutionCommand, Execution])
         self,
         executions: IExecutionRepository,
         controller: IExecutionControllerService,
-        transaction: AbstractTransaction,
+        transaction: AbstractAsyncTransaction,
     ) -> None:
         """실행 저장소와 실제 중단 어댑터, 표준 트랜잭션을 받는다.
 
@@ -52,7 +54,7 @@ class CancelExecutionUseCase(ICommandUseCase[CancelExecutionCommand, Execution])
         self.transaction = transaction
 
     @override
-    def run(self, command: CancelExecutionCommand) -> Execution:
+    async def run(self, command: CancelExecutionCommand) -> Execution:
         """지정 턴의 추가 실행을 막은 뒤 실제 중단을 요청·확인한다.
 
         Args:
@@ -61,15 +63,15 @@ class CancelExecutionUseCase(ICommandUseCase[CancelExecutionCommand, Execution])
         Returns:
             Execution: 실제 중단이 확인되면 cancelled, 아니면 paused인 실행.
         """
-        with self.transaction:
-            before = self.executions.get(command.execution_id)
+        async with self.transaction:
+            before = await self.executions.get(command.execution_id)
             before.require_turn(command.turn_id)
             before.pause("Cancellation requested; actual termination is pending")
-            before = self.executions.save(before)
-        live = self.controller.interrupt(before)
-        with self.transaction:
-            current = self.executions.get(command.execution_id)
+            before = await self.executions.save(before)
+        live = await asyncio.to_thread(self.controller.interrupt, before)
+        async with self.transaction:
+            current = await self.executions.get(command.execution_id)
             current.require_turn(command.turn_id)
             if live is Liveness.STOPPED:
                 current.cancel(command.turn_id, "Host confirmed execution termination")
-            return self.executions.save(current)
+            return await self.executions.save(current)

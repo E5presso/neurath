@@ -2,7 +2,7 @@
 
 [Home](../../README.md) · [한국어](../ko/index.md)
 
-This checkout is an internal Python library implementing the #137 project/session foundation, #140 source/task/TODO ledger, and #141 phase execution. The #142 hook adapter is a library; the public CLI and installation wiring are not yet available. The sections below distinguish product design from implemented behavior.
+This checkout is an internal Python library implementing the #137 project/session foundation, #140 source/task/TODO ledger, and #141 phase execution. The #142 hook CLI uses spakky-typer; business CLI commands and installation wiring are subsequent work. The sections below distinguish product design from implemented behavior.
 
 ## Product design
 
