@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from click import unstyle
 from spakky.core.application.application import SpakkyApplication
 from spakky.core.application.application_context import ApplicationContext
 from spakky.plugins.sqlalchemy.persistency.connection_manager import AsyncConnectionManager
@@ -42,7 +43,7 @@ async def test_real_spakky_controller_and_command_registration(tmp_path):
     response = await invoke(tmp_path / "missing", ["hook", "handle", "--help"])
     assert response.exit_code == 0
     for option in ("--provider", "--bypass"):
-        assert option in response.stdout
+        assert option in unstyle(response.stdout)
 
 
 @pytest.mark.parametrize("payload", ["", "{broken", "[]", "null", "42"])
