@@ -59,7 +59,7 @@ Project 저장은 소유한 위치 관계까지 기본 merge로 반영합니다.
 
 ## 스키마와 보존
 
-명시적 초기화는 배포된 Alembic head까지 적용합니다. 현재 head는 `core_0004`입니다.
+명시적 초기화는 배포된 Alembic head까지 적용합니다. 현재 head는 `core_0005`입니다.
 `core_0002`는 메타데이터·프로젝트 revision·위치 소유 제약을, `core_0003`는
 [원문·태스크 원장](task-ledger.md)을 추가합니다. `core_0004`는 [단계 실행](workflow-runner.md)의 정의·시도 이력을 추가합니다. 적용된 이전 revision은 수정하지 않으며
 기존 ID·세션 revision·프로젝트·위치·세션 데이터와 종속 외래 키를 유지합니다.
@@ -114,3 +114,5 @@ Git/worktree/clone 구분과 명시적·동시 초기화를 검증합니다. 이
 수정으로 변경하지 않습니다.
 
 [태스크 원장](task-ledger.md)은 #140에서 추가한 원문·정정·시도·TODO의 구현 범위입니다.
+
+`core_0005`는 [호스트 실행과 작성 임대](host-runtime.md)를 추가합니다.

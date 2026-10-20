@@ -64,7 +64,7 @@ The enclosing transaction rolls back both parent and child changes on failure.
 ## Schema and preservation
 
 Explicit initialization upgrades through the distributed Alembic head, currently
-`core_0004`. `core_0002` adds metadata, project revision and location ownership enforcement;
+`core_0005`. `core_0002` adds metadata, project revision and location ownership enforcement;
 `core_0003` adds the [source/task ledger](task-ledger.md), and `core_0004` adds [workflow definitions and attempts](workflow-runner.md). Applied revisions remain
 unchanged, preserving existing IDs, session revisions, project/location/session values
 and dependent foreign keys.
@@ -124,3 +124,5 @@ and installation remain subsequent tickets. `setup` rejects installation of this
 foundation candidate. Source changes do not alter user databases or installed distributions.
 
 [Task ledger](task-ledger.md) documents the source/correction/attempt/TODO implementation added by #140.
+
+`core_0005` adds [host execution and writer leases](host-runtime.md).

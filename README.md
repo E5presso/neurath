@@ -5,7 +5,7 @@
 Neurath is being rewritten as a local, CLI-only agent harness. The approved
 [specification](docs/en/specification.md) retains tasks, ordered execution phases,
 hooks, memory, collaboration, and recovery. This checkout currently implements
-the #137 user-wide project/session foundation, #140 source/task/TODO ledger, and #141 skill phase execution.
+the #137 user-wide project/session foundation, #140 source/task/TODO ledger, #141 skill phase execution, and the #142 [host runtime](docs/en/host-runtime.md) library.
 
 The candidate package contains mutable domain entities and immutable request values, explicit application
 ports and use cases, inherited Spakky SQLAlchemy repositories and table mappings, and request-scoped session
