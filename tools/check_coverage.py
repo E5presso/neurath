@@ -12,7 +12,7 @@ def check_report(path: Path) -> None:
         path: 전체 소스를 측정한 coverage JSON 보고서 경로.
 
     Raises:
-        ValueError: 보고서에 유효한 누락 라인·분기 개수가 없는 경우.
+        ValueError: 최상위 객체·totals가 없거나 누락·제외 개수가 비정수 또는 음수인 경우.
         SystemExit: 미실행 라인·분기 또는 제외된 라인이 남아 있는 경우.
     """
     report: object = json.loads(path.read_text())

@@ -1,10 +1,9 @@
 """Git·SQL·어댑터 없이 동일성과 상태 전이 정책을 검증한다."""
 
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, asdict
 
 import pytest
 
-from neurath.application.context import SessionContext
 from neurath.domain.aggregates.project import Project, ProjectKind, ProjectLocation
 from neurath.domain.aggregates.session import HostSession
 from neurath.domain.errors import ProjectIdentityConflict, RevisionConflict
@@ -66,7 +65,7 @@ def test_owned_location_is_an_immutable_value_without_owner_identity():
         location.path = "/changed"
 
 
-def test_entity_identity_is_stable_while_snapshot_equality_compares_state():
+def test_entity_identity_is_stable_while_its_state_changes():
     project = Project(uid="project", root_path="/root")
     session = HostSession(
         uid="session",
@@ -76,7 +75,7 @@ def test_entity_identity_is_stable_while_snapshot_equality_compares_state():
         working_directory="/root",
         revision=1,
     )
-    before = SessionContext.from_entities(project, session)
+    before = asdict(session)
     same_identity = HostSession(
         uid="session",
         project_id=project.id,
@@ -90,10 +89,8 @@ def test_entity_identity_is_stable_while_snapshot_equality_compares_state():
     session.move("/next", 1)
     assert session.id == "session" and session.working_directory == "/next"
     assert session.revision == 1  # 정수 잠금 카운터는 ORM이 저장할 때 갱신한다.
-    assert SessionContext.from_entities(project, session) != before
-    assert before.session.working_directory == "/root"
-    with pytest.raises(FrozenInstanceError):
-        before.session.revision = 2
+    assert asdict(session) != before
+    assert before["working_directory"] == "/root"
 
 
 def test_domain_rejects_stale_movement_without_mutating_state():

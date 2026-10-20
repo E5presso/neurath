@@ -1,47 +1,23 @@
-# Migration and recovery
+# Data migration and recovery
 
 [Documentation](index.md) · [한국어](../ko/recovery.md)
 
-Preserve the existing database and unfinished tasks before changing the active installation. The fresh storage design uses SQLAlchemy and Alembic. Its active database is named `neurath.sqlite3`; do not infer that an older database has been migrated merely because this new file exists.
+## Current support
 
-## Before adoption
+The foundation library uses explicit `initialize_database` to initialize/upgrade through the package's Alembic head. See [core foundation](core-foundation.md) for the default DB path, schema and invocation example. Ordinary requests verify compatibility without changing schema.
 
-Ask the agent to show the intended source and destination, schema versions, backup location, and unfinished-task count. Request a recoverable archive of the complete original database, including data that has no direct equivalent in the new model. Existing data must remain available for inspection and restoration.
+Initialization does not convert historical harness stores into the new model. Unrecognized existing stores are rejected without modification; current `setup` does not install this candidate. Historical-data conversion belongs to #150, installation cutover to #151 and operational diagnosis/bypass to #147. See the [implementation plan](implementation-plan.md).
 
-> Prepare the migration, preserve the entire original database, and show how each unfinished task will be represented. Leave ambiguous ownership and missing evidence visible.
+## Preservation during migration and recovery
 
-A valid preparation result explains which records become operational tasks and where all original records remain. It does not silently treat legacy completion flags as current validation evidence or import old text as new human consent.
+Subsequent migration must preserve recoverable original databases, required WAL/configuration, unfinished work and sources, then verify their correspondence to the new model. Retain records without direct equivalents for inspection/restoration. Historical completion and ownership records describe past state rather than new success or consent.
 
-## Verify the result
+[Installation/recovery architecture](architecture.md#9-installation-upgrade-recovery-and-finish-session) defines writer quiescence, incoming-event preservation, cutover and rollback. Verify actual reads/resumption of unfinished work as well as archival. Do not add repeated-input procedures for work already supported by user instructions.
 
-Ask for an explicit correspondence between the original unfinished tasks and their new records. Check that prior provenance is retained, task counts are explained, and repeating the migration does not duplicate tasks. Confirm that the original archive can be read before relying on it for recovery.
+On storage failure, preserve the cause and unfinished work, then regain control through a compatible recovery path. Bypass only suspends harness enforcement; it does not make work successful. Verify actual behavior after repair and disable bypass. Document concrete maintenance commands with their CLI implementation.
 
-> Show the migration manifest and unfinished-task mapping. Distinguish preserved original records from records now active in the new model.
+Host tools remove worktrees. Preserve unmerged commits, local changes and required untracked/ignored files for the requested targets and verify recoverability.
 
-The new database may correctly retain work that still cannot advance because ownership, authority, or evidence needs resolution. Preservation does not grant permission to complete it.
+## Validation
 
-## Recover from a storage failure
-
-If the database is unreadable, locked, incompatible, or unavailable, use the installation's emergency bypass to regain control of the host. Bypass must be independent of a healthy operational database. Ask the agent to identify whether bypass is enabled and preserve the failure evidence before attempting repair.
-
-> Enable the database-independent recovery bypass, preserve the affected files, and explain the recovery choices before replacing anything.
-
-Restore only from an identified, checked archive and record which installation will read it. A database whose schema is newer than the installed software must be rejected without modification. Use compatible software or an explicitly prepared restoration; do not force a downgrade by editing version metadata.
-
-Bypass does not complete tasks or verify a repair. After restoring storage, separately check the protocol and actual host activation before leaving recovery mode.
-
-## Retire extra worktrees
-
-Before a checkout is removed, preserve its recoverable contents and a manifest identifying its Git state and local changes. Include necessary ignored content as well as tracked and untracked files. Verify the archive, then remove only the intended checkout.
-
-> Archive the extra worktrees recoverably. Show what was saved and how it can be restored before removing each checkout.
-
-Do not treat a clean-looking working tree as proof that a directory contains nothing worth preserving. Keep recovery artifacts until the preserved work has an agreed disposition.
-
-## What counts as recovery evidence
-
-Recovery reporting should name the preserved original, active destination, migration result, unresolved tasks, verification performed, and restoration path. It should distinguish local tests from live-host observations. Developer procedures and supported command syntax belong in the [contributing guide](../../CONTRIBUTING.md).
-
-## Upgrade callback compatibility
-
-Version 0.3.1 accepts cached hook callbacks using `--host` or no provider argument. The recovery bypass is checked before storage and provider resolution. Outside bypass, an unqualified callback must carry unambiguous provider-specific native envelope metadata; ambiguous input is rejected rather than inventing identity. Newly installed registrations still use explicit `--provider`. This bridge lets an existing turn finish while its host reloads the new registration.
+[Acceptance](acceptance.md) A34/A50/A51 cover migration/rollback, A35 owned configuration, A36/A61 fault recovery and A55 requested worktree cleanup. Distinguish temporary-data tests from actual user-installation cutover and activation.

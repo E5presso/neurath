@@ -1,17 +1,20 @@
-"""명시적인 저장소 의존성으로 세션 컨텍스트 조회를 구현한다."""
+"""세션의 프로젝트 소속을 확인하고 프로젝트·세션을 함께 조회한다."""
 
 from dataclasses import dataclass
+from typing import override
 
 from spakky.core.stereotype.usecase import UseCase
+from spakky.domain.application.query import AbstractQuery, IQueryUseCase
 
-from neurath.application.context import SessionContext
 from neurath.application.ports.repositories.project import IProjectRepository
 from neurath.application.ports.repositories.session import ISessionRepository
+from neurath.domain.aggregates.project import Project
+from neurath.domain.aggregates.session import HostSession
 
 
 @dataclass(frozen=True)
-class GetSessionContextQuery:
-    """단일 세션 컨텍스트 조회 요청의 명시적 불변 입력이다.
+class GetSessionContextQuery(AbstractQuery):
+    """현재 작업 경로와 프로젝트를 조회할 세션을 지정한다.
 
     Attributes:
         project_id: 조회 대상 프로젝트의 안정적인 식별자.
@@ -22,30 +25,48 @@ class GetSessionContextQuery:
     session_id: str
 
 
+@dataclass(frozen=True)
+class GetSessionContextResult:
+    """조회한 프로젝트와 해당 프로젝트에 속한 호스트 세션을 반환한다.
+
+    Attributes:
+        project: 세션이 속한 프로젝트와 소유 위치.
+        session: 저장된 작업 경로와 revision을 가진 조회 세션.
+    """
+
+    project: Project
+    session: HostSession
+
+
 @UseCase()
-class GetSessionContextUseCase:
-    """저장 수명을 소유하지 않고 프로젝트와 세션 규칙을 조정한다."""
+class GetSessionContextUseCase(IQueryUseCase[GetSessionContextQuery, GetSessionContextResult]):
+    """세션의 프로젝트 소속을 확인하고 프로젝트·세션을 함께 조회한다.
+
+    저장된 작업 경로와 revision을 읽으며 새 등록·위치 관찰·경로 변경을 수행하지 않는다.
+    다른 프로젝트의 세션을 지정하면 ContextNotFound가 발생한다.
+    """
 
     def __init__(self, projects: IProjectRepository, sessions: ISessionRepository) -> None:
-        """단일 요청 트랜잭션에 속한 저장소를 주입받는다.
+        """프로젝트와 세션을 함께 조회할 저장소를 받는다.
 
         Args:
-            projects: 이 요청의 프로젝트 조회·등록 의존성.
-            sessions: 이 요청의 세션 저장 포트.
+            projects: 세션이 속한 프로젝트의 위치·식별 정보를 조회한다.
+            sessions: 세션의 프로젝트 소속·작업 경로·revision을 조회한다.
         """
         self.projects = projects
         self.sessions = sessions
 
-    def execute(self, request: GetSessionContextQuery) -> SessionContext:
-        """요청한 작업을 적용하고 분리된 불변 컨텍스트를 반환한다.
+    @override
+    def run(self, query: GetSessionContextQuery) -> GetSessionContextResult:
+        """프로젝트 소속을 확인한 세션과 해당 프로젝트를 변경 없이 반환한다.
 
         Args:
-            request: 요청 경계에서 전달한 명시적인 명령 또는 조회.
+            query: 조회할 세션 ID와 그 세션이 속해야 하는 프로젝트 ID.
 
         Returns:
-            SessionContext: 작업 후 프로젝트와 세션의 분리된 상태.
+            GetSessionContextResult: 저장된 프로젝트와 작업 경로·revision을 가진 세션.
         """
-        session = self.sessions.get(request.session_id)
-        session.require_project(request.project_id)
-        project = self.projects.get(request.project_id)
-        return SessionContext.from_entities(project, session)
+        session = self.sessions.get(query.session_id)
+        session.require_project(query.project_id)
+        project = self.projects.get(query.project_id)
+        return GetSessionContextResult(project=project, session=session)

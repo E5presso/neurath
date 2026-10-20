@@ -20,8 +20,13 @@ from neurath.infrastructure.database import (
     user_database_path,
     verify_schema,
 )
-from neurath.transport.session_requests import get_session_context, move_session, register_session
 from tests.conftest import initialize_git
+from tests.support.session_requests import (
+    get_session_context,
+    move_session,
+    register_session,
+    session_state,
+)
 
 
 def test_database_path_is_user_wide_and_relative_xdg_is_rejected(tmp_path, monkeypatch):
@@ -46,7 +51,9 @@ def test_missing_database_is_not_implicitly_created_and_initialize_is_idempotent
     initialize_database(database)
     first = register_session(str(tmp_path), "codex", "native", database_path=database)
     initialize_database(database)
-    assert get_session_context(first.project.id, first.session.id, database_path=database) == first
+    assert session_state(
+        get_session_context(first.project.id, first.session.id, database_path=database)
+    ) == session_state(first)
 
 
 def test_legacy_database_bytes_are_preserved_on_rejected_initialization(tmp_path):
@@ -90,7 +97,9 @@ def test_original_schema_records_are_readable_and_updatable_without_data_convers
     initialize_git(folder)
     child = folder / "child"
     child.mkdir()
-    assert register_session(str(folder), "codex", "native", database_path=path) == original
+    assert session_state(
+        register_session(str(folder), "codex", "native", database_path=path)
+    ) == session_state(original)
     changed = move_session(
         original.project.id, original.session.id, str(child), 7, database_path=path
     )
@@ -132,7 +141,7 @@ def test_existing_empty_file_requires_initialization(tmp_path):
     try:
         with Session(engine) as session, session.begin():
             with pytest.raises(StorageNotReady, match="Schema missing"):
-                verify_schema(session)
+                verify_schema(session.connection())
     finally:
         engine.dispose()
 
@@ -283,10 +292,9 @@ def test_metadata_downgrade_preserves_original_records_and_can_upgrade(database,
     finally:
         engine.dispose()
     initialize_database(database)
-    assert (
+    assert session_state(
         get_session_context(original.project.id, original.session.id, database_path=database)
-        == original
-    )
+    ) == session_state(original)
     with closing(sqlite3.connect(database)) as connection:
         assert connection.execute(
             "SELECT name FROM sqlite_master WHERE type='trigger'"
@@ -308,13 +316,12 @@ def test_destructive_downgrade_is_rejected_and_rolls_back_intermediate_metadata_
     finally:
         engine.dispose()
     assert database.read_bytes() == before
-    assert (
+    assert session_state(
         get_session_context(original.project.id, original.session.id, database_path=database)
-        == original
-    )
+    ) == session_state(original)
     with closing(sqlite3.connect(database)) as connection:
         assert connection.execute("SELECT version_num FROM core_schema_revision").fetchone() == (
-            "core_0002",
+            "core_0003",
         )
         assert connection.execute(
             "SELECT name FROM sqlite_master WHERE type='trigger'"
@@ -331,3 +338,56 @@ def test_migration_rejects_non_connection_input_before_touching_database(
     with pytest.raises(TypeError, match="explicit SQLAlchemy Connection"):
         command.upgrade(migration_config(invalid_connection), "head")
     assert database.read_bytes() == before
+
+
+def test_alembic_files_alone_define_the_deployed_schema_head(
+    database, repository, tmp_path, monkeypatch
+):
+    from shutil import copytree
+
+    from alembic.script import ScriptDirectory
+
+    import neurath.infrastructure.migrations as migrations
+
+    first = register_session(str(repository), "codex", "native", database_path=database)
+    scripts = tmp_path / "deployment-migrations"
+    copytree(Path(migrations.__file__).parent, scripts)
+    (
+        scripts / "versions" / "core_0004_review_probe.py"
+    ).write_text('''"""배포 리비전 추가만으로 호환성 판단이 갱신되는지 검증한다."""
+from alembic import op
+from sqlalchemy import Column, Integer
+revision = "core_0004_review_probe"
+down_revision = "core_0003"
+branch_labels = None
+depends_on = None
+def upgrade():
+    op.create_table("review_probe", Column("id", Integer, primary_key=True))
+def downgrade():
+    op.drop_table("review_probe")
+''')
+    monkeypatch.setattr(
+        ScriptDirectory, "from_config", lambda config: ScriptDirectory(str(scripts))
+    )
+    before = database.read_bytes()
+    with pytest.raises(StorageNotReady, match="version differs"):
+        get_session_context(first.project.id, first.session.id, database_path=database)
+    assert database.read_bytes() == before
+    initialize_database(database)
+    assert session_state(
+        get_session_context(first.project.id, first.session.id, database_path=database)
+    ) == session_state(first)
+    with closing(sqlite3.connect(database)) as connection:
+        assert connection.execute("SELECT version_num FROM core_schema_revision").fetchone() == (
+            "core_0004_review_probe",
+        )
+        assert connection.execute("SELECT COUNT(*) FROM review_probe").fetchone() == (0,)
+
+
+def test_ordinary_request_checks_missing_schema_before_reading_entities(tmp_path):
+    path = tmp_path / "uninitialized.sqlite3"
+    path.touch()
+    before = path.read_bytes()
+    with pytest.raises(StorageNotReady, match="Schema missing"):
+        get_session_context("project", "session", database_path=path)
+    assert path.read_bytes() == before

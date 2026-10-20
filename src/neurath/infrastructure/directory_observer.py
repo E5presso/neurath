@@ -17,7 +17,10 @@ class GitDirectoryObserver(IDirectoryObserver):
     """프로젝트 동일성을 선택하지 않고 파일 시스템과 Git의 정규화된 사실을 읽는다."""
 
     def _git(self, directory: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
-        """지정한 디렉터리에서 시간과 범위를 제한한 읽기 전용 Git 관찰을 실행한다.
+        """상속된 GIT_* 환경을 제거하고 지정 디렉터리에서 Git 조회를 실행한다.
+
+        호출자가 읽기 전용 인자를 전달하며 실행 제한은 10초다. 종료 코드가 0이
+        아니어도 결과를 반환하여 호출자가 저장소 부재와 실제 오류를 구분하게 한다.
 
         Args:
             directory: Git을 실행할 정규 디렉터리.
@@ -27,7 +30,7 @@ class GitDirectoryObserver(IDirectoryObserver):
             subprocess.CompletedProcess[str]: 캡처한 Git 종료 상태와 출력 및 진단 정보.
 
         Raises:
-            NeurathError: Git 조사가 실패하거나 잘못된 작업 트리 메타데이터를 반환한 경우.
+            NeurathError: Git 프로세스를 시작할 수 없거나 실행이 10초를 초과한 경우.
         """
         environment = dict(os.environ)
         for key in tuple(environment):
@@ -48,7 +51,11 @@ class GitDirectoryObserver(IDirectoryObserver):
 
     @override
     def observe(self, working_directory: str) -> DirectoryObservation:
-        """정규화된 사실을 읽으며 Git 실패를 일반 폴더 관찰로 바꾸지 않는다.
+        """실제 작업 경로와 Git 공통 디렉터리·첫 작업 트리를 조회한다.
+
+        Git이 저장소가 아니라고 응답한 경우에만 일반 폴더 관찰을 반환한다.
+        경로 확인 중 파일 시스템 오류는 그대로 전파하고, 그 밖의 Git 오류는
+        NeurathError로 보고한다. 프로젝트 선택·등록은 수행하지 않는다.
 
         Args:
             working_directory: 호스트 요청이 제공한 기존 디렉터리.
@@ -58,7 +65,7 @@ class GitDirectoryObserver(IDirectoryObserver):
 
         Raises:
             NeurathError: Git 조사가 실패하거나 잘못된 작업 트리 메타데이터를 반환한 경우.
-            ValueError: 입력 경로·식별자·디렉터리가 작업에 적합하지 않은 경우.
+            ValueError: 실재하는 입력 경로가 디렉터리가 아닌 경우.
         """
         directory = Path(working_directory).expanduser().resolve(strict=True)
         if not directory.is_dir():

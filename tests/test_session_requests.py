@@ -6,7 +6,6 @@ import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
-from dataclasses import asdict
 
 import pytest
 from spakky.plugins.sqlalchemy.persistency.session_manager import SessionManager
@@ -15,7 +14,10 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from neurath.application.ports.repositories.session import ISessionRepository
-from neurath.application.usecases.register_project import RegisterProjectUseCase
+from neurath.application.usecases.register_project import (
+    RegisterProjectCommand,
+    RegisterProjectUseCase,
+)
 from neurath.domain.aggregates.session import HostSession
 from neurath.domain.errors import (
     ContextNotFound,
@@ -28,14 +30,18 @@ from neurath.infrastructure.database import create_database_engine
 from neurath.infrastructure.models.project import ProjectModel
 from neurath.infrastructure.models.session import SessionModel
 from neurath.infrastructure.repositories.session import SessionRepository
-from neurath.transport.session_requests import get_session_context, move_session, register_session
 from tests.conftest import git, initialize_git, storage_scope
+from tests.support.session_requests import (
+    get_session_context,
+    move_session,
+    register_session,
+    session_state,
+)
 
 PROCESS = """
 import json, sys
 from pathlib import Path
-from dataclasses import asdict
-from neurath.transport.session_requests import register_session, get_session_context, move_session
+from tests.support.session_requests import register_session, get_session_context, move_session, session_state
 from neurath.domain.errors import RevisionConflict
 path = Path(sys.argv[1])
 mode = sys.argv[2]
@@ -48,7 +54,7 @@ try:
         result = move_session(sys.argv[3], sys.argv[4], sys.argv[5], int(sys.argv[6]), database_path=path)
     else:
         raise ValueError(mode)
-    print(json.dumps(asdict(result)))
+    print(json.dumps(session_state(result)))
 except RevisionConflict:
     print(json.dumps({"conflict": True}))
 """
@@ -73,7 +79,7 @@ def request(database, mode, *arguments):
 
 def test_independent_process_restart_reads_latest_revision(database, repository):
     first = request(database, "register", repository, "codex", "native")
-    project_id, session_id = first["project"]["id"], first["session"]["id"]
+    project_id, session_id = first["project"]["uid"], first["session"]["uid"]
     assert request(database, "read", project_id, session_id) == first
     child = repository / "child"
     child.mkdir()
@@ -121,7 +127,9 @@ def test_clones_same_remote_same_native_id_and_other_providers_are_scoped(
         get_session_context(first.project.id, second.session.id, database_path=database)
     with pytest.raises(ContextNotFound):
         move_session(first.project.id, first.session.id, str(clones[1]), 1, database_path=database)
-    assert get_session_context(first.project.id, first.session.id, database_path=database) == first
+    assert session_state(
+        get_session_context(first.project.id, first.session.id, database_path=database)
+    ) == session_state(first)
     other = register_session(str(clones[0]), "claude", "same", database_path=database)
     assert other.project == first.project
     assert other.session.id != first.session.id
@@ -146,8 +154,8 @@ def test_folder_to_git_promotion_preserves_foreign_keys_from_first_linked_reques
     linked = tmp_path / "linked"
     git(plain, "worktree", "add", "-b", "branch", str(linked))
     after = request(database, "register", linked, "codex", "another")
-    assert after["project"]["id"] == before.project.id
-    assert request(database, "read", before.project.id, before.session.id) == asdict(before)
+    assert after["project"]["uid"] == before.project.id
+    assert request(database, "read", before.project.id, before.session.id) == session_state(before)
     with closing(sqlite3.connect(database)) as connection, connection:
         assert connection.execute("SELECT * FROM dependent_fixture").fetchall() == [
             (before.project.id, "unfinished original source")
@@ -208,7 +216,9 @@ def test_related_changes_roll_back_together_using_actual_session(database, repos
             sessions.save(changed)
             sessions.save(HostSession.create(first.project.id, "codex", "second", "new"))
             raise RuntimeError("rollback")
-    assert get_session_context(first.project.id, first.session.id, database_path=database) == first
+    assert session_state(
+        get_session_context(first.project.id, first.session.id, database_path=database)
+    ) == session_state(first)
     with storage_scope(database, write=False) as scope:
         assert (
             scope.get(SessionManager).session.scalar(text("SELECT COUNT(*) FROM core_sessions"))
@@ -225,7 +235,7 @@ def test_uncommitted_data_is_invisible_and_read_only_connection_rejects_writes(
         changed = sessions.get(first.session.id)
         changed.move("uncommitted", 1)
         sessions.save(changed)
-        assert request(database, "read", first.project.id, first.session.id) == asdict(first)
+        assert request(database, "read", first.project.id, first.session.id) == session_state(first)
     with pytest.raises(OperationalError, match="readonly"):
         with storage_scope(database, write=False) as scope:
             scope.get(SessionManager).session.execute(text("DELETE FROM core_sessions"))
@@ -262,22 +272,24 @@ def test_foreign_keys_and_positive_revisions_are_enforced(database):
 def test_identity_conflict_does_not_merge_or_modify_existing_aliases(database):
     with storage_scope(database) as scope:
         projects = scope.get(RegisterProjectUseCase)
-        first = projects.execute(DirectoryObservation("/one", "/one/.git", "/one"))
-        second = projects.execute(DirectoryObservation("/two"))
+        first = projects.run(
+            RegisterProjectCommand(DirectoryObservation("/one", "/one/.git", "/one"))
+        )
+        second = projects.run(RegisterProjectCommand(DirectoryObservation("/two")))
     with pytest.raises(ProjectIdentityConflict):
         with storage_scope(database) as scope:
-            scope.get(RegisterProjectUseCase).execute(
-                DirectoryObservation("/two", "/one/.git", "/two")
+            scope.get(RegisterProjectUseCase).run(
+                RegisterProjectCommand(DirectoryObservation("/two", "/one/.git", "/two"))
             )
     with storage_scope(database, write=False) as scope:
         assert set(scope.get(SessionManager).session.scalars(select(ProjectModel.id))) == {
-            first.id,
-            second.id,
+            first.project.id,
+            second.project.id,
         }
     with pytest.raises(ProjectIdentityConflict):
         with storage_scope(database) as scope:
-            scope.get(RegisterProjectUseCase).execute(
-                DirectoryObservation("/one", "/different/.git", "/one")
+            scope.get(RegisterProjectUseCase).run(
+                RegisterProjectCommand(DirectoryObservation("/one", "/different/.git", "/one"))
             )
 
 
@@ -288,7 +300,9 @@ def test_wrong_revision_and_empty_native_identifiers_fail_without_mutation(datab
     for provider, native in ((" ", "native"), ("codex", "")):
         with pytest.raises(ValueError):
             register_session(str(repository), provider, native, database_path=database)
-    assert get_session_context(first.project.id, first.session.id, database_path=database) == first
+    assert session_state(
+        get_session_context(first.project.id, first.session.id, database_path=database)
+    ) == session_state(first)
 
 
 def test_git_environment_is_ignored_and_errors_are_not_folder_fallback(
@@ -313,4 +327,4 @@ def test_git_environment_is_ignored_and_errors_are_not_folder_fallback(
 def test_request_releases_writer_before_following_external_action(database, repository):
     first = register_session(str(repository), "codex", "native", database_path=database)
     following = request(database, "register", repository, "codex", "external-result")
-    assert following["project"]["id"] == first.project.id
+    assert following["project"]["uid"] == first.project.id

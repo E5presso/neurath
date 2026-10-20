@@ -1,5 +1,6 @@
 """프로젝트 aggregate가 위치 값과 식별·승격·소유권 규칙을 관리한다."""
 
+from collections.abc import Sequence
 from enum import StrEnum
 from typing import Self, override
 from uuid import uuid4
@@ -48,25 +49,25 @@ class Project(AbstractAggregateRoot[str]):
     """
 
     root_path: str
-    locations: tuple[ProjectLocation, ...] = ()
+    locations: Sequence[ProjectLocation] = ()
     revision: int = 1
 
     @property
     def id(self) -> str:
-        """기존 참조를 유지하는 도메인 식별자를 반환한다.
+        """기존 프로젝트 참조와의 호환을 위해 uid를 id로 읽는다.
 
         Returns:
-            str: 기존 요청과 저장 기록에서 사용하는 식별자.
+            str: 이 프로젝트의 uid와 같은 식별자.
         """
         return self.uid
 
     @classmethod
     @override
     def next_id(cls) -> str:
-        """새 aggregate의 안정적인 식별자를 생성한다.
+        """프로젝트 경로와 독립적인 UUID 문자열을 생성한다.
 
         Returns:
-            str: 새 도메인 인스턴스에 사용할 식별자.
+            str: 새 프로젝트의 uid로 사용할 UUID 문자열.
         """
         return str(uuid4())
 
@@ -92,14 +93,17 @@ class Project(AbstractAggregateRoot[str]):
         return observation.primary_worktree
 
     @classmethod
-    def identify(cls, observation: DirectoryObservation) -> tuple[ProjectLocation, ...]:
-        """Git 승격에 필요한 기존 폴더 별칭을 포함하여 위치 후보를 도출한다.
+    def identify(cls, observation: DirectoryObservation) -> Sequence[ProjectLocation]:
+        """관찰한 위치를 Git 공통 디렉터리와 기존 폴더의 조회 키로 변환한다.
+
+        일반 폴더는 작업 경로 하나를 사용한다. Git은 공통 디렉터리와 기본 작업 트리
+        폴더를 함께 반환하므로 Git 초기화 전 폴더의 기존 프로젝트를 찾을 수 있다.
 
         Args:
             observation: 연결 작업 트리 정보를 포함하는 정규화된 외부 관찰 사실.
 
         Returns:
-            tuple[ProjectLocation, ...]: 프로젝트 식별에 필요한 위치 값들.
+            Sequence[ProjectLocation]: 프로젝트 식별에 필요한 위치 값들.
         """
         folder = ProjectLocation(kind=ProjectKind.FOLDER, path=cls.root_for(observation))
         if observation.git_common_directory is None:
@@ -110,7 +114,7 @@ class Project(AbstractAggregateRoot[str]):
         )
 
     @classmethod
-    def owner_of(cls, owners: tuple[Self, ...]) -> Self | None:
+    def owner_of(cls, owners: Sequence[Self]) -> Self | None:
         """충돌하는 프로젝트를 병합하지 않고 후보 위치의 기존 소유자를 선택한다.
 
         Args:
@@ -142,7 +146,7 @@ class Project(AbstractAggregateRoot[str]):
             locations=cls.identify(observation),
         )
 
-    def associate(self, candidates: tuple[ProjectLocation, ...]) -> None:
+    def associate(self, candidates: Sequence[ProjectLocation]) -> None:
         """기존 Git 동일성을 교체하지 않고 호환되는 위치를 소유 목록에 추가한다.
 
         모든 충돌을 확인한 뒤에만 aggregate의 위치 상태를 변경한다.
@@ -153,7 +157,7 @@ class Project(AbstractAggregateRoot[str]):
         Raises:
             ProjectIdentityConflict: 기존 Git 동일성과 새 위치가 충돌하는 경우.
         """
-        locations = self.locations + candidates
+        locations = tuple(self.locations) + tuple(candidates)
         git_paths = {location.path for location in locations if location.kind is ProjectKind.GIT}
         if len(git_paths) > 1:
             raise ProjectIdentityConflict("Folder already belongs to another repository")

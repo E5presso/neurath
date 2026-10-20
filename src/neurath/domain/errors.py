@@ -2,15 +2,15 @@
 
 
 class NeurathError(Exception):
-    """프로젝트와 세션 요청의 기본 오류다."""
+    """프로젝트·세션·원문·태스크 요청에서 호출자가 처리할 오류의 공통 기반이다."""
 
 
 class ContextNotFound(NeurathError):
-    """요청한 프로젝트 또는 해당 범위의 세션이 없는 경우다."""
+    """요청한 기록·시도가 없거나 지정한 프로젝트·소유 세션 범위와 다른 경우다."""
 
 
 class RevisionConflict(NeurathError):
-    """호출자가 버전을 관찰한 뒤 세션이 변경된 경우다."""
+    """읽은 revision 또는 도메인 version이 현재 저장 상태와 달라 수정을 거부한 경우다."""
 
 
 class ProjectIdentityConflict(NeurathError):
@@ -18,4 +18,8 @@ class ProjectIdentityConflict(NeurathError):
 
 
 class StorageNotReady(NeurathError):
-    """데이터베이스에 명시적인 초기화 또는 호환 마이그레이션이 필요한 경우다."""
+    """일반 요청에 필요한 DB가 없거나 스키마를 현재 패키지로 해석할 수 없는 경우다."""
+
+
+class InvalidTaskState(NeurathError):
+    """원문·현재 개정·시도 또는 상태 전이의 조건이 맞지 않는 경우다."""

@@ -4,33 +4,7 @@
 
 **Design status.** Compose execution, memory and collaboration capabilities within one local harness. Separate domain responsibilities without a process, service or approval ledger for every capability.
 
-Neurath consists of **one core and three agent-facing surfaces**.
-
-| Surface | Responsibility | Core connection |
-| --- | --- | --- |
-| Skill + rules prompts | Soft harness explaining that the agent works on Neurath, its procedures and CLI usage | Install the release-generated CLI guide and guide necessary state-management behavior |
-| Hooks | Enforce next-action constraints at host boundaries such as tool execution/termination and automatically restore context after compaction | Apply decisions based on actual events and current core state through supported host controls |
-| Typer CLI | Explicit reads/changes for tasks, phases, memory, enclave, newsroom, delegation and messages | Send agent invocations through the same core use cases |
-
-**The core is a SQLite-backed structured memory persistence layer, a state machine, and messaging/collaboration infrastructure.** Persist originals/tasks/attempts/current facts/messages/assignments/outcomes and use state/events to determine valid transitions, next actions and waits. Connect message storage/delivery/reading/assignment/acceptance/results to manage collaboration. These roles are not separate services or duplicate ledgers.
-
-Prompts guide behavior, CLI communicates with the core, and hooks enforce core decisions at actual host boundaries. Core state and transition rules are authoritative. Do not duplicate task ledgers or independent completion rules in hooks. A SQLite record alone does not execute/interrupt a tool or deliver a message; host adapters perform actual actions and return outcomes to the core.
-
-### Core request-processing model
-
-**Neurath Core is a stateless service.** Treat hook and CLI invocations like web-service requests. On each request, read the required current state from SQLite, process it through the use-case rules, persist necessary changes, and return a response.
-
-```text
-Hook or CLI invocation → request handling → SQLite state read → decision/transition → persist changes → response
-```
-
-**Use one SQLite database per local user.** All hook/CLI requests for that user use it regardless of project or working directory; identify projects/sessions and their relationships inside the DB. Do not create project- or session-specific database files. Scope related tasks/phases/enclave/messages/assignments/outcomes through their project/session relationships. Sharing a DB does not automatically inject unrelated project context; requested cross-project collaboration uses explicit relationships in the same store. **A Neurath project corresponds to one local Git repository.** Its main working tree, linked worktrees and subdirectories belong to the same project. Separate clones are distinct projects even with identical remote URLs. Codex app project groupings or host-specific working-directory labels do not replace this common boundary. Resolve identity through the local repository/worktree relationship, not remote-URL equality. For non-Git work, use the working folder as the project. Later git init retains the same project tasks and memory. Specify request/session project selection separately.
-
-Durable agent/task/phase/enclave/message/assignment state lives in the database. Correct handling of the next request must not depend on the previous handler process's memory, a surviving core instance, or a continuously connected session. Request-local objects/computation are allowed but are not authoritative cross-request state.
-
-This does not prescribe an HTTP server or a separately resident core daemon. Retain the prompt/hook/CLI surfaces; CLI and hook adapters invoke the same stateless core use cases. State that must survive agent execution remains in the DB.
-
-The core state machine consists of transition rules applied to database state, not live agent objects held in process memory. Messaging/collaboration similarly uses persisted assignments/delivery/acceptance/outcomes per request. Use existing host adapters for necessary external actions and persist actual outcomes, without holding DB write locks across external calls. Coordinate concurrent requests through existing transactions/relevant revisions rather than process-local memory locks alone.
+The [specification](specification.md#core-request-processing-model) defines request processing, storage and project identity. This page describes how that state connects to execution, hooks and collaboration.
 
 ## 1. End-to-end flow
 
@@ -56,7 +30,7 @@ Obtain originals through host input or authorized handoff, then let the executor
 
 Outcomes reference actual artifacts, command results, reviews and targets. A terminal state alone does not establish fulfillment of user intent. A third-party reviewer compares original/current instructions, the full TODO list and actual results, then reports gaps for the executor to incorporate into the same task list.
 
-Distinguish user originals from agent interpretation, assignment, and correction using conversational attribution. This is an interpretation rule against invented scope, not a new input-authentication or rejection system. Process agent-transmitted assignments, work, corrections and reports within existing user instructions. Do not reject messages en masse or demand a new human prompt merely because an agent sent them. Add no hashes, signatures, non-repudiation, consent certificates or separate approval ledger for this purpose. Use ordinary conversation context and existing request references; imperfect attribution does not stop work already supported by known instructions. Clarify only a genuine scope ambiguity that prevents deciding the next action.
+Apply the [request-attribution rules](specification.md#3-requests-and-outcomes) to assignments and corrections.
 
 ## 3. Skills and Phase runner contract
 

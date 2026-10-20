@@ -1,19 +1,24 @@
-"""명시적인 저장소 의존성으로 세션 이동을 구현한다."""
+"""세션의 프로젝트를 유지한 채 관찰된 작업 디렉터리로 이동한다."""
 
 from dataclasses import dataclass
+from typing import override
 
 from spakky.core.stereotype.usecase import UseCase
+from spakky.domain.application.command import AbstractCommand, ICommandUseCase
 
-from neurath.application.context import SessionContext
 from neurath.application.ports.repositories.session import ISessionRepository
-from neurath.application.usecases.register_project import RegisterProjectUseCase
-from neurath.domain.errors import ContextNotFound
+from neurath.application.usecases.register_project import (
+    RegisterProjectCommand,
+    RegisterProjectUseCase,
+)
+from neurath.domain.aggregates.project import Project
+from neurath.domain.aggregates.session import HostSession
 from neurath.domain.observations import DirectoryObservation
 
 
 @dataclass(frozen=True)
-class MoveSessionCommand:
-    """단일 세션 이동 요청의 명시적 불변 입력이다.
+class MoveSessionCommand(AbstractCommand):
+    """세션을 이동할 디렉터리 관찰과 현재 프로젝트·저장 revision을 지정한다.
 
     Attributes:
         project_id: 조회 대상 프로젝트의 안정적인 식별자.
@@ -28,37 +33,52 @@ class MoveSessionCommand:
     expected_revision: int
 
 
+@dataclass(frozen=True)
+class MoveSessionResult:
+    """동일 프로젝트와 이동 후 작업 경로를 가진 세션을 반환한다.
+
+    Attributes:
+        project: 세션이 속한 프로젝트와 소유 위치.
+        session: 이동 후 작업 경로와 저장 revision을 가진 세션.
+    """
+
+    project: Project
+    session: HostSession
+
+
 @UseCase()
-class MoveSessionUseCase:
-    """저장 수명을 소유하지 않고 프로젝트와 세션 규칙을 조정한다."""
+class MoveSessionUseCase(ICommandUseCase[MoveSessionCommand, MoveSessionResult]):
+    """세션의 프로젝트를 유지한 채 관찰된 작업 디렉터리로 이동한다.
+
+    이동 목적지의 프로젝트를 식별하고 기존 프로젝트와 같을 때만 경로를 변경한다.
+    다른 프로젝트는 ContextNotFound, 오래된 세션 revision은 RevisionConflict로 거부한다.
+    같은 경로로 이동하면 변경 토큰과 revision은 유지한다.
+    """
 
     def __init__(self, projects: RegisterProjectUseCase, sessions: ISessionRepository) -> None:
-        """단일 요청 트랜잭션에 속한 저장소를 주입받는다.
+        """목적지 프로젝트 식별과 세션 경로 저장에 필요한 의존성을 받는다.
 
         Args:
-            projects: 이 요청의 프로젝트 조회·등록 의존성.
-            sessions: 이 요청의 세션 저장 포트.
+            projects: 목적지 관찰을 RegisterProjectUseCase로 식별하여 기존 프로젝트와 대조한다.
+            sessions: 이동할 세션을 조회하고 같은 프로젝트의 새 작업 경로를 저장한다.
         """
         self.projects = projects
         self.sessions = sessions
 
-    def execute(self, request: MoveSessionCommand) -> SessionContext:
-        """요청한 작업을 적용하고 분리된 불변 컨텍스트를 반환한다.
+    @override
+    def run(self, command: MoveSessionCommand) -> MoveSessionResult:
+        """목적지의 프로젝트와 세션 revision을 확인하고 작업 경로 변경을 저장한다.
 
         Args:
-            request: 요청 경계에서 전달한 명시적인 명령 또는 조회.
+            command: 현재 프로젝트·세션, 이동 목적지 관찰과 읽은 세션 revision.
 
         Returns:
-            SessionContext: 작업 후 프로젝트와 세션의 분리된 상태.
-
-        Raises:
-            ContextNotFound: 지정한 프로젝트 또는 세션이 요청한 범위에 없는 경우.
+            MoveSessionResult: 프로젝트와 이동한 세션. 같은 경로이면 기존 상태를 유지한다.
         """
-        session = self.sessions.get(request.session_id)
-        session.require_project(request.project_id)
-        project = self.projects.execute(request.observation)
-        if project.id != request.project_id:
-            raise ContextNotFound("Working directory belongs to another project")
-        session.move(request.observation.working_directory, request.expected_revision)
+        session = self.sessions.get(command.session_id)
+        session.require_project(command.project_id)
+        project = self.projects.run(RegisterProjectCommand(command.observation)).project
+        session.require_project(project.id)
+        session.move(command.observation.working_directory, command.expected_revision)
         session = self.sessions.save(session)
-        return SessionContext.from_entities(project, session)
+        return MoveSessionResult(project=project, session=session)

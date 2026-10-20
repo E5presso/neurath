@@ -2,40 +2,32 @@
 
 [Documentation](index.md) · [한국어](../ko/workflows.md)
 
-> This page describes the earlier 0.3.x implementation. The rewrite follows the [new requirements](specification.md) and [complete architecture including the phase runner](architecture.md).
+These are planned workflows under the [product specification](specification.md). Public CLI and host integration are not yet implemented in this checkout. Available internal APIs are documented in the [project/session foundation](core-foundation.md) and [task ledger](task-ledger.md).
 
-Use natural language to describe the outcome you want. The connected agent translates that request into supported Neurath operations. If its host cannot perform an action, it must explain the limitation instead of recording an invented success.
+## Request work and inspect progress
 
-## Start a task
+> Investigate and fix this problem, then verify that the original failure is resolved.
 
-> Investigate this problem, propose a fix, implement it, and verify the original failure no longer occurs. Keep the stages and success criteria visible.
+Installed rules guide the agent to an appropriate skill. Tasks link original instructions to required outcomes, and TODO displays the full current list. The runner manages selected skill phases and attempts. Simple questions and status reads do not create new work or workflows. See [skill selection](interfaces.md#2-skills).
 
-The task should record its source and owner. The phases are an ordered list defined for the task, rather than a universal checklist. Each phase is pending, active, or completed. A later phase may start only after its predecessors complete. Evidence should identify the task and phase it supports.
+## Correct or interrupt work
 
-Task states are pending, active, waiting, completed, and withdrawn. A waiting task still needs attention or input; a withdrawn task is not a successful completion.
+> Keep the API unchanged and modify only the screen.
 
-## Resume unfinished work
+Apply the affected correction while retaining other requirements and previous attempts. An explicit interruption uses the host's actual execution-control path. External waiting reports remaining work and its dependency without repeatedly invoking the agent for an unchanged state.
 
-> Show unfinished work owned by this session and explain the next step for each task. Continue the selected task using its existing evidence.
+## Delegate and verify outcomes
 
-Check the owner and current revision before continuing. Recovering a stored task does not automatically transfer its ownership or reacquire a released lease. If migration could not determine a field, keep that uncertainty visible while resolving it.
+> Ask another agent to review this result and fix the reported problems.
 
-## Delegate and review
+Recipients execute, check and report within the original request and assigned scope. Message delivery or a recipient report does not complete the parent task. Before finishing a body of work, a separate evaluator compares originals, current corrections, TODO and artifacts; the executor addresses confirmed gaps. See [execution and outcome evaluation](architecture.md#3-skills-and-phase-runner-contract).
 
-> Have another agent review this result. Record its findings, then assess whether they satisfy this task before accepting them.
+## Continue retained work
 
-A delegation moves from preparation to active execution and then to a reported result. The owner may accept or reject that report. A rejected result may be worked on again. Open delegation can be cancelled by the owner. Reporting does not complete the parent task; reading a message does not accept the work.
+> Continue the remaining work using the existing results.
 
-The local lifecycle records do not themselves launch external agents. Actual dispatch requires a supported host integration. If none is available, the agent must explain that it can record a handoff but cannot execute it through this protocol alone.
+After compaction, hooks automatically restore the latest enclave. Resume/adoption retains originals, unfinished tasks, runner state and current facts while coordinating against duplicate writers. Reading handoff context is distinct from adopting work. See [memory and handoff](architecture.md#5-enclave-memory-graphify-and-pull).
 
-## Decide whether to finish
+## Finish and choose a retrospective
 
-> Check every success criterion against the evidence, identify unresolved delegations, and explain whether this task can be completed.
-
-The owner makes an explicit completion decision. Every phase must be completed, each criterion must have applicable successful evidence beyond a report alone, and delegations must be accepted or cancelled. Evidence from an unrelated task or phase cannot silently satisfy the requirement.
-
-## Understand what is supported
-
-The fresh design provides local records for sessions, tasks, ordered phases, evidence, delegations, communication, checkpoints, receipts, invocations, and leases. The exact callable surface is described in the [contributing guide](../../CONTRIBUTING.md).
-
-Do not infer automatic publication, remote deployment, external-agent execution, independent host attestation, or human approval from the existence of those records. A locally installed candidate is not a public release. See the [specification](specification.md) for the acceptance contract and [recovery guide](recovery.md) for preservation requirements.
+The Stop hook deterministically checks current task state. Legitimate external waiting, user interruption and faults return control while retaining unfinished work. If issues surfaced, offer a retrospective once at session end. A user request or acceptance leads to improvement and validation based on a separate evaluator's retrospective. Decline or silence permits original-work completion without reflection. Follow the [retrospective procedure](interfaces.md#6-user-selected-retrospective).

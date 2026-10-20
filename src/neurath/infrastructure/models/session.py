@@ -63,7 +63,7 @@ class SessionModel(AbstractMappableTable[HostSession]):
     @classmethod
     @override
     def from_domain(cls, domain: HostSession) -> Self:
-        """모든 호스트 세션 필드를 명시적으로 새 ORM 레코드에 매핑한다.
+        """세션의 식별자·경로·revision과 UTC 기준 시각을 ORM 객체에 복사한다.
 
         Args:
             domain: 현재 트랜잭션에 저장할 도메인 세션 엔티티.
@@ -85,7 +85,7 @@ class SessionModel(AbstractMappableTable[HostSession]):
 
     @override
     def to_domain(self) -> HostSession:
-        """저장된 관찰을 ORM 세션 수명과 분리한다.
+        """저장 시각에 UTC를 복원하여 ORM 수명과 분리된 호스트 세션을 만든다.
 
         Returns:
             HostSession: 저장된 버전을 가진 분리된 세션 엔티티.

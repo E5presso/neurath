@@ -2,17 +2,27 @@
 
 [Home](../../README.md) · [한국어](../ko/index.md)
 
-The 2026-10-13 design was rewritten from the complete harness baseline, connecting task execution, independent outcome evaluation and user-selected retrospective. The installed 0.3.1 runtime does not implement the new design yet.
+This checkout is an internal Python library implementing the #137 project/session foundation and #140 source/task/TODO ledger. Public CLI, host hooks and installation are not yet available. The sections below distinguish product design from implemented behavior.
+
+## Product design
 
 | Document | Contents |
 | --- | --- |
-| [Requirements](specification.md) | Purpose and complete components: TODO, phase runner, Stop, enclave, collaboration, Newsroom, providers, reflection, maintenance. |
-| [Execution architecture](architecture.md) | Inputs/outcomes from request through actual work, phase advancement, collaboration, correction, resume, and finish. |
-| [Public skills/CLI](interfaces.md) | Selected 14 skills/19 CLI commands and internal-only behavior. |
-| [Capability map](capability-continuity.md) | Replacement public/internal/host paths and outcomes for historical 128 operations/33 skills. |
-| [Acceptance](acceptance.md) | 84 behavior cases, real-host validation, implementation order. |
-| [Implementation tickets](implementation-plan.md) | Tracking #153, 16 implementation tickets, dependencies and requirement ownership. |
-| [Current contribution guide](../../CONTRIBUTING.md) | Current 0.3.1 development/command reference, distinct from the rewrite API. |
-| [Earlier workflows](workflows.md) | Earlier 0.3.x implementation guidance, not a replacement for the new requirements. |
-| [Existing recovery guidance](recovery.md) | Data preservation and existing installation recovery. |
-| [Historical candidate verification](candidate-status.md) | Dated observations, not evidence of redesign completion. |
+| [Requirements](specification.md) | Purpose, core and three surfaces, storage/project boundaries, capability requirements |
+| [Execution architecture](architecture.md) | Runner, hook enforcement/completion, enclave restoration, collaboration and installation cutover |
+| [Public skills/CLI](interfaces.md) | Triggers and input/output contracts for the planned 14 default skills and 19 business commands |
+| [User workflows](workflows.md) | Planned experience from requests through evaluation, resumption and retrospective |
+| [Migration/recovery](recovery.md) | Current support boundary and preservation requirements for subsequent migration/recovery |
+| [Acceptance](acceptance.md) | 84 behavioral cases and implementation validation criteria |
+| [Capability map](capability-continuity.md) | Omission checklist mapping historical purposes to replacement paths |
+| [Implementation tickets](implementation-plan.md) | Execution order and ticket ownership of requirements/capabilities |
+
+## Current implementation and development
+
+| Document | Contents |
+| --- | --- |
+| [Project/session foundation](core-foundation.md) | Request lifetime, persistence/mapping, schema and internal API example |
+| [Source/task/TODO ledger](task-ledger.md) | Internal APIs and preserved behavior for states, corrections, dependencies, attempts and waits |
+| [Contributing](../../CONTRIBUTING.md) | Environment, coding guidance, quality checks and coverage |
+
+Git history retains earlier runtime guidance and candidate-verification/audit records. These designs and temporary-database tests do not modify or activate an existing installation.

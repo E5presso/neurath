@@ -11,7 +11,7 @@ from neurath.domain.errors import ContextNotFound, RevisionConflict
 
 @mutable
 class HostSession(AbstractAggregateRoot[str]):
-    """동일성을 유지하면서 작업 경로가 바뀌는 호스트 관찰 엔티티다.
+    """프로젝트·공급자·네이티브 ID로 구분되는 세션과 현재 작업 경로를 보존한다.
 
     Attributes:
         project_id: 이 세션이 속한 프로젝트.
@@ -29,20 +29,20 @@ class HostSession(AbstractAggregateRoot[str]):
 
     @property
     def id(self) -> str:
-        """기존 참조를 유지하는 도메인 식별자를 반환한다.
+        """기존 세션 참조와의 호환을 위해 uid를 id로 읽는다.
 
         Returns:
-            str: 기존 요청과 저장 기록에서 사용하는 식별자.
+            str: 이 세션의 uid와 같은 식별자.
         """
         return self.uid
 
     @classmethod
     @override
     def next_id(cls) -> str:
-        """새 aggregate의 안정적인 식별자를 생성한다.
+        """호스트의 네이티브 ID와 별개인 세션 UUID 문자열을 생성한다.
 
         Returns:
-            str: 새 도메인 인스턴스에 사용할 식별자.
+            str: Neurath 세션의 uid로 사용할 UUID 문자열.
         """
         return str(uuid4())
 
@@ -50,7 +50,7 @@ class HostSession(AbstractAggregateRoot[str]):
     def create(
         cls, project_id: str, provider: str, host_session_id: str, working_directory: str
     ) -> Self:
-        """유효한 네이티브 식별자로 최초 관찰을 등록한다.
+        """공급자·네이티브 ID의 빈 값을 검사하고 revision 1의 세션 객체를 만든다.
 
         Args:
             project_id: 호스트 세션이 속한 프로젝트.
@@ -88,7 +88,10 @@ class HostSession(AbstractAggregateRoot[str]):
             raise ContextNotFound("Session does not exist in the requested project")
 
     def move(self, working_directory: str, expected_revision: int) -> None:
-        """호출자가 현재 버전을 관찰한 경우에만 새 디렉터리를 수용한다.
+        """읽은 revision이 일치할 때 작업 경로를 바꾸고 동일 경로는 유지한다.
+
+        목적지가 같은 프로젝트인지는 호출자가 먼저 확인해야 한다. 이 메서드는
+        경로를 관찰하거나 정수 revision을 올리지 않으며 revision은 ORM 저장 시 갱신된다.
 
         Args:
             working_directory: 이 세션의 프로젝트 안에 있는 정규 디렉터리.

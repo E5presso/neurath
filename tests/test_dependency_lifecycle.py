@@ -3,8 +3,11 @@
 from datetime import UTC
 
 import pytest
+from spakky.core.application.application import SpakkyApplication
+from spakky.core.application.application_context import ApplicationContext
 from spakky.data.persistency.aggregate_collector import AggregateCollector
 from spakky.data.persistency.repository import IGenericRepository, VersionConflictError
+from spakky.plugins.sqlalchemy.common.config import SQLAlchemyConnectionConfig
 from spakky.plugins.sqlalchemy.orm.schema_registry import SchemaRegistry
 from spakky.plugins.sqlalchemy.persistency.connection_manager import ConnectionManager
 from spakky.plugins.sqlalchemy.persistency.repository import AbstractGenericRepository
@@ -22,13 +25,18 @@ from neurath.domain.aggregates.project import Project
 from neurath.domain.aggregates.session import HostSession
 from neurath.domain.errors import ContextNotFound, ProjectIdentityConflict, RevisionConflict
 from neurath.domain.observations import DirectoryObservation
+from neurath.infrastructure import providers
 from neurath.infrastructure.models.project import ProjectModel
 from neurath.infrastructure.models.session import SessionModel
 from neurath.infrastructure.providers import DatabaseSettings, request_container
 from neurath.infrastructure.repositories.project import ProjectRepository
 from neurath.infrastructure.repositories.session import SessionRepository
-from neurath.transport.session_requests import get_session_context, move_session, register_session
 from tests.conftest import storage_scope
+from tests.support.session_requests import (
+    get_session_context,
+    move_session,
+    register_session,
+)
 
 
 def test_basic_contracts_and_methods_are_inherited_without_local_reimplementation():
@@ -86,6 +94,18 @@ def test_spakky_injects_standard_managers_registry_collector_and_repositories(da
         assert second.get(IProjectRepository) is not projects
         with second.get(Transaction):
             assert second.get(SessionManager).session is not first_session
+
+
+def test_request_configuration_factory_is_discovered_by_spakky_module_scan(database):
+    context = ApplicationContext()
+    SpakkyApplication(context).scan(providers)
+    assert context.contains(SQLAlchemyConnectionConfig)
+    with request_container(DatabaseSettings(database, write=False)) as request:
+        config = request.get(SQLAlchemyConnectionConfig)
+        with providers._request_config.set(config):
+            assert context.get(SQLAlchemyConnectionConfig, name="request_config") is config
+    with pytest.raises(LookupError):
+        providers.request_config()
 
 
 def test_exception_rolls_back_and_framework_closes_without_commit(database):

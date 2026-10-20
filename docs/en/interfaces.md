@@ -2,41 +2,15 @@
 
 [Specification](specification.md) · [Capability disposition](capability-continuity.md) · [한국어](../ko/interfaces.md)
 
-**User-audit revision: 2026-10-14.** Integrates specification/planning and UI implementation, separating user skills from internal self-improvement. This is a design, not an installed inventory.
+This is a design specification. Public CLI and default-skill distribution remain subsequent work in the [implementation plan](implementation-plan.md).
 
-Neurath consists of **one core and three agent-facing surfaces**.
-
-| Surface | Responsibility | Core connection |
-| --- | --- | --- |
-| Skill + rules prompts | Soft harness explaining that the agent works on Neurath, its procedures and CLI usage | Install the release-generated CLI guide and guide necessary state-management behavior |
-| Hooks | Enforce next-action constraints at host boundaries such as tool execution/termination and automatically restore context after compaction | Apply decisions based on actual events and current core state through supported host controls |
-| Typer CLI | Explicit reads/changes for tasks, phases, memory, enclave, newsroom, delegation and messages | Send agent invocations through the same core use cases |
-
-**The core is a SQLite-backed structured memory persistence layer, a state machine, and messaging/collaboration infrastructure.** Persist originals/tasks/attempts/current facts/messages/assignments/outcomes and use state/events to determine valid transitions, next actions and waits. Connect message storage/delivery/reading/assignment/acceptance/results to manage collaboration. These roles are not separate services or duplicate ledgers.
-
-Prompts guide behavior, CLI communicates with the core, and hooks enforce core decisions at actual host boundaries. Core state and transition rules are authoritative. Do not duplicate task ledgers or independent completion rules in hooks. A SQLite record alone does not execute/interrupt a tool or deliver a message; host adapters perform actual actions and return outcomes to the core.
+The [specification](specification.md) defines the core and its three surfaces; [architecture](architecture.md) defines execution, hooks and transitions. This page specifies skill selection and the public CLI contract.
 
 ## 1. Selection criteria
 
 A skill is a **reusable procedure with decisions, ordering and verification**, not only Neurath administration. Provide useful specification/implementation/debugging/review/QA/UI/documentation workflows. Dependency audits/updates belong to selected project/specialist capabilities rather than default Neurath skills. Commits/worktree or PR creation/simple edits are host operations, not separate skills. One test command differs from QA across user scenarios.
 
 Expose CLI only for intentional agent commands or directly needed Neurath information, not CRUD per table. Consolidate current-work context queries and result reporting through the same task/attempt path. Do not hide unrelated effects behind `execute(action=...)`. The selected lists contain 14 skills and 19 core business CLI commands. Help/version and existing maintenance commands are separate; no MCP server or optional MCP adapter is provided.
-
-### Core request-processing model
-
-**Neurath Core is a stateless service.** Treat hook and CLI invocations like web-service requests. On each request, read the required current state from SQLite, process it through the use-case rules, persist necessary changes, and return a response.
-
-```text
-Hook or CLI invocation → request handling → SQLite state read → decision/transition → persist changes → response
-```
-
-**Use one SQLite database per local user.** All hook/CLI requests for that user use it regardless of project or working directory; identify projects/sessions and their relationships inside the DB. Do not create project- or session-specific database files. Scope related tasks/phases/enclave/messages/assignments/outcomes through their project/session relationships. Sharing a DB does not automatically inject unrelated project context; requested cross-project collaboration uses explicit relationships in the same store. **A Neurath project corresponds to one local Git repository.** Its main working tree, linked worktrees and subdirectories belong to the same project. Separate clones are distinct projects even with identical remote URLs. Codex app project groupings or host-specific working-directory labels do not replace this common boundary. Resolve identity through the local repository/worktree relationship, not remote-URL equality. For non-Git work, use the working folder as the project. Later git init retains the same project tasks and memory. Specify request/session project selection separately.
-
-Durable agent/task/phase/enclave/message/assignment state lives in the database. Correct handling of the next request must not depend on the previous handler process's memory, a surviving core instance, or a continuously connected session. Request-local objects/computation are allowed but are not authoritative cross-request state.
-
-This does not prescribe an HTTP server or a separately resident core daemon. Retain the prompt/hook/CLI surfaces; CLI and hook adapters invoke the same stateless core use cases. State that must survive agent execution remains in the DB.
-
-The core state machine consists of transition rules applied to database state, not live agent objects held in process memory. Messaging/collaboration similarly uses persisted assignments/delivery/acceptance/outcomes per request. Use existing host adapters for necessary external actions and persist actual outcomes, without holding DB write locks across external calls. Coordinate concurrent requests through existing transactions/relevant revisions rather than process-local memory locks alone.
 
 ## 2. Skills
 
@@ -73,13 +47,13 @@ Do not ship `recover-session`. Existing **`resume-session` CLI** handles explici
 
 `test-harness`/`optimize-harness` are not user-distributed skills. Retain their validation/improvement capabilities for Neurath development and the user-requested self-improvement process below. Merge `review-pr` into code review by target and audience-specific `dev-docs`/`user-docs` into `sync-docs`; reuse specialist Graphify capabilities.
 
-Place third-party outcome evaluation in a phase of the skill that completes the user-requested body of work. Run it after gathering implementation/check results and before the completion report, not for each TODO, intermediate reply or status update. Manage it in the run responsible for that body of work; nested or finish skills reuse the same valid evaluation instead of repeating it. Confirmed gaps return execution to the relevant work phase, followed by evaluation of changed results. The associated task remains incomplete until the evaluation phase finishes; Stop deterministically checks task state only. Add no evaluation-only task or separate approval ledger. Do not recursively apply the same evaluation phase to reviewer assignments.
+The skill completing a body of work runs the [outcome-evaluation phase](architecture.md#3-skills-and-phase-runner-contract). Nested skills reuse the same valid evaluation.
 
 ## 3. CLI-only interface
 
 **The CLI stack is Python + Typer.** Define the `neurath` entrypoint and business/maintenance commands as a Typer application. Use Python type hints and Typer command/argument/option/help definitions; delegate domain behavior to Application use cases. Keep Typer dependencies in the CLI transport layer, outside Domain. [Official Typer documentation](https://typer.tiangolo.com/).
 
-All names use **verb-object** kebab-case. Do not reexpose old object-first aliases. Action-named skills use kebab-case; established workflow names `autopilot` and `qa` remain.
+Business command names use **verb-object** kebab-case. Action-named skills use kebab-case; established workflow names `autopilot` and `qa` remain.
 
 | Tool | Inputs/outcomes and effect boundary | Effect |
 | --- | --- | --- |
@@ -118,11 +92,11 @@ Business invocations run the selected installed version. New invocations use the
 - Lesson generation/validation/deferral/retraction run within a user-requested retrospective. Read through memory tools. Explicit correction revises the attributed lesson source for runtime consumption while retaining prior effects/failures; learning cannot invent user instructions.
 - Bypass/deep diagnosis/installation/update/DB repair use a maintenance CLI available outside the failed business-command path. `get-context` exposes healthy-runtime diagnostic summaries. `update-neurath` and runtime recovery use maintenance paths as needed; implementation docs define exact CLI syntax.
 
-Distinguish user originals from agent interpretation, assignment, and correction using conversational attribution. This is an interpretation rule against invented scope, not a new input-authentication or rejection system. Process agent-transmitted assignments, work, corrections and reports within existing user instructions. Do not reject messages en masse or demand a new human prompt merely because an agent sent them. Add no hashes, signatures, non-repudiation, consent certificates or separate approval ledger for this purpose. Use ordinary conversation context and existing request references; imperfect attribution does not stop work already supported by known instructions. Clarify only a genuine scope ambiguity that prevents deciding the next action.
+Assignments and attribution follow the [request interpretation rules](specification.md#3-requests-and-outcomes).
 
 ## 5. Preserved boundaries and validation
 
-Stop/TODO projection/ingestion/separate observation and correction/actual leases and ACKs/phase finalization are internal. No tool manufactures identity/human consent/passing checks/read state without events. `read+receipt` is not purely read-only; uncertain full delivery leaves reading unconfirmed.
+Stop/TODO projection/event ingestion/actual leases and ACKs/phase finalization are internal. No tool manufactures identity/human consent/passing checks/read state without events. `read+receipt` is not purely read-only; uncertain full delivery leaves reading unconfirmed.
 
 The runner retains selected skill definitions/current attempts/remaining outcomes. Renaming skills never deletes in-flight runs. Verify actual results for config/host replacements instead of handing work back to humans. Installers cannot arbitrarily delete project/user skills.
 
@@ -168,18 +142,4 @@ Neurath release automation generates the guide prompt from Typer command/help de
 
 ## 8. Enclave and hook responsibilities
 
-**Separate enclave writes from context restoration.** Agents call `neurath update-enclave` to persist/update working facts, hypotheses, decisions and evidence in the core. Skills/rules and the generated CLI guide explain this use. A conversational statement alone does not imply persistence.
-
-After compaction, do not wait for the agent to remember a read. The post-compaction hook reads the current session/task enclave from the core and automatically supplies it through a supported context output before the next model request. Keep `neurath get-context` for explicit inspection. No new public restoration command or skill is needed.
-
-```text
-Agent → update-enclave CLI → core SQLite state
-Compaction completes → post-compaction hook → latest enclave read → model context → continue work
-```
-
-The hook does not infer new facts from the compaction summary and overwrite originals. Render bounded current facts/hypotheses/evidence for the relevant session/task. Do not restore corrected/deleted historical facts or mix another task's enclave. Startup/resume may reuse restoration, but manual invocation never substitutes for automatic post-compaction loading.
-
-“Post-compaction hook” denotes the logical context-restoration boundary after compaction. Map it to current official host contracts using `SessionStart` + `compact` with `additionalContext` in Codex and Claude Code. An event named `PostCompact`, or stdout alone, does not prove context delivery. Keep native mapping in adapters and verify delivery to the actual next model input after both auto/manual compaction. [Codex hooks](https://learn.chatgpt.com/docs/hooks), [Claude Code hooks](https://code.claude.com/docs/en/hooks#sessionstart).
-
-An empty enclave is normal and triggers no unnecessary work. Record read/injection failures as actual faults without fabricating restoration or generating endless model turns. Existing fault/wait rules govern genuinely missing information needed for current work.
-Generated rules/CLI guidance explains that the agent operates on Neurath, how commands update core state, which working context belongs in enclave, and that hooks enforce next actions from core state. Guidance owns no separate execution state or new completion conditions.
+Agents persist current facts, hypotheses, decisions and evidence with `update-enclave` and inspect them with `get-context`. Generated CLI guidance explains what to retain and how to call these commands. The [enclave restoration](architecture.md#5-enclave-memory-graphify-and-pull) hook handles automatic post-compaction loading and failures.

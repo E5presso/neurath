@@ -2,19 +2,11 @@
 
 [Home](README.md) · [한국어](CONTRIBUTING.ko.md)
 
-Follow the approved specification and the responsibility boundaries in
-[core-foundation](docs/en/core-foundation.md). Domain aggregates contain invariants.
-Repository and observation ports use `ABC` and `@abstractmethod`; their adapters
-explicitly inherit those ports. Use cases are concrete classes without interfaces. Each use case accepts a named immutable
-command or query and exposes `execute`. ORM models use Spakky declarative table bases, `Mapped`,
-`mapped_column`, `relationship`, and explicit domain conversion methods. Request adapters directly
-use the framework `Transaction`. Spakky Framework supplies `AbstractAggregateRoot`,
-`IGenericRepository`, `AbstractGenericRepository`, `@Table`/`AbstractMappableTable`,
-`SchemaRegistry`, `ConnectionManager`, `SessionManager`, and constructor injection.
-Ports and adapters inherit basic CRUD and batch methods without redefining them.
-Do not add a custom transaction/unit-of-work framework or a database configuration wrapper.
+The [core foundation](docs/en/core-foundation.md) and [task ledger](docs/en/task-ledger.md) describe current implementation and internal APIs. The [specification](docs/en/specification.md) defines product requirements. Public CLI, host hooks and installation are not yet available in this candidate.
 
-## Required development checks
+## Environment and checks
+
+Use Python 3.14.
 
 ```sh
 uv sync --locked
@@ -23,104 +15,34 @@ uv run --locked pre-commit run --all-files
 uv run --locked python tools/check.py
 ```
 
-The installer creates a private Git hook directory for this checkout and enables
-Git's per-worktree configuration. It preserves shared/user hook settings, chains
-an existing executable pre-commit hook first, and refuses to overwrite an unknown
-private hook directory. Another worktree keeps its previous hook behavior.
+The Git hook installer uses a private hook directory and per-worktree settings for this checkout. It preserves shared/user configuration, chains an existing executable pre-commit first and does not overwrite unknown private hook directories.
 
-The pre-commit configuration and required runner execute the same
-`tools/quality.py`: Ruff lint/docstrings/annotations and formatting, strict Pyrefly, Google-style pydoclint contract documentation,
-architectural AST checks, and negative/positive guard fixtures. CI executes the
-required runner, followed within that runner by all behavioral tests and a wheel
-build. The success marker is `NEURATH_CHECK_OK`. There is no current-source module
-allowlist, old-source suppression baseline, `Any` escape hatch, or type/lint-ignore
-policy. All future Python files under `src` are discovered. Tests are linted and formatted but do not require new docstrings or annotations.
-All existing code docstrings, including tests and root Python configuration, use Korean
-summaries and natural-language field descriptions. Production and development tools
-have strict annotations and Google-style docstrings. Pydoclint
-checks Args, Returns, Yields, Raises, and Attributes sections against the signatures;
-short summaries do not bypass checking. Signature annotations are the argument-type
-source, so docstring argument descriptions do not duplicate those types.
-`tools/docstrings.py` checks Korean prose in actual AST docstrings; Google section
-headings and code/type identifiers stay in their standard syntax. It checks each
-prose line for at least two Hangul characters and at least as many Hangul as English
-letters after excluding identifiers and inline code. English prose with a token
-Korean word is a negative fixture, not an accepted translation. Deliberate invalid
-fixture strings remain test data; translation quality still requires human review.
+Pre-commit and the required runner share `tools/quality.py`: Ruff lint/formatting, strict Pyrefly, Google-style pydoclint, docstring-language checks and structure/contract regression tests. The required runner then executes all behavioral tests and builds the wheel, emitting `NEURATH_CHECK_OK` on success. CI uses the same runner.
 
-## Mechanically checked rules and review limits
+Type/docstring checks cover all production sources and development tools. Tests receive lint/formatting checks without requiring new docstrings or annotations. Existing docstrings, including tests and root Python configuration, use Korean summaries and natural-language field descriptions. Keep Google section headings and code/type identifiers; define argument types in signatures.
 
-The AST checker resolves import aliases and local inheritance to reject Protocol,
-Literal, Any/cast escapes, custom named transaction/UoW APIs, Core/core modules,
-forbidden layer imports, missing port ABC/abstractmethod declarations, non-nominal
-repository/observer implementations, and non-declarative ORM mappings. It also rejects use-case interfaces,
-frozen or implicit value-equality entity dataclasses, nonprimitive repository
-contracts, observation ports exposing entities, and direct adapter construction in
-transport. Project owns immutable `ProjectLocation` values; there is no independent
-location repository, DI registration, or lifecycle. The child table is mapped through
-an ORM relationship and saved atomically with its root. Root selection and promotion
-remain domain rules. All repository insertion and update paths use `save(entity) -> entity`;
-`add`, `insert`, `create`, and `update` persistence aliases are rejected. Domain `create`
-methods and SQLAlchemy `Session.add` calls are permitted. Owned child values and
-mapped relationships have positive regression fixtures; aggregate semantics still
-require review. Resource providers may yield and close resources; transaction-owning
-generator wrappers are rejected. Pure-domain and actual DI/ORM lifecycle regression
-tests run in the shared quality hook alongside syntax and checker negative fixtures.
-The ORM rule applies to runtime models; immutable Alembic revisions use SQLAlchemy
-DDL constructs intentionally. Fixtures prove rejection, including import aliases,
-indirect inheritance, DTO masquerading as a port, and newly added modules.
+`tools/docstrings.py` is a minimal check for docstrings containing no Korean explanation outside code/formatting. It imposes no character quota, English/Korean ratio or per-line proportion. Review explanation accuracy and usefulness separately.
 
-These checks establish concrete syntax and type relationships. They cannot prove
-that a name describes a meaningful responsibility, a docstring is informative,
-a generic class is not a disguised facade, or a renamed transaction abstraction
-is semantically appropriate. Reviewers must inspect cohesion, invariants, transaction
-scope, and whether additional abstractions are justified. Do not claim lint proves
-those judgments. Deliberate dynamic code generation or reflective bypasses are not
-an accepted substitute for explicit implementation.
+## Responsibilities and framework use
 
-Object selection in repository mappings uses named variables and explicit `is None`
-branches. The narrow AST rule rejects value assignments, returns, or comprehension
-items using `mapping.get(...) or replacement`; ordinary boolean conditions remain valid.
+- Put invariants and transitions in domain objects owning the relevant state and meaning. Use cases coordinate reads, domain calls and persistence; they may raise, propagate or translate domain exceptions.
+- Express ports through explicit `ABC`/`@abstractmethod` contracts and adapters through corresponding inheritance. Do not use Protocol.
+- Use cases implement Spakky `ICommandUseCase`/`IQueryUseCase` and `run(command/query)`. Inputs inherit `AbstractCommand`/`AbstractQuery`; colocate dedicated inputs and result DTOs with their use case.
+- Reuse Spakky domain bases, default repository CRUD/batches, declarative mapping/SchemaRegistry, constructor injection and request transactions. The core foundation describes current composition. Assess additional adapters/abstractions by responsibility and need.
+- Express read-only list contracts with `Sequence`. Use `Self` for classmethod construction/conversion preserving the invoking subclass. Ruff UP checks supported Python 3.14 syntax.
 
-## Preservation and implementation scope
+Structure checks inspect actual registered component ancestry and dependency direction. Concrete tests verify current repositories, input/output contracts, mapping, resource lifetimes, migrations and domain behavior. A function, exception, name or expression alone does not establish misplaced responsibility. Do not require a DTO/suffix/frozen result for every return or infer misplaced responsibility from Any/cast/Literal/ordinary suppression comments in custom AST checks. Standard Ruff ANN rules remain enabled, including ANN401. Syntax checks do not establish semantic design quality.
 
-All database tests use temporary paths. Preserve existing schema revisions and
-add new Alembic revisions for schema changes. Test old schema fixtures, rollback,
-concurrent requests, scope isolation, and byte preservation of rejected legacy
-stores. No source test authorizes installation or conversion of user databases.
+## Schema and preservation
 
-The previous 0.3.1 implementation and its implementation-specific tests were
-removed from this candidate source tree instead of keeping an untyped parallel
-runtime. Git retains that history. The new tests preserve #137/#154 behavioral
-contracts; they do not claim the former full harness suite still passes. Tasks,
-runner, host hooks, memory, migration, and public CLI/installation remain separate
-implementation tickets. `setup` cannot install this incomplete candidate.
-
-Keep public documentation paired under `docs/en` and `docs/ko`, with the same
-relative paths and equivalent scope. Keep private paths and raw validation logs
-out of public documentation and packages.
-
-Ruff UP checks Python 3.14 syntax. Classmethod factories returning their own type use `Self`.
-The shared quality runner checks subclass construction, snapshot independence, full state
-preservation after rejected requests, Spakky request isolation and bootstrap failure cleanup.
-
-The `FRAMEWORK_CRUD` guard rejects local basic repository implementations. The
-`core_0002` migration retains existing IDs, revisions and dependent records, using
-epoch as an unknown-time marker for old metadata. Regression tests cover inherited
-CRUD and schema/data/revision rollback after migration failure.
+Retain applied Alembic revisions and add a new revision for schema changes. Temporary-database tests verify existing data/foreign keys, rollback after migration failure, races/scope isolation and rejection of invalid stores. See [core foundation](docs/en/core-foundation.md#schema-and-preservation) for schema/initialization and [migration/recovery](docs/en/recovery.md) for the historical-user-data conversion boundary.
 
 ## Statement and branch coverage
 
-The required `tools/check.py` measures the entire `src/neurath` directory with pytest-cov,
-including Alembic files loaded under dynamic module names. Statements and branches must
-both reach 100%. `--cov-fail-under=100` is followed by exact `missing_lines == 0` and
-`missing_branches == 0` checks, so rounded percentages cannot pass. JSON/XML reports are
-written to `coverage-out/` and uploaded as CI artifacts.
+`tools/check.py` measures the entire `src/neurath` directory, including dynamically loaded Alembic modules. Statements and branches must each reach 100%, with `missing_lines`, `missing_branches` and `excluded_lines` all exactly zero in the final report. Rounded percentages cannot pass.
 
-Do not meet the threshold using omit settings, custom exclusions, `pragma: no cover`,
-or `pragma: no branch`. Keep regression tests rejecting configuration/comment bypasses
-and actual statement-only or branch-only gaps. Behavioral tests cover data-preserving
-downgrade, complete rollback of rejected destructive downgrade, invalid connections,
-unrelated integrity failures and incomplete observation adapters.
+Do not meet the threshold using omit settings, custom exclusions, `pragma: no cover` or `pragma: no branch`. JSON/XML reports are written to `coverage-out/` and retained as CI artifacts. Regression tests exercise real failure/healthy behavior and rejection of gate bypasses.
 
-Reports must also have `excluded_lines == 0`; a real report reaching 100% through exclusions is rejected.
+## Documentation
+
+Keep public documents paired under `docs/en` and `docs/ko` with matching relative paths and equivalent scope. README and CONTRIBUTING also have English/Korean editions. Keep private paths and raw validation logs out of public documentation/packages. The [documentation index](docs/en/index.md) explains page responsibilities and separates implementation from product design.

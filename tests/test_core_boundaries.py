@@ -10,17 +10,22 @@ from spakky.core.application.application_context import ApplicationContext
 from spakky.plugins.sqlalchemy.persistency.session_manager import SessionManager
 from sqlalchemy import event, text
 
-from neurath.application.context import SessionContext
 from neurath.application.ports.repositories.project import IProjectRepository
 from neurath.application.ports.repositories.session import ISessionRepository
+from neurath.application.usecases.get_session_context import GetSessionContextResult
 from neurath.domain.aggregates.project import Project, ProjectKind, ProjectLocation
 from neurath.domain.aggregates.session import HostSession
 from neurath.domain.errors import ContextNotFound, ProjectIdentityConflict, RevisionConflict
 from neurath.domain.observations import DirectoryObservation
 from neurath.infrastructure import providers
 from neurath.infrastructure.providers import DatabaseSettings, request_container
-from neurath.transport.session_requests import get_session_context, move_session, register_session
 from tests.conftest import initialize_git, storage_scope
+from tests.support.session_requests import (
+    get_session_context,
+    move_session,
+    register_session,
+    session_state,
+)
 
 
 def persisted_state(database):
@@ -31,35 +36,37 @@ def persisted_state(database):
         }
 
 
-def test_self_factories_preserve_the_invoked_subclass_and_snapshot_independence():
+def test_self_factories_preserve_subclasses_and_results_keep_their_explicit_payloads():
     class SpecializedProject(Project):
         pass
 
     class SpecializedSession(HostSession):
         pass
 
-    class SpecializedContext(SessionContext):
+    class SpecializedResult(GetSessionContextResult):
         pass
 
     project = SpecializedProject.create(DirectoryObservation("/repo"))
     session = SpecializedSession.create(project.id, "codex", "native", "/repo")
-    context = SpecializedContext.from_entities(project, session)
+    context = SpecializedResult(project=project, session=session)
     assert type(project) is SpecializedProject
     assert type(session) is SpecializedSession
-    assert type(context) is SpecializedContext
+    assert type(context) is SpecializedResult
     assert SpecializedProject.owner_of((project,)) is project
     assert SpecializedProject.owner_of(()) is None
-    project.root_path = "/changed"
-    session.move("/next", 1)
-    assert context.project.root_path == "/repo"
-    assert context.session.working_directory == "/repo"
-    for value, attribute, replacement in (
-        (context, "project", context.project),
-        (context.project, "root_path", "/invalid"),
-        (context.session, "working_directory", "/invalid"),
-    ):
-        with pytest.raises(FrozenInstanceError):
-            setattr(value, attribute, replacement)
+    assert context.project is project and context.session is session
+    with pytest.raises(FrozenInstanceError):
+        context.project = project
+
+
+def test_mutating_returned_entities_does_not_write_outside_the_request(database, repository):
+    first = register_session(str(repository), "codex", "native", database_path=database)
+    expected = session_state(first)
+    loaded = get_session_context(first.project.id, first.session.id, database_path=database)
+    loaded.project.root_path = "/changed"
+    loaded.session.move("/changed", loaded.session.revision)
+    current = get_session_context(first.project.id, first.session.id, database_path=database)
+    assert session_state(current) == expected
 
 
 def test_mixed_location_conflict_never_partially_adds_folder_alias():
@@ -88,7 +95,9 @@ def test_invalid_registration_preserves_all_existing_records(
     with pytest.raises(ValueError):
         register_session(str(repository), provider, native, database_path=database)
     assert persisted_state(database) == before
-    assert get_session_context(first.project.id, first.session.id, database_path=database) == first
+    assert session_state(
+        get_session_context(first.project.id, first.session.id, database_path=database)
+    ) == session_state(first)
 
 
 @pytest.mark.parametrize("operation", ["read", "move"])
@@ -126,7 +135,7 @@ def test_stale_move_rolls_back_folder_to_git_alias_promotion(database, tmp_path)
         move_session(first.project.id, first.session.id, str(tmp_path), 0, database_path=database)
     assert persisted_state(database) == before
     resumed = register_session(str(tmp_path), "codex", "retained", database_path=database)
-    assert resumed == first
+    assert session_state(resumed) == session_state(first)
     assert len(persisted_state(database)["core_project_locations"]) == 2
 
 
@@ -207,6 +216,8 @@ def test_spakky_bootstrap_failure_preserves_original_error_and_disposes_engine(
             pytest.fail("A failed bootstrap must not enter the request")
     assert len(disposed) == 1
     assert persisted_state(database) == before
+    with pytest.raises(LookupError):
+        providers.request_config()
 
 
 @pytest.mark.parametrize("failure", [OSError("git missing"), subprocess.TimeoutExpired("git", 10)])

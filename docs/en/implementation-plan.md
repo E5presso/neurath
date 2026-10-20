@@ -4,7 +4,7 @@
 
 Tracking: [#153](https://github.com/E5presso/neurath/issues/153).
 
-This is the ticketed implementation plan. Ticket creation and documentation coverage do not establish implemented or host-validated behavior.
+This plan records implementation order and requirement ownership. The [core foundation](core-foundation.md) and [task ledger](task-ledger.md) describe the current checkout. This table is not live GitHub issue/PR status and does not establish complete implementation or host validation.
 
 | Ticket | Dependencies | Requirement cases | Capability results |
 | --- | --- | --- | --- |
@@ -39,3 +39,5 @@ All 84 requirement cases and 27 capability results have a primary implementation
 The internal request-scoped identity/storage foundation for #137 is described in
 [Core foundation](core-foundation.md). Isolated tests do not establish live hook,
 CLI, migration, or deployment completion; those remain in their assigned tickets.
+
+[Task ledger implementation](task-ledger.md) is the current #140 scope, not completion of subsequent runner/host/CLI work.

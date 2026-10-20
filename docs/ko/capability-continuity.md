@@ -85,7 +85,7 @@
 | `newsroom_peers` | get-context | CLI | 피어 목록의 중복 제거 | B17 |
 | `newsroom_seen` | article read receipt | internal | 실제 전체 읽기 결과로 기록; 에이전트 자기 신고 제거 | B17 |
 | `artifact_put` | host artifact tools + internal reference ingestion | host+internal | 파일 저장을 중복 구현하지 않고 결과 보고/체크포인트에 참조 보존 | B18 |
-| `artifact_read` | read-memory / host artifact tools | CLI+host | Neurath 기록 참조는 memory_read, 원 파일은 호스트 읽기 | B18 |
+| `artifact_read` | read-memory / host artifact tools | CLI+host | Neurath 기록 참조는 read-memory, 원 파일은 호스트 읽기 | B18 |
 | `memory_recall` | search-memory / read-memory | CLI | 관련 이력/교훈을 유형·상태로 검색 후 상세 조회 | B18 |
 | `memory_checkpoint` | save-checkpoint | CLI | 보고 저장 하나에 스킬 불필요 | B18 |
 | `memory_pull` | search-memory / read-memory / resume-session | CLI | 발견·미리보기와 실제 인수의 효과 분리 | B18 |
