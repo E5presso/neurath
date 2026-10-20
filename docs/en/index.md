@@ -2,7 +2,7 @@
 
 [Home](../../README.md) · [한국어](../ko/index.md)
 
-This checkout is an internal Python library implementing the #137 project/session foundation and #140 source/task/TODO ledger. Public CLI, host hooks and installation are not yet available. The sections below distinguish product design from implemented behavior.
+This checkout is an internal Python library implementing the #137 project/session foundation, #140 source/task/TODO ledger, and #141 phase execution. Public CLI, host hooks and installation are not yet available. The sections below distinguish product design from implemented behavior.
 
 ## Product design
 
@@ -23,6 +23,7 @@ This checkout is an internal Python library implementing the #137 project/sessio
 | --- | --- |
 | [Project/session foundation](core-foundation.md) | Request lifetime, persistence/mapping, schema and internal API example |
 | [Source/task/TODO ledger](task-ledger.md) | Internal APIs and preserved behavior for states, corrections, dependencies, attempts and waits |
+| [Skill/phase runner](workflow-runner.md) | Selected definitions, attempts, process execution, reconciliation and task linkage |
 | [Contributing](../../CONTRIBUTING.md) | Environment, coding guidance, quality checks and coverage |
 
 Git history retains earlier runtime guidance and candidate-verification/audit records. These designs and temporary-database tests do not modify or activate an existing installation.

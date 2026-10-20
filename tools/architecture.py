@@ -25,23 +25,28 @@ class ArchitectureChecker:
                         self.aliases[f"{module}.{item.asname or item.name.split('.')[0]}"] = (
                             item.name if item.asname else item.name.split(".")[0]
                         )
-                elif isinstance(node, ast.ImportFrom):
+                    continue
+                if isinstance(node, ast.ImportFrom):
                     imported = self._import_module(module, node)
                     for item in node.names:
                         self.aliases[f"{module}.{item.asname or item.name}"] = (
                             f"{imported}.{item.name}"
                         )
-                elif isinstance(node, ast.ClassDef):
+                    continue
+                if isinstance(node, ast.ClassDef):
                     self.classes[f"{module}.{node.name}"] = node
             for node in tree.body:
-                if isinstance(node, ast.Assign) and len(node.targets) == 1:
-                    target = node.targets[0]
-                    if isinstance(target, ast.Name) and isinstance(
-                        node.value, (ast.Name, ast.Attribute)
-                    ):
-                        self.aliases[f"{module}.{target.id}"] = self._name(module, node.value)
-                elif isinstance(node, ast.TypeAlias) and isinstance(node.name, ast.Name):
+                if isinstance(node, ast.TypeAlias) and isinstance(node.name, ast.Name):
                     self.aliases[f"{module}.{node.name.id}"] = self._name(module, node.value)
+                    continue
+                if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+                    continue
+                target = node.targets[0]
+                if not isinstance(target, ast.Name) or not isinstance(
+                    node.value, (ast.Name, ast.Attribute)
+                ):
+                    continue
+                self.aliases[f"{module}.{target.id}"] = self._name(module, node.value)
 
     def _import_module(self, module: str, node: ast.ImportFrom) -> str:
         """임포트하는 모듈의 패키지를 기준으로 상대 임포트를 해석한다.
@@ -104,17 +109,101 @@ class ArchitectureChecker:
             result.update(self._ancestors(self._name(module, base), visited))
         return result
 
-    def check(self) -> list[str]:
-        """Protocol·계층 의존·추상 port·등록 구성요소·Self 반환·커버리지 제외를 검사한다.
+    def _check_import(self, module: str, node: ast.Import | ast.ImportFrom) -> list[str]:
+        """단일 import의 계층 의존 방향과 명시적인 Protocol 반입을 검사한다.
 
-        전달받은 소스를 실행하지 않고 AST와 import 별칭·상속 관계로 판단한다.
-        코드가 어떤 도메인 책임을 소유해야 하는지나 추상화의 필요성은 판정하지 않는다.
+        Args:
+            module: import가 포함된 소스 모듈 이름.
+            node: 검사할 import 구문.
 
         Returns:
-            list[str]: 구체적인 계약 위반의 위치와 규칙 코드.
+            list[str]: 이 import에서 발견한 의존 방향·타입 계약 위반.
         """
         errors: list[str] = []
-        protocols = {"typing.Protocol", "typing_extensions.Protocol"}
+        location = f"{module}:{node.lineno}"
+        imported_modules = (
+            [item.name for item in node.names]
+            if isinstance(node, ast.Import)
+            else [self._import_module(module, node)]
+        )
+        for imported in imported_modules:
+            if module.startswith("neurath.domain.") and imported.startswith(
+                (
+                    "neurath.application",
+                    "neurath.infrastructure",
+                    "neurath.transport",
+                    "sqlalchemy",
+                    "alembic",
+                    "spakky.data",
+                    "spakky.plugins.sqlalchemy",
+                )
+            ):
+                errors.append(f"{location} DOMAIN_BOUNDARY: {imported}")
+            if module.startswith("neurath.application.") and imported.startswith(
+                (
+                    "neurath.infrastructure",
+                    "neurath.transport",
+                    "sqlalchemy",
+                    "alembic",
+                )
+            ):
+                errors.append(f"{location} APPLICATION_BOUNDARY: {imported}")
+            if module.startswith("neurath.infrastructure.") and imported.startswith(
+                ("neurath.transport",)
+            ):
+                errors.append(f"{location} INFRASTRUCTURE_BOUNDARY: {imported}")
+        if (
+            isinstance(node, ast.ImportFrom)
+            and node.module in {"typing", "typing_extensions"}
+            and any(item.name == "Protocol" for item in node.names)
+        ):
+            errors.append(
+                f"{location} FORBIDDEN_TYPE: Protocol was explicitly excluded from this project"
+            )
+        return errors
+
+    def _check_port(self, module: str, node: ast.ClassDef, ancestors: set[str]) -> list[str]:
+        """명시적 port 선언에만 추상 기반과 메서드 계약 검사를 적용한다.
+
+        Args:
+            module: 클래스가 선언된 모듈 이름.
+            node: 검사할 클래스 선언.
+            ancestors: 별칭·간접 상속을 해석한 기반 타입 이름들.
+
+        Returns:
+            list[str]: 추상 계약이 빠진 port와 메서드의 진단.
+        """
+        if not (
+            module.startswith("neurath.application.ports.")
+            and node.name.startswith("I")
+            and node.name[1:2].isupper()
+        ):
+            return []
+        errors: list[str] = []
+        if "abc.ABC" not in ancestors:
+            errors.append(f"{module}:{node.lineno} NOMINAL_PORT: declare an abstract nominal port")
+        for method in node.body:
+            if not isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if any(
+                self._name(module, item) == "abc.abstractmethod" for item in method.decorator_list
+            ):
+                continue
+            errors.append(f"{module}:{method.lineno} ABSTRACT_METHOD: {node.name}.{method.name}")
+        return errors
+
+    def _check_class(self, module: str, node: ast.ClassDef) -> list[str]:
+        """등록된 구성요소의 기반과 하위 타입을 보존하는 생성 메서드를 검사한다.
+
+        Args:
+            module: 클래스가 선언된 모듈 이름.
+            node: 실제 데코레이터·상속·메서드를 확인할 선언.
+
+        Returns:
+            list[str]: 이 클래스와 메서드의 명시적 계약 위반.
+        """
+        errors: list[str] = []
+        location = f"{module}:{node.lineno}"
         usecase_contracts = {
             f"{package}.{name}"
             for package in (
@@ -138,12 +227,94 @@ class ArchitectureChecker:
             "spakky.data.persistency.repository.IGenericRepository",
             "spakky.plugins.sqlalchemy.persistency.repository.AbstractGenericRepository",
         }
+        symbol = f"{module}.{node.name}"
+        ancestors = self._ancestors(symbol)
+        decorators = {
+            self._name(module, item.func if isinstance(item, ast.Call) else item)
+            for item in node.decorator_list
+        }
+        errors.extend(self._check_port(module, node, ancestors))
+        has_port = any(
+            parent in self.classes
+            and parent.startswith("neurath.application.ports.")
+            and "abc.ABC" in self._ancestors(parent)
+            for parent in ancestors
+        )
+        if (
+            "spakky.data.stereotype.repository.Repository" in decorators
+            and not has_port
+            and not ancestors.intersection(repository_bases)
+        ):
+            errors.append(
+                f"{location} NOMINAL_IMPLEMENTATION: declare the repository contract being implemented"
+            )
+        if "spakky.core.stereotype.usecase.UseCase" in decorators and not ancestors.intersection(
+            usecase_contracts
+        ):
+            errors.append(f"{location} FRAMEWORK_USECASE: implement a Spakky use-case contract")
+        if "spakky.plugins.sqlalchemy.orm.table.Table" in decorators and not ancestors.intersection(
+            table_bases
+        ):
+            errors.append(
+                f"{location} DECLARATIVE_ORM: registered Table models require their declarative base"
+            )
+        for method in node.body:
+            if (
+                not isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef))
+                or not method.args.args
+            ):
+                continue
+            if not any(
+                self._name(module, item).rsplit(".", 1)[-1] == "classmethod"
+                for item in method.decorator_list
+            ):
+                continue
+            constructed_type = method.args.args[0].arg
+            returned = [
+                item.value
+                for item in ast.walk(method)
+                if isinstance(item, ast.Return)
+                and item.value is not None
+                and not (isinstance(item.value, ast.Constant) and item.value.value is None)
+            ]
+            preserves_subclass = bool(returned) and all(
+                isinstance(value, ast.Call)
+                and isinstance(value.func, ast.Name)
+                and value.func.id == constructed_type
+                for value in returned
+            )
+            if (
+                preserves_subclass
+                and method.returns is not None
+                and any(
+                    isinstance(annotation, (ast.Name, ast.Attribute))
+                    and self._name(module, annotation) == symbol
+                    for annotation in ast.walk(method.returns)
+                )
+            ):
+                errors.append(
+                    f"{module}:{method.lineno} SELF_RETURN: a cls constructor preserves the caller's subtype"
+                )
+        return errors
+
+    def check(self) -> list[str]:
+        """소스·import·클래스별 검사를 모아 위치와 규칙 코드로 반환한다.
+
+        각 구문에 적용되지 않는 검사는 건너뛰되, 한 구문에서 발견한 여러 진단을
+        모두 보존한다. 구문 검사로 도메인 책임이나 추상화의 필요성을 판정하지 않는다.
+
+        Returns:
+            list[str]: 중복을 제거하고 정렬한 현재 소스의 계약 위반 목록.
+        """
+        errors: list[str] = []
+        protocols = {"typing.Protocol", "typing_extensions.Protocol"}
         for module, tree in self.trees.items():
             for line, source_line in enumerate(self.sources[module].splitlines(), 1):
-                if re.search(r"#\s*pragma:\s*no\s*(cover|branch)", source_line):
-                    errors.append(
-                        f"{module}:{line} SUPPRESSION: coverage exclusions violate the requested zero-exclusion check"
-                    )
+                if not re.search(r"#\s*pragma:\s*no\s*(cover|branch)", source_line):
+                    continue
+                errors.append(
+                    f"{module}:{line} SUPPRESSION: coverage exclusions violate the requested zero-exclusion check"
+                )
             for node in ast.walk(tree):
                 location = f"{module}:{getattr(node, 'lineno', 1)}"
                 if (
@@ -154,131 +325,11 @@ class ArchitectureChecker:
                         f"{location} FORBIDDEN_TYPE: Protocol was explicitly excluded from this project"
                     )
                 if isinstance(node, (ast.Import, ast.ImportFrom)):
-                    imported_modules = (
-                        [item.name for item in node.names]
-                        if isinstance(node, ast.Import)
-                        else [self._import_module(module, node)]
-                    )
-                    for imported in imported_modules:
-                        if module.startswith("neurath.domain.") and imported.startswith(
-                            (
-                                "neurath.application",
-                                "neurath.infrastructure",
-                                "neurath.transport",
-                                "sqlalchemy",
-                                "alembic",
-                                "spakky.data",
-                                "spakky.plugins.sqlalchemy",
-                            )
-                        ):
-                            errors.append(f"{location} DOMAIN_BOUNDARY: {imported}")
-                        if module.startswith("neurath.application.") and imported.startswith(
-                            (
-                                "neurath.infrastructure",
-                                "neurath.transport",
-                                "sqlalchemy",
-                                "alembic",
-                            )
-                        ):
-                            errors.append(f"{location} APPLICATION_BOUNDARY: {imported}")
-                        if module.startswith("neurath.infrastructure.") and imported.startswith(
-                            ("neurath.transport",)
-                        ):
-                            errors.append(f"{location} INFRASTRUCTURE_BOUNDARY: {imported}")
-                    if (
-                        isinstance(node, ast.ImportFrom)
-                        and node.module in {"typing", "typing_extensions"}
-                        and any(item.name == "Protocol" for item in node.names)
-                    ):
-                        errors.append(
-                            f"{location} FORBIDDEN_TYPE: Protocol was explicitly excluded from this project"
-                        )
+                    errors.extend(self._check_import(module, node))
+                    continue
                 if not isinstance(node, ast.ClassDef):
                     continue
-                symbol = f"{module}.{node.name}"
-                ancestors = self._ancestors(symbol)
-                decorators = {
-                    self._name(module, item.func if isinstance(item, ast.Call) else item)
-                    for item in node.decorator_list
-                }
-                port = (
-                    module.startswith("neurath.application.ports.")
-                    and node.name.startswith("I")
-                    and node.name[1:2].isupper()
-                )
-                if port:
-                    if "abc.ABC" not in ancestors:
-                        errors.append(f"{location} NOMINAL_PORT: declare an abstract nominal port")
-                    for method in node.body:
-                        if isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef)) and not any(
-                            self._name(module, item) == "abc.abstractmethod"
-                            for item in method.decorator_list
-                        ):
-                            errors.append(
-                                f"{module}:{method.lineno} ABSTRACT_METHOD: {node.name}.{method.name}"
-                            )
-                if "spakky.data.stereotype.repository.Repository" in decorators:
-                    has_port = any(
-                        parent in self.classes
-                        and parent.startswith("neurath.application.ports.")
-                        and "abc.ABC" in self._ancestors(parent)
-                        for parent in ancestors
-                    )
-                    if not has_port and not ancestors.intersection(repository_bases):
-                        errors.append(
-                            f"{location} NOMINAL_IMPLEMENTATION: declare the repository contract being implemented"
-                        )
-                if (
-                    "spakky.core.stereotype.usecase.UseCase" in decorators
-                    and not ancestors.intersection(usecase_contracts)
-                ):
-                    errors.append(
-                        f"{location} FRAMEWORK_USECASE: implement a Spakky use-case contract"
-                    )
-                if (
-                    "spakky.plugins.sqlalchemy.orm.table.Table" in decorators
-                    and not ancestors.intersection(table_bases)
-                ):
-                    errors.append(
-                        f"{location} DECLARATIVE_ORM: registered Table models require their declarative base"
-                    )
-                for method in node.body:
-                    if (
-                        not isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef))
-                        or not method.args.args
-                    ):
-                        continue
-                    if not any(
-                        self._name(module, item).rsplit(".", 1)[-1] == "classmethod"
-                        for item in method.decorator_list
-                    ):
-                        continue
-                    constructed_type = method.args.args[0].arg
-                    returned = [
-                        item.value
-                        for item in ast.walk(method)
-                        if isinstance(item, ast.Return)
-                        and item.value is not None
-                        and not (isinstance(item.value, ast.Constant) and item.value.value is None)
-                    ]
-                    preserves_subclass = bool(returned) and all(
-                        isinstance(value, ast.Call)
-                        and isinstance(value.func, ast.Name)
-                        and value.func.id == constructed_type
-                        for value in returned
-                    )
-                    if (
-                        preserves_subclass
-                        and method.returns is not None
-                        and any(
-                            isinstance(annotation, (ast.Name, ast.Attribute))
-                            and self._name(module, annotation) == symbol
-                            for annotation in ast.walk(method.returns)
-                        )
-                    ):
-                        errors.append(
-                            f"{module}:{method.lineno} SELF_RETURN: a cls constructor preserves the caller's subtype"
-                        )
+                errors.extend(self._check_class(module, node))
         return sorted(set(errors))
 
 

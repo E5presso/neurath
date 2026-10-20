@@ -3,8 +3,7 @@
 [Documentation](index.md) · [Core foundation](core-foundation.md) · [한국어](../ko/task-ledger.md)
 
 #140 connects original requirements, corrections, current work and attempt submissions/results
-in one SQLite ledger. These are internal Python request APIs. Public CLI, host hooks and the
-phase runner remain subsequent work.
+in one SQLite ledger. These are internal Python request APIs. Public CLI and host hooks remain subsequent work; #141 adds the [phase runner](workflow-runner.md).
 
 ## Domain and persistence
 
@@ -104,6 +103,6 @@ whole-product 100% statement/branch and zero-exclusion checks remain enforced by
 runner and CI.
 
 References record caller observations; a string is not independent proof of remote execution
-or human authentication. Host observation integration, runner, completion/third-party evaluation
+or human authentication. Host observation integration, completion/third-party evaluation
 and actual installation/cutover remain subsequent tickets. Tests use temporary stores and do
 not modify user databases or installed distributions.

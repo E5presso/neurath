@@ -598,6 +598,13 @@ def test_current_collection_ports_and_domain_state_types_match_the_reviewed_cont
         ("start_task", "StartTaskUseCase", "StartTaskResult"),
         ("submit_result", "SubmitResultUseCase", "SubmitResult"),
         ("wait_task", "WaitTaskUseCase", "WaitTaskResult"),
+        ("start_workflow", "StartWorkflowUseCase", "StartWorkflowResult"),
+        ("get_workflow", "GetWorkflowUseCase", "GetWorkflowResult"),
+        ("prepare_phase", "PreparePhaseUseCase", "PreparePhaseResult"),
+        ("report_phase", "ReportPhaseUseCase", "ReportPhaseResult"),
+        ("revise_workflow", "ReviseWorkflowUseCase", "ReviseWorkflowResult"),
+        ("skip_phase", "SkipPhaseUseCase", "SkipPhaseResult"),
+        ("execute_phase", "ExecutePhaseUseCase", "ExecutePhaseResult"),
     ],
 )
 def test_reviewed_case_specific_result_contract_is_colocated(
@@ -654,3 +661,132 @@ def echo(value: {annotation}) -> {annotation}:
     else:
         assert result.returncode != 0
         assert "ANN401" in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("rule", "nested", "guarded"),
+    [
+        (
+            "RET505",
+            "    if values:\n        return values[0]\n    else:\n        return 0\n",
+            "    if not values:\n        return 0\n    return values[0]\n",
+        ),
+        (
+            "RET506",
+            '    if not values:\n        raise ValueError("empty")\n    else:\n        return values[0]\n',
+            '    if not values:\n        raise ValueError("empty")\n    return values[0]\n',
+        ),
+        (
+            "RET507",
+            "    total = 0\n    for value in values:\n        if value < 0:\n            continue\n        else:\n            total += value\n    return total\n",
+            "    total = 0\n    for value in values:\n        if value < 0:\n            continue\n        total += value\n    return total\n",
+        ),
+        (
+            "RET508",
+            "    total = 0\n    for value in values:\n        if value == 0:\n            break\n        else:\n            total += value\n    return total\n",
+            "    total = 0\n    for value in values:\n        if value == 0:\n            break\n        total += value\n    return total\n",
+        ),
+    ],
+)
+def test_shared_ruff_rules_reject_terminal_else_and_accept_guard_clauses(
+    tmp_path, rule, nested, guarded
+):
+    import json
+
+    prefix = '''"""종료한 분기 뒤의 불필요한 else를 검사하는 입력이다."""
+
+
+def score(values: list[int]) -> int:
+    """입력에 대응하는 점수를 계산한다.
+
+    Args:
+        values: 검사할 정수 목록.
+
+    Returns:
+        int: 선택하거나 누적한 점수.
+    """
+'''
+    fixture = tmp_path / "control_flow.py"
+    config = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    for body, expected in ((nested, {rule}), (guarded, set())):
+        fixture.write_text(prefix + body)
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "ruff",
+                "check",
+                "--config",
+                str(config),
+                "--output-format",
+                "json",
+                str(fixture),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert {item["code"] for item in json.loads(result.stdout)} == expected
+        assert result.returncode == bool(expected)
+
+
+def test_control_flow_rules_allow_nonterminal_alternatives(tmp_path):
+    fixture = tmp_path / "alternatives.py"
+    fixture.write_text('''"""양쪽 분기가 값을 만드는 정당한 조건 분기의 입력이다."""
+
+
+def magnitude(value: int) -> int:
+    """입력의 부호에 맞춰 크기를 선택한다.
+
+    Args:
+        value: 부호를 판정할 정수.
+
+    Returns:
+        int: 선택한 절댓값.
+    """
+    if value >= 0:
+        result = value
+    else:
+        result = -value
+    return result
+''')
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ruff",
+            "check",
+            "--config",
+            str(Path(__file__).resolve().parents[1] / "pyproject.toml"),
+            str(fixture),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_checker_retains_all_independent_findings_after_guard_refactor():
+    source = """
+import sqlalchemy
+from typing import Protocol
+from spakky.core.stereotype.usecase import UseCase
+from spakky.data.stereotype.repository import Repository
+from spakky.plugins.sqlalchemy.orm.table import Table
+@UseCase()
+@Repository()
+@Table()
+class IInvalid:
+    def run(self):
+        pass
+"""
+    errors = ArchitectureChecker({"neurath.application.ports.invalid": source}).check()
+    codes = {error.split()[1].rstrip(":") for error in errors}
+    assert codes == {
+        "APPLICATION_BOUNDARY",
+        "FORBIDDEN_TYPE",
+        "NOMINAL_PORT",
+        "ABSTRACT_METHOD",
+        "NOMINAL_IMPLEMENTATION",
+        "FRAMEWORK_USECASE",
+        "DECLARATIVE_ORM",
+    }

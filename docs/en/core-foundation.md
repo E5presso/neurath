@@ -64,8 +64,8 @@ The enclosing transaction rolls back both parent and child changes on failure.
 ## Schema and preservation
 
 Explicit initialization upgrades through the distributed Alembic head, currently
-`core_0003`. `core_0002` adds metadata, project revision and location ownership enforcement;
-`core_0003` adds the [source/task ledger](task-ledger.md). Applied revisions remain
+`core_0004`. `core_0002` adds metadata, project revision and location ownership enforcement;
+`core_0003` adds the [source/task ledger](task-ledger.md), and `core_0004` adds [workflow definitions and attempts](workflow-runner.md). Applied revisions remain
 unchanged, preserving existing IDs, session revisions, project/location/session values
 and dependent foreign keys.
 
@@ -119,7 +119,7 @@ identity and explicit/concurrent initialization. Migration tests retain original
 values and dependent records, repeat initialization and verify full rollback after
 migration failure. See [Contributing](../../CONTRIBUTING.md) for running the checks.
 
-Runner, host hooks, memory, collaboration, public CLI, actual user-data migration
+Host hooks, memory, collaboration, public CLI, actual user-data migration
 and installation remain subsequent tickets. `setup` rejects installation of this
 foundation candidate. Source changes do not alter user databases or installed distributions.
 

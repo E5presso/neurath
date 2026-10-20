@@ -321,7 +321,7 @@ def test_destructive_downgrade_is_rejected_and_rolls_back_intermediate_metadata_
     ) == session_state(original)
     with closing(sqlite3.connect(database)) as connection:
         assert connection.execute("SELECT version_num FROM core_schema_revision").fetchone() == (
-            "core_0003",
+            "core_0004",
         )
         assert connection.execute(
             "SELECT name FROM sqlite_master WHERE type='trigger'"
@@ -352,13 +352,14 @@ def test_alembic_files_alone_define_the_deployed_schema_head(
     first = register_session(str(repository), "codex", "native", database_path=database)
     scripts = tmp_path / "deployment-migrations"
     copytree(Path(migrations.__file__).parent, scripts)
+    deployed_head = ScriptDirectory(str(scripts)).get_current_head()
     (
-        scripts / "versions" / "core_0004_review_probe.py"
-    ).write_text('''"""배포 리비전 추가만으로 호환성 판단이 갱신되는지 검증한다."""
+        scripts / "versions" / "review_probe.py"
+    ).write_text(f'''"""배포 리비전 추가만으로 호환성 판단이 갱신되는지 검증한다."""
 from alembic import op
 from sqlalchemy import Column, Integer
-revision = "core_0004_review_probe"
-down_revision = "core_0003"
+revision = "review_probe"
+down_revision = "{deployed_head}"
 branch_labels = None
 depends_on = None
 def upgrade():
@@ -379,7 +380,7 @@ def downgrade():
     ) == session_state(first)
     with closing(sqlite3.connect(database)) as connection:
         assert connection.execute("SELECT version_num FROM core_schema_revision").fetchone() == (
-            "core_0004_review_probe",
+            "review_probe",
         )
         assert connection.execute("SELECT COUNT(*) FROM review_probe").fetchone() == (0,)
 

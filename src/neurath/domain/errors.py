@@ -23,3 +23,7 @@ class StorageNotReady(NeurathError):
 
 class InvalidTaskState(NeurathError):
     """원문·현재 개정·시도 또는 상태 전이의 조건이 맞지 않는 경우다."""
+
+
+class InvalidWorkflowState(NeurathError):
+    """단계 순서·현재 정의·검증 조건 또는 실행 한도에 맞지 않는 전이 요청이다."""

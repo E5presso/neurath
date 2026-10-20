@@ -41,3 +41,5 @@ The internal request-scoped identity/storage foundation for #137 is described in
 CLI, migration, or deployment completion; those remain in their assigned tickets.
 
 [Task ledger implementation](task-ledger.md) is the current #140 scope, not completion of subsequent runner/host/CLI work.
+
+[Phase runner implementation](workflow-runner.md) describes the #141 internal APIs, local execution and reconciliation boundary.

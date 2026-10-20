@@ -59,9 +59,9 @@ Project 저장은 소유한 위치 관계까지 기본 merge로 반영합니다.
 
 ## 스키마와 보존
 
-명시적 초기화는 배포된 Alembic head까지 적용합니다. 현재 head는 `core_0003`입니다.
+명시적 초기화는 배포된 Alembic head까지 적용합니다. 현재 head는 `core_0004`입니다.
 `core_0002`는 메타데이터·프로젝트 revision·위치 소유 제약을, `core_0003`는
-[원문·태스크 원장](task-ledger.md)을 추가합니다. 적용된 이전 revision은 수정하지 않으며
+[원문·태스크 원장](task-ledger.md)을 추가합니다. `core_0004`는 [단계 실행](workflow-runner.md)의 정의·시도 이력을 추가합니다. 적용된 이전 revision은 수정하지 않으며
 기존 ID·세션 revision·프로젝트·위치·세션 데이터와 종속 외래 키를 유지합니다.
 
 기존 행에는 원래 시각이 없으므로 epoch를 **미상 표식**으로 저장합니다. 이 값을 실제
@@ -109,7 +109,7 @@ with request_container(DatabaseSettings(path, write=False)) as scope:
 Git/worktree/clone 구분과 명시적·동시 초기화를 검증합니다. 이전 스키마의 값·종속 자료 보존,
 반복 이전, 이전 도중 실패의 전체 롤백도 확인합니다. 검사 실행 방법은 [기여 안내](../../CONTRIBUTING.ko.md)를 참고하세요.
 
-runner·호스트 훅·기억·협업·공개 CLI·실제 사용자 자료 이전·설치는 후속 티켓입니다.
+호스트 훅·기억·협업·공개 CLI·실제 사용자 자료 이전·설치는 후속 티켓입니다.
 `setup`은 이 기반 후보의 설치를 거부합니다. 실제 사용자 DB와 설치된 배포본은 이번 소스
 수정으로 변경하지 않습니다.
 

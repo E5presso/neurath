@@ -253,10 +253,10 @@ class Task(AbstractAggregateRoot[str]):
             InvalidTaskState: 이미 보존한 확정 결과를 바꾸려 한 경우.
         """
         attempt = self.attempt(number)
-        if attempt.result is not None:
-            if attempt.result != result:
-                raise InvalidTaskState("A recorded result cannot be overwritten")
+        if attempt.result == result:
             return
+        if attempt.result is not None:
+            raise InvalidTaskState("A recorded result cannot be overwritten")
         self.require_revision(expected_revision)
         updated = replace(attempt, result=result)
         self.attempts = tuple(updated if item.number == number else item for item in self.attempts)

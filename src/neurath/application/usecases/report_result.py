@@ -7,8 +7,9 @@ from spakky.core.stereotype.usecase import UseCase
 from spakky.domain.application.command import AbstractCommand, ICommandUseCase
 
 from neurath.application.ports.repositories.task import ITaskRepository
+from neurath.application.ports.repositories.workflow import IWorkflowRepository
 from neurath.domain.aggregates.task import Task
-from neurath.domain.task_records import TaskResult
+from neurath.domain.task_records import Outcome, TaskResult
 
 
 @dataclass(frozen=True)
@@ -53,13 +54,15 @@ class ReportResultUseCase(ICommandUseCase[ReportResultCommand, ReportResult]):
     관찰 참조는 전달받아 저장하며 외부 명령 실행이나 증거 인증을 수행하지 않는다.
     """
 
-    def __init__(self, tasks: ITaskRepository) -> None:
+    def __init__(self, tasks: ITaskRepository, workflows: IWorkflowRepository) -> None:
         """시도의 관찰 결과와 태스크 상태를 저장할 포트를 받는다.
 
         Args:
             tasks: 결과를 보고할 태스크를 조회하고 확정 결과·상태를 함께 저장한다.
+            workflows: 선택한 절차가 현재 요구를 완료했는지 확인할 저장소.
         """
         self.tasks = tasks
+        self.workflows = workflows
 
     @override
     def run(self, command: ReportResultCommand) -> ReportResult:
@@ -73,5 +76,15 @@ class ReportResultUseCase(ICommandUseCase[ReportResultCommand, ReportResult]):
         """
         task = self.tasks.get(command.task_id)
         task.require_scope(command.project_id, command.session_id)
+        attempt = task.attempt(command.attempt_number)
+        workflow = None
+        if (
+            command.result.outcome is Outcome.SUCCEEDED
+            and attempt.definition_number == task.definition.number
+            and attempt.result is None
+        ):
+            workflow = self.workflows.find_by_task(task.uid)
+        if workflow is not None:
+            workflow.require_complete(task.definition.number)
         task.report(command.attempt_number, command.result, command.expected_revision)
         return ReportResult(task=self.tasks.save(task))

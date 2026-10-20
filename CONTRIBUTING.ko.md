@@ -30,6 +30,9 @@ pre-commit과 필수 runner는 `tools/quality.py`를 공유합니다. Ruff lint�
 - 유스케이스는 Spakky의 `ICommandUseCase`·`IQueryUseCase`와 `run(command/query)`를 구현합니다. 입력은 `AbstractCommand`·`AbstractQuery`를 상속하고 전용 입력·결과 DTO는 해당 유스케이스 모듈에 함께 둡니다.
 - Spakky의 도메인 기반, 기본 repository CRUD·배치, 선언형 테이블 매핑·SchemaRegistry, 생성자 주입·요청 트랜잭션을 재사용합니다. 현재 구성은 코어 기반 문서에 설명합니다. 추가 adapter나 추상화는 실제 책임과 필요성으로 판단합니다.
 - 읽기 전용 목록 계약은 `Sequence`로 표현합니다. 하위 클래스의 자기 타입을 보존하는 classmethod 생성·변환은 `Self`를 사용합니다. Python 3.14 문법은 Ruff UP로 확인합니다.
+- 오류·대상 외·무변경 경로는 guard clause와 early return으로 먼저 종료하고 정상 흐름을 얕게 유지합니다. 반복문에서는 continue·break를 활용합니다. 검증·저장·알림 순서와 트랜잭션·finally의 자원 정리를 보존하고, 메서드 분리는 같은 책임 안의 의미 있는 작업 단위로 합니다.
+
+공통 Ruff 검사의 RET505·RET506·RET507·RET508은 return·raise·continue·break 뒤의 불필요한 else를 검출합니다. 다른 중첩의 단순화는 코드 리뷰에서 확인하며 임의의 깊이 상한이나 모든 if·else를 금지하는 검사로 대체하지 않습니다.
 
 실제 등록 구성요소의 타입 관계·계층 의존 방향은 구조 검사로, 현재 저장소·입출력 계약·매핑·자원 수명·이전·도메인 동작은 구체적인 시험으로 확인합니다. 함수·예외·이름·특정 표현식의 존재만으로 책임 위반을 단정하지 않습니다. 모든 반환에 DTO·접미사·frozen을 강제하지 않으며 사용자 정의 AST 검사에서 Any·cast·Literal·일반 무시 주석의 존재만으로 책임 위반을 판정하지 않습니다. Ruff의 표준 ANN 규칙은 ANN401을 포함해 적용합니다. 문법 검사 통과가 의미적 설계의 적절성을 입증하지는 않습니다.
 

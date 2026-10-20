@@ -14,9 +14,19 @@ from neurath.infrastructure.models.task import (
     TaskModel,
     TaskWaitModel,
 )
+from neurath.infrastructure.models.workflow import (
+    PhaseAttemptModel,
+    PhaseDefinitionModel,
+    WorkflowModel,
+    WorkflowRevisionModel,
+)
 
 # 모델을 import해야 공유 metadata에 테이블이 등록되어 Alembic이 전체 스키마를 볼 수 있다.
 MODEL_TYPES = (
+    WorkflowModel,
+    WorkflowRevisionModel,
+    PhaseDefinitionModel,
+    PhaseAttemptModel,
     ProjectModel,
     ProjectLocationModel,
     SessionModel,
