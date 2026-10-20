@@ -8,7 +8,7 @@ from spakky.data.persistency.transaction import AbstractTransaction
 from spakky.domain.application.command import AbstractCommand, ICommandUseCase
 
 from neurath.application.ports.repositories.execution import IExecutionRepository
-from neurath.application.ports.services.execution_controller import IExecutionController
+from neurath.application.ports.services.execution_controller import IExecutionControllerService
 from neurath.domain.aggregates.execution import Execution
 from neurath.domain.runtime_records import Liveness
 
@@ -37,7 +37,7 @@ class CancelExecutionUseCase(ICommandUseCase[CancelExecutionCommand, Execution])
     def __init__(
         self,
         executions: IExecutionRepository,
-        controller: IExecutionController,
+        controller: IExecutionControllerService,
         transaction: AbstractTransaction,
     ) -> None:
         """실행 저장소와 실제 중단 어댑터, 표준 트랜잭션을 받는다.

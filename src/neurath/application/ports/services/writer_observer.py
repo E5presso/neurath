@@ -6,7 +6,7 @@ from neurath.domain.aggregates.writer import Writer
 from neurath.domain.runtime_records import Liveness
 
 
-class IWriterObserver(ABC):
+class IWriterObserverService(ABC):
     """정확한 실행·턴·도구 호출의 실제 종료를 호스트에서 조회한다."""
 
     @abstractmethod

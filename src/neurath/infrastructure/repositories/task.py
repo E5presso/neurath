@@ -13,7 +13,7 @@ from neurath.infrastructure.models.task import TaskModel
 
 
 @Repository()
-class TaskRepository(AbstractGenericRepository[Task, str], ITaskRepository):
+class SQLAlchemyTaskRepository(AbstractGenericRepository[Task, str], ITaskRepository):
     """태스크을 SQLite에 매핑하고 프로젝트 전체 목록을 도메인 객체로 조회한다."""
 
     @override

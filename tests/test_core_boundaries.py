@@ -243,14 +243,14 @@ def test_invalid_worktree_metadata_preserves_state(
     database, repository, monkeypatch, status, output
 ):
     from neurath.domain.errors import NeurathError
-    from neurath.infrastructure.directory_observer import GitDirectoryObserver
+    from neurath.infrastructure.directory_observer import GitDirectoryObserverService
 
     def git_result(self, directory, *arguments):
         if arguments[0] == "rev-parse":
             return subprocess.CompletedProcess(arguments, 0, str(repository / ".git"), "")
         return subprocess.CompletedProcess(arguments, status, output, "worktree failure")
 
-    monkeypatch.setattr(GitDirectoryObserver, "_git", git_result)
+    monkeypatch.setattr(GitDirectoryObserverService, "_git", git_result)
     before = persisted_state(database)
     with pytest.raises(NeurathError):
         register_session(str(repository), "codex", "native", database_path=database)
@@ -297,16 +297,16 @@ def test_unrelated_integrity_failure_is_not_misreported_as_project_ownership_con
 def test_incomplete_observer_fails_explicitly_without_registering_a_project(
     database, repository, monkeypatch
 ):
-    from neurath.application.ports.services.directory_observer import IDirectoryObserver
-    from neurath.infrastructure.directory_observer import GitDirectoryObserver
+    from neurath.application.ports.services.directory_observer import IDirectoryObserverService
+    from neurath.infrastructure.directory_observer import GitDirectoryObserverService
 
     with pytest.raises(TypeError, match="abstract"):
-        IDirectoryObserver()
+        IDirectoryObserverService()
 
     def incomplete_observe(self, working_directory):
-        return IDirectoryObserver.observe(self, working_directory)
+        return IDirectoryObserverService.observe(self, working_directory)
 
-    monkeypatch.setattr(GitDirectoryObserver, "observe", incomplete_observe)
+    monkeypatch.setattr(GitDirectoryObserverService, "observe", incomplete_observe)
     before = persisted_state(database)
     with pytest.raises(NotImplementedError):
         register_session(str(repository), "codex", "new", database_path=database)
@@ -317,15 +317,15 @@ def test_incomplete_observer_fails_explicitly_without_registering_a_project(
 def test_incomplete_repository_lookup_rolls_back_registration_instead_of_returning_fake_success(
     database, repository, monkeypatch, kind
 ):
-    from neurath.infrastructure.repositories.project import ProjectRepository
-    from neurath.infrastructure.repositories.session import SessionRepository
+    from neurath.infrastructure.repositories.project import SQLAlchemyProjectRepository
+    from neurath.infrastructure.repositories.session import SQLAlchemySessionRepository
 
     if kind == "project-location":
-        adapter = ProjectRepository
+        adapter = SQLAlchemyProjectRepository
         method = "find_by_location"
         contract = IProjectRepository.find_by_location
     else:
-        adapter = SessionRepository
+        adapter = SQLAlchemySessionRepository
         method = "find"
         contract = ISessionRepository.find
 

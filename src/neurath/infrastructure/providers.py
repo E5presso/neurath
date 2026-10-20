@@ -45,7 +45,7 @@ from neurath.application.usecases.submit_result import SubmitResultUseCase
 from neurath.application.usecases.wait_task import WaitTaskUseCase
 from neurath.domain.errors import ContextNotFound, ProjectIdentityConflict, RevisionConflict
 from neurath.infrastructure.database import configure_sqlite_engine, database_url
-from neurath.infrastructure.directory_observer import GitDirectoryObserver
+from neurath.infrastructure.directory_observer import GitDirectoryObserverService
 from neurath.infrastructure.models.execution import ExecutionModel
 from neurath.infrastructure.models.project import ProjectLocationModel, ProjectModel
 from neurath.infrastructure.models.request_source import RequestSourceModel
@@ -64,14 +64,17 @@ from neurath.infrastructure.models.workflow import (
     WorkflowRevisionModel,
 )
 from neurath.infrastructure.models.writer import WriterModel
-from neurath.infrastructure.phase_executor import StderrWorkflowNotifier, SubprocessPhaseExecutor
-from neurath.infrastructure.repositories.execution import ExecutionRepository
-from neurath.infrastructure.repositories.project import ProjectRepository
-from neurath.infrastructure.repositories.request_source import RequestSourceRepository
-from neurath.infrastructure.repositories.session import SessionRepository
-from neurath.infrastructure.repositories.task import TaskRepository
-from neurath.infrastructure.repositories.workflow import WorkflowRepository
-from neurath.infrastructure.repositories.writer import WriterRepository
+from neurath.infrastructure.phase_executor import (
+    StderrWorkflowNotifierService,
+    SubprocessPhaseExecutorService,
+)
+from neurath.infrastructure.repositories.execution import SQLAlchemyExecutionRepository
+from neurath.infrastructure.repositories.project import SQLAlchemyProjectRepository
+from neurath.infrastructure.repositories.request_source import SQLAlchemyRequestSourceRepository
+from neurath.infrastructure.repositories.session import SQLAlchemySessionRepository
+from neurath.infrastructure.repositories.task import SQLAlchemyTaskRepository
+from neurath.infrastructure.repositories.workflow import SQLAlchemyWorkflowRepository
+from neurath.infrastructure.repositories.writer import SQLAlchemyWriterRepository
 
 
 @dataclass(frozen=True)
@@ -140,8 +143,8 @@ def request_container(settings: DatabaseSettings) -> Iterator[ApplicationContext
         for pod in (
             HandleHookUseCase,
             ResumeExecutionUseCase,
-            ExecutionRepository,
-            WriterRepository,
+            SQLAlchemyExecutionRepository,
+            SQLAlchemyWriterRepository,
             StartWorkflowUseCase,
             GetWorkflowUseCase,
             PreparePhaseUseCase,
@@ -149,22 +152,22 @@ def request_container(settings: DatabaseSettings) -> Iterator[ApplicationContext
             ReviseWorkflowUseCase,
             SkipPhaseUseCase,
             ExecutePhaseUseCase,
-            WorkflowRepository,
-            SubprocessPhaseExecutor,
-            StderrWorkflowNotifier,
+            SQLAlchemyWorkflowRepository,
+            SubprocessPhaseExecutorService,
+            StderrWorkflowNotifierService,
             SessionManager,
             Transaction,
             SchemaRegistry,
             AggregateCollector,
-            GitDirectoryObserver,
-            ProjectRepository,
-            SessionRepository,
+            GitDirectoryObserverService,
+            SQLAlchemyProjectRepository,
+            SQLAlchemySessionRepository,
             RegisterProjectUseCase,
             RegisterSessionUseCase,
             MoveSessionUseCase,
             GetSessionContextUseCase,
-            RequestSourceRepository,
-            TaskRepository,
+            SQLAlchemyRequestSourceRepository,
+            SQLAlchemyTaskRepository,
             RecordSourceUseCase,
             CreateTaskUseCase,
             StartTaskUseCase,

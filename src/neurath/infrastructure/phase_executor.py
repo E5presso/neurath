@@ -10,12 +10,15 @@ from typing import override
 
 from spakky.core.pod.annotations.pod import Pod
 
-from neurath.application.ports.services.phase_executor import IPhaseExecutor, IWorkflowNotifier
+from neurath.application.ports.services.phase_executor import (
+    IPhaseExecutorService,
+    IWorkflowNotifierService,
+)
 from neurath.domain.workflow_records import PhaseDefinition, PhaseResult, PhaseStatus
 
 
 @Pod()
-class SubprocessPhaseExecutor(IPhaseExecutor):
+class SubprocessPhaseExecutorService(IPhaseExecutorService):
     """POSIX 프로세스 그룹을 실행하며 출력은 메모리의 지정 한도만 보존한다.
 
     프로세스 수명 안의 중단 신호만 메모리에 보유한다. 프로세스가 사라진 뒤의
@@ -138,7 +141,7 @@ class SubprocessPhaseExecutor(IPhaseExecutor):
 
 
 @Pod()
-class StderrWorkflowNotifier(IWorkflowNotifier):
+class StderrWorkflowNotifierService(IWorkflowNotifierService):
     """호출 프로세스의 오류 출력에 결과 불명과 시도 식별자를 전달한다."""
 
     @override

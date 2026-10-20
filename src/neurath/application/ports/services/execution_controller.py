@@ -6,7 +6,7 @@ from neurath.domain.aggregates.execution import Execution
 from neurath.domain.runtime_records import Liveness
 
 
-class IExecutionController(ABC):
+class IExecutionControllerService(ABC):
     """현재 실행과 정확한 턴만 중단하고 확인된 결과를 반환한다."""
 
     @abstractmethod

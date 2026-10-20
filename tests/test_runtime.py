@@ -12,14 +12,14 @@ from sqlalchemy import text
 
 from neurath.application.ports.repositories.execution import IExecutionRepository
 from neurath.application.ports.repositories.writer import IWriterRepository
-from neurath.application.ports.services.writer_observer import IWriterObserver
+from neurath.application.ports.services.writer_observer import IWriterObserverService
 from neurath.application.usecases.recover_writer import RecoverWriterCommand, RecoverWriterUseCase
 from neurath.domain.aggregates.execution import Execution
 from neurath.domain.aggregates.writer import Writer
 from neurath.domain.errors import InvalidExecutionState
 from neurath.domain.runtime_records import ExecutionStatus, HookAction, Liveness
 from neurath.infrastructure.hooks import NativeHookAdapter
-from neurath.infrastructure.process_observer import OwnedProcessObserver
+from neurath.infrastructure.process_observer import PosixWriterObserverService
 from neurath.infrastructure.providers import DatabaseSettings, request_container
 from tests.conftest import storage_scope
 from tests.support.session_requests import register_session
@@ -310,10 +310,10 @@ def test_real_process_liveness_recovery_and_generation_recheck(database, native)
     process = subprocess.Popen(
         [sys.executable, "-c", "import time; time.sleep(30)"], start_new_session=True
     )
-    observer = OwnedProcessObserver(
+    observer = PosixWriterObserverService(
         {(lease.execution_id, lease.turn_id, lease.tool_use_id): process}
     )
-    assert OwnedProcessObserver({}).observe(lease) is Liveness.UNKNOWN
+    assert PosixWriterObserverService({}).observe(lease) is Liveness.UNKNOWN
     assert observer.observe(lease) is Liveness.RUNNING
     try:
         with request_container(DatabaseSettings(database, write=True)) as scope:
@@ -342,7 +342,7 @@ def test_recovery_cannot_release_new_generation_during_external_observation(data
     send(native, "PreToolUse", tool_name="Write", tool_use_id="first")
     lease = writer(database, native)
 
-    class RacingObserver(IWriterObserver):
+    class RacingObserver(IWriterObserverService):
         def observe(self, old):
             send(native, "PostToolUse", tool_name="Write", tool_use_id="first")
             send(native, "PreToolUse", tool_name="Write", tool_use_id="second")
@@ -392,7 +392,7 @@ def test_abstract_contracts_fail_explicitly():
     for method, args in [
         (IExecutionRepository.find, (None, "s", "a")),
         (IWriterRepository.find, (None, "w")),
-        (IWriterObserver.observe, (None, None)),
+        (IWriterObserverService.observe, (None, None)),
     ]:
         with pytest.raises(NotImplementedError):
             method(*args)
@@ -494,7 +494,7 @@ def test_real_targeted_cancellation_preserves_other_process_and_writes(database,
     other = subprocess.Popen(
         [sys.executable, "-c", "import time; time.sleep(30)"], start_new_session=True
     )
-    controller = OwnedProcessObserver(
+    controller = PosixWriterObserverService(
         {(current.uid, current.turn_id, "process"): process, ("other", "other-turn", "call"): other}
     )
     try:
@@ -508,7 +508,7 @@ def test_real_targeted_cancellation_preserves_other_process_and_writes(database,
         assert other.poll() is None
         assert writer(database, native).execution_id == current.uid
         assert controller.interrupt(current) is Liveness.STOPPED
-        assert OwnedProcessObserver({}).interrupt(current) is Liveness.UNKNOWN
+        assert PosixWriterObserverService({}).interrupt(current) is Liveness.UNKNOWN
     finally:
         for child in (process, other):
             if child.poll() is None:
@@ -517,7 +517,7 @@ def test_real_targeted_cancellation_preserves_other_process_and_writes(database,
 
 
 def test_unknown_cancellation_and_late_response_cannot_cancel_new_turn(database, native):
-    from neurath.application.ports.services.execution_controller import IExecutionController
+    from neurath.application.ports.services.execution_controller import IExecutionControllerService
     from neurath.application.usecases.cancel_execution import (
         CancelExecutionCommand,
         CancelExecutionUseCase,
@@ -527,7 +527,7 @@ def test_unknown_cancellation_and_late_response_cannot_cancel_new_turn(database,
     with request_container(DatabaseSettings(database, write=True)) as scope:
         cancel = CancelExecutionUseCase(
             scope.get(IExecutionRepository),
-            OwnedProcessObserver({}),
+            PosixWriterObserverService({}),
             scope.get(AbstractTransaction),
         )
         assert (
@@ -535,7 +535,7 @@ def test_unknown_cancellation_and_late_response_cannot_cancel_new_turn(database,
             is ExecutionStatus.PAUSED
         )
 
-    class LateController(IExecutionController):
+    class LateController(IExecutionControllerService):
         def interrupt(self, current):
             send(native, "UserPromptSubmit", turn_id="new-turn")
             return Liveness.STOPPED
@@ -549,13 +549,13 @@ def test_unknown_cancellation_and_late_response_cannot_cancel_new_turn(database,
     assert execution(database, native[0]).turn_id == "new-turn"
     assert execution(database, native[0]).status is ExecutionStatus.PAUSED
     with pytest.raises(NotImplementedError):
-        IExecutionController.interrupt(None, None)
+        IExecutionControllerService.interrupt(None, None)
 
 
 def test_process_control_never_signals_shared_group(database, native):
     current = execution(database, native[0])
     process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
-    controller = OwnedProcessObserver({(current.uid, current.turn_id, "process"): process})
+    controller = PosixWriterObserverService({(current.uid, current.turn_id, "process"): process})
     try:
         assert controller.interrupt(current) is Liveness.UNKNOWN
         assert process.poll() is None
@@ -570,13 +570,13 @@ def test_process_observation_requires_group_gone_and_handles_os_error(monkeypatc
     process = subprocess.Popen([sys.executable, "-c", "pass"], start_new_session=True)
     process.wait()
     monkeypatch.setattr(os, "killpg", lambda *args: None)
-    assert OwnedProcessObserver._observe(process) is Liveness.RUNNING
+    assert PosixWriterObserverService._observe(process) is Liveness.RUNNING
 
     def inaccessible(*args):
         raise PermissionError("not observable")
 
     monkeypatch.setattr(os, "killpg", inaccessible)
-    assert OwnedProcessObserver._observe(process) is Liveness.UNKNOWN
+    assert PosixWriterObserverService._observe(process) is Liveness.UNKNOWN
 
 
 def test_process_interrupt_escalates_and_reports_unconfirmed_failure(database, native, monkeypatch):
@@ -587,7 +587,7 @@ def test_process_interrupt_escalates_and_reports_unconfirmed_failure(database, n
     process = subprocess.Popen(
         [sys.executable, "-c", "import time; time.sleep(30)"], start_new_session=True
     )
-    controller = OwnedProcessObserver({(current.uid, current.turn_id, "process"): process})
+    controller = PosixWriterObserverService({(current.uid, current.turn_id, "process"): process})
     original_wait = process.wait
     original_signal = os.killpg
     monkeypatch.setattr(
@@ -612,7 +612,7 @@ def test_process_interrupt_escalates_and_reports_unconfirmed_failure(database, n
     other = subprocess.Popen(
         [sys.executable, "-c", "import time; time.sleep(30)"], start_new_session=True
     )
-    controller = OwnedProcessObserver({(current.uid, current.turn_id, "process"): other})
+    controller = PosixWriterObserverService({(current.uid, current.turn_id, "process"): other})
 
     def inaccessible(*args):
         raise PermissionError("cannot interrupt")

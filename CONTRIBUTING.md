@@ -49,3 +49,11 @@ Do not meet the threshold using omit settings, custom exclusions, `pragma: no co
 ## Documentation
 
 Keep public documents paired under `docs/en` and `docs/ko` with matching relative paths and equivalent scope. README and CONTRIBUTING also have English/Korean editions. Keep private paths and raw validation logs out of public documentation/packages. The [documentation index](docs/en/index.md) explains page responsibilities and separates implementation from product design.
+
+## Service and repository naming
+
+Production services end with `Service`; repositories end with `Repository`. Interfaces start with `I`, and concrete implementations replace that `I` with their actual technology. For example, `IDirectoryObserverService` is implemented by `GitDirectoryObserverService`, and `IProjectRepository` by `SQLAlchemyProjectRepository`.
+
+`tools/architecture.py` scans all source modules and resolves ports, registration decorators, aliases and indirect inheritance. Missing suffixes, missing interface `I`, and missing or mismatched technology prefixes fail shared pre-commit and required CI. Current technology prefixes are `Git`, `Subprocess`, `Stderr`, `Posix` and `SQLAlchemy`. Add the corresponding prefix and positive/negative regression fixtures when introducing another technology; individual implementation classes are not allowlisted.
+
+Use cases require only the `UseCase` suffix. Keep names such as `CreateTaskUseCase` without a technology prefix, and retain the existing Spakky `ICommandUseCase`/`IQueryUseCase` contracts instead of adding per-use-case interfaces for naming purposes. The same gate detects missing suffixes through decorators and direct or indirect inheritance.

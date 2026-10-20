@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from neurath.domain.observations import DirectoryObservation
 
 
-class IDirectoryObserver(ABC):
+class IDirectoryObserverService(ABC):
     """프로젝트를 선택하거나 연결하지 않고 외부의 원시 사실을 관찰한다."""
 
     @abstractmethod

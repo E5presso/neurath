@@ -192,6 +192,67 @@ class ArchitectureChecker:
             errors.append(f"{module}:{method.lineno} ABSTRACT_METHOD: {node.name}.{method.name}")
         return errors
 
+    def _check_role_name(
+        self, module: str, node: ast.ClassDef, ancestors: set[str], decorators: set[str]
+    ) -> list[str]:
+        """서비스·저장소 계약과 구현체의 역할 접미사·기술 접두어를 검사한다.
+
+        전체 소스의 포트 선언과 별칭·간접 상속을 따라 구현체를 찾는다. 실제 기술을
+        표현하는 접두어는 현재 구현에 사용하는 Git·Subprocess·Stderr·Posix·SQLAlchemy다.
+        새로운 기술 구현을 추가할 때 해당 기술 접두어와 정상·실패 fixture를 함께 추가한다.
+
+        Args:
+            module: 선언이 포함된 모듈 이름.
+            node: 검사할 클래스 선언.
+            ancestors: 별칭과 간접 상속을 해석한 타입들.
+            decorators: 실제 등록 데코레이터의 정규 이름들.
+
+        Returns:
+            list[str]: 인터페이스 형식 또는 구현체 명명 규칙 위반.
+        """
+        roles = {
+            "Service": "neurath.application.ports.services.",
+            "Repository": "neurath.application.ports.repositories.",
+        }
+        technologies = {
+            "Service": ("Git", "Subprocess", "Stderr", "Posix"),
+            "Repository": ("SQLAlchemy",),
+        }
+        errors: list[str] = []
+        location = f"{module}:{node.lineno}"
+        for suffix, namespace in roles.items():
+            if module.startswith(namespace):
+                if not (
+                    node.name.startswith("I")
+                    and node.name[1:2].isupper()
+                    and node.name.endswith(suffix)
+                    and len(node.name) > len(suffix) + 1
+                ):
+                    errors.append(f"{location} INTERFACE_NAME: use I<role>{suffix}")
+                continue
+            contracts = {
+                parent.rsplit(".", 1)[1][1:]
+                for parent in ancestors
+                if parent.startswith(namespace) and parent in self.classes
+            }
+            stereotype = (
+                "spakky.data.stereotype.repository.Repository"
+                if suffix == "Repository"
+                else "spakky.core.stereotype.service.Service"
+            )
+            if not contracts and stereotype not in decorators:
+                continue
+            expected = {
+                technology + contract
+                for technology in technologies[suffix]
+                for contract in contracts
+            }
+            if node.name not in expected or not node.name.endswith(suffix):
+                errors.append(
+                    f"{location} IMPLEMENTATION_NAME: replace interface I with a concrete technology; end with {suffix}"
+                )
+        return errors
+
     def _check_class(self, module: str, node: ast.ClassDef) -> list[str]:
         """등록된 구성요소의 기반과 하위 타입을 보존하는 생성 메서드를 검사한다.
 
@@ -234,6 +295,7 @@ class ArchitectureChecker:
             for item in node.decorator_list
         }
         errors.extend(self._check_port(module, node, ancestors))
+        errors.extend(self._check_role_name(module, node, ancestors, decorators))
         has_port = any(
             parent in self.classes
             and parent.startswith("neurath.application.ports.")
@@ -248,6 +310,11 @@ class ArchitectureChecker:
             errors.append(
                 f"{location} NOMINAL_IMPLEMENTATION: declare the repository contract being implemented"
             )
+        is_usecase = "spakky.core.stereotype.usecase.UseCase" in decorators or bool(
+            ancestors.intersection(usecase_contracts)
+        )
+        if is_usecase and not node.name.endswith("UseCase"):
+            errors.append(f"{location} USECASE_NAME: use-case names must end with UseCase")
         if "spakky.core.stereotype.usecase.UseCase" in decorators and not ancestors.intersection(
             usecase_contracts
         ):

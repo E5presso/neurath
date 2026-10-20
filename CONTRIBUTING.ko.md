@@ -49,3 +49,11 @@ omit·커스텀 제외·`pragma: no cover`·`pragma: no branch`로 수치를 맞
 ## 문서
 
 공개 문서는 `docs/en`·`docs/ko`의 같은 상대 경로에 같은 범위로 유지합니다. README와 CONTRIBUTING도 영어·한국어 쌍을 맞춥니다. 개인 경로와 검증 원문은 공개 문서·패키지에 넣지 않습니다. 문서별 역할과 현재 구현·제품 설계의 구분은 [문서 안내](docs/ko/index.md)에 있습니다.
+
+## 서비스·저장소 명명
+
+제품 코드의 서비스는 `Service`, 저장소는 `Repository`로 끝나야 합니다. 인터페이스는 `I` 접두어를 사용하고 구현체는 이를 실제 기술 스택 이름으로 대체합니다. 예를 들어 `IDirectoryObserverService`의 구현은 `GitDirectoryObserverService`, `IProjectRepository`의 구현은 `SQLAlchemyProjectRepository`입니다.
+
+`tools/architecture.py`가 전체 소스의 포트와 등록 데코레이터, 별칭·간접 상속을 추적합니다. 접미사 누락, 인터페이스의 `I` 누락, 기술 접두어 누락·불일치는 공통 pre-commit과 필수 CI를 실패시킵니다. 현재 기술 접두어는 `Git`·`Subprocess`·`Stderr`·`Posix`·`SQLAlchemy`입니다. 다른 기술을 도입할 때는 해당 접두어와 정상·실패 회귀 시험을 함께 추가합니다. 새 구현 클래스마다 허용 목록에 올리는 방식은 사용하지 않습니다.
+
+유스케이스에는 `UseCase` 접미사만 강제합니다. `CreateTaskUseCase`처럼 이름을 유지하며 기술 접두어를 붙이지 않습니다. 명명 규칙을 이유로 개별 인터페이스를 추가하지 않고 기존 Spakky `ICommandUseCase`·`IQueryUseCase` 계약을 사용합니다. 데코레이터·직접 및 간접 상속으로 유스케이스를 찾아 접미사 누락을 같은 검사에서 거절합니다.

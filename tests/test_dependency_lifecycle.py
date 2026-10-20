@@ -29,8 +29,8 @@ from neurath.infrastructure import providers
 from neurath.infrastructure.models.project import ProjectModel
 from neurath.infrastructure.models.session import SessionModel
 from neurath.infrastructure.providers import DatabaseSettings, request_container
-from neurath.infrastructure.repositories.project import ProjectRepository
-from neurath.infrastructure.repositories.session import SessionRepository
+from neurath.infrastructure.repositories.project import SQLAlchemyProjectRepository
+from neurath.infrastructure.repositories.session import SQLAlchemySessionRepository
 from tests.conftest import storage_scope
 from tests.support.session_requests import (
     get_session_context,
@@ -41,8 +41,8 @@ from tests.support.session_requests import (
 
 def test_basic_contracts_and_methods_are_inherited_without_local_reimplementation():
     for repository, port in (
-        (ProjectRepository, IProjectRepository),
-        (SessionRepository, ISessionRepository),
+        (SQLAlchemyProjectRepository, IProjectRepository),
+        (SQLAlchemySessionRepository, ISessionRepository),
     ):
         assert issubclass(port, IGenericRepository)
         assert issubclass(repository, AbstractGenericRepository)

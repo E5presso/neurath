@@ -12,7 +12,7 @@ from neurath.infrastructure.models.writer import WriterModel
 
 
 @Repository()
-class WriterRepository(AbstractGenericRepository[Writer, str], IWriterRepository):
+class SQLAlchemyWriterRepository(AbstractGenericRepository[Writer, str], IWriterRepository):
     """정규 작업 폴더의 현재 작성 소유자를 조회한다."""
 
     @override

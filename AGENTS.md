@@ -46,3 +46,7 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 - 공통 Ruff 검사에 RET505·RET506·RET507·RET508을 적용하여 종료 분기 뒤의 불필요한 else를 검출한다. 그 밖의 중첩은 실제 제어 흐름을 검토해 단순화하며, 임의의 깊이 상한이나 모든 if·else의 금지로 확대하지 않는다.
 
 - #142의 Execution은 실제 호스트 턴과 중단 상태를, Writer는 공유 작업 폴더의 작성 소유자·세대를 관리한다. 읽기·진단·자식 조회에 작성 임대를 요구하지 않는다. Stop의 최신 TODO·phase 판정과 반복 거절 중지를 함께 검증한다. 새 사용자 턴·연결 재개만으로 취소를 해제하지 않으며 실제 재개 지시는 ResumeExecutionUseCase로 처리한다. 작성 회수는 실제 종료 관찰 뒤 같은 소유자·세대를 재검사하며, 훅 응답 생성과 실제 설치·알림 수신을 구분한다.
+
+- 제품 코드의 서비스 이름은 Service, 저장소 이름은 Repository로 끝낸다. 인터페이스는 I를 접두어로 사용하고 구현체는 그 I를 실제 기술 스택 이름으로 대체한다. 예: IDirectoryObserverService → GitDirectoryObserverService, IPhaseExecutorService → SubprocessPhaseExecutorService, IProjectRepository → SQLAlchemyProjectRepository. import·DI 등록·타입 표기·문서도 같은 이름을 사용하며 이전 이름의 호환 별칭을 남기지 않는다. tools/architecture.py가 전체 소스의 포트·등록·별칭·간접 상속을 추적해 명명 위반을 실패시키고, 이 검사는 공통 pre-commit·필수 CI에서 실행된다. 현재 기술 접두어는 Git·Subprocess·Stderr·Posix·SQLAlchemy이며 새 기술 구현을 도입할 때 그 접두어와 회귀 시험을 함께 반영한다.
+
+- 유스케이스는 UseCase 접미사만 강제한다. 서비스·저장소의 기술 접두어 규칙을 유스케이스에 확대 적용하거나 명명을 위해 유스케이스별 인터페이스를 새로 만들지 않는다. 기존 Spakky ICommandUseCase·IQueryUseCase 계약을 유지하며, 공통 구조 검사는 데코레이터·직접 및 간접 상속으로 유스케이스를 찾아 접미사 누락을 거절한다.

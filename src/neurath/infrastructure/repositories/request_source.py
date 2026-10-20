@@ -13,7 +13,7 @@ from neurath.infrastructure.models.request_source import RequestSourceModel
 
 
 @Repository()
-class RequestSourceRepository(
+class SQLAlchemyRequestSourceRepository(
     AbstractGenericRepository[RequestSource, str], IRequestSourceRepository
 ):
     """원문·정정을 SQLite에 매핑하고 프로젝트 전체 목록을 도메인 객체로 조회한다."""

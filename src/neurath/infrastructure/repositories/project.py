@@ -12,7 +12,7 @@ from neurath.infrastructure.models.project import ProjectLocationModel, ProjectM
 
 
 @Repository()
-class ProjectRepository(AbstractGenericRepository[Project, str], IProjectRepository):
+class SQLAlchemyProjectRepository(AbstractGenericRepository[Project, str], IProjectRepository):
     """기본 조회·저장·삭제는 상속하고 위치 소유 조회만 확장한다."""
 
     @override

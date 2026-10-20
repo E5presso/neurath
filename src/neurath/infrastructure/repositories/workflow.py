@@ -12,7 +12,9 @@ from neurath.infrastructure.models.workflow import WorkflowModel
 
 
 @Repository()
-class WorkflowRepository(AbstractGenericRepository[WorkflowRun, str], IWorkflowRepository):
+class SQLAlchemyWorkflowRepository(
+    AbstractGenericRepository[WorkflowRun, str], IWorkflowRepository
+):
     """기본 CRUD를 재사용하며 태스크에 연결한 run의 전체 이력을 조회한다."""
 
     @override

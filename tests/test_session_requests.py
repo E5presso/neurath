@@ -29,7 +29,7 @@ from neurath.domain.observations import DirectoryObservation
 from neurath.infrastructure.database import create_database_engine
 from neurath.infrastructure.models.project import ProjectModel
 from neurath.infrastructure.models.session import SessionModel
-from neurath.infrastructure.repositories.session import SessionRepository
+from neurath.infrastructure.repositories.session import SQLAlchemySessionRepository
 from tests.conftest import git, initialize_git, storage_scope
 from tests.support.session_requests import (
     get_session_context,
@@ -192,13 +192,13 @@ def test_concurrent_revision_change_has_one_winner(database, repository):
 def test_failed_registration_rolls_back_project_alias_and_session(
     database, repository, monkeypatch
 ):
-    original_save = SessionRepository.save
+    original_save = SQLAlchemySessionRepository.save
 
     def fail_after_flush(self, session):
         original_save(self, session)
         raise RuntimeError("after flush")
 
-    monkeypatch.setattr(SessionRepository, "save", fail_after_flush)
+    monkeypatch.setattr(SQLAlchemySessionRepository, "save", fail_after_flush)
     with pytest.raises(RuntimeError, match="after flush"):
         register_session(str(repository), "codex", "native", database_path=database)
     with closing(sqlite3.connect(database)) as connection, connection:
@@ -314,12 +314,12 @@ def test_git_environment_is_ignored_and_errors_are_not_folder_fallback(
     first = register_session(str(repository), "codex", "native", database_path=database)
     second = register_session(str(plain), "codex", "native", database_path=database)
     assert first.project.id != second.project.id
-    from neurath.infrastructure.directory_observer import GitDirectoryObserver
+    from neurath.infrastructure.directory_observer import GitDirectoryObserverService
 
     def fail(self, directory, *arguments):
         return subprocess.CompletedProcess(arguments, 128, "", "fatal: dubious ownership")
 
-    monkeypatch.setattr(GitDirectoryObserver, "_git", fail)
+    monkeypatch.setattr(GitDirectoryObserverService, "_git", fail)
     with pytest.raises(NeurathError, match="dubious ownership"):
         register_session(str(repository), "codex", "new", database_path=database)
 

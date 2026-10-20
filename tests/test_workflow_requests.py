@@ -16,7 +16,10 @@ from sqlalchemy import text
 
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.application.ports.repositories.workflow import IWorkflowRepository
-from neurath.application.ports.services.phase_executor import IPhaseExecutor, IWorkflowNotifier
+from neurath.application.ports.services.phase_executor import (
+    IPhaseExecutorService,
+    IWorkflowNotifierService,
+)
 from neurath.application.usecases.execute_phase import ExecutePhaseCommand, ExecutePhaseUseCase
 from neurath.application.usecases.get_workflow import GetWorkflowQuery, GetWorkflowUseCase
 from neurath.application.usecases.prepare_phase import PreparePhaseCommand, PreparePhaseUseCase
@@ -37,7 +40,10 @@ from neurath.domain.workflow_records import (
     WorkflowDefinition,
 )
 from neurath.infrastructure.database import create_database_engine, initialize_database
-from neurath.infrastructure.phase_executor import StderrWorkflowNotifier, SubprocessPhaseExecutor
+from neurath.infrastructure.phase_executor import (
+    StderrWorkflowNotifierService,
+    SubprocessPhaseExecutorService,
+)
 from neurath.infrastructure.providers import DatabaseSettings, request_container
 from tests.conftest import storage_scope
 from tests.support.requests import run
@@ -200,7 +206,7 @@ def test_explicit_prepare_report_skip_and_revision_roundtrip(database, work):
     assert restored.definition.inputs == (("request", "산출물"),)
 
 
-class RecoverableExecutor(IPhaseExecutor):
+class RecoverableExecutor(IPhaseExecutorService):
     def __init__(self, phase, *, found=None, dedup=False, fail=False, database=None):
         self.phase = phase
         self.found = found
@@ -301,7 +307,7 @@ def test_task_cancellation_blocks_execution_and_prepare(database, work):
 
 
 def test_subprocess_actual_failure_timeout_large_output_and_remaining_checks(tmp_path):
-    host = SubprocessPhaseExecutor()
+    host = SubprocessPhaseExecutorService()
     phase = PhaseDefinition(
         key="check",
         purpose="명령 검증",
@@ -345,7 +351,7 @@ def test_subprocess_actual_failure_timeout_large_output_and_remaining_checks(tmp
 
 
 def test_subprocess_interrupt_terminates_actual_process(tmp_path):
-    host = SubprocessPhaseExecutor()
+    host = SubprocessPhaseExecutorService()
     ready = tmp_path / "ready"
     phase = PhaseDefinition(
         key="long",
@@ -390,8 +396,8 @@ def test_primitive_repository_and_framework_transaction_are_used(database, work)
         assert repository.find_by_task("missing") is None
         assert repository.get(flow.uid).uid == flow.uid
         assert scope.get(ExecutePhaseUseCase).transaction is scope.get(AbstractTransaction)
-        assert scope.get(ExecutePhaseUseCase).executor is scope.get(IPhaseExecutor)
-        assert scope.get(IWorkflowNotifier).__class__ is StderrWorkflowNotifier
+        assert scope.get(ExecutePhaseUseCase).executor is scope.get(IPhaseExecutorService)
+        assert scope.get(IWorkflowNotifierService).__class__ is StderrWorkflowNotifierService
         assert (
             scope.get(SessionManager).session.scalar(text("SELECT COUNT(*) FROM core_workflows"))
             == 1
@@ -556,7 +562,7 @@ def test_incomplete_execution_adapters_leave_work_unconfirmed(
     database, work, monkeypatch, broken, capsys
 ):
     _, _, flow = work
-    host = SubprocessPhaseExecutor()
+    host = SubprocessPhaseExecutorService()
     if broken != "execute":
         flow = run(
             PreparePhaseUseCase,
@@ -566,15 +572,15 @@ def test_incomplete_execution_adapters_leave_work_unconfirmed(
     if broken == "supports_deduplication":
 
         def missing_capability(self):
-            return IPhaseExecutor.supports_deduplication.fget(self)
+            return IPhaseExecutorService.supports_deduplication.fget(self)
 
-        monkeypatch.setattr(SubprocessPhaseExecutor, broken, property(missing_capability))
+        monkeypatch.setattr(SubprocessPhaseExecutorService, broken, property(missing_capability))
     else:
 
         def incomplete(self, request_id, phase):
-            return getattr(IPhaseExecutor, broken)(self, request_id, phase)
+            return getattr(IPhaseExecutorService, broken)(self, request_id, phase)
 
-        monkeypatch.setattr(SubprocessPhaseExecutor, broken, incomplete)
+        monkeypatch.setattr(SubprocessPhaseExecutorService, broken, incomplete)
     result = execute(database, flow, host)
     assert result.run.attempts[0].status is PhaseStatus.WAITING
     assert "NotImplementedError" in result.run.attempts[0].result.summary
@@ -588,9 +594,9 @@ def test_incomplete_notification_fails_after_persisting_unfinished_state(
     _, _, flow = work
 
     def incomplete(self, request_id, reason):
-        return IWorkflowNotifier.waiting(self, request_id, reason)
+        return IWorkflowNotifierService.waiting(self, request_id, reason)
 
-    monkeypatch.setattr(StderrWorkflowNotifier, "waiting", incomplete)
+    monkeypatch.setattr(StderrWorkflowNotifierService, "waiting", incomplete)
     with pytest.raises(NotImplementedError):
         execute(database, flow, RecoverableExecutor(flow.current, fail=True))
     assert read(database, flow).attempts[0].status is PhaseStatus.WAITING
@@ -599,14 +605,14 @@ def test_incomplete_notification_fails_after_persisting_unfinished_state(
 
 
 def test_incomplete_workflow_lookup_rolls_back_start(database, work, monkeypatch):
-    from neurath.infrastructure.repositories.workflow import WorkflowRepository
+    from neurath.infrastructure.repositories.workflow import SQLAlchemyWorkflowRepository
 
     actor, task, flow = work
 
     def incomplete(self, task_id):
         return IWorkflowRepository.find_by_task(self, task_id)
 
-    monkeypatch.setattr(WorkflowRepository, "find_by_task", incomplete)
+    monkeypatch.setattr(SQLAlchemyWorkflowRepository, "find_by_task", incomplete)
     before = snapshot(database)
     with pytest.raises(NotImplementedError):
         run(
@@ -617,7 +623,7 @@ def test_incomplete_workflow_lookup_rolls_back_start(database, work, monkeypatch
             database_path=database,
         )
     assert snapshot(database) == before
-    for abstract in [IPhaseExecutor, IWorkflowNotifier, IWorkflowRepository]:
+    for abstract in [IPhaseExecutorService, IWorkflowNotifierService, IWorkflowRepository]:
         with pytest.raises(TypeError):
             abstract()
 
@@ -630,7 +636,7 @@ def test_short_multibyte_output_is_preserved_without_truncation(tmp_path):
         directory=str(tmp_path),
         target_revision="source",
     )
-    result = SubprocessPhaseExecutor().execute("short", phase)
+    result = SubprocessPhaseExecutorService().execute("short", phase)
     assert result.output == "정상\n" and "truncated" not in result.summary
 
 
@@ -747,12 +753,14 @@ with request_container(DatabaseSettings(Path(sys.argv[1]),write=False)) as scope
 def test_workflow_default_crud_keeps_owned_definition_and_attempt_lifecycle(database, work):
     from spakky.plugins.sqlalchemy.persistency.repository import AbstractGenericRepository
 
-    from neurath.infrastructure.repositories.workflow import WorkflowRepository
+    from neurath.infrastructure.repositories.workflow import SQLAlchemyWorkflowRepository
 
     _, _, flow = work
     final = execute(database, flow).run
     for name in ["get", "save", "save_all", "delete", "delete_all"]:
-        assert getattr(WorkflowRepository, name) is getattr(AbstractGenericRepository, name)
+        assert getattr(SQLAlchemyWorkflowRepository, name) is getattr(
+            AbstractGenericRepository, name
+        )
     with storage_scope(database) as scope:
         repository = scope.get(IWorkflowRepository)
         loaded = repository.get(flow.uid)
@@ -772,7 +780,7 @@ def test_workflow_default_crud_keeps_owned_definition_and_attempt_lifecycle(data
 
 
 def test_phase_and_task_wait_are_rolled_back_together_on_save_failure(database, work, monkeypatch):
-    from neurath.infrastructure.repositories.workflow import WorkflowRepository
+    from neurath.infrastructure.repositories.workflow import SQLAlchemyWorkflowRepository
 
     _, _, flow = work
     prepared = run(
@@ -785,7 +793,7 @@ def test_phase_and_task_wait_are_rolled_back_together_on_save_failure(database, 
     def fail_save(self, entity):
         raise RuntimeError("workflow storage failed")
 
-    monkeypatch.setattr(WorkflowRepository, "save", fail_save)
+    monkeypatch.setattr(SQLAlchemyWorkflowRepository, "save", fail_save)
     with pytest.raises(RuntimeError, match="workflow storage failed"):
         run(
             ReportPhaseUseCase,

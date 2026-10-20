@@ -11,7 +11,7 @@ Public CLI, hooks and installation remain subsequent implementation work.
 - `Project` and `HostSession` use `@mutable` and `AbstractAggregateRoot[str]` for identity, equality and change tracking. Project owns `ProjectLocation` as an `AbstractValueObject`.
 - The existing `id` reference remains a read-only compatibility property over `uid`. Identity selection, folder promotion, ownership conflicts, session scope and movement remain domain rules.
 - Repository ports inherit `IGenericRepository`, adding only location-owner and project/provider/native-session lookup.
-- `ProjectRepository` and `SessionRepository` inherit `AbstractGenericRepository`. They do not redefine constructors, `get`, `get_or_none`, `contains`, `range`, `save`, `save_all`, `delete`, or `delete_all`.
+- `SQLAlchemyProjectRepository` and `SQLAlchemySessionRepository` inherit `AbstractGenericRepository`. They do not redefine constructors, `get`, `get_or_none`, `contains`, `range`, `save`, `save_all`, `delete`, or `delete_all`.
 - Domain tables use `@Table(Domain)` and `AbstractMappableTable[Domain]` with explicit conversion. Owned location records use `AbstractTable` without a separate domain repository.
 - `SchemaRegistry` resolves domain/table mappings from Table tags. Repositories do not maintain another mapping registry.
 - `ApplicationContext` composes `@UseCase`, `@Repository`, observation Pods and the framework's `ConnectionManager`, `SessionManager`, `Transaction`, and `AggregateCollector`.
@@ -86,7 +86,7 @@ Alembic migration files and its version table define revisions. At the first dat
 ```python
 from pathlib import Path
 from spakky.plugins.sqlalchemy.persistency.transaction import Transaction
-from neurath.application.ports.services.directory_observer import IDirectoryObserver
+from neurath.application.ports.services.directory_observer import IDirectoryObserverService
 from neurath.application.usecases.register_session import RegisterSessionCommand, RegisterSessionUseCase
 from neurath.application.usecases.get_session_context import GetSessionContextQuery, GetSessionContextUseCase
 from neurath.infrastructure.database import initialize_database
@@ -95,7 +95,7 @@ from neurath.infrastructure.providers import DatabaseSettings, request_container
 path = Path("/explicit/isolated/core.sqlite3")
 initialize_database(path)
 with request_container(DatabaseSettings(path, write=True)) as scope:
-    observation = scope.get(IDirectoryObserver).observe("/project")
+    observation = scope.get(IDirectoryObserverService).observe("/project")
     with scope.get(Transaction):
         opened = scope.get(RegisterSessionUseCase).run(
             RegisterSessionCommand(observation, "codex", "native-session")

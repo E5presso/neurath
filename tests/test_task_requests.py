@@ -39,8 +39,8 @@ from neurath.domain.task_records import (
     TaskResult,
     TaskStatus,
 )
-from neurath.infrastructure.repositories.request_source import RequestSourceRepository
-from neurath.infrastructure.repositories.task import TaskRepository
+from neurath.infrastructure.repositories.request_source import SQLAlchemyRequestSourceRepository
+from neurath.infrastructure.repositories.task import SQLAlchemyTaskRepository
 from tests.conftest import storage_scope
 from tests.support.requests import run
 from tests.support.session_requests import register_session
@@ -501,13 +501,13 @@ def test_exception_after_generic_flush_rolls_back_attempt_definition_and_state(
     actor, _, _ = actors
     work = create(database, actor)
     before = snapshot(database)
-    original = TaskRepository.save
+    original = SQLAlchemyTaskRepository.save
 
     def fail_after_flush(self, aggregate):
         original(self, aggregate)
         raise RuntimeError("after aggregate flush")
 
-    monkeypatch.setattr(TaskRepository, "save", fail_after_flush)
+    monkeypatch.setattr(SQLAlchemyTaskRepository, "save", fail_after_flush)
     with pytest.raises(RuntimeError, match="after aggregate flush"):
         start(database, work)
     assert snapshot(database) == before
@@ -538,7 +538,7 @@ def test_source_correction_and_followup_cannot_cross_project_scope(database, act
 def test_source_and_task_repositories_inherit_all_basic_methods(database, actors):
     actor, _, _ = actors
     work = create(database, actor)
-    for adapter in (RequestSourceRepository, TaskRepository):
+    for adapter in (SQLAlchemyRequestSourceRepository, SQLAlchemyTaskRepository):
         for method in (
             "get",
             "get_or_none",
@@ -592,8 +592,8 @@ print(json.dumps(asdict(run(GetTasksUseCase, GetTasksQuery(sys.argv[2],sys.argv[
 @pytest.mark.parametrize(
     "adapter,port,operation",
     [
-        (RequestSourceRepository, IRequestSourceRepository, "sources"),
-        (TaskRepository, ITaskRepository, "tasks"),
+        (SQLAlchemyRequestSourceRepository, IRequestSourceRepository, "sources"),
+        (SQLAlchemyTaskRepository, ITaskRepository, "tasks"),
     ],
 )
 def test_missing_list_implementation_fails_instead_of_hiding_remaining_tasks(

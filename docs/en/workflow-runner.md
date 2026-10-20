@@ -67,7 +67,7 @@ def execute_check(database: Path, project_id: str, session_id: str,
 
 ## Execution, recovery and task state
 
-The default `SubprocessPhaseExecutor` runs a POSIX process group. It observes failure exit codes, timeout and interrupt signals, then terminates/reaps the group. It continuously drains the pipe while retaining only the configured byte limit in memory. It automatically satisfies only exit:0. Additional required checks leave even a successful process outcome waiting for a separate observation/review report.
+The default `SubprocessPhaseExecutorService` runs a POSIX process group. It observes failure exit codes, timeout and interrupt signals, then terminates/reaps the group. It continuously drains the pipe while retaining only the configured byte limit in memory. It automatically satisfies only exit:0. Additional required checks leave even a successful process outcome waiting for a separate observation/review report.
 
 External execution uses the run ID and attempt number. Resume performs lookup first and resubmits only when the executor guarantees deduplication for that same ID. The local-process adapter cannot guarantee post-restart lookup/deduplication. It retains the same attempt as waiting and reports the reason to stderr, without repeating execution/notification for unchanged uncertainty or claiming native UI receipt.
 

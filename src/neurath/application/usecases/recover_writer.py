@@ -8,7 +8,7 @@ from spakky.data.persistency.transaction import AbstractTransaction
 from spakky.domain.application.command import AbstractCommand, ICommandUseCase
 
 from neurath.application.ports.repositories.writer import IWriterRepository
-from neurath.application.ports.services.writer_observer import IWriterObserver
+from neurath.application.ports.services.writer_observer import IWriterObserverService
 from neurath.domain.aggregates.writer import Writer
 from neurath.domain.errors import InvalidExecutionState
 
@@ -37,7 +37,7 @@ class RecoverWriterUseCase(ICommandUseCase[RecoverWriterCommand, Writer]):
     def __init__(
         self,
         writers: IWriterRepository,
-        observer: IWriterObserver,
+        observer: IWriterObserverService,
         transaction: AbstractTransaction,
     ) -> None:
         """임대 저장소·호스트 생존 관찰·요청 트랜잭션을 받는다.

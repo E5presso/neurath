@@ -6,14 +6,14 @@ import subprocess
 from collections.abc import Mapping
 from typing import override
 
-from neurath.application.ports.services.execution_controller import IExecutionController
-from neurath.application.ports.services.writer_observer import IWriterObserver
+from neurath.application.ports.services.execution_controller import IExecutionControllerService
+from neurath.application.ports.services.writer_observer import IWriterObserverService
 from neurath.domain.aggregates.execution import Execution
 from neurath.domain.aggregates.writer import Writer
 from neurath.domain.runtime_records import Liveness
 
 
-class OwnedProcessObserver(IWriterObserver, IExecutionController):
+class PosixWriterObserverService(IWriterObserverService, IExecutionControllerService):
     """실행기가 격리된 새 프로세스 그룹으로 직접 시작한 호출만 제어한다.
 
     Popen(start_new_session=True) 핸들을 실행기에서 받는다. 호스트 앱 PID를 추측하여

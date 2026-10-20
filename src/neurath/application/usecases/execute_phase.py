@@ -9,7 +9,10 @@ from spakky.domain.application.command import AbstractCommand, ICommandUseCase
 
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.application.ports.repositories.workflow import IWorkflowRepository
-from neurath.application.ports.services.phase_executor import IPhaseExecutor, IWorkflowNotifier
+from neurath.application.ports.services.phase_executor import (
+    IPhaseExecutorService,
+    IWorkflowNotifierService,
+)
 from neurath.application.usecases.report_phase import ReportPhaseCommand, ReportPhaseUseCase
 from neurath.domain.aggregates.workflow import WorkflowRun
 from neurath.domain.workflow_records import PhaseAttempt, PhaseDefinition, PhaseResult, PhaseStatus
@@ -58,8 +61,8 @@ class ExecutePhaseUseCase(ICommandUseCase[ExecutePhaseCommand, ExecutePhaseResul
         workflows: IWorkflowRepository,
         tasks: ITaskRepository,
         transaction: AbstractTransaction,
-        executor: IPhaseExecutor,
-        notifier: IWorkflowNotifier,
+        executor: IPhaseExecutorService,
+        notifier: IWorkflowNotifierService,
         report: ReportPhaseUseCase,
     ) -> None:
         """원장 저장·짧은 트랜잭션·실행과 알림을 담당하는 의존성을 받는다.

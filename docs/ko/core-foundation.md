@@ -11,7 +11,7 @@
 - `Project`, `HostSession`은 `@mutable`과 `AbstractAggregateRoot[str]`로 식별자·동일성·변경 추적을 상속합니다. `ProjectLocation`은 Project가 소유하는 `AbstractValueObject`입니다.
 - 기존 `id` 참조는 `uid`를 읽는 호환 속성으로 유지합니다. 프로젝트 식별·폴더 승격·위치 충돌과 세션 범위·이동 규칙은 도메인에 있습니다.
 - 저장 포트는 `IGenericRepository`를 상속합니다. 프로젝트 위치 조회와 범위가 있는 네이티브 ID 조회만 확장합니다.
-- `ProjectRepository`, `SessionRepository`는 `AbstractGenericRepository`를 상속합니다. `get`, `get_or_none`, `contains`, `range`, `save`, `save_all`, `delete`, `delete_all`과 생성자는 재구현하지 않습니다.
+- `SQLAlchemyProjectRepository`, `SQLAlchemySessionRepository`는 `AbstractGenericRepository`를 상속합니다. `get`, `get_or_none`, `contains`, `range`, `save`, `save_all`, `delete`, `delete_all`과 생성자는 재구현하지 않습니다.
 - 도메인 테이블은 `@Table(Domain)`과 `AbstractMappableTable[Domain]`으로 양방향 변환을 정의합니다. 위치 자식 테이블은 도메인 매핑이 없는 `AbstractTable`입니다.
 - `SchemaRegistry`가 Table 태그를 통해 도메인과 실제 테이블을 연결합니다. 저장소가 매핑을 별도로 추적하지 않습니다.
 - `ApplicationContext`가 `@UseCase`, `@Repository`, 관찰 Pod와 프레임워크의 `ConnectionManager`, `SessionManager`, `Transaction`, `AggregateCollector`를 구성합니다.
@@ -78,7 +78,7 @@ Alembic migration 파일과 version table이 revision의 유일한 기준입니�
 ```python
 from pathlib import Path
 from spakky.plugins.sqlalchemy.persistency.transaction import Transaction
-from neurath.application.ports.services.directory_observer import IDirectoryObserver
+from neurath.application.ports.services.directory_observer import IDirectoryObserverService
 from neurath.application.usecases.register_session import RegisterSessionCommand, RegisterSessionUseCase
 from neurath.application.usecases.get_session_context import GetSessionContextQuery, GetSessionContextUseCase
 from neurath.infrastructure.database import initialize_database
@@ -87,7 +87,7 @@ from neurath.infrastructure.providers import DatabaseSettings, request_container
 path = Path("/explicit/isolated/core.sqlite3")
 initialize_database(path)
 with request_container(DatabaseSettings(path, write=True)) as scope:
-    observation = scope.get(IDirectoryObserver).observe("/project")
+    observation = scope.get(IDirectoryObserverService).observe("/project")
     with scope.get(Transaction):
         opened = scope.get(RegisterSessionUseCase).run(
             RegisterSessionCommand(observation, "codex", "native-session")

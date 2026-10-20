@@ -8,7 +8,7 @@ from pathlib import Path
 
 from spakky.plugins.sqlalchemy.persistency.transaction import Transaction
 
-from neurath.application.ports.services.directory_observer import IDirectoryObserver
+from neurath.application.ports.services.directory_observer import IDirectoryObserverService
 from neurath.application.usecases.get_session_context import (
     GetSessionContextQuery,
     GetSessionContextResult,
@@ -46,7 +46,7 @@ def register_session(
         RegisterSessionResult: 기존 또는 새로 등록한 호스트 세션 컨텍스트.
     """
     with request_container(DatabaseSettings(database_path, write=True)) as scope:
-        observation = scope.get(IDirectoryObserver).observe(working_directory)
+        observation = scope.get(IDirectoryObserverService).observe(working_directory)
         request = RegisterSessionCommand(
             observation=observation, provider=provider, host_session_id=host_session_id
         )
@@ -94,7 +94,7 @@ def move_session(
         MoveSessionResult: 이동 후 프로젝트와 세션. 같은 경로라면 기존 revision을 유지한다.
     """
     with request_container(DatabaseSettings(database_path, write=True)) as scope:
-        observation = scope.get(IDirectoryObserver).observe(working_directory)
+        observation = scope.get(IDirectoryObserverService).observe(working_directory)
         request = MoveSessionCommand(
             project_id=project_id,
             session_id=session_id,

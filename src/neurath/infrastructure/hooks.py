@@ -14,7 +14,7 @@ from neurath.application.usecases.register_session import (
     RegisterSessionUseCase,
 )
 from neurath.domain.runtime_records import HookAction
-from neurath.infrastructure.directory_observer import GitDirectoryObserver
+from neurath.infrastructure.directory_observer import GitDirectoryObserverService
 from neurath.infrastructure.providers import DatabaseSettings, request_container
 
 
@@ -68,7 +68,7 @@ class NativeHookAdapter:
             return {"systemMessage": "Neurath hook bypass is enabled; task state is unchanged"}
         try:
             command, directory, native_session = self.decode(payload)
-            observation = GitDirectoryObserver().observe(directory)
+            observation = GitDirectoryObserverService().observe(directory)
             with request_container(DatabaseSettings(self.database, write=True)) as scope:
                 with scope.get(Transaction):
                     actor = scope.get(RegisterSessionUseCase).run(

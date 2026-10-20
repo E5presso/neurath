@@ -12,7 +12,7 @@ from neurath.infrastructure.models.session import SessionModel
 
 
 @Repository()
-class SessionRepository(AbstractGenericRepository[HostSession, str], ISessionRepository):
+class SQLAlchemySessionRepository(AbstractGenericRepository[HostSession, str], ISessionRepository):
     """기본 메서드를 상속하고 프로젝트·공급자·네이티브 ID 조회만 확장한다."""
 
     @override
