@@ -1,4 +1,4 @@
-"""CreateTask 요청의 조회·도메인 판단·저장 순서를 조정한다."""
+"""같은 프로젝트의 원문을 재사용하여 소유 세션의 새 태스크를 등록한다."""
 
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -15,16 +15,16 @@ from neurath.domain.aggregates.task import Task
 
 @dataclass(frozen=True)
 class CreateTaskCommand(AbstractCommand):
-    """요청 범위와 명시적인 입력이다.
+    """보존한 원문에 연결할 새 작업의 목표·선행 작업·소유 세션을 지정한다.
 
     Attributes:
-        project_id: 요청 프로젝트.
-        session_id: 현재 세션.
-        source_id: 기존 원문 참조.
-        title: 수행할 일.
-        required_result: 달성할 결과.
-        dependencies: 실제 선행 작업들.
-        follow_up_of: 원래 미달 요구의 작업.
+        project_id: 태스크와 참조 자료를 조회할 프로젝트 ID.
+        session_id: 태스크를 소유한 세션 ID. 다른 세션의 작업은 변경하지 않는다.
+        source_id: 태스크 목표의 근거로 재사용할 같은 프로젝트의 원문 ID.
+        title: TODO에서 수행할 일을 식별할 제목.
+        required_result: 이 작업으로 달성해야 할 구체적인 결과.
+        dependencies: 시작 전에 성공해야 하는 같은 프로젝트의 태스크 ID 목록.
+        follow_up_of: 미달 요구를 이어받는 원래 태스크 ID. 독립 작업이면 None.
     """
 
     project_id: str
@@ -38,10 +38,10 @@ class CreateTaskCommand(AbstractCommand):
 
 @dataclass(frozen=True)
 class CreateTaskResult:
-    """이 유스케이스의 처리 결과를 전달한다.
+    """최초 요구 개정이 연결된 새 pending 태스크를 반환한다.
 
     Attributes:
-        task: 처리하거나 조회한 태스크와 보존된 전체 이력.
+        task: 새 uid와 첫 요구 개정을 가진 pending 태스크.
     """
 
     task: Task
@@ -49,7 +49,12 @@ class CreateTaskResult:
 
 @UseCase()
 class CreateTaskUseCase(ICommandUseCase[CreateTaskCommand, CreateTaskResult]):
-    """프레임워크 저장 계약으로 한 요청의 도메인 동작을 조정한다."""
+    """같은 프로젝트의 원문을 재사용하여 소유 세션의 새 태스크를 등록한다.
+
+    상태 질문·요약은 목표 출처로 쓰지 않으며 선행 작업의 존재·중복·순환을 확인한다.
+    후속 작업이면 원래 태스크의 프로젝트도 확인한다. 최초 정의만 저장하며
+    실행 시도를 시작하거나 외부 작업을 제출하지 않는다.
+    """
 
     def __init__(
         self,
@@ -57,12 +62,12 @@ class CreateTaskUseCase(ICommandUseCase[CreateTaskCommand, CreateTaskResult]):
         sources: IRequestSourceRepository,
         tasks: ITaskRepository,
     ) -> None:
-        """현재 요청의 저장소를 주입받는다.
+        """새 작업의 세션·원문·의존 범위를 확인하고 저장할 포트를 받는다.
 
         Args:
-            sessions: 요청에 속하는 sessions 저장소.
-            sources: 요청에 속하는 sources 저장소.
-            tasks: 요청에 속하는 tasks 저장소.
+            sessions: 새 작업을 소유할 세션의 프로젝트 소속을 확인한다.
+            sources: 목표의 근거로 연결할 기존 원문을 조회한다.
+            tasks: 선행·후속 관계의 대상을 조회하고 새 태스크를 저장한다.
         """
         self.sessions = sessions
         self.sources = sources
@@ -70,13 +75,13 @@ class CreateTaskUseCase(ICommandUseCase[CreateTaskCommand, CreateTaskResult]):
 
     @override
     def run(self, command: CreateTaskCommand) -> CreateTaskResult:
-        """명시한 요청을 적용하고 결과를 반환한다.
+        """세션·출처·의존 범위를 확인하고 최초 정의를 가진 태스크를 저장한다.
 
         Args:
-            command: 원문·범위·관찰에 연결된 입력.
+            command: 새 태스크의 소유 범위, 원문 ID, 제목·달성 결과와 선택적 선행·후속 관계.
 
         Returns:
-            CreateTaskResult: 처리한 원장과 현재 상태.
+            CreateTaskResult: 새 uid와 첫 요구 개정을 가진 pending 태스크.
         """
         self.sessions.get(command.session_id).require_project(command.project_id)
         source = self.sources.get(command.source_id)

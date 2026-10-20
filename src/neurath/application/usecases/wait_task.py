@@ -1,4 +1,4 @@
-"""WaitTask 요청의 조회·도메인 판단·저장 순서를 조정한다."""
+"""active 태스크에 해소되지 않은 외부 대기를 추가하고 waiting으로 바꾼다."""
 
 from dataclasses import dataclass
 from typing import override
@@ -13,14 +13,14 @@ from neurath.domain.task_records import ExternalWait
 
 @dataclass(frozen=True)
 class WaitTaskCommand(AbstractCommand):
-    """요청 범위와 명시적인 입력이다.
+    """활성 태스크가 기다릴 외부 대상·해소 조건·후속 범위를 지정한다.
 
     Attributes:
-        project_id: 요청 프로젝트.
-        session_id: 현재 세션.
-        task_id: 대상 태스크.
-        expected_revision: 관찰한 태스크 버전.
-        condition: 실제 외부 의존과 해소 조건.
+        project_id: 태스크와 참조 자료를 조회할 프로젝트 ID.
+        session_id: 태스크를 소유한 세션 ID. 다른 세션의 작업은 변경하지 않는다.
+        task_id: 현재 시도를 외부 의존 대기로 전환할 태스크 ID.
+        expected_revision: 수정 전에 읽은 Task.revision. 요구 개정 번호와는 별개다.
+        condition: 대상·해소 조건·후속 범위·관찰을 가진 대기 값. resolution은 None이어야 한다.
     """
 
     project_id: str
@@ -32,10 +32,10 @@ class WaitTaskCommand(AbstractCommand):
 
 @dataclass(frozen=True)
 class WaitTaskResult:
-    """이 유스케이스의 처리 결과를 전달한다.
+    """외부 대기가 추가되고 현재 실행 시도를 유지한 대기 태스크를 반환한다.
 
     Attributes:
-        task: 처리하거나 조회한 태스크와 보존된 전체 이력.
+        task: 대기 이력이 추가된 waiting 태스크.
     """
 
     task: Task
@@ -43,25 +43,29 @@ class WaitTaskResult:
 
 @UseCase()
 class WaitTaskUseCase(ICommandUseCase[WaitTaskCommand, WaitTaskResult]):
-    """프레임워크 저장 계약으로 한 요청의 도메인 동작을 조정한다."""
+    """active 태스크에 해소되지 않은 외부 대기를 추가하고 waiting으로 바꾼다.
+
+    대상·해소 조건·후속 범위·관찰이 필요하며 이미 resolution이 있는 대기는 거부한다.
+    대기 정보를 저장할 뿐 외부 상태를 조회하거나 감시 작업을 시작하지 않는다.
+    """
 
     def __init__(self, tasks: ITaskRepository) -> None:
-        """현재 요청의 저장소를 주입받는다.
+        """활성 태스크에 외부 대기를 추가할 저장소를 받는다.
 
         Args:
-            tasks: 요청에 속하는 tasks 저장소.
+            tasks: 현재 활성 태스크를 조회하고 대기 이력·waiting 상태를 저장한다.
         """
         self.tasks = tasks
 
     @override
     def run(self, command: WaitTaskCommand) -> WaitTaskResult:
-        """명시한 요청을 적용하고 결과를 반환한다.
+        """소유 범위·revision·활성 상태를 확인하고 외부 대기 조건을 저장한다.
 
         Args:
-            command: 원문·범위·관찰에 연결된 입력.
+            command: 대기할 태스크, 읽은 revision과 아직 해소되지 않은 외부 의존.
 
         Returns:
-            WaitTaskResult: 처리한 원장과 현재 상태.
+            WaitTaskResult: 대기 이력이 추가된 waiting 태스크.
         """
         task = self.tasks.get(command.task_id)
         task.require_scope(command.project_id, command.session_id)

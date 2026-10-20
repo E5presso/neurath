@@ -1,7 +1,7 @@
-"""Spakky의 표준 트랜잭션으로 개별 세션 요청을 구성한다.
+"""통합 시험에서 Git 관찰과 요청 컨테이너·트랜잭션을 실제로 실행한다.
 
-DB 트랜잭션 전에 Git 관찰을 마친다. 요청마다 표준 Transaction이
-세션을 열고 성공 시 커밋하거나 실패 시 롤백한 뒤 세션을 닫는다.
+Git 관찰을 DB 트랜잭션 전에 마친다. Transaction은 성공 시 커밋하고 실패 시
+롤백하며, request_container는 요청 종료 시 세션·컨테이너·엔진을 정리한다.
 """
 
 from pathlib import Path
@@ -91,7 +91,7 @@ def move_session(
         database_path: 명시적인 저장소 경로이며 None이면 사용자 단위 기본 경로.
 
     Returns:
-        MoveSessionResult: 성공적으로 갱신한 세션 버전을 포함하는 컨텍스트.
+        MoveSessionResult: 이동 후 프로젝트와 세션. 같은 경로라면 기존 revision을 유지한다.
     """
     with request_container(DatabaseSettings(database_path, write=True)) as scope:
         observation = scope.get(IDirectoryObserver).observe(working_directory)

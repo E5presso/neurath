@@ -9,7 +9,7 @@ MARKER = "# neurath-quality-hook-v1"
 
 
 def git_environment() -> dict[str, str]:
-    """명시적으로 선택한 체크아웃에서 상속된 Git 저장소 환경 설정을 제거한다.
+    """호출할 Git의 대상 저장소가 상속 환경으로 바뀌지 않게 GIT_*를 제외한다.
 
     Returns:
         dict[str, str]: 상속된 Git 저장소 환경 설정을 제거한 프로세스 환경.
@@ -57,16 +57,19 @@ def optional_config(root: Path, scope: str, key: str) -> str | None:
 
 
 def install(root: Path) -> Path:
-    """이 작업 트리의 전용 Git 디렉터리에만 설치하고 이전 훅을 연결한다.
+    """현재 작업 트리의 pre-commit 앞에 기존 훅을 연결하고 품질 검사를 설치한다.
+
+    관리 표지가 있는 동일 설치는 재사용한다. 다른 worktree의 hooksPath를 바꾸지
+    않도록 worktree별 설정을 활성화하고 현재 작업 트리의 경로만 지정한다.
 
     Args:
-        root: 조사할 체크아웃의 루트 디렉터리.
+        root: 품질 훅을 설치할 체크아웃의 경로.
 
     Returns:
         Path: 이전 훅을 보존하여 설치한 작업 트리 전용 훅 경로.
 
     Raises:
-        RuntimeError: 기존 설정을 덮어쓰거나 보존된 기록을 파괴하는 작업인 경우.
+        RuntimeError: 관리 표지 없는 설치·기존 대상 디렉터리·명시적 core.worktree·bare 설정을 만난 경우.
     """
     root = Path(git(root, "rev-parse", "--show-toplevel"))
     git_directory = Path(git(root, "rev-parse", "--absolute-git-dir"))
@@ -96,7 +99,7 @@ def install(root: Path) -> Path:
     destination.mkdir()
     hook.write_text(script)
     hook.chmod(0o755)
-    # This extension enables isolated per-worktree settings; no existing values are replaced.
+    # hooksPath를 이 작업 트리에만 설정할 수 있도록 worktree별 설정을 활성화한다.
     git(root, "config", "--local", "extensions.worktreeConfig", "true")
     git(root, "config", "--worktree", "core.hooksPath", str(destination))
     return hook

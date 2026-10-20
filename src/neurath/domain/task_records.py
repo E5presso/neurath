@@ -64,7 +64,9 @@ class TaskDefinition(AbstractValueObject):
 
     @override
     def validate(self) -> None:
-        """정의와 의존 목록의 기본 불변식을 확인한다.
+        """양수 개정 번호·비어 있지 않은 목표·중복 없는 의존 ID를 확인한다.
+
+        의존 대상의 존재와 순환은 전체 태스크 그래프가 필요한 Task에서 검사한다.
 
         Raises:
             ValueError: 번호·제목·결과 또는 의존 목록이 유효하지 않은 경우.
@@ -123,7 +125,11 @@ class TaskResult(AbstractValueObject):
 
     @override
     def validate(self) -> None:
-        """제출이나 빈 관찰 및 실패한 명령을 성공 결과로 수용하지 않는다.
+        """관찰 참조와 결과 설명을 요구하고 성공·실패·남은 일의 일관성을 검사한다.
+
+        성공에는 남은 일이 없어야 하며 종료 코드는 None 또는 0이어야 한다.
+        실패·부분 수행에는 남은 일이 필요하다. 참조 문자열의 존재를 검사할 뿐
+        외부 산출물이나 명령의 진위를 확인하지 않는다.
 
         Raises:
             ValueError: 결과 설명·관찰·남은 일이 비어 있는 경우.
@@ -182,10 +188,12 @@ class ExternalWait(AbstractValueObject):
 
     @override
     def validate(self) -> None:
-        """대기 대상과 관찰 없는 가짜 입력 대기를 거부한다.
+        """대상·조건·후속 범위·관찰과 선택적인 해소 관찰이 공백인지 검사한다.
+
+        각 필드의 기입 여부만 확인하며 외부 의존의 실재 여부는 검사하지 않는다.
 
         Raises:
-            ValueError: 대기 조건이나 해소 관찰이 공백만 포함한 경우.
+            ValueError: 대상·조건·후속 범위·관찰 중 하나가 공백이거나 지정한 resolution이 공백인 경우.
         """
         for value in (self.target, self.condition, self.resume_scope, self.observation):
             if not value.strip():

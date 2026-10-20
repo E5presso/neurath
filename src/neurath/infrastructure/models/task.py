@@ -180,7 +180,7 @@ class TaskDefinitionModel(AbstractTable):
 
     @classmethod
     def from_value(cls, value: TaskDefinition, task_id: str, project_id: str) -> Self:
-        """소유 태스크와 함께 요구 개정을 저장한다.
+        """요구 개정과 선행 작업 ID들을 태스크에 종속된 ORM 객체로 변환한다.
 
         Args:
             value: 불변 요구 개정.
@@ -290,7 +290,7 @@ class TaskAttemptModel(AbstractTable):
 
     @classmethod
     def from_value(cls, value: TaskAttempt, task_id: str) -> Self:
-        """시도의 후보와 결과를 각각 보존한다.
+        """후보·확정 결과의 유무를 별도 nullable 필드로 표현한 시도 객체를 만든다.
 
         Args:
             value: 불변 실행 시도 기록.
@@ -316,7 +316,10 @@ class TaskAttemptModel(AbstractTable):
         )
 
     def to_value(self) -> TaskAttempt:
-        """확정 전 자료를 성공으로 해석하지 않고 복원한다.
+        """후보 설명과 outcome의 None 여부로 제출·결과의 존재를 복원한다.
+
+        미확정 결과의 빈 summary·observations는 결과 객체로 만들지 않는다.
+        참조 목록은 tuple로 복사하여 ORM의 JSON 목록과 분리한다.
 
         Returns:
             TaskAttempt: 원래 개정과 후보·관찰 결과.
@@ -390,7 +393,7 @@ class TaskWaitModel(AbstractTable):
         )
 
     def to_value(self) -> ExternalWait:
-        """같은 시도를 재개할 수 있는 대기 정보를 복원한다.
+        """저장된 외부 대기와 선택적인 해소 관찰을 불변 값으로 복원한다.
 
         Returns:
             ExternalWait: 외부 의존과 해소 관찰.

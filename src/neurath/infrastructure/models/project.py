@@ -49,7 +49,10 @@ class ProjectModel(AbstractMappableTable[Project]):
     @classmethod
     @override
     def from_domain(cls, domain: Project) -> Self:
-        """프로젝트의 명시적인 필드와 모든 소유 위치를 레코드로 변환한다.
+        """프로젝트·소유 위치를 ORM 객체로 변환하고 시각을 UTC 기준 무시간대 값으로 맞춘다.
+
+        객체만 생성하며 DB 저장은 repository가 수행한다. SQLite가 시간대 정보를
+        저장하지 않아도 같은 시각의 재저장이 변경으로 오인되지 않게 정규화한다.
 
         Args:
             domain: 동일성을 보존하여 변환할 프로젝트 aggregate.
@@ -71,7 +74,7 @@ class ProjectModel(AbstractMappableTable[Project]):
 
     @override
     def to_domain(self) -> Project:
-        """ORM 동일성 맵과 독립적인 프로젝트 aggregate를 반환한다.
+        """저장 시각에 UTC를 복원하고 위치를 tuple로 담은 프로젝트를 반환한다.
 
         Returns:
             Project: 저장된 식별자와 모든 소유 위치를 가진 프로젝트.

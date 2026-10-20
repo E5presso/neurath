@@ -1,4 +1,4 @@
-"""명시적인 저장소 의존성으로 세션 컨텍스트 조회를 구현한다."""
+"""세션의 프로젝트 소속을 확인하고 프로젝트·세션을 함께 조회한다."""
 
 from dataclasses import dataclass
 from typing import override
@@ -14,7 +14,7 @@ from neurath.domain.aggregates.session import HostSession
 
 @dataclass(frozen=True)
 class GetSessionContextQuery(AbstractQuery):
-    """단일 세션 컨텍스트 조회 요청의 명시적 불변 입력이다.
+    """현재 작업 경로와 프로젝트를 조회할 세션을 지정한다.
 
     Attributes:
         project_id: 조회 대상 프로젝트의 안정적인 식별자.
@@ -27,11 +27,11 @@ class GetSessionContextQuery(AbstractQuery):
 
 @dataclass(frozen=True)
 class GetSessionContextResult:
-    """이 유스케이스의 처리 결과를 전달한다.
+    """조회한 프로젝트와 해당 프로젝트에 속한 호스트 세션을 반환한다.
 
     Attributes:
-        project: 요청한 프로젝트.
-        session: 처리하거나 조회한 세션.
+        project: 세션이 속한 프로젝트와 소유 위치.
+        session: 저장된 작업 경로와 revision을 가진 조회 세션.
     """
 
     project: Project
@@ -40,27 +40,31 @@ class GetSessionContextResult:
 
 @UseCase()
 class GetSessionContextUseCase(IQueryUseCase[GetSessionContextQuery, GetSessionContextResult]):
-    """저장 수명을 소유하지 않고 프로젝트와 세션 규칙을 조정한다."""
+    """세션의 프로젝트 소속을 확인하고 프로젝트·세션을 함께 조회한다.
+
+    저장된 작업 경로와 revision을 읽으며 새 등록·위치 관찰·경로 변경을 수행하지 않는다.
+    다른 프로젝트의 세션을 지정하면 ContextNotFound가 발생한다.
+    """
 
     def __init__(self, projects: IProjectRepository, sessions: ISessionRepository) -> None:
-        """단일 요청 트랜잭션에 속한 저장소를 주입받는다.
+        """프로젝트와 세션을 함께 조회할 저장소를 받는다.
 
         Args:
-            projects: 이 요청의 프로젝트 조회·등록 의존성.
-            sessions: 이 요청의 세션 저장 포트.
+            projects: 세션이 속한 프로젝트의 위치·식별 정보를 조회한다.
+            sessions: 세션의 프로젝트 소속·작업 경로·revision을 조회한다.
         """
         self.projects = projects
         self.sessions = sessions
 
     @override
     def run(self, query: GetSessionContextQuery) -> GetSessionContextResult:
-        """요청한 작업을 적용하고 분리된 처리 결과를 반환한다.
+        """프로젝트 소속을 확인한 세션과 해당 프로젝트를 변경 없이 반환한다.
 
         Args:
-            query: 요청 경계에서 전달한 명시적인 명령 또는 조회.
+            query: 조회할 세션 ID와 그 세션이 속해야 하는 프로젝트 ID.
 
         Returns:
-            GetSessionContextResult: 처리 후 프로젝트와 세션.
+            GetSessionContextResult: 저장된 프로젝트와 작업 경로·revision을 가진 세션.
         """
         session = self.sessions.get(query.session_id)
         session.require_project(query.project_id)

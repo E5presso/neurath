@@ -1,4 +1,4 @@
-"""GetTask 요청의 조회·도메인 판단·저장 순서를 조정한다."""
+"""지정한 소유 세션의 태스크 한 건과 보존된 이력을 조회한다."""
 
 from dataclasses import dataclass
 from typing import override
@@ -12,12 +12,12 @@ from neurath.domain.aggregates.task import Task
 
 @dataclass(frozen=True)
 class GetTaskQuery(AbstractQuery):
-    """요청 범위와 명시적인 입력이다.
+    """소유 프로젝트·세션 안에서 상세 조회할 태스크를 지정한다.
 
     Attributes:
-        project_id: 요청 프로젝트.
-        session_id: 현재 세션.
-        task_id: 대상 태스크.
+        project_id: 태스크와 참조 자료를 조회할 프로젝트 ID.
+        session_id: 조회할 태스크의 소유 세션 ID.
+        task_id: 현재 상태와 전체 이력을 조회할 태스크 ID.
     """
 
     project_id: str
@@ -27,10 +27,10 @@ class GetTaskQuery(AbstractQuery):
 
 @dataclass(frozen=True)
 class GetTaskResult:
-    """이 유스케이스의 처리 결과를 전달한다.
+    """조회한 태스크의 현재 상태와 전체 요구·시도·대기 이력을 반환한다.
 
     Attributes:
-        task: 처리하거나 조회한 태스크와 보존된 전체 이력.
+        task: 저장된 현재 요구와 모든 시도·대기 기록을 가진 태스크.
     """
 
     task: Task
@@ -38,25 +38,29 @@ class GetTaskResult:
 
 @UseCase()
 class GetTaskUseCase(IQueryUseCase[GetTaskQuery, GetTaskResult]):
-    """프레임워크 저장 계약으로 한 요청의 도메인 동작을 조정한다."""
+    """지정한 소유 세션의 태스크 한 건과 보존된 이력을 조회한다.
+
+    프로젝트 또는 소유 세션이 다르면 ContextNotFound가 발생한다.
+    조회는 작업 상태나 소유권을 변경하지 않는다.
+    """
 
     def __init__(self, tasks: ITaskRepository) -> None:
-        """현재 요청의 저장소를 주입받는다.
+        """상세 조회할 태스크를 읽는 저장소를 받는다.
 
         Args:
-            tasks: 요청에 속하는 tasks 저장소.
+            tasks: 태스크 ID로 현재 상태와 소유 이력을 조회한다.
         """
         self.tasks = tasks
 
     @override
     def run(self, query: GetTaskQuery) -> GetTaskResult:
-        """명시한 요청을 적용하고 결과를 반환한다.
+        """태스크의 소유 범위를 확인하고 현재 상태와 이력을 반환한다.
 
         Args:
-            query: 원문·범위·관찰에 연결된 입력.
+            query: 조회할 태스크 ID와 그 태스크가 속해야 하는 프로젝트·소유 세션.
 
         Returns:
-            GetTaskResult: 처리한 원장과 현재 상태.
+            GetTaskResult: 저장된 현재 요구와 모든 시도·대기 기록을 가진 태스크.
         """
         task = self.tasks.get(query.task_id)
         task.require_scope(query.project_id, query.session_id)

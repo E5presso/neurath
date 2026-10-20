@@ -1,4 +1,4 @@
-"""명시적인 저장소 의존성으로 세션 등록을 구현한다."""
+"""프로젝트를 식별하고 공급자·네이티브 ID가 같은 세션을 재사용하거나 등록한다."""
 
 from dataclasses import dataclass
 from typing import override
@@ -18,7 +18,7 @@ from neurath.domain.observations import DirectoryObservation
 
 @dataclass(frozen=True)
 class RegisterSessionCommand(AbstractCommand):
-    """단일 세션 등록 요청의 명시적 불변 입력이다.
+    """관찰한 프로젝트 위치와 등록할 호스트의 네이티브 세션 식별자를 지정한다.
 
     Attributes:
         observation: 프로젝트 식별 규칙에 사용하는 정규화된 외부 관찰 사실.
@@ -33,11 +33,11 @@ class RegisterSessionCommand(AbstractCommand):
 
 @dataclass(frozen=True)
 class RegisterSessionResult:
-    """이 유스케이스의 처리 결과를 전달한다.
+    """등록 위치의 프로젝트와 기존 또는 새 호스트 세션을 반환한다.
 
     Attributes:
-        project: 요청한 프로젝트.
-        session: 처리하거나 조회한 세션.
+        project: 세션이 속한 프로젝트와 소유 위치.
+        session: 동일 네이티브 ID의 기존 세션 또는 새로 생성한 세션.
     """
 
     project: Project
@@ -46,27 +46,31 @@ class RegisterSessionResult:
 
 @UseCase()
 class RegisterSessionUseCase(ICommandUseCase[RegisterSessionCommand, RegisterSessionResult]):
-    """저장 수명을 소유하지 않고 프로젝트와 세션 규칙을 조정한다."""
+    """프로젝트를 식별하고 공급자·네이티브 ID가 같은 세션을 재사용하거나 등록한다.
+
+    세션 키는 프로젝트·provider·host_session_id의 조합이다. 재등록 시 기존 세션의
+    최근 작업 경로와 revision을 유지하며 경로 변경은 move_session에서 처리한다.
+    """
 
     def __init__(self, projects: RegisterProjectUseCase, sessions: ISessionRepository) -> None:
-        """단일 요청 트랜잭션에 속한 저장소를 주입받는다.
+        """위치 식별 유스케이스와 네이티브 세션 저장소를 받는다.
 
         Args:
-            projects: 이 요청의 프로젝트 조회·등록 의존성.
-            sessions: 이 요청의 세션 저장 포트.
+            projects: 관찰한 위치를 RegisterProjectUseCase로 식별·등록한다.
+            sessions: 프로젝트·공급자·네이티브 ID로 세션을 찾고 없을 때 새 세션을 저장한다.
         """
         self.projects = projects
         self.sessions = sessions
 
     @override
     def run(self, command: RegisterSessionCommand) -> RegisterSessionResult:
-        """요청한 작업을 적용하고 분리된 처리 결과를 반환한다.
+        """프로젝트를 등록·조회한 뒤 동일한 네이티브 세션을 재사용하거나 새로 저장한다.
 
         Args:
-            command: 요청 경계에서 전달한 명시적인 명령 또는 조회.
+            command: 프로젝트 위치 관찰과 공급자·네이티브 세션 ID.
 
         Returns:
-            RegisterSessionResult: 처리 후 프로젝트와 세션.
+            RegisterSessionResult: 관찰한 위치의 프로젝트와 재사용하거나 생성한 호스트 세션.
         """
         project = self.projects.run(RegisterProjectCommand(command.observation)).project
         session = self.sessions.find(project.id, command.provider, command.host_session_id)

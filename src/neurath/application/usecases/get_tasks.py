@@ -1,4 +1,4 @@
-"""GetTasks 요청의 조회·도메인 판단·저장 순서를 조정한다."""
+"""세션의 모든 태스크를 조회하고 같은 프로젝트의 선행 작업으로 시작 가능 여부를 계산한다."""
 
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -15,11 +15,11 @@ from neurath.domain.task_records import TaskStatus
 
 @dataclass(frozen=True)
 class GetTasksQuery(AbstractQuery):
-    """요청 범위와 명시적인 입력이다.
+    """전체 TODO와 실행 가능 여부를 조회할 소유 세션을 지정한다.
 
     Attributes:
-        project_id: 요청 프로젝트.
-        session_id: 현재 세션.
+        project_id: 태스크와 참조 자료를 조회할 프로젝트 ID.
+        session_id: 조회할 태스크의 소유 세션 ID.
     """
 
     project_id: str
@@ -28,13 +28,13 @@ class GetTasksQuery(AbstractQuery):
 
 @dataclass(frozen=True)
 class GetTasksResult:
-    """이 유스케이스의 처리 결과를 전달한다.
+    """세션의 전체 태스크와 시작 가능한 작업·종료·성공 여부를 반환한다.
 
     Attributes:
         tasks: 해당 세션의 전체 현재 태스크.
-        ready_task_ids: 독립적으로 시작 가능한 태스크 식별자.
-        all_terminal: 비어 있지 않은 목록의 모든 작업이 종료 상태인지 여부.
-        all_succeeded: 비어 있지 않은 목록의 모든 요구가 성공했는지 여부.
+        ready_task_ids: pending·failed이며 모든 선행 작업이 성공한 태스크의 ID 목록.
+        all_terminal: 목록이 비어 있지 않고 모두 succeeded·failed·invalidated인지 여부.
+        all_succeeded: 목록이 비어 있지 않고 모든 태스크가 succeeded인지 여부.
     """
 
     tasks: Sequence[Task]
@@ -45,27 +45,32 @@ class GetTasksResult:
 
 @UseCase()
 class GetTasksUseCase(IQueryUseCase[GetTasksQuery, GetTasksResult]):
-    """프레임워크 저장 계약으로 한 요청의 도메인 동작을 조정한다."""
+    """세션의 모든 태스크를 조회하고 같은 프로젝트의 선행 작업으로 시작 가능 여부를 계산한다.
+
+    완료·실패·무효 태스크도 목록에 포함한다. all_terminal은 성공·실패·무효를,
+    all_succeeded는 성공만 허용하며 빈 목록에서는 둘 다 False다.
+    이 결과는 TODO 표시용 조회이며 태스크를 완료하거나 세션을 종료하지 않는다.
+    """
 
     def __init__(self, sessions: ISessionRepository, tasks: ITaskRepository) -> None:
-        """현재 요청의 저장소를 주입받는다.
+        """TODO 소유 세션과 프로젝트 전체의 의존 상태를 읽을 저장소를 받는다.
 
         Args:
-            sessions: 요청에 속하는 sessions 저장소.
-            tasks: 요청에 속하는 tasks 저장소.
+            sessions: 조회할 소유 세션이 지정 프로젝트에 속하는지 확인한다.
+            tasks: 전체 프로젝트의 태스크를 읽어 소유 세션 목록과 선행 성공 여부를 구성한다.
         """
         self.sessions = sessions
         self.tasks = tasks
 
     @override
     def run(self, query: GetTasksQuery) -> GetTasksResult:
-        """명시한 요청을 적용하고 결과를 반환한다.
+        """프로젝트 전체 의존 상태를 읽고 소유 세션의 TODO 조회 결과를 구성한다.
 
         Args:
-            query: 원문·범위·관찰에 연결된 입력.
+            query: TODO를 조회할 프로젝트와 소유 세션 ID.
 
         Returns:
-            GetTasksResult: 처리한 원장과 현재 상태.
+            GetTasksResult: 전체 소유 태스크, 시작 가능한 ID와 비어 있지 않은 목록의 종료·성공 판정.
         """
         self.sessions.get(query.session_id).require_project(query.project_id)
         tasks = self.tasks.list(query.project_id)

@@ -32,7 +32,7 @@ class SourceKind(StrEnum):
 
 @mutable
 class RequestSource(AbstractAggregateRoot[str]):
-    """작성자가 인간인지와 무관하게 원래 출처와 정정 계보를 유지한다.
+    """요구의 원문과 최초 기록 세션, 발신 맥락 및 정정 대상 ID를 보존한다.
 
     Attributes:
         project_id: 출처가 속하는 프로젝트.
@@ -75,7 +75,10 @@ class RequestSource(AbstractAggregateRoot[str]):
         reference: str | None = None,
         corrects_id: str | None = None,
     ) -> Self:
-        """발신자 인증을 추가하지 않고 실제 원문을 기록한다.
+        """새 uid로 원문 객체를 만들고 본문·정정 용도의 일관성을 검증한다.
+
+        같은 본문도 별도 출처로 생성한다. 기존 출처의 존재·프로젝트 확인과 DB 저장은
+        호출하는 유스케이스가 담당하며, author는 인증값으로 사용하지 않는다.
 
         Args:
             project_id: 관련 프로젝트.
@@ -102,7 +105,7 @@ class RequestSource(AbstractAggregateRoot[str]):
 
     @override
     def validate(self) -> None:
-        """원문과 정정 용도의 일관성을 검사한다.
+        """공백 본문을 거부하고 correction일 때만 정정 대상 ID를 요구한다.
 
         Raises:
             InvalidTaskState: 정정 용도와 대상 참조가 일치하지 않는 경우.
@@ -128,7 +131,9 @@ class RequestSource(AbstractAggregateRoot[str]):
             raise ContextNotFound("Source does not belong to this project")
 
     def require_requirement(self) -> None:
-        """상태 질문이나 과거 요약으로 새 목표를 만들지 않는다.
+        """출처 용도가 status·summary이면 태스크 목표로 사용하는 것을 거부한다.
+
+        용도 값을 검사하며 원문 내용이 실제 사용자 의도에 맞는지는 판정하지 않는다.
 
         Raises:
             InvalidTaskState: 원문이 요구 정의용 출처가 아닌 경우.

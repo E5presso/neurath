@@ -67,10 +67,11 @@ class DatabaseSettings:
 
 @contextmanager
 def request_container(settings: DatabaseSettings) -> Iterator[ApplicationContext]:
-    """표준 프레임워크 구성요소를 등록하고 요청 종료 시 자원을 정리한다.
+    """한 요청의 SQLite 연결·저장소·유스케이스를 구성하고 종료 시 자원을 정리한다.
 
-    환경변수를 바꾸지 않고 요청별 설정 인스턴스를 주입한다. 실제
-    ConnectionManager·SessionManager·Transaction과 기본 저장소를 사용한다.
+    환경변수 변경 없이 요청 설정을 주입한다. 호출자는 반환된 컨테이너에서
+    Transaction을 열어 유스케이스를 실행해야 하며, 이 함수 자체는 커밋하지 않는다.
+    본문의 저장소 오류는 아래 도메인 오류로 변환하고 세션·컨테이너·엔진을 정리한다.
 
     Args:
         settings: 이번 요청에만 적용하는 경로와 접근 모드.

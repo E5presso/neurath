@@ -1,4 +1,4 @@
-"""ResumeTask 요청의 조회·도메인 판단·저장 순서를 조정한다."""
+"""waiting 태스크의 마지막 대기를 해소하고 같은 시도를 active로 되돌린다."""
 
 from dataclasses import dataclass
 from typing import override
@@ -12,14 +12,14 @@ from neurath.domain.aggregates.task import Task
 
 @dataclass(frozen=True)
 class ResumeTaskCommand(AbstractCommand):
-    """요청 범위와 명시적인 입력이다.
+    """외부 대기가 해소된 태스크와 해소 관찰을 지정한다.
 
     Attributes:
-        project_id: 요청 프로젝트.
-        session_id: 현재 세션.
-        task_id: 대상 태스크.
-        expected_revision: 관찰한 태스크 버전.
-        resolution: 외부 의존 해소 관찰.
+        project_id: 태스크와 참조 자료를 조회할 프로젝트 ID.
+        session_id: 태스크를 소유한 세션 ID. 다른 세션의 작업은 변경하지 않는다.
+        task_id: 외부 대기를 해소하고 같은 시도를 재개할 태스크 ID.
+        expected_revision: 수정 전에 읽은 Task.revision. 요구 개정 번호와는 별개다.
+        resolution: 마지막 외부 대기를 해소한 관찰 내용 또는 참조. 공백만 있는 값은 거부한다.
     """
 
     project_id: str
@@ -31,10 +31,10 @@ class ResumeTaskCommand(AbstractCommand):
 
 @dataclass(frozen=True)
 class ResumeTaskResult:
-    """이 유스케이스의 처리 결과를 전달한다.
+    """마지막 대기의 해소 기록과 같은 실행 시도를 유지한 활성 태스크를 반환한다.
 
     Attributes:
-        task: 처리하거나 조회한 태스크와 보존된 전체 이력.
+        task: 마지막 대기에 resolution이 기록된 active 태스크.
     """
 
     task: Task
@@ -42,25 +42,29 @@ class ResumeTaskResult:
 
 @UseCase()
 class ResumeTaskUseCase(ICommandUseCase[ResumeTaskCommand, ResumeTaskResult]):
-    """프레임워크 저장 계약으로 한 요청의 도메인 동작을 조정한다."""
+    """waiting 태스크의 마지막 대기를 해소하고 같은 시도를 active로 되돌린다.
+
+    해소 관찰은 비어 있지 않아야 한다. 새 시도를 만들거나 외부 실행을 다시
+    제출하지 않으며, 대기하지 않는 태스크의 재개는 거부한다.
+    """
 
     def __init__(self, tasks: ITaskRepository) -> None:
-        """현재 요청의 저장소를 주입받는다.
+        """외부 대기와 재개 상태를 조회·저장할 포트를 받는다.
 
         Args:
-            tasks: 요청에 속하는 tasks 저장소.
+            tasks: 대기 중인 태스크를 조회하고 해소 관찰·활성 상태를 저장한다.
         """
         self.tasks = tasks
 
     @override
     def run(self, command: ResumeTaskCommand) -> ResumeTaskResult:
-        """명시한 요청을 적용하고 결과를 반환한다.
+        """소유 범위·revision·대기 상태를 확인하고 해소 관찰을 저장한다.
 
         Args:
-            command: 원문·범위·관찰에 연결된 입력.
+            command: 재개할 태스크, 읽은 revision과 외부 의존이 해소됐다는 관찰.
 
         Returns:
-            ResumeTaskResult: 처리한 원장과 현재 상태.
+            ResumeTaskResult: 마지막 대기에 resolution이 기록된 active 태스크.
         """
         task = self.tasks.get(command.task_id)
         task.require_scope(command.project_id, command.session_id)

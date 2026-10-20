@@ -16,17 +16,17 @@ from neurath.infrastructure.models.request_source import RequestSourceModel
 class RequestSourceRepository(
     AbstractGenericRepository[RequestSource, str], IRequestSourceRepository
 ):
-    """프레임워크 CRUD를 재구현하지 않는 저장소다."""
+    """원문·정정을 SQLite에 매핑하고 프로젝트 전체 목록을 도메인 객체로 조회한다."""
 
     @override
     def list(self, project_id: str) -> Sequence[RequestSource]:
-        """프로젝트 범위의 모든 현재 레코드를 조회한다.
+        """프로젝트의 원문·정정을 생성 시각·ID 순으로 조회해 tuple로 반환한다.
 
         Args:
-            project_id: 조회 프로젝트.
+            project_id: 조회 범위를 제한할 프로젝트 ID.
 
         Returns:
-            Sequence[RequestSource]: 원장과 같은 전체 자료.
+            Sequence[RequestSource]: ORM 객체와 분리된 전체 원문·정정 목록. 없으면 빈 tuple.
         """
         records = self._session_manager.session.scalars(
             select(RequestSourceModel)

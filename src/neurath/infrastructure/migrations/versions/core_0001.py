@@ -43,7 +43,7 @@ def downgrade() -> None:
     """보존한 사용자 기록을 파괴하는 되돌리기를 거부한다.
 
     Raises:
-        RuntimeError: 기존 설정을 덮어쓰거나 보존된 기록을 파괴하는 작업인 경우.
+        RuntimeError: 최초 스키마를 제거하는 downgrade를 요청한 경우. 데이터 유무에 관계없이 거부한다.
     """
     raise RuntimeError(
         "Destructive core downgrade is unsupported; preserve data for migration recovery"

@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 class ArchitectureChecker:
-    """명시적 계약을 검사하기 전에 로컬 임포트 별칭과 상속을 해석한다."""
+    """로컬 import·상속 관계를 해석해 계층 의존과 등록된 프레임워크 계약을 검사한다."""
 
     def __init__(self, sources: dict[str, str]) -> None:
         """점으로 구분한 모듈 이름을 키로 갖는 전체 소스 트리를 구문 분석한다.
@@ -105,7 +105,10 @@ class ArchitectureChecker:
         return result
 
     def check(self) -> list[str]:
-        """명시적으로 확인할 수 있는 계약만 검사하고 책임의 의미는 판정하지 않는다.
+        """Protocol·계층 의존·추상 port·등록 구성요소·Self 반환·커버리지 제외를 검사한다.
+
+        전달받은 소스를 실행하지 않고 AST와 import 별칭·상속 관계로 판단한다.
+        코드가 어떤 도메인 책임을 소유해야 하는지나 추상화의 필요성은 판정하지 않는다.
 
         Returns:
             list[str]: 구체적인 계약 위반의 위치와 규칙 코드.

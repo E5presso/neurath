@@ -17,13 +17,13 @@ from neurath.domain.errors import StorageNotReady
 
 
 def user_database_path() -> Path:
-    """현재 디렉터리와 독립적인 사용자 단위 데이터베이스 경로를 결정한다.
+    """XDG_DATA_HOME 또는 사용자 홈 아래의 neurath/core.sqlite3 경로를 반환한다.
 
     Returns:
-        Path: 작업 디렉터리와 독립적인 사용자 단위 코어 데이터베이스 경로.
+        Path: XDG_DATA_HOME/neurath/core.sqlite3. 미설정·빈 값이면 ~/.local/share 아래 경로.
 
     Raises:
-        ValueError: 입력 경로·식별자·디렉터리가 작업에 적합하지 않은 경우.
+        ValueError: 홈 기호를 확장한 XDG_DATA_HOME이 절대 경로가 아닌 경우.
     """
     configured = os.environ.get("XDG_DATA_HOME")
     data_home = Path(configured).expanduser() if configured else Path.home() / ".local" / "share"
@@ -35,7 +35,10 @@ def user_database_path() -> Path:
 def create_database_engine(
     path: Path | None = None, *, write: bool, create: bool = False, timeout: float = 5.0
 ) -> Engine:
-    """풀 없는 엔진을 생성하며 호출자가 Session.begin과 엔진 정리를 소유한다.
+    """읽기·쓰기 정책이 연결된 NullPool SQLite 엔진을 생성한다.
+
+    초기화용 엔진을 구성하며 스키마 호환성 검사는 여기서 활성화하지 않는다.
+    호출자는 트랜잭션을 열고 정상·실패 경로 모두에서 엔진을 dispose해야 한다.
 
     Args:
         path: 명시적인 데이터베이스 경로이며 None이면 사용자 단위 기본 경로.
@@ -45,7 +48,6 @@ def create_database_engine(
 
     Returns:
         Engine: 사용 후 호출자가 정리해야 하는 풀 없는 엔진.
-
     """
     engine = create_engine(
         database_url(path, write=write, create=create),
@@ -57,7 +59,7 @@ def create_database_engine(
 
 
 def database_url(path: Path | None = None, *, write: bool, create: bool = False) -> URL:
-    """파일의 존재와 접근 모드를 보존하는 SQLite URI를 만든다.
+    """파일 경로를 이스케이프하고 rwc·rw·ro 접근 모드를 지정한 SQLite URI를 만든다.
 
     Args:
         path: 명시적인 데이터베이스 경로이며 None이면 사용자 단위 기본 경로.
@@ -68,7 +70,7 @@ def database_url(path: Path | None = None, *, write: bool, create: bool = False)
         URL: 파일 경로의 특수 문자를 인코딩한 SQLite 연결 주소.
 
     Raises:
-        StorageNotReady: 초기화되지 않은 데이터베이스를 일반 요청에서 지정한 경우.
+        StorageNotReady: create=False인 요청의 경로에 DB 파일이 없는 경우. 스키마는 검사하지 않는다.
     """
     path = (path if path is not None else user_database_path()).expanduser().resolve()
     if not create and not path.is_file():
@@ -82,7 +84,11 @@ def database_url(path: Path | None = None, *, write: bool, create: bool = False)
 
 
 def configure_sqlite_engine(engine: Engine, *, write: bool, check_schema: bool = False) -> None:
-    """주어진 엔진의 모든 SQLite 연결에 무결성과 트랜잭션 정책을 적용한다.
+    """외래 키·읽기 전용 설정과 트랜잭션 시작 이벤트를 엔진에 등록한다.
+
+    쓰기 요청은 BEGIN IMMEDIATE로 첫 조회 전에 쓰기 잠금을 예약한다. 읽기는
+    BEGIN과 query_only를 사용한다. check_schema=True이면 시작한 트랜잭션에서
+    현재 패키지의 Alembic head와 저장된 revision을 대조한다.
 
     Args:
         engine: 프레임워크 또는 마이그레이션이 생성한 엔진.
@@ -103,7 +109,7 @@ def configure_sqlite_engine(engine: Engine, *, write: bool, check_schema: bool =
             connection.execute("PRAGMA query_only=ON")
 
     def begin(connection: Connection) -> None:
-        """조회·수정·저장 작업 전에 쓰기 권한을 예약한다.
+        """쓰기에는 BEGIN IMMEDIATE, 읽기에는 BEGIN을 실행하고 선택적으로 스키마를 검사한다.
 
         Args:
             connection: SQLite 트랜잭션 동작을 설정할 연결.
@@ -117,13 +123,17 @@ def configure_sqlite_engine(engine: Engine, *, write: bool, check_schema: bool =
 
 
 def initialize_database(path: Path | None = None) -> None:
-    """기존 데이터베이스를 재해석하지 않고 알려진 리비전만 명시적으로 적용한다.
+    """비어 있거나 Neurath revision 표를 가진 DB에 배포된 Alembic head를 적용한다.
+
+    부모 디렉터리와 DB 파일을 필요하면 생성하고 DDL·자료·revision을 한
+    트랜잭션으로 이전한다. 실패 시 롤백하고 엔진을 정리한다. 과거 하네스 DB를
+    현재 도메인 모델로 변환하는 자료 이전 기능은 아니다.
 
     Args:
         path: 명시적인 데이터베이스 경로이며 None이면 사용자 단위 기본 경로.
 
     Raises:
-        StorageNotReady: 데이터베이스가 없거나 초기화되지 않았거나 패키지와 호환되지 않는 경우.
+        StorageNotReady: 기존 테이블이 있지만 core_schema_revision 표가 없어 현재 저장소로 식별할 수 없는 경우.
     """
     path = (path if path is not None else user_database_path()).expanduser().resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -150,7 +160,7 @@ def verify_schema(connection: Connection) -> None:
         connection: 현재 요청의 SQLAlchemy 연결.
 
     Raises:
-        StorageNotReady: 데이터베이스가 없거나 초기화되지 않았거나 패키지와 호환되지 않는 경우.
+        StorageNotReady: core_schema_revision 표가 없거나 DB의 heads가 배포된 migration heads와 다른 경우.
     """
     if not inspect(connection).has_table("core_schema_revision"):
         raise StorageNotReady("Schema missing; initialize or migrate explicitly")

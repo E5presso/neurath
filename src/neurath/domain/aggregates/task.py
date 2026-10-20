@@ -116,7 +116,7 @@ class Task(AbstractAggregateRoot[str]):
         """현재 요구를 반환한다.
 
         Returns:
-            TaskDefinition: 가장 최근에 실제 정정한 요구.
+            TaskDefinition: 최초 정의 또는 마지막으로 추가한 정정·무효화 개정.
         """
         return self.definitions[-1]
 
@@ -159,13 +159,13 @@ class Task(AbstractAggregateRoot[str]):
             raise RevisionConflict("Task changed; read its current state before updating")
 
     def ready(self, tasks: Sequence[Self]) -> bool:
-        """독립 작업과 실제 성공한 의존을 기준으로 실행 가능 여부를 계산한다.
+        """pending·failed 상태이고 모든 선행 작업이 succeeded인지 확인한다.
 
         Args:
             tasks: 같은 프로젝트의 현재 전체 작업.
 
         Returns:
-            bool: 새 시도를 시작할 수 있는지 여부.
+            bool: 새 시도를 시작할 수 있으면 True. 목록에 없는 선행 작업도 미충족으로 본다.
         """
         statuses = {task.uid: task.status for task in tasks}
         return self.status in (TaskStatus.PENDING, TaskStatus.FAILED) and all(
@@ -173,7 +173,10 @@ class Task(AbstractAggregateRoot[str]):
         )
 
     def start(self, tasks: Sequence[Self]) -> None:
-        """현재 정의를 고정한 시도를 만들며 이전 외부 동작을 재제출하지 않는다.
+        """현재 요구 개정에 새 시도를 연결하고 태스크를 active로 바꾼다.
+
+        외부 실행을 시작하지는 않는다. 시작할 때의 요구 개정·소유 세션을 시도에
+        고정하고 이전 시도 다음 번호를 부여한다.
 
         Args:
             tasks: 의존 성공을 판단할 같은 프로젝트의 작업들.
@@ -212,7 +215,10 @@ class Task(AbstractAggregateRoot[str]):
         raise ContextNotFound("Task attempt does not exist")
 
     def submit(self, number: int, submission: SubmittedResult) -> None:
-        """후보 자료를 보존하되 태스크를 성공 처리하지 않는다.
+        """미확정 시도의 후보를 교체하며 태스크 상태는 유지한다.
+
+        동일한 후보는 변경하지 않는다. 과거 요구 개정의 시도도 지정할 수 있지만
+        확정 결과가 있는 시도는 거부한다. 시도가 없으면 ContextNotFound가 전파된다.
 
         Args:
             number: 후보를 제출할 시도.
@@ -231,7 +237,12 @@ class Task(AbstractAggregateRoot[str]):
             )
 
     def report(self, number: int, result: TaskResult, expected_revision: int) -> None:
-        """관찰 결과를 보존하고 현재 요구의 시도인 경우에만 상태를 갱신한다.
+        """시도 결과를 확정하고 현재 요구 개정에 대응할 때 상태에 반영한다.
+
+        이미 확정된 동일 결과는 revision 검사 없이 반환한다. 새 결과는 revision을
+        검사하여 저장하고, 이전 요구 개정의 시도이면 현재 상태를 유지한다. 현재 개정의
+        성공·실패·부분 수행은 각각 succeeded·failed·pending이 된다. 시도가 없으면
+        ContextNotFound, 새 결과의 revision이 다르면 RevisionConflict가 전파된다.
 
         Args:
             number: 결과를 보고할 시도.
@@ -265,7 +276,12 @@ class Task(AbstractAggregateRoot[str]):
         required_result: str | None = None,
         dependencies: Sequence[str] | None = None,
     ) -> None:
-        """지정한 필드만 정정하고 과거 정의·시도·결과를 유지한다.
+        """변경된 필드로 새 요구 개정을 추가하고 다음 시도를 준비한다.
+
+        None인 필드는 유지한다. 제목·결과·정렬한 의존 목록이 기존과 같으면
+        개정과 상태를 바꾸지 않는다. 변경 시 pending으로 돌아가 현재 시도 연결과
+        무효화 사유를 지우되 이전 정의·시도는 보존한다. 출처는 같은 프로젝트의
+        현재 요구를 정정해야 하며, 의존 그래프 검사는 호출 전에 별도로 수행한다.
 
         Args:
             source: 실제 정정 출처.
@@ -297,7 +313,10 @@ class Task(AbstractAggregateRoot[str]):
         self.invalidated_reason = None
 
     def wait(self, condition: ExternalWait) -> None:
-        """현재 시도의 실제 외부 의존을 기록하고 독립 작업은 유지한다.
+        """미해소 외부 대기를 이력에 추가하고 active에서 waiting으로 바꾼다.
+
+        현재 시도 번호는 유지한다. 전달된 대기 값의 resolution이 None인지 확인하며
+        외부 대상의 상태를 직접 조회하거나 감시를 시작하지 않는다.
 
         Args:
             condition: 대기 대상·해소 조건·후속 범위·관찰.
@@ -311,7 +330,9 @@ class Task(AbstractAggregateRoot[str]):
         self.status = TaskStatus.WAITING
 
     def resume(self, resolution: str) -> None:
-        """외부 의존 해소를 보존하고 같은 시도를 이어간다.
+        """마지막 대기에 해소 관찰을 붙이고 waiting에서 active로 돌아간다.
+
+        시도를 새로 만들지 않으며 앞선 대기 기록과 현재 시도 번호는 유지한다.
 
         Args:
             resolution: 해소됐다는 관찰 참조.
@@ -328,7 +349,10 @@ class Task(AbstractAggregateRoot[str]):
         self.status = TaskStatus.ACTIVE
 
     def invalidate(self, source: RequestSource, reason: str) -> None:
-        """실제 정정으로 무효화하되 성공으로 취급하거나 기록을 삭제하지 않는다.
+        """정정 출처를 새 개정에 연결하고 태스크를 invalidated로 바꾼다.
+
+        현재 요구를 가리키는 같은 프로젝트의 정정 출처가 필요하다. 제목·결과·의존과
+        과거 시도는 보존하고 현재 시도 연결만 해제한다. 외부 실행을 중단하지 않는다.
 
         Args:
             source: 현재 요구에 대응하는 실제 정정.
@@ -351,7 +375,10 @@ class Task(AbstractAggregateRoot[str]):
     def validate_dependencies(
         self, tasks: Sequence[Self], dependencies: Sequence[str] | None = None
     ) -> None:
-        """기존 프로젝트 그래프에 추가할 의존의 범위와 순환을 검사한다.
+        """현재 또는 제안한 의존을 프로젝트 그래프에 대조하여 중복·순환을 거부한다.
+
+        목록에 없는 태스크 ID는 ContextNotFound로 거부한다. 호출자는 같은 프로젝트의
+        전체 태스크를 제공해야 하며 이 메서드는 조회·저장이나 의존 목록 변경을 하지 않는다.
 
         Args:
             tasks: 같은 프로젝트에서 조회한 전체 현재 태스크.

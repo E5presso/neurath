@@ -54,20 +54,20 @@ class Project(AbstractAggregateRoot[str]):
 
     @property
     def id(self) -> str:
-        """기존 참조를 유지하는 도메인 식별자를 반환한다.
+        """기존 프로젝트 참조와의 호환을 위해 uid를 id로 읽는다.
 
         Returns:
-            str: 기존 요청과 저장 기록에서 사용하는 식별자.
+            str: 이 프로젝트의 uid와 같은 식별자.
         """
         return self.uid
 
     @classmethod
     @override
     def next_id(cls) -> str:
-        """새 aggregate의 안정적인 식별자를 생성한다.
+        """프로젝트 경로와 독립적인 UUID 문자열을 생성한다.
 
         Returns:
-            str: 새 도메인 인스턴스에 사용할 식별자.
+            str: 새 프로젝트의 uid로 사용할 UUID 문자열.
         """
         return str(uuid4())
 
@@ -94,7 +94,10 @@ class Project(AbstractAggregateRoot[str]):
 
     @classmethod
     def identify(cls, observation: DirectoryObservation) -> Sequence[ProjectLocation]:
-        """Git 승격에 필요한 기존 폴더 별칭을 포함하여 위치 후보를 도출한다.
+        """관찰한 위치를 Git 공통 디렉터리와 기존 폴더의 조회 키로 변환한다.
+
+        일반 폴더는 작업 경로 하나를 사용한다. Git은 공통 디렉터리와 기본 작업 트리
+        폴더를 함께 반환하므로 Git 초기화 전 폴더의 기존 프로젝트를 찾을 수 있다.
 
         Args:
             observation: 연결 작업 트리 정보를 포함하는 정규화된 외부 관찰 사실.
