@@ -120,6 +120,18 @@ class Task(AbstractAggregateRoot[str]):
         """
         return self.definitions[-1]
 
+    def require_project(self, project_id: str) -> None:
+        """태스크가 요청한 프로젝트에 속하는지 검사한다.
+
+        Args:
+            project_id: 요청한 프로젝트 식별자.
+
+        Raises:
+            ContextNotFound: 태스크가 다른 프로젝트에 속하는 경우.
+        """
+        if self.project_id != project_id:
+            raise ContextNotFound("Task does not belong to this project")
+
     def require_scope(self, project_id: str, session_id: str) -> None:
         """소유권을 이전하지 않고 현재 프로젝트·세션 범위를 검사한다.
 
@@ -130,7 +142,8 @@ class Task(AbstractAggregateRoot[str]):
         Raises:
             ContextNotFound: 요청 범위와 소유 범위가 다른 경우.
         """
-        if self.project_id != project_id or self.owner_session_id != session_id:
+        self.require_project(project_id)
+        if self.owner_session_id != session_id:
             raise ContextNotFound("Task does not belong to this project and session")
 
     def require_revision(self, expected_revision: int) -> None:

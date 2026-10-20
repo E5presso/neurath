@@ -41,3 +41,5 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 - 사용자 응대와 PR 답글은 한국어 존댓말로 작성한다. 자신을 가리킬 때는 저·제가·제 표현을 사용한다. 설명이 잘못됐으면 잘못된 판단을 명확히 정정하고 요청 범위를 바꾸지 않는다.
 
 - 도메인 불변식·의존·텍스트 검증은 해당 상태를 소유하는 aggregate·값 객체의 인스턴스 검증/행동 메서드에 둔다. validate_dependencies·require_text 같은 독립 업무 함수를 domain/application에 만들거나 정적 유틸리티 클래스로 감싸지 않는다. Task 의존 검증은 self.uid와 현재 정의/제안한 의존을 사용한다. 호출자가 별도 task_id로 검증 주체를 바꾸지 않는다. infrastructure의 자원 구성 함수와 Alembic upgrade/downgrade 진입점은 이 업무 규칙과 구분하며 이를 없애려고 DB/UoW 래퍼를 만들지 않는다. BEHAVIOR_OWNERSHIP 검사와 정상·실패 fixture를 공통 품질 검사에서 실행한다.
+
+- 유스케이스에서 aggregate 필드를 직접 비교하여 도메인 예외를 던지는 범위/불변식 검증을 구현하지 않는다. Task.require_project·HostSession.require_project 등 소유 객체에 판단을 위임한다. DOMAIN_RULE_OWNER와 별칭을 포함한 실패 fixture가 이 회귀를 검사한다. 유스케이스의 조회·생성·저장 순서와 Result 구성은 이 검증 책임과 구분한다.

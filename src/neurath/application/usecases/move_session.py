@@ -13,7 +13,6 @@ from neurath.application.usecases.register_project import (
 )
 from neurath.domain.aggregates.project import Project
 from neurath.domain.aggregates.session import HostSession
-from neurath.domain.errors import ContextNotFound
 from neurath.domain.observations import DirectoryObservation
 
 
@@ -70,15 +69,11 @@ class MoveSessionUseCase(ICommandUseCase[MoveSessionCommand, MoveSessionResult])
 
         Returns:
             MoveSessionResult: 처리 후 프로젝트와 세션.
-
-        Raises:
-            ContextNotFound: 지정한 프로젝트 또는 세션이 요청한 범위에 없는 경우.
         """
         session = self.sessions.get(command.session_id)
         session.require_project(command.project_id)
         project = self.projects.run(RegisterProjectCommand(command.observation)).project
-        if project.id != command.project_id:
-            raise ContextNotFound("Working directory belongs to another project")
+        session.require_project(project.id)
         session.move(command.observation.working_directory, command.expected_revision)
         session = self.sessions.save(session)
         return MoveSessionResult(project=project, session=session)

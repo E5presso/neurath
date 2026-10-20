@@ -157,6 +157,15 @@ class ArchitectureChecker:
                         f"{location} BEHAVIOR_OWNERSHIP: put business behavior on its owning object"
                     )
                 if (
+                    ".application.usecases." in module
+                    and isinstance(node, ast.Raise)
+                    and isinstance(node.exc, ast.Call)
+                    and self._name(module, node.exc.func).startswith("neurath.domain.errors.")
+                ):
+                    errors.append(
+                        f"{location} DOMAIN_RULE_OWNER: let the owning domain object enforce its rule"
+                    )
+                if (
                     isinstance(node, ast.Subscript)
                     and self._name(module, node).rsplit(".", 1)[-1] == "tuple"
                     and isinstance(node.slice, ast.Tuple)

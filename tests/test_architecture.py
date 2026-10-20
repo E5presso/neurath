@@ -818,3 +818,18 @@ def test_current_business_modules_have_no_standalone_rule_functions():
             assert not any(
                 isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) for node in tree.body
             ), path
+
+
+@pytest.mark.parametrize("alias", ["ContextNotFound", "MissingScope"])
+def test_usecase_must_delegate_domain_rejection_to_its_owner(alias):
+    source = f'''"""외부 계층이 범위 규칙을 직접 판정하는 회귀다."""
+from neurath.domain.errors import ContextNotFound as {alias}
+class CreateTaskUseCase:
+    """소유 객체 대신 프로젝트 범위를 판정하는 잘못된 처리다."""
+    def run(self, command):
+        """직접 필드를 비교하고 도메인 오류를 던진다."""
+        if self.task.project_id != command.project_id:
+            raise {alias}("wrong project")
+'''
+    errors = ArchitectureChecker({"neurath.application.usecases.create_task": source}).check()
+    assert any("DOMAIN_RULE_OWNER:" in error for error in errors), errors

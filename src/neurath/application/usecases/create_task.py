@@ -11,7 +11,6 @@ from neurath.application.ports.repositories.request_source import IRequestSource
 from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.domain.aggregates.task import Task
-from neurath.domain.errors import ContextNotFound
 
 
 @dataclass(frozen=True)
@@ -78,9 +77,6 @@ class CreateTaskUseCase(ICommandUseCase[CreateTaskCommand, CreateTaskResult]):
 
         Returns:
             CreateTaskResult: 처리한 원장과 현재 상태.
-
-        Raises:
-            ContextNotFound: 후속 작업의 원래 태스크가 다른 프로젝트에 속하는 경우.
         """
         self.sessions.get(command.session_id).require_project(command.project_id)
         source = self.sources.get(command.source_id)
@@ -96,6 +92,5 @@ class CreateTaskUseCase(ICommandUseCase[CreateTaskCommand, CreateTaskResult]):
         task.validate_dependencies(self.tasks.list(command.project_id))
         if command.follow_up_of is not None:
             parent = self.tasks.get(command.follow_up_of)
-            if parent.project_id != command.project_id:
-                raise ContextNotFound("Follow-up task belongs to another project")
+            parent.require_project(command.project_id)
         return CreateTaskResult(task=self.tasks.save(task))
