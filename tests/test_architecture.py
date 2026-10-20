@@ -763,73 +763,43 @@ class GetNamesUseCase(IQueryUseCase[GetNamesQuery, GetNamesResult]):
     assert ArchitectureChecker({"neurath.application.usecases.get_names": source}).check() == []
 
 
-@pytest.mark.parametrize("package", ["domain", "application"])
-@pytest.mark.parametrize(
-    "source",
-    [
-        "def validate_dependencies(tasks, uid, dependencies): pass",
-        "def arbitrary_rule(value): pass",
-        "async def apply_policy(value): pass",
-        "if True:\n def enforce(value): pass",
-        "def outer():\n def hidden_rule(value): pass",
-        "class UnnamedRules:\n @staticmethod\n def arbitrary_rule(value): pass",
-        "class UnnamedRules:\n @classmethod\n def check_value(cls, value): pass",
-        "from builtins import staticmethod as static\nclass Rules:\n @static\n def arbitrary(value): pass",
-    ],
-)
-def test_standalone_business_functions_and_utility_class_relabels_are_rejected(package, source):
-    module = f"neurath.{package}.rules"
-    errors = ArchitectureChecker({module: source}).check()
-    assert any("BEHAVIOR_OWNERSHIP:" in error for error in errors), errors
-
-
-def test_owned_validation_and_infrastructure_entrypoints_are_allowed():
-    sources = {
-        "neurath.domain.aggregates.task": '''"""데이터를 소유하는 도메인 객체 안에서 규칙을 검사한다."""
-from spakky.domain import AbstractAggregateRoot
-class Task(AbstractAggregateRoot[str]):
-    """의존을 소유하고 검증하는 태스크다."""
-    dependencies: Sequence[str]
-    def validate_dependencies(self, tasks):
-        """자기 의존의 규칙을 검사한다."""
-        return None
-''',
-        "neurath.infrastructure.database": '''"""인프라 초기화 진입점은 업무 정책과 구분한다."""
-def initialize_database(path):
-    """명시한 저장소를 초기화한다."""
-    return None
-''',
-        "neurath.infrastructure.migrations.versions.example": '''"""Alembic이 호출하는 진입점은 프레임워크 계약이다."""
-def upgrade():
-    """새 스키마를 적용한다."""
-    return None
-''',
-    }
-    assert ArchitectureChecker(sources).check() == []
-
-
-def test_current_business_modules_have_no_standalone_rule_functions():
-    import ast
-
-    package = Path(__file__).resolve().parents[1] / "src" / "neurath"
-    for layer in ("domain", "application"):
-        for path in (package / layer).rglob("*.py"):
-            tree = ast.parse(path.read_text())
-            assert not any(
-                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) for node in tree.body
-            ), path
-
-
 @pytest.mark.parametrize("alias", ["ContextNotFound", "MissingScope"])
-def test_usecase_must_delegate_domain_rejection_to_its_owner(alias):
-    source = f'''"""외부 계층이 범위 규칙을 직접 판정하는 회귀다."""
+def test_usecase_can_propagate_or_raise_domain_errors_without_a_syntax_ban(alias):
+    source = f'''"""유스케이스의 예외 사용을 문법만으로 금지하지 않는다."""
+from dataclasses import dataclass
+from spakky.domain import AbstractQuery, IQueryUseCase
 from neurath.domain.errors import ContextNotFound as {alias}
-class CreateTaskUseCase:
-    """소유 객체 대신 프로젝트 범위를 판정하는 잘못된 처리다."""
-    def run(self, command):
-        """직접 필드를 비교하고 도메인 오류를 던진다."""
-        if self.task.project_id != command.project_id:
-            raise {alias}("wrong project")
+@dataclass(frozen=True)
+class GetTaskQuery(AbstractQuery):
+    """조회할 작업을 지정한다."""
+    task_id: str
+@dataclass(frozen=True)
+class GetTaskResult:
+    """조회 결과를 전달한다."""
+    task_id: str
+class GetTaskUseCase(IQueryUseCase[GetTaskQuery, GetTaskResult]):
+    """오류의 발생·전파·변환을 사용할 수 있는 유스케이스다."""
+    def run(self, query: GetTaskQuery) -> GetTaskResult:
+        """예외 타입만 보고 업무 책임을 판정하지 않는다."""
+        try:
+            raise {alias}("unavailable")
+        except {alias} as error:
+            raise {alias}("requested task unavailable") from error
 '''
-    errors = ArchitectureChecker({"neurath.application.usecases.create_task": source}).check()
-    assert any("DOMAIN_RULE_OWNER:" in error for error in errors), errors
+    assert ArchitectureChecker({"neurath.application.usecases.get_task": source}).check() == []
+
+
+@pytest.mark.parametrize("package", ["domain", "application"])
+def test_function_shape_alone_does_not_establish_business_responsibility(package):
+    source = '''"""함수나 정적 메서드의 형태만으로 책임 위반을 단정하지 않는다."""
+def normalize_label(value: str) -> str:
+    """표시 문자열의 앞뒤 공백을 정리한다."""
+    return value.strip()
+class Labels:
+    """출력 형식을 다루는 예시다."""
+    @staticmethod
+    def normalize(value: str) -> str:
+        """표시용 문자열을 반환한다."""
+        return value.strip()
+'''
+    assert ArchitectureChecker({f"neurath.{package}.labels": source}).check() == []

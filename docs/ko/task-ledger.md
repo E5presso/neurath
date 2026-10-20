@@ -16,7 +16,7 @@
 시도와 정의에 독립 저장소를 만들지 않습니다. 두 aggregate는 Spakky의
 `AbstractAggregateRoot`를 사용하고 소유 기록은 불변 값입니다. 저장 포트와 adapter는
 `IGenericRepository`·`AbstractGenericRepository`의 기본 CRUD·배치·생성자를 상속합니다.
-추가 SQL은 프로젝트별 전체 목록 조회뿐입니다. 의존 범위·중복·순환은 `Task.validate_dependencies()`가 자신의 식별자와 현재/제안 의존을 기준으로 검사합니다. 원문·정의·관찰·대기의 텍스트 검증도 각 aggregate·값 객체의 검증/행동 메서드에 있습니다. 독립 검증 함수나 유틸리티 클래스로 분리하지 않습니다.
+추가 SQL은 프로젝트별 전체 목록 조회뿐입니다. 의존 범위·중복·순환은 `Task.validate_dependencies()`가 자신의 식별자와 현재/제안 의존을 기준으로 검사합니다. 원문·정의·관찰·대기의 텍스트 검증도 각 aggregate·값 객체의 검증/행동 메서드에 있습니다. 이 책임 배치는 해당 규칙의 의미와 동작을 기준으로 하며, 함수 형태나 유스케이스의 예외 사용 자체를 금지하는 규칙은 아닙니다.
 
 `@Table`·`AbstractMappableTable`·소유 관계·`SchemaRegistry`가 전체 aggregate를 매핑합니다.
 요청마다 실제 `ConnectionManager`·`SessionManager`·`Transaction`을 사용합니다. 성공한
