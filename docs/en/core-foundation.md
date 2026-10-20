@@ -26,8 +26,10 @@ pure Spakky domain bases and mutability declarations, without SQLAlchemy or pers
 ## Request lifetime and SQLite
 
 Each request owns an independent container, configuration and connection manager.
-Configuration objects are injected without modifying process environment variables.
-SQLite connection policies are applied to the framework-created engine. The request
+A module-level `request_config` Pod factory supplies configuration without modifying
+process environment variables. Bind configuration in a ContextVar only while constructing
+the engine, then restore it; each container receives its own configuration. Register the
+framework ConnectionManager directly and apply SQLite policies to its engine. The request
 boundary disposes it on normal completion or bootstrap failure. No resident daemon is used.
 
 Git observation completes before the database transaction begins. Writers acquire

@@ -216,6 +216,8 @@ def test_spakky_bootstrap_failure_preserves_original_error_and_disposes_engine(
             pytest.fail("A failed bootstrap must not enter the request")
     assert len(disposed) == 1
     assert persisted_state(database) == before
+    with pytest.raises(LookupError):
+        providers.request_config()
 
 
 @pytest.mark.parametrize("failure", [OSError("git missing"), subprocess.TimeoutExpired("git", 10)])

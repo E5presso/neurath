@@ -26,7 +26,9 @@ Neurath 저장소의 SQL은 추가한 두 조회 메서드에만 있습니다. �
 ## 요청 수명과 SQLite
 
 각 요청은 독립된 컨테이너·설정·연결 관리자를 만듭니다. 전역 환경변수를 바꾸지 않고
-설정 객체를 주입합니다. Spakky의 ConnectionManager가 만든 엔진에 SQLite 연결 정책을
+모듈 수준의 `request_config` Pod 팩토리가 설정 객체를 제공합니다. 요청의 설정은 엔진 구성 동안만
+ContextVar에 바인딩하고 즉시 복원하며 컨테이너마다 별도로 주입합니다. 프레임워크의
+ConnectionManager를 직접 등록하여 생성한 엔진에 SQLite 연결 정책을
 설정하며, 요청 종료나 초기화 실패 시 엔진을 폐기합니다. 상주 daemon은 없습니다.
 
 Git 관찰은 DB 트랜잭션 시작 전에 마칩니다. 쓰기 연결은 첫 조회 전에 `BEGIN IMMEDIATE`를

@@ -613,23 +613,29 @@ def test_reviewed_case_specific_result_contract_is_colocated(
     assert result.__module__ == handler.__module__
 
 
-def test_standard_linter_does_not_reintroduce_an_any_annotation_ban(tmp_path):
+@pytest.mark.parametrize(("annotation", "valid"), [("Any", False), ("object", True)])
+def test_standard_linter_checks_dynamic_annotations_without_a_global_ignore(
+    tmp_path, annotation, valid
+):
     fixture = tmp_path / "boundary.py"
-    fixture.write_text('''"""외부 경계에서 동적 값을 그대로 전달하는 사례다."""
-from typing import Any
+    fixture.write_text(
+        '"""입력의 구체 타입을 요구하지 않고 그대로 반환하는 사례다."""\n'
+        + ("from typing import Any\n" if annotation == "Any" else "")
+        + f'''
 
 
-def echo(value: Any) -> Any:
+def echo(value: {annotation}) -> {annotation}:
     """외부 값을 전달한다.
 
     Args:
         value: 전달할 동적 값.
 
     Returns:
-        Any: 전달된 값.
+        {annotation}: 전달된 값.
     """
     return value
-''')
+'''
+    )
     result = subprocess.run(
         [
             sys.executable,
@@ -643,4 +649,8 @@ def echo(value: Any) -> Any:
         capture_output=True,
         text=True,
     )
-    assert result.returncode == 0, result.stdout + result.stderr
+    if valid:
+        assert result.returncode == 0, result.stdout + result.stderr
+    else:
+        assert result.returncode != 0
+        assert "ANN401" in result.stdout

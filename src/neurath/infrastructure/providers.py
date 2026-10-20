@@ -2,6 +2,7 @@
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -65,6 +66,23 @@ class DatabaseSettings:
     write: bool
 
 
+_request_config: ContextVar[SQLAlchemyConnectionConfig] = ContextVar("neurath_sqlalchemy_config")
+
+
+@Pod()
+def request_config() -> SQLAlchemyConnectionConfig:
+    """현재 요청의 엔진 구성 중에 바인딩한 SQLAlchemy 설정을 제공한다.
+
+    모듈 수준 팩토리이므로 Spakky의 모듈 스캔과 명시적 등록에서 모두 발견된다.
+    설정은 엔진을 생성하는 동안만 ContextVar에 바인딩하고 즉시 이전 값으로 복원한다.
+    바인딩 없이 직접 호출하면 ContextVar의 LookupError가 전파된다.
+
+    Returns:
+        SQLAlchemyConnectionConfig: 현재 요청의 경로·접근 모드를 가진 설정.
+    """
+    return _request_config.get()
+
+
 @contextmanager
 def request_container(settings: DatabaseSettings) -> Iterator[ApplicationContext]:
     """한 요청의 SQLite 연결·저장소·유스케이스를 구성하고 종료 시 자원을 정리한다.
@@ -91,31 +109,13 @@ def request_container(settings: DatabaseSettings) -> Iterator[ApplicationContext
         ),
         support_async_mode=False,
     )
-    connection = ConnectionManager(config)
-    configure_sqlite_engine(connection.connection, write=settings.write, check_schema=True)
-
-    @Pod()
-    def request_config() -> SQLAlchemyConnectionConfig:
-        """요청별 설정을 전역 환경 변경 없이 제공한다.
-
-        Returns:
-            SQLAlchemyConnectionConfig: 이번 요청의 SQLite 접근 설정.
-        """
-        return config
-
-    @Pod()
-    def request_connection() -> ConnectionManager:
-        """요청 경계에서 정리하는 실제 프레임워크 연결 관리자를 제공한다.
-
-        Returns:
-            ConnectionManager: 요청별 엔진을 보유한 프레임워크 구성요소.
-        """
-        return connection
-
     context = ApplicationContext()
+    context.add(request_config)
+    context.add(ConnectionManager)
+    with _request_config.set(config):
+        connection = context.get(ConnectionManager)
     try:
-        context.add(request_config)
-        context.add(request_connection)
+        configure_sqlite_engine(connection.connection, write=settings.write, check_schema=True)
         for pod in (
             SessionManager,
             Transaction,
