@@ -598,6 +598,13 @@ def test_current_collection_ports_and_domain_state_types_match_the_reviewed_cont
         ("start_task", "StartTaskUseCase", "StartTaskResult"),
         ("submit_result", "SubmitResultUseCase", "SubmitResult"),
         ("wait_task", "WaitTaskUseCase", "WaitTaskResult"),
+        ("start_workflow", "StartWorkflowUseCase", "StartWorkflowResult"),
+        ("get_workflow", "GetWorkflowUseCase", "GetWorkflowResult"),
+        ("prepare_phase", "PreparePhaseUseCase", "PreparePhaseResult"),
+        ("report_phase", "ReportPhaseUseCase", "ReportPhaseResult"),
+        ("revise_workflow", "ReviseWorkflowUseCase", "ReviseWorkflowResult"),
+        ("skip_phase", "SkipPhaseUseCase", "SkipPhaseResult"),
+        ("execute_phase", "ExecutePhaseUseCase", "ExecutePhaseResult"),
     ],
 )
 def test_reviewed_case_specific_result_contract_is_colocated(

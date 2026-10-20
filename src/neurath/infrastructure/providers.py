@@ -20,18 +20,25 @@ from sqlalchemy.exc import IntegrityError
 
 from neurath.application.usecases.correct_task import CorrectTaskUseCase
 from neurath.application.usecases.create_task import CreateTaskUseCase
+from neurath.application.usecases.execute_phase import ExecutePhaseUseCase
 from neurath.application.usecases.get_session_context import GetSessionContextUseCase
 from neurath.application.usecases.get_sources import GetSourcesUseCase
 from neurath.application.usecases.get_task import GetTaskUseCase
 from neurath.application.usecases.get_tasks import GetTasksUseCase
+from neurath.application.usecases.get_workflow import GetWorkflowUseCase
 from neurath.application.usecases.invalidate_task import InvalidateTaskUseCase
 from neurath.application.usecases.move_session import MoveSessionUseCase
+from neurath.application.usecases.prepare_phase import PreparePhaseUseCase
 from neurath.application.usecases.record_source import RecordSourceUseCase
 from neurath.application.usecases.register_project import RegisterProjectUseCase
 from neurath.application.usecases.register_session import RegisterSessionUseCase
+from neurath.application.usecases.report_phase import ReportPhaseUseCase
 from neurath.application.usecases.report_result import ReportResultUseCase
 from neurath.application.usecases.resume_task import ResumeTaskUseCase
+from neurath.application.usecases.revise_workflow import ReviseWorkflowUseCase
+from neurath.application.usecases.skip_phase import SkipPhaseUseCase
 from neurath.application.usecases.start_task import StartTaskUseCase
+from neurath.application.usecases.start_workflow import StartWorkflowUseCase
 from neurath.application.usecases.submit_result import SubmitResultUseCase
 from neurath.application.usecases.wait_task import WaitTaskUseCase
 from neurath.domain.errors import ContextNotFound, ProjectIdentityConflict, RevisionConflict
@@ -47,10 +54,18 @@ from neurath.infrastructure.models.task import (
     TaskModel,
     TaskWaitModel,
 )
+from neurath.infrastructure.models.workflow import (
+    PhaseAttemptModel,
+    PhaseDefinitionModel,
+    WorkflowModel,
+    WorkflowRevisionModel,
+)
+from neurath.infrastructure.phase_executor import StderrWorkflowNotifier, SubprocessPhaseExecutor
 from neurath.infrastructure.repositories.project import ProjectRepository
 from neurath.infrastructure.repositories.request_source import RequestSourceRepository
 from neurath.infrastructure.repositories.session import SessionRepository
 from neurath.infrastructure.repositories.task import TaskRepository
+from neurath.infrastructure.repositories.workflow import WorkflowRepository
 
 
 @dataclass(frozen=True)
@@ -117,6 +132,16 @@ def request_container(settings: DatabaseSettings) -> Iterator[ApplicationContext
     try:
         configure_sqlite_engine(connection.connection, write=settings.write, check_schema=True)
         for pod in (
+            StartWorkflowUseCase,
+            GetWorkflowUseCase,
+            PreparePhaseUseCase,
+            ReportPhaseUseCase,
+            ReviseWorkflowUseCase,
+            SkipPhaseUseCase,
+            ExecutePhaseUseCase,
+            WorkflowRepository,
+            SubprocessPhaseExecutor,
+            StderrWorkflowNotifier,
             SessionManager,
             Transaction,
             SchemaRegistry,
@@ -145,6 +170,10 @@ def request_container(settings: DatabaseSettings) -> Iterator[ApplicationContext
         ):
             context.add(pod)
         for model in (
+            WorkflowModel,
+            WorkflowRevisionModel,
+            PhaseDefinitionModel,
+            PhaseAttemptModel,
             ProjectModel,
             ProjectLocationModel,
             SessionModel,
