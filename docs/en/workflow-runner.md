@@ -26,7 +26,7 @@ Each use-case module defines its own Command/Query and Result.
 | ReviseWorkflow | Attach a revised definition to current task requirements, retaining old definitions/failures and unaffected results |
 | SkipPhase | Record a conditional skip of the current optional phase |
 
-ExecutePhase owns its two storage boundaries through framework `AbstractTransaction`; **invoke it without an enclosing transaction.** Other use cases run inside the request's standard AsyncTransaction. The domain owns transitions; the use case coordinates execution, lookup and persistence.
+Every database use case uses `@transactional`. ExecutePhase records the attempt and `PhaseExecutionRequested`; after commit, `WorkflowEventHandler` executes/reconciles without DB locks and invokes ReportPhase in a new transaction. ExecutePhase returns the reservation snapshot. Read GetWorkflow for the actual outcome; a successful reservation does not imply handler success.
 
 This example operates on an already stored task. It does not recreate the request, and a completed run is distinct from a successful task-outcome report.
 
@@ -34,7 +34,6 @@ This example operates on an already stored task. It does not recreate the reques
 from pathlib import Path
 import sys
 
-from spakky.plugins.sqlalchemy.persistency.transaction import AsyncTransaction
 from neurath.application.usecases.get_task import GetTaskQuery, GetTaskUseCase
 from neurath.application.usecases.start_workflow import StartWorkflowCommand, StartWorkflowUseCase
 from neurath.application.usecases.execute_phase import ExecutePhaseCommand, ExecutePhaseResult, ExecutePhaseUseCase
@@ -52,13 +51,12 @@ async def execute_check(scope: IContainer, project_id: str, session_id: str,
     definition = WorkflowDefinition(
         skill="qa", version="example-1", phases=(phase,), inputs=(),
     )
-    async with scope.get(AsyncTransaction):
-        task = (await scope.get(GetTaskUseCase).run(
-            GetTaskQuery(project_id, session_id, task_id)
-        )).task
-        flow = (await scope.get(StartWorkflowUseCase).run(
-            StartWorkflowCommand(project_id, session_id, task_id, task.revision, definition)
-        )).run
+    task = (await scope.get(GetTaskUseCase).run(
+        GetTaskQuery(project_id, session_id, task_id)
+    )).task
+    flow = (await scope.get(StartWorkflowUseCase).run(
+        StartWorkflowCommand(project_id, session_id, task_id, task.revision, definition)
+    )).run
     return await scope.get(ExecutePhaseUseCase).run(
         ExecutePhaseCommand(project_id, session_id, flow.uid, flow.revision)
     )

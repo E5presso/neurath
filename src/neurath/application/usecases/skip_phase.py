@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from typing import override
 
-from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
+from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.workflow import IWorkflowRepository
@@ -43,7 +43,7 @@ class SkipPhaseResult:
     run: WorkflowRun
 
 
-@UseCase(scope=Pod.Scope.CONTEXT)
+@UseCase()
 class SkipPhaseUseCase(IAsyncCommandUseCase[SkipPhaseCommand, SkipPhaseResult]):
     """현재 선택 단계의 생략 조건과 근거를 기록한다.
 
@@ -59,6 +59,7 @@ class SkipPhaseUseCase(IAsyncCommandUseCase[SkipPhaseCommand, SkipPhaseResult]):
         """
         self.workflows = workflows
 
+    @transactional
     @override
     async def run(self, command: SkipPhaseCommand) -> SkipPhaseResult:
         """현재 선택 단계의 생략 조건과 근거를 기록한다.

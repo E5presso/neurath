@@ -4,14 +4,17 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import override
 
-from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
+from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
+from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionManager
+from sqlalchemy import select
 
 from neurath.application.ports.repositories.request_source import IRequestSourceRepository
 from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.domain.aggregates.task import Task
+from neurath.infrastructure.models.task import TaskModel
 
 
 @dataclass(frozen=True)
@@ -48,7 +51,7 @@ class CreateTaskResult:
     task: Task
 
 
-@UseCase(scope=Pod.Scope.CONTEXT)
+@UseCase()
 class CreateTaskUseCase(IAsyncCommandUseCase[CreateTaskCommand, CreateTaskResult]):
     """같은 프로젝트의 원문을 재사용하여 소유 세션의 새 태스크를 등록한다.
 
@@ -59,6 +62,7 @@ class CreateTaskUseCase(IAsyncCommandUseCase[CreateTaskCommand, CreateTaskResult
 
     def __init__(
         self,
+        session_manager: AsyncSessionManager,
         sessions: ISessionRepository,
         sources: IRequestSourceRepository,
         tasks: ITaskRepository,
@@ -66,14 +70,17 @@ class CreateTaskUseCase(IAsyncCommandUseCase[CreateTaskCommand, CreateTaskResult
         """새 작업의 세션·원문·의존 범위를 확인하고 저장할 포트를 받는다.
 
         Args:
+            session_manager: 조건 조회를 현재 트랜잭션의 SQLAlchemy 세션으로 수행한다.
             sessions: 새 작업을 소유할 세션의 프로젝트 소속을 확인한다.
             sources: 목표의 근거로 연결할 기존 원문을 조회한다.
             tasks: 선행·후속 관계의 대상을 조회하고 새 태스크를 저장한다.
         """
+        self.session_manager = session_manager
         self.sessions = sessions
         self.sources = sources
         self.tasks = tasks
 
+    @transactional
     @override
     async def run(self, command: CreateTaskCommand) -> CreateTaskResult:
         """세션·출처·의존 범위를 확인하고 최초 정의를 가진 태스크를 저장한다.
@@ -95,7 +102,17 @@ class CreateTaskUseCase(IAsyncCommandUseCase[CreateTaskCommand, CreateTaskResult
             command.dependencies,
             command.follow_up_of,
         )
-        task.validate_dependencies(await self.tasks.list(command.project_id))
+        task.validate_dependencies(
+            await self.tasks.range(
+                (
+                    await self.session_manager.session.scalars(
+                        select(TaskModel.id)
+                        .where(TaskModel.project_id == command.project_id)
+                        .order_by(TaskModel.created_at, TaskModel.id)
+                    )
+                ).all()
+            )
+        )
         if command.follow_up_of is not None:
             parent = await self.tasks.get(command.follow_up_of)
             parent.require_project(command.project_id)

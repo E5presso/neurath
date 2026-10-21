@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from typing import override
 
-from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
+from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
 
 from neurath.application.ports.repositories.workflow import IWorkflowRepository
@@ -37,7 +37,7 @@ class GetWorkflowResult:
     run: WorkflowRun
 
 
-@UseCase(scope=Pod.Scope.CONTEXT)
+@UseCase()
 class GetWorkflowUseCase(IAsyncQueryUseCase[GetWorkflowQuery, GetWorkflowResult]):
     """선택한 절차의 현재 단계와 과거 정의·시도·결과를 조회한다.
 
@@ -53,6 +53,7 @@ class GetWorkflowUseCase(IAsyncQueryUseCase[GetWorkflowQuery, GetWorkflowResult]
         """
         self.workflows = workflows
 
+    @transactional
     @override
     async def run(self, query: GetWorkflowQuery) -> GetWorkflowResult:
         """선택한 절차의 현재 단계와 과거 정의·시도·결과를 조회한다.

@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from typing import override
 
-from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
+from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.task import ITaskRepository
@@ -45,7 +45,7 @@ class ReviseWorkflowResult:
     run: WorkflowRun
 
 
-@UseCase(scope=Pod.Scope.CONTEXT)
+@UseCase()
 class ReviseWorkflowUseCase(IAsyncCommandUseCase[ReviseWorkflowCommand, ReviseWorkflowResult]):
     """현재 태스크 요구에 맞춘 절차를 추가하고 영향 없는 단계 결과를 유지한다.
 
@@ -64,6 +64,7 @@ class ReviseWorkflowUseCase(IAsyncCommandUseCase[ReviseWorkflowCommand, ReviseWo
         self.workflows = workflows
         self.tasks = tasks
 
+    @transactional
     @override
     async def run(self, command: ReviseWorkflowCommand) -> ReviseWorkflowResult:
         """현재 태스크 요구에 맞춘 절차를 추가하고 영향 없는 단계 결과를 유지한다.

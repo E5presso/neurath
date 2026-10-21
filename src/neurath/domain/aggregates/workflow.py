@@ -12,6 +12,7 @@ from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 from neurath.domain.aggregates.task import Task
 from neurath.domain.errors import ContextNotFound, InvalidWorkflowState, RevisionConflict
 from neurath.domain.task_records import TaskStatus
+from neurath.domain.workflow_events import PhaseExecutionRequested
 from neurath.domain.workflow_records import (
     PhaseAttempt,
     PhaseDefinition,
@@ -398,3 +399,21 @@ class WorkflowRun(AbstractAggregateRoot[str]):
             or self.current is not None
         ):
             raise InvalidWorkflowState("Current workflow phases are not complete")
+
+    def request_execution(self, attempt: PhaseAttempt, *, fresh: bool) -> None:
+        """현재 저장할 시도를 커밋 후 실행할 도메인 이벤트로 기록한다.
+
+        Args:
+            attempt: 새로 예약했거나 결과를 조정할 기존 시도.
+            fresh: 새 실행이면 True이며 기존 시도는 먼저 결과를 조회한다.
+        """
+        self.add_event(
+            PhaseExecutionRequested(
+                project_id=self.project_id,
+                session_id=self.session_id,
+                run_id=self.uid,
+                phase=self.phase_for(attempt),
+                attempt=attempt,
+                fresh=fresh,
+            )
+        )

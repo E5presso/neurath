@@ -16,7 +16,7 @@
 시도와 정의에 독립 저장소를 만들지 않습니다. 두 aggregate는 Spakky의
 `AbstractAggregateRoot`를 사용하고 소유 기록은 불변 값입니다. 저장 포트와 adapter는
 `IAsyncGenericRepository`·`AbstractAsyncGenericRepository`의 기본 CRUD·배치·생성자를 상속합니다.
-추가 SQL은 프로젝트별 전체 목록 조회뿐입니다. 의존 범위·중복·순환은 `Task.validate_dependencies()`가 자신의 식별자와 현재/제안 의존을 기준으로 검사합니다. 원문·정의·관찰·대기의 텍스트 검증도 각 aggregate·값 객체의 검증/행동 메서드에 있습니다.
+프로젝트별 목록은 SQLAlchemy를 사용하는 조회 유스케이스가 반환하며 Repository는 기본 Aggregate CRUD만 제공합니다. 의존 범위·중복·순환은 `Task.validate_dependencies()`가 자신의 식별자와 현재/제안 의존을 기준으로 검사합니다. 원문·정의·관찰·대기의 텍스트 검증도 각 aggregate·값 객체의 검증/행동 메서드에 있습니다.
 
 `@Table`·`AbstractMappableTable`·소유 관계·`SchemaRegistry`가 전체 aggregate를 매핑합니다.
 요청마다 실제 `AsyncConnectionManager`·`AsyncSessionManager`·`AsyncTransaction`을 사용합니다. 성공한
@@ -54,7 +54,7 @@ pending이 됩니다. 정정 전 시도의 늦은 결과는 이력에 저장하�
 
 각 작업은 `application/usecases`의 개별 유스케이스가 제공하며 `run(command/query)`로 호출합니다.
 Spakky `IAsyncCommandUseCase`·`IAsyncQueryUseCase`와 `AbstractCommand`·`AbstractQuery` 계약을 사용합니다.
-각 유스케이스 모듈에 입력 Command/Query와 Result DTO를 함께 정의하며 호출 예제의 요청 컨테이너·표준 AsyncTransaction 경계를 사용합니다. Result는 태스크·원문 등 필요한 도메인 데이터와 조회 결과를 담습니다.
+각 유스케이스 모듈에 입력 Command/Query와 Result DTO를 함께 정의하며 공식 `@transactional`로 자신의 작업 경계를 소유합니다. Result는 태스크·원문 등 필요한 도메인 데이터와 조회 결과를 담습니다.
 쓰기 입력은 프로젝트·소유 세션·대상·관찰 revision을 지정합니다.
 원문 생성은 `RecordSourceResult.source`로 `RequestSource`를, 태스크 생성은
 `CreateTaskResult.task`로 `Task`를 반환합니다. 식별자는 반환 객체의 `uid`에서 읽습니다.

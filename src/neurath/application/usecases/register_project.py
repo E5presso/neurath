@@ -3,13 +3,16 @@
 from dataclasses import dataclass
 from typing import override
 
-from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
+from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
+from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionManager
+from sqlalchemy import select
 
 from neurath.application.ports.repositories.project import IProjectRepository
 from neurath.domain.aggregates.project import Project
 from neurath.domain.observations import DirectoryObservation
+from neurath.infrastructure.models.project import ProjectLocationModel, ProjectModel
 
 
 @dataclass(frozen=True)
@@ -34,7 +37,7 @@ class RegisterProjectResult:
     project: Project
 
 
-@UseCase(scope=Pod.Scope.CONTEXT)
+@UseCase()
 class RegisterProjectUseCase(IAsyncCommandUseCase[RegisterProjectCommand, RegisterProjectResult]):
     """관찰 위치의 기존 소유 프로젝트를 찾고, 없으면 새 프로젝트를 등록한다.
 
@@ -43,14 +46,17 @@ class RegisterProjectUseCase(IAsyncCommandUseCase[RegisterProjectCommand, Regist
     병합하지 않고 ProjectIdentityConflict를 발생시킨다. 파일 시스템 관찰은 호출자가 먼저 수행한다.
     """
 
-    def __init__(self, projects: IProjectRepository) -> None:
+    def __init__(self, session_manager: AsyncSessionManager, projects: IProjectRepository) -> None:
         """위치의 기존 소유자를 찾고 프로젝트를 저장할 포트를 받는다.
 
         Args:
+            session_manager: 조건 조회를 현재 트랜잭션의 SQLAlchemy 세션으로 수행한다.
             projects: Git·폴더 위치로 소유 프로젝트를 조회하고 위치 관계를 함께 저장한다.
         """
+        self.session_manager = session_manager
         self.projects = projects
 
+    @transactional
     @override
     async def run(self, command: RegisterProjectCommand) -> RegisterProjectResult:
         """위치 후보의 소유자를 선택하고 새로 확인한 위치를 프로젝트에 연결해 저장한다.
@@ -64,7 +70,21 @@ class RegisterProjectUseCase(IAsyncCommandUseCase[RegisterProjectCommand, Regist
         candidates = Project.identify(command.observation)
         owners: list[Project] = []
         for location in candidates:
-            owner = await self.projects.find_by_location(location)
+            owner = (
+                await self.projects.get(found_id)
+                if (
+                    found_id := await self.session_manager.session.scalar(
+                        select(ProjectModel.id)
+                        .join(ProjectModel.locations)
+                        .where(
+                            ProjectLocationModel.kind == location.kind.value,
+                            ProjectLocationModel.path == location.path,
+                        )
+                    )
+                )
+                is not None
+                else None
+            )
             if owner is not None:
                 owners.append(owner)
         project = Project.owner_of(owners)

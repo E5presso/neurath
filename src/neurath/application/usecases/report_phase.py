@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from typing import override
 
-from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
+from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.task import ITaskRepository
@@ -44,7 +44,7 @@ class ReportPhaseResult:
     run: WorkflowRun
 
 
-@UseCase(scope=Pod.Scope.CONTEXT)
+@UseCase()
 class ReportPhaseUseCase(IAsyncCommandUseCase[ReportPhaseCommand, ReportPhaseResult]):
     """시도에 관찰 결과를 반영하고 충족한 단계만 다음 순서로 진행시킨다.
 
@@ -63,6 +63,7 @@ class ReportPhaseUseCase(IAsyncCommandUseCase[ReportPhaseCommand, ReportPhaseRes
         self.workflows = workflows
         self.tasks = tasks
 
+    @transactional
     @override
     async def run(self, command: ReportPhaseCommand) -> ReportPhaseResult:
         """시도에 관찰 결과를 반영하고 충족한 단계만 다음 순서로 진행시킨다.

@@ -3,37 +3,37 @@
 [구조](architecture.md) · [구현 계획](implementation-plan.md) · [English](../en/core-foundation.md)
 
 #137은 사용자 단위 SQLite 안에서 프로젝트와 세션을 요청별로 관리합니다.
-현재 기반은 Spakky Framework 8.1.0의 도메인·영속성 구성요소를 사용합니다.
+현재 의존성은 Spakky 8.1.0 기반입니다. 커밋 후 이벤트 발행·인프로세스 구성·요청 격리 수정이 필요한 `spakky-data`, `spakky-event`, `spakky-sqlalchemy`는 upstream 커밋 `055fd3ae376a706575e30d1581f0cf1ccb521a54`에 고정되어 있습니다. `uv.lock`으로 동일 소스를 설치하며 로컬 경로에는 의존하지 않습니다.
 패키지는 비동기 기반과 훅 CLI를 제공합니다. 업무 CLI·설치 전환은 후속 구현 범위입니다.
 
 ## 프레임워크 사용과 책임
 
 - `Project`, `HostSession`은 `@mutable`과 `AbstractAggregateRoot[str]`로 식별자·동일성·변경 추적을 상속합니다. `ProjectLocation`은 Project가 소유하는 `AbstractValueObject`입니다.
 - 기존 `id` 참조는 `uid`를 읽는 호환 속성으로 유지합니다. 프로젝트 식별·폴더 승격·위치 충돌과 세션 범위·이동 규칙은 도메인에 있습니다.
-- 저장 포트는 `IAsyncGenericRepository`를 상속합니다. 프로젝트 위치 조회와 범위가 있는 네이티브 ID 조회만 확장합니다.
+- 저장 포트는 `IAsyncGenericRepository`의 기본 Aggregate CRUD 계약을 사용합니다. 위치·네이티브 ID 등의 조건 조회는 유스케이스에서 현재 SQLAlchemy 세션으로 수행합니다.
 - `SQLAlchemyProjectRepository`, `SQLAlchemySessionRepository`는 `AbstractAsyncGenericRepository`를 상속합니다. `get`, `get_or_none`, `contains`, `range`, `save`, `save_all`, `delete`, `delete_all`과 생성자는 재구현하지 않습니다.
 - 도메인 테이블은 `@Table(Domain)`과 `AbstractMappableTable[Domain]`으로 양방향 변환을 정의합니다. 위치 자식 테이블은 도메인 매핑이 없는 `AbstractTable`입니다.
 - `SchemaRegistry`가 Table 태그를 통해 도메인과 실제 테이블을 연결합니다. 저장소가 매핑을 별도로 추적하지 않습니다.
 - `ApplicationContext`가 `@UseCase`, `@Repository`, 관찰 Pod와 프레임워크의 `AsyncConnectionManager`, `AsyncSessionManager`, `AsyncTransaction`, `AggregateCollector`를 구성합니다.
-- 호출자는 요청 컨테이너에서 표준 `AsyncTransaction`을 열고 개별 유스케이스의 `run(command/query)`를 호출합니다. 성공 시 commit, 예외 시 rollback, 세션 종료는 프레임워크가 수행합니다.
+- 호출자는 컨테이너에서 주입된 유스케이스의 `run(command/query)`를 직접 호출합니다. 공식 `@transactional`이 성공 시 commit, 실패 시 rollback과 세션 종료를 담당합니다.
 - 모든 유스케이스는 Spakky의 `IAsyncCommandUseCase` 또는 `IAsyncQueryUseCase`를 구현하며 입력은 `AbstractCommand` 또는 `AbstractQuery`를 상속합니다. 전용 Command/Query·Result DTO는 해당 UseCase 모듈에 정의합니다. 기존 도메인 타입을 반환할 때는 별도 DTO를 강제하지 않습니다.
 - 프레임워크의 미존재·저장 버전 충돌 오류는 해당 기본 계약으로 전파합니다. 세션이 요청한 프로젝트에 속하는지는 유스케이스가 도메인에 확인합니다.
 
 기본 CRUD의 SQL과 merge·flush·변경 aggregate 수집은 프레임워크 소유입니다.
-프로젝트·세션 저장소의 SQL은 추가한 위치·네이티브 ID 조회에만 있습니다. 도메인은 프레임워크의
+조건 조회는 현재 트랜잭션의 SQLAlchemy 세션을 사용하는 유스케이스에 있습니다. 도메인은 프레임워크의
 순수 도메인 기반과 mutability 선언만 사용하며 SQLAlchemy와 저장 어댑터에 의존하지 않습니다.
 
 ## 요청 수명과 SQLite
 
 CLI 프로세스는 `SpakkyApplication.load_plugins().scan(...).start()`로 구성합니다.
 설치된 플러그인을 기본 로딩하고, 패키지 스캔으로 Pod·Table·Controller를 발견합니다.
-Alembic 실행 파일과 구성 루트는 스캔 대상에서 제외합니다. 유스케이스·저장소·CLI Controller는
-프레임워크의 `CONTEXT` scope를 사용하며 spakky-typer가 명령 경계에서 컨텍스트를 갱신합니다.
+Alembic 실행 파일과 구성 루트는 스캔 대상에서 제외합니다. 상태를 보관하지 않는 유스케이스·저장소·CLI Controller는 기본 스코프를 사용합니다.
+DB 세션은 현재 요청 컨텍스트와 `@transactional` 경계로 구분합니다.
 
 SQLite는 `sqlite+aiosqlite`와 `AsyncSessionManager`·`AsyncTransaction`으로 접근합니다.
 유스케이스·저장소 호출은 `await`하고, 소유 관계는 `selectin`으로 조회하여 변환 중 암묵적
 동기 조회를 발생시키지 않습니다. 마이그레이션은 비동기 연결의 `run_sync`로 Alembic을 실행합니다.
-엔진과 세션·트랜잭션은 Spakky 구현을 재사용하며 정상·실패 종료에서 정리합니다.
+세션·트랜잭션은 Spakky 구현이 정리합니다. CLI는 명령을 실행한 이벤트 루프가 닫히기 전에 비동기 엔진을 dispose합니다.
 
 Git 관찰은 DB 트랜잭션 전에 끝냅니다. SQLite 연결 정책은 구성 루트가
 비동기 엔진의 `sync_engine` 이벤트에 연결합니다. 쓰기는 `BEGIN IMMEDIATE`, 읽기는 URI의
@@ -81,16 +81,14 @@ Alembic migration 파일과 version table이 revision의 유일한 기준입니�
 
 ```python
 from spakky.core.pod.interfaces.container import IContainer
-from spakky.plugins.sqlalchemy.persistency.transaction import AsyncTransaction
 from neurath.application.usecases.get_session_context import GetSessionContextQuery, GetSessionContextUseCase
 
 
 async def read_session(scope: IContainer, project_id: str, session_id: str):
     # scope는 neurath.bootstrap에서 구성한 애플리케이션의 컨테이너다.
-    async with scope.get(AsyncTransaction):
-        return await scope.get(GetSessionContextUseCase).run(
-            GetSessionContextQuery(project_id, session_id)
-        )
+    return await scope.get(GetSessionContextUseCase).run(
+        GetSessionContextQuery(project_id, session_id)
+    )
 ```
 
 기본 경로는 `$XDG_DATA_HOME/neurath/core.sqlite3`이며 XDG가 없으면

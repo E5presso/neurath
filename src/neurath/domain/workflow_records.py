@@ -87,6 +87,13 @@ class PhaseDefinition(AbstractValueObject):
         if self.skip_condition is not None and not self.skip_condition.strip():
             raise ValueError("An optional phase requires its skip condition")
 
+    @override
+    def __post_init__(self) -> None:
+        """호출자의 가변 목록을 소유하지 않도록 불변 값으로 보존한 뒤 검증한다."""
+        object.__setattr__(self, "arguments", tuple(self.arguments))
+        object.__setattr__(self, "checks", tuple(self.checks))
+        super().__post_init__()
+
 
 @immutable
 class WorkflowDefinition(AbstractValueObject):
@@ -119,6 +126,13 @@ class WorkflowDefinition(AbstractValueObject):
             not key.strip() for key, value in self.inputs
         ):
             raise ValueError("Input names must be nonempty and unique")
+
+    @override
+    def __post_init__(self) -> None:
+        """호출자의 가변 목록을 소유하지 않도록 불변 값으로 보존한 뒤 검증한다."""
+        object.__setattr__(self, "phases", tuple(self.phases))
+        object.__setattr__(self, "inputs", tuple((key, value) for key, value in self.inputs))
+        super().__post_init__()
 
 
 @immutable
@@ -160,6 +174,13 @@ class PhaseResult(AbstractValueObject):
             raise ValueError(
                 "Successful results require evidence and cannot have a failing exit code"
             )
+
+    @override
+    def __post_init__(self) -> None:
+        """호출자의 가변 목록을 소유하지 않도록 불변 값으로 보존한 뒤 검증한다."""
+        object.__setattr__(self, "evidence", tuple(self.evidence))
+        object.__setattr__(self, "checks", tuple(self.checks))
+        super().__post_init__()
 
 
 @immutable

@@ -7,10 +7,10 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from alembic import command as alembic_command
-from spakky.data.persistency.transaction import AbstractAsyncTransaction
 from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionManager
-from sqlalchemy import text
+from sqlalchemy import select, text
 
+from neurath.application.handlers.runtime import RuntimeEventHandler
 from neurath.application.ports.repositories.execution import IExecutionRepository
 from neurath.application.ports.repositories.writer import IWriterRepository
 from neurath.application.ports.services.writer_observer import IWriterObserverService
@@ -19,6 +19,8 @@ from neurath.domain.aggregates.execution import Execution
 from neurath.domain.aggregates.writer import Writer
 from neurath.domain.errors import InvalidExecutionState
 from neurath.domain.runtime_records import ExecutionStatus, HookAction, Liveness
+from neurath.infrastructure.models.execution import ExecutionModel
+from neurath.infrastructure.models.writer import WriterModel
 from neurath.infrastructure.process_observer import PosixWriterObserverService
 from tests.conftest import storage_scope
 from tests.support.application import spakky_context
@@ -51,12 +53,20 @@ async def send(native, event, **fields):
 
 async def execution(database, actor, agent=""):
     async with storage_scope(database, write=False) as scope:
-        return await scope.get(IExecutionRepository).find(actor.session.uid, agent)
+        row = await scope.get(AsyncSessionManager).session.scalar(
+            select(ExecutionModel).where(
+                ExecutionModel.session_id == actor.session.uid, ExecutionModel.agent_id == agent
+            )
+        )
+        return None if row is None else row.to_domain()
 
 
 async def writer(database, native):
     async with storage_scope(database, write=False) as scope:
-        return await scope.get(IWriterRepository).find(native[2]["cwd"])
+        row = await scope.get(AsyncSessionManager).session.scalar(
+            select(WriterModel).where(WriterModel.resource == native[2]["cwd"])
+        )
+        return None if row is None else row.to_domain()
 
 
 async def test_stop_feedback_once_preserves_tasks_and_cancelled_turn(database, native):
@@ -332,23 +342,29 @@ async def test_real_process_liveness_recovery_and_generation_recheck(database, n
     observer = PosixWriterObserverService(
         {(lease.execution_id, lease.turn_id, lease.tool_use_id): process}
     )
-    assert PosixWriterObserverService({}).observe(lease) is Liveness.UNKNOWN
-    assert observer.observe(lease) is Liveness.RUNNING
+    assert (
+        PosixWriterObserverService({}).observe(lease.execution_id, lease.turn_id, lease.tool_use_id)
+        is Liveness.UNKNOWN
+    )
+    assert (
+        observer.observe(lease.execution_id, lease.turn_id, lease.tool_use_id) is Liveness.RUNNING
+    )
     try:
         async with spakky_context(database, write=True) as scope:
-            recovery = RecoverWriterUseCase(
-                scope.get(IWriterRepository), observer, scope.get(AbstractAsyncTransaction)
-            )
+            scope.get(RuntimeEventHandler).observer = observer
+            recovery = scope.get(RecoverWriterUseCase)
             with pytest.raises(InvalidExecutionState):
                 (await recovery.run(RecoverWriterCommand(lease.uid, lease.generation + 1)))
-            with pytest.raises(InvalidExecutionState):
-                (await recovery.run(RecoverWriterCommand(lease.uid, lease.generation)))
+            await recovery.run(RecoverWriterCommand(lease.uid, lease.generation))
+            assert (await writer(database, native)).execution_id == lease.execution_id
             process.terminate()
             process.wait(timeout=5)
-            assert observer.observe(lease) is Liveness.STOPPED
             assert (
-                await recovery.run(RecoverWriterCommand(lease.uid, lease.generation))
-            ).execution_id is None
+                observer.observe(lease.execution_id, lease.turn_id, lease.tool_use_id)
+                is Liveness.STOPPED
+            )
+            await recovery.run(RecoverWriterCommand(lease.uid, lease.generation))
+            assert (await writer(database, native)).execution_id is None
             with pytest.raises(InvalidExecutionState):
                 (await recovery.run(RecoverWriterCommand(lease.uid, lease.generation)))
     finally:
@@ -362,17 +378,15 @@ async def test_recovery_cannot_release_new_generation_during_external_observatio
     lease = await writer(database, native)
 
     class RacingObserver(IWriterObserverService):
-        def observe(self, old):
+        def observe(self, execution_id, turn_id, tool_use_id):
             asyncio.run(send(native, "PostToolUse", tool_name="Write", tool_use_id="first"))
             asyncio.run(send(native, "PreToolUse", tool_name="Write", tool_use_id="second"))
             return Liveness.STOPPED
 
     async with spakky_context(database, write=True) as scope:
-        recovery = RecoverWriterUseCase(
-            scope.get(IWriterRepository), RacingObserver(), scope.get(AbstractAsyncTransaction)
-        )
-        with pytest.raises(InvalidExecutionState):
-            (await recovery.run(RecoverWriterCommand(lease.uid, lease.generation)))
+        scope.get(RuntimeEventHandler).observer = RacingObserver()
+        recovery = scope.get(RecoverWriterUseCase)
+        await recovery.run(RecoverWriterCommand(lease.uid, lease.generation))
     assert (await writer(database, native)).generation == 2
     assert (await writer(database, native)).execution_id == lease.execution_id
 
@@ -427,14 +441,11 @@ async def test_migration_preserves_runtime_history_and_empty_downgrade(database,
 
 
 async def test_abstract_contracts_fail_explicitly():
-    for method, args in [
-        (IExecutionRepository.find, (None, "s", "a")),
-        (IWriterRepository.find, (None, "w")),
-    ]:
-        with pytest.raises(NotImplementedError):
-            await method(*args)
+    for port in (IExecutionRepository, IWriterRepository):
+        with pytest.raises(TypeError):
+            port()
     with pytest.raises(NotImplementedError):
-        IWriterObserverService.observe(None, None)
+        IWriterObserverService.observe(None, None, None, None)
 
 
 async def test_waiting_only_yields_but_independent_work_continues(database, native):
@@ -551,16 +562,19 @@ async def test_real_targeted_cancellation_preserves_other_process_and_writes(dat
     )
     try:
         async with spakky_context(database, write=True) as scope:
-            cancel = CancelExecutionUseCase(
-                scope.get(IExecutionRepository), controller, scope.get(AbstractAsyncTransaction)
-            )
+            scope.get(RuntimeEventHandler).controller = controller
+            cancel = scope.get(CancelExecutionUseCase)
             result = await cancel.run(CancelExecutionCommand(current.uid, current.turn_id))
-            assert result.status is ExecutionStatus.CANCELLED
+            assert result.status is ExecutionStatus.PAUSED
+            assert (await execution(database, native[0])).status is ExecutionStatus.CANCELLED
         assert process.poll() is not None
         assert other.poll() is None
         assert (await writer(database, native)).execution_id == current.uid
-        assert controller.interrupt(current) is Liveness.STOPPED
-        assert PosixWriterObserverService({}).interrupt(current) is Liveness.UNKNOWN
+        assert controller.interrupt(current.uid, current.turn_id) is Liveness.STOPPED
+        assert (
+            PosixWriterObserverService({}).interrupt(current.uid, current.turn_id)
+            is Liveness.UNKNOWN
+        )
     finally:
         for child in (process, other):
             if child.poll() is None:
@@ -577,30 +591,25 @@ async def test_unknown_cancellation_and_late_response_cannot_cancel_new_turn(dat
 
     current = await execution(database, native[0])
     async with spakky_context(database, write=True) as scope:
-        cancel = CancelExecutionUseCase(
-            scope.get(IExecutionRepository),
-            PosixWriterObserverService({}),
-            scope.get(AbstractAsyncTransaction),
-        )
+        scope.get(RuntimeEventHandler).controller = PosixWriterObserverService({})
+        cancel = scope.get(CancelExecutionUseCase)
         assert (
             await cancel.run(CancelExecutionCommand(current.uid, current.turn_id))
         ).status is ExecutionStatus.PAUSED
 
     class LateController(IExecutionControllerService):
-        def interrupt(self, current):
+        def interrupt(self, execution_id, turn_id):
             asyncio.run(send(native, "UserPromptSubmit", turn_id="new-turn"))
             return Liveness.STOPPED
 
     async with spakky_context(database, write=True) as scope:
-        cancel = CancelExecutionUseCase(
-            scope.get(IExecutionRepository), LateController(), scope.get(AbstractAsyncTransaction)
-        )
-        with pytest.raises(InvalidExecutionState):
-            (await cancel.run(CancelExecutionCommand(current.uid, current.turn_id)))
+        scope.get(RuntimeEventHandler).controller = LateController()
+        cancel = scope.get(CancelExecutionUseCase)
+        await cancel.run(CancelExecutionCommand(current.uid, current.turn_id))
     assert (await execution(database, native[0])).turn_id == "new-turn"
     assert (await execution(database, native[0])).status is ExecutionStatus.PAUSED
     with pytest.raises(NotImplementedError):
-        IExecutionControllerService.interrupt(None, None)
+        IExecutionControllerService.interrupt(None, None, None)
 
 
 async def test_process_control_never_signals_shared_group(database, native):
@@ -608,7 +617,7 @@ async def test_process_control_never_signals_shared_group(database, native):
     process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
     controller = PosixWriterObserverService({(current.uid, current.turn_id, "process"): process})
     try:
-        assert controller.interrupt(current) is Liveness.UNKNOWN
+        assert controller.interrupt(current.uid, current.turn_id) is Liveness.UNKNOWN
         assert process.poll() is None
     finally:
         process.kill()
@@ -656,7 +665,7 @@ async def test_process_interrupt_escalates_and_reports_unconfirmed_failure(
 
     monkeypatch.setattr(process, "wait", timeout_once)
     try:
-        assert controller.interrupt(current) is Liveness.STOPPED
+        assert controller.interrupt(current.uid, current.turn_id) is Liveness.STOPPED
         assert len(calls) == 2
     finally:
         if process.poll() is None:
@@ -672,7 +681,7 @@ async def test_process_interrupt_escalates_and_reports_unconfirmed_failure(
 
     with monkeypatch.context() as patch:
         patch.setattr(os, "getpgid", inaccessible)
-        assert controller.interrupt(current) is Liveness.UNKNOWN
+        assert controller.interrupt(current.uid, current.turn_id) is Liveness.UNKNOWN
     other.kill()
     other.wait()
 

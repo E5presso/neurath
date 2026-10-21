@@ -1,26 +1,11 @@
-"""프로젝트 기본 CRUD는 프레임워크 계약을 상속하고 위치 조회만 추가한다."""
+"""프로젝트와 소유 위치의 기본 Aggregate 저장 계약을 제공한다."""
 
-from abc import ABC, abstractmethod
+from abc import ABC
 
 from spakky.data.persistency.repository import IAsyncGenericRepository
 
-from neurath.domain.aggregates.project import Project, ProjectLocation
+from neurath.domain.aggregates.project import Project
 
 
 class IProjectRepository(IAsyncGenericRepository[Project, str], ABC):
-    """기본 저장 계약을 확장하여 위치 값의 소유 프로젝트를 찾는다."""
-
-    @abstractmethod
-    async def find_by_location(self, location: ProjectLocation) -> Project | None:
-        """주어진 위치 값을 소유하는 프로젝트를 조회한다.
-
-        Args:
-            location: 소유 프로젝트를 찾을 위치 값.
-
-        Returns:
-            Project | None: 위치의 기존 소유자이며 없으면 None.
-
-        Raises:
-            NotImplementedError: 구체 어댑터가 추가 조회 메서드를 구현하지 않은 경우.
-        """
-        raise NotImplementedError
+    """프로젝트의 위치 값들을 포함한 aggregate의 식별자 조회와 저장을 프레임워크 기본 계약으로 제공한다."""

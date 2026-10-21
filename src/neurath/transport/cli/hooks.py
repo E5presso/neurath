@@ -5,7 +5,7 @@ import sys
 from enum import StrEnum
 from typing import Annotated, cast
 
-from spakky.core.pod.annotations.pod import Pod
+from spakky.plugins.sqlalchemy.persistency.connection_manager import AsyncConnectionManager
 from spakky.plugins.typer.stereotypes.cli_controller import CliController, command
 from typer import Option, echo
 
@@ -25,7 +25,7 @@ class HookProvider(StrEnum):
     CLAUDE = "claude"
 
 
-@CliController("hook", scope=Pod.Scope.CONTEXT)
+@CliController("hook")
 class HookCliController:
     """표준입력을 읽고 호스트 응답을 출력하며 호스트 입력은 주입된 유스케이스에 전달한다.
 
@@ -33,13 +33,15 @@ class HookCliController:
     훅 장애가 같은 모델 턴을 계속 생성하지 않게 한다. 허용 결과는 네이티브 권한을 대체하지 않는다.
     """
 
-    def __init__(self, usecase: ReceiveHookUseCase) -> None:
+    def __init__(self, usecase: ReceiveHookUseCase, connection: AsyncConnectionManager) -> None:
         """스캔된 컨테이너에서 훅 수신 유스케이스를 직접 주입받는다.
 
         Args:
             usecase: 세션 등록·훅 적용·트랜잭션을 담당하는 유스케이스.
+            connection: 명령을 실행한 이벤트 루프에서 정리할 비동기 엔진.
         """
         self.usecase = usecase
+        self.connection = connection
 
     @command("handle", help="표준입력의 네이티브 훅 JSON을 처리합니다.")
     async def handle(
@@ -53,21 +55,24 @@ class HookCliController:
             provider: 설치된 훅의 공급자 규격.
             bypass: 관리 경로가 활성화한 우회이며 성공·승인을 기록하지 않음.
         """
-        if bypass:
-            echo(
-                json.dumps(
-                    {"systemMessage": "Neurath hook bypass is enabled; task state is unchanged"}
-                )
-            )
-            return
         try:
-            result = await self.dispatch(provider.value, self._read_payload())
-        except Exception as error:
-            result = {
-                "continue": False,
-                "stopReason": f"Neurath hook failure: {error}. Use the management recovery/bypass path; unfinished work is preserved.",
-            }
-        echo(json.dumps(result, ensure_ascii=False))
+            if bypass:
+                echo(
+                    json.dumps(
+                        {"systemMessage": "Neurath hook bypass is enabled; task state is unchanged"}
+                    )
+                )
+                return
+            try:
+                result = await self.dispatch(provider.value, self._read_payload())
+            except Exception as error:
+                result = {
+                    "continue": False,
+                    "stopReason": f"Neurath hook failure: {error}. Use the management recovery/bypass path; unfinished work is preserved.",
+                }
+            echo(json.dumps(result, ensure_ascii=False))
+        finally:
+            await self.connection.dispose()
 
     @staticmethod
     def _read_payload() -> dict[str, object]:

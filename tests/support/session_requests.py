@@ -6,8 +6,6 @@ Git 관찰을 DB 트랜잭션 전에 마친다. Transaction은 성공 시 커밋
 
 from pathlib import Path
 
-from spakky.plugins.sqlalchemy.persistency.transaction import AsyncTransaction
-
 from neurath.application.ports.services.directory_observer import IDirectoryObserverService
 from neurath.application.usecases.get_session_context import (
     GetSessionContextQuery,
@@ -50,8 +48,7 @@ async def register_session(
         request = RegisterSessionCommand(
             observation=observation, provider=provider, host_session_id=host_session_id
         )
-        async with scope.get(AsyncTransaction):
-            return await scope.get(RegisterSessionUseCase).run(request)
+        return await scope.get(RegisterSessionUseCase).run(request)
 
 
 async def get_session_context(
@@ -69,8 +66,7 @@ async def get_session_context(
     """
     request = GetSessionContextQuery(project_id=project_id, session_id=session_id)
     async with spakky_context(database_path, write=False) as scope:
-        async with scope.get(AsyncTransaction):
-            return await scope.get(GetSessionContextUseCase).run(request)
+        return await scope.get(GetSessionContextUseCase).run(request)
 
 
 async def move_session(
@@ -101,8 +97,7 @@ async def move_session(
             observation=observation,
             expected_revision=expected_revision,
         )
-        async with scope.get(AsyncTransaction):
-            return await scope.get(MoveSessionUseCase).run(request)
+        return await scope.get(MoveSessionUseCase).run(request)
 
 
 def session_state(result):

@@ -647,16 +647,23 @@ print(json.dumps(asdict(asyncio.run(run(GetTasksUseCase, GetTasksQuery(sys.argv[
         (SQLAlchemyTaskRepository, ITaskRepository, "tasks"),
     ],
 )
-async def test_missing_list_implementation_fails_instead_of_hiding_remaining_tasks(
+async def test_query_failure_does_not_hide_remaining_tasks(
     database, actors, monkeypatch, adapter, port, operation
 ):
     actor, _, _ = actors
     work = await create(database, actor)
 
-    def missing_list(self, project_id):
-        return port.list(self, project_id)
+    from sqlalchemy.ext.asyncio import AsyncSession
 
-    monkeypatch.setattr(adapter, "list", missing_list)
+    original = AsyncSession.scalars
+
+    async def missing_rows(self, statement, *args, **kwargs):
+        table = "core_request_sources" if operation == "sources" else "core_tasks"
+        if table in str(statement):
+            raise NotImplementedError("query unavailable")
+        return await original(self, statement, *args, **kwargs)
+
+    monkeypatch.setattr(AsyncSession, "scalars", missing_rows)
     before = snapshot(database)
     with pytest.raises(NotImplementedError):
         if operation == "sources":

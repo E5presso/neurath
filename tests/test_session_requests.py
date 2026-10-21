@@ -32,6 +32,7 @@ from neurath.infrastructure.models.project import ProjectModel
 from neurath.infrastructure.models.session import SessionModel
 from neurath.infrastructure.repositories.session import SQLAlchemySessionRepository
 from tests.conftest import git, initialize_git, storage_scope
+from tests.support.application import spakky_context
 from tests.support.session_requests import (
     get_session_context,
     move_session,
@@ -294,14 +295,14 @@ async def test_foreign_keys_and_positive_revisions_are_enforced(database):
 
 
 async def test_identity_conflict_does_not_merge_or_modify_existing_aliases(database):
-    async with storage_scope(database) as scope:
+    async with spakky_context(database) as scope:
         projects = scope.get(RegisterProjectUseCase)
         first = await projects.run(
             RegisterProjectCommand(DirectoryObservation("/one", "/one/.git", "/one"))
         )
         second = await projects.run(RegisterProjectCommand(DirectoryObservation("/two")))
     with pytest.raises(ProjectIdentityConflict):
-        async with storage_scope(database) as scope:
+        async with spakky_context(database) as scope:
             (
                 await scope.get(RegisterProjectUseCase).run(
                     RegisterProjectCommand(DirectoryObservation("/two", "/one/.git", "/two"))
@@ -315,7 +316,7 @@ async def test_identity_conflict_does_not_merge_or_modify_existing_aliases(datab
             second.project.id,
         }
     with pytest.raises(ProjectIdentityConflict):
-        async with storage_scope(database) as scope:
+        async with spakky_context(database) as scope:
             (
                 await scope.get(RegisterProjectUseCase).run(
                     RegisterProjectCommand(DirectoryObservation("/one", "/different/.git", "/one"))

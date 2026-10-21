@@ -26,7 +26,7 @@ from neurath.application.usecases.register_session import RegisterSessionUseCase
 from neurath.domain.aggregates.project import Project
 from neurath.domain.aggregates.session import HostSession
 from neurath.domain.observations import DirectoryObservation
-from neurath.infrastructure.models.project import ProjectModel
+from neurath.infrastructure.models.project import ProjectLocationModel, ProjectModel
 from neurath.infrastructure.models.session import SessionModel
 from neurath.infrastructure.repositories.project import SQLAlchemyProjectRepository
 from neurath.infrastructure.repositories.session import SQLAlchemySessionRepository
@@ -77,7 +77,7 @@ async def test_spakky_injects_standard_managers_registry_collector_and_repositor
         manager = scope.get(AsyncSessionManager)
         usecase = scope.get(RegisterSessionUseCase)
         projects = scope.get(IProjectRepository)
-        assert usecase.projects.projects is projects
+        assert usecase.projects is projects
         assert usecase.sessions is scope.get(ISessionRepository)
         assert projects._session_manager is usecase.sessions._session_manager is manager
         assert projects._schema_registry is scope.get(SchemaRegistry)
@@ -280,8 +280,14 @@ async def test_project_save_roundtrips_owned_locations_and_updates_the_whole_agg
         assert loaded.version == saved.version
         for location in project.locations:
             assert (
-                await scope.get(IProjectRepository).find_by_location(location)
-            ).uid == project.uid
+                await scope.get(AsyncSessionManager).session.scalar(
+                    select(ProjectLocationModel.project_id).where(
+                        ProjectLocationModel.kind == location.kind.value,
+                        ProjectLocationModel.path == location.path,
+                    )
+                )
+                == project.uid
+            )
 
 
 @pytest.mark.parametrize("existing_parent", [False, True])
@@ -323,8 +329,22 @@ async def test_session_save_inserts_and_returns_stored_entity(database):
         stored = await sessions.save(entity)
         assert stored == entity and stored.revision == 1
         assert (await sessions.get_or_none(entity.uid)).version == entity.version
-        assert (await sessions.find(project.uid, "codex", "new")).uid == entity.uid
-        assert (await sessions.find(project.uid, "claude", "new")) is None
+        assert (
+            await scope.get(AsyncSessionManager).session.scalar(
+                select(SessionModel.id).where(
+                    SessionModel.project_id == project.uid,
+                    SessionModel.provider == "codex",
+                    SessionModel.host_session_id == "new",
+                )
+            )
+            == entity.uid
+        )
+        assert (
+            await scope.get(AsyncSessionManager).session.scalar(
+                select(SessionModel.id).where(SessionModel.provider == "claude")
+            )
+            is None
+        )
     async with storage_scope(database, write=False) as scope:
         assert (await scope.get(ISessionRepository).get(entity.uid)).revision == 1
         assert (

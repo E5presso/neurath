@@ -6,7 +6,7 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 - 코어는 hook·CLI 요청마다 사용자 단위 단일 SQLite의 상태를 조회해 처리하는 stateless service다. 프로젝트·세션은 DB 안에서 구분한다. 지속 상태를 상주 코어 메모리에 의존시키지 않는다.
 - 설치된 rules가 기본 진입점이며 에이전트가 요청에 맞는 스킬을 선택한다. 사용자 지정 스킬은 그 지정을 따르고 단순 대화에는 강제하지 않는다. 선택한 스킬은 CLI로 시작하며 phase는 기존 runner가 관리한다.
 - 태스크/TODO의 완료 여부는 종료 훅이 결정론적으로 검사한다. 사용자 의도 충족과 요청된 회고의 내용 평가는 별도 서브에이전트 또는 다른 provider에게 위탁한다. 결과 평가는 작업 묶음을 마무리하는 스킬의 phase로 관리하고 회고 제안·거절은 원래 작업 종료와 구분한다.
-- 도메인 규칙은 `src/neurath/domain`, 유스케이스는 `application`, SQLAlchemy·Alembic과 요청별 구성은 `infrastructure`에 둔다. 유스케이스 전용 Command/Query·Result DTO는 해당 유스케이스 모듈에 함께 정의한다. 모든 반환에 DTO를 강제하거나 공유 자료형·디렉터리 이름을 금지하지 않는다. 어댑터와 공통 구성요소는 실제 책임과 필요성으로 판단한다. 도메인은 외부 계층에 의존하지 않는다.
+- 도메인 규칙은 `src/neurath/domain`, 유스케이스는 `application`, ORM 매핑·저장 구현·Alembic은 `infrastructure`에 둔다. QueryUseCase는 공식 매뉴얼대로 SQLAlchemy 세션과 매핑을 사용해 조회한다. 명령의 원자적 처리에 필요한 조건 조회도 현재 트랜잭션의 세션에서 수행하고 저장은 기본 Repository를 재사용한다. 유스케이스 전용 Command/Query·Result DTO는 해당 유스케이스 모듈에 함께 정의한다. 모든 반환에 DTO를 강제하거나 공유 자료형·디렉터리 이름을 금지하지 않는다. 어댑터와 공통 구성요소는 실제 책임과 필요성으로 판단한다. 도메인은 외부 계층에 의존하지 않는다.
 - 기존 데이터 이전은 `migration`의 명시적 보존 경계에서 수행한다. 원본 DB를 수정하거나 미완료 작업을 임의로 완료·취소하지 않는다.
 - 새 설계는 Python + Typer 기반 `neurath` CLI 전용이며 MCP 서버나 어댑터를 제공하지 않는다. 릴리스 시 실제 CLI 정의에서 가이드 프롬프트를 생성하고 설치 시 관리 영역에 반영한다. 네이티브 호스트의 실행 권한과 사용자 승인을 하네스 기록으로 대체하지 않는다.
 - `uv sync --locked`로 개발 환경을 준비하고 `uv run --locked python tools/check.py`로 필수 검사를 실행한다.
@@ -14,7 +14,7 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 - 설치는 관련 없는 사용자 설정·훅·지침을 보존하며, 변경 전에 복구 사본을 남긴다.
 - 공개 문서는 `docs/en`과 `docs/ko`의 같은 상대 경로에 함께 작성한다. README와 CONTRIBUTING은 영어·한국어 쌍을 유지한다. 개인 경로와 검증 원문은 공개 문서나 패키지에 넣지 않는다.
 - 코드·설치 수정은 승인된 로컬 작업이다. 공개 push·PR·배포는 사용자의 별도 요청 없이 수행하지 않는다.
-- 도메인 aggregate, 명시적 ABC port, 개별 command/query use case, 구체 repository adapter와 declarative ORM 모델의 책임을 구분한다. Protocol은 사용하지 않고 명시적 상속·추상 계약을 사용한다. 참고 구조의 불필요한 중복 유스케이스 인터페이스나 ORM 수명 구현을 복제하지 않는다. 이름만으로 인터페이스·클래스의 필요성을 단정하지 않는다. 모든 유스케이스는 Spakky의 IAsyncCommandUseCase 또는 IQueryUseCase와 run 계약을 구현하고 입력은 AbstractCommand 또는 AbstractQuery를 상속한다. Spakky Framework 8.1.0의 AbstractAggregateRoot·AbstractValueObject·IAsyncGenericRepository·AbstractAsyncGenericRepository·AbstractMappableTable·Table·SchemaRegistry와 AsyncConnectionManager·AsyncSessionManager·Transaction을 사용한다. 현재 저장소의 기본 CRUD·배치는 프레임워크 구현을 재사용한다. 추가 질의·확장이 필요하면 실제 책임과 차이를 확인한다. 현재 요청의 트랜잭션은 표준 Transaction이 소유하며, 동일한 수명을 다시 구현하는 불필요한 래퍼를 만들지 않는다. 메서드 이름·클래스 이름이나 contextmanager 문법 자체를 금지하지 않는다.
+- 도메인 aggregate, 명시적 ABC port, 개별 command/query use case, 구체 repository adapter와 declarative ORM 모델의 책임을 구분한다. Protocol은 사용하지 않고 명시적 상속·추상 계약을 사용한다. 참고 구조의 불필요한 중복 유스케이스 인터페이스나 ORM 수명 구현을 복제하지 않는다. 이름만으로 인터페이스·클래스의 필요성을 단정하지 않는다. 모든 유스케이스는 Spakky의 IAsyncCommandUseCase 또는 IAsyncQueryUseCase와 run 계약을 구현하고 입력은 AbstractCommand 또는 AbstractQuery를 상속한다. Spakky Framework 8.1.0의 AbstractAggregateRoot·AbstractValueObject·IAsyncGenericRepository·AbstractAsyncGenericRepository·AbstractMappableTable·Table·SchemaRegistry와 AsyncConnectionManager·AsyncSessionManager·AsyncTransaction을 사용한다. 현재 저장소의 기본 CRUD·배치는 프레임워크 구현을 재사용한다. 조건 검색은 Repository에 추가하지 않고 SQLAlchemy 조회로 처리한다. QueryUseCase는 조회 결과를 자신의 반환 계약으로 구성한다. DB 유스케이스의 run은 공식 @transactional로 경계를 선언한다. 호출자는 컨테이너에서 받은 유스케이스를 직접 호출하며 외부에서 다시 트랜잭션을 감싸지 않는다. 메서드 이름·클래스 이름이나 contextmanager 문법 자체를 금지하지 않는다.
 - 전체 현재 src와 tools에 strict Pyrefly·Google 형식 pydoclint·Ruff 검사를 적용한다. pre-commit과 CI는 tools/quality.py를 공유한다. 모듈 의미와 문서의 유용성은 별도 사람 검토 사항이다. 저장소는 조회·저장만 제공하며 위치 식별·승격·충돌 규칙은 Project aggregate가 소유한다. 엔티티는 가변 상태·동일성을 가지며 불변 관찰·명령·응답 값과 구분한다.
 - 현재 후보는 #137의 프로젝트·세션 기반, #140의 원문·태스크 원장, #141의 단계 실행 및 #142의 호스트 런타임 라이브러리다. 이전 MCP runtime은 Git 기록에 있으며 새 패키지에는 포함하지 않는다. 훅 CLI는 spakky-typer로 제공한다. 나머지 업무 CLI·설치·기존 자료 변환은 후속 티켓이며 이 후보를 실설치하지 않는다.
 
@@ -23,7 +23,7 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 - src·tools·tests 및 루트 Python 설정의 실제 docstring은 요약과 자연어 필드 설명까지 한국어로 작성한다. Google 섹션명과 코드·타입 식별자는 유지한다. 영문 오류 fixture는 의도된 테스트 데이터로만 둔다. tools/docstrings.py는 한국어 설명이 전혀 없는 문서 문자열을 찾는 최소 검사다. 한영 글자 비율·줄별 글자 수 기준을 만들지 않는다. 실제 설명 언어·번역 정확성과 aggregate 의미는 별도로 검토한다.
 - 객체 선택은 None과 거짓 값의 의미가 드러나게 작성한다. 명시성을 요구한 지적을 or 연산자나 특정 표현식 전체의 금지로 바꾸지 않는다.
 
-- 지원 Python 3.14 문법은 Ruff UP 규칙으로 검사한다. 호출한 하위 클래스 타입을 유지하는 classmethod 생성·변환 메서드는 Self를 사용한다. 구체 도메인 타입으로 변환하는 인스턴스 메서드의 반환 타입은 그대로 명시한다. 애플리케이션은 Spakky의 기본 load_plugins()와 패키지 scan()으로 구성한다. 개별 Pod·Table 수동 등록 목록이나 요청마다 컨테이너를 다시 조립하는 팩토리를 유지하지 않는다. 요청별 유스케이스·저장소·CLI Controller는 공식 CONTEXT scope를 사용하고 세션·트랜잭션은 표준 비동기 구현으로 정리한다.
+- 지원 Python 3.14 문법은 Ruff UP 규칙으로 검사한다. 호출한 하위 클래스 타입을 유지하는 classmethod 생성·변환 메서드는 Self를 사용한다. 구체 도메인 타입으로 변환하는 인스턴스 메서드의 반환 타입은 그대로 명시한다. 애플리케이션은 Spakky의 기본 load_plugins()와 패키지 scan()으로 구성한다. 개별 Pod·Table 수동 등록 목록이나 요청마다 컨테이너를 다시 조립하는 팩토리를 유지하지 않는다. 현재 상태를 보관하지 않는 유스케이스·저장소·CLI Controller는 기본 스코프를 사용한다. 객체 수명과 DB 세션 수명을 혼동해 CONTEXT를 일괄 지정하지 않는다. 비동기 엔진은 실제 명령을 실행한 이벤트 루프에서 정리한다.
 
 - 도메인의 uid와 변경 메타데이터는 프레임워크 기반을 사용한다. 기존 id 참조와 정수 revision은 보존하며 ORM의 version_id_col은 정수 revision에 연결한다. UUID version은 도메인 변경 토큰으로 저장한다. SQLite 시각을 UTC로 왕복하되 변경 없는 저장이 UPDATE를 만들지 않게 매핑한다. core_0001은 수정하지 않고 core_0002로 기존 행과 외래 키를 보존한다. 이전 시각이 없으면 epoch를 미상 표식으로 저장하며 원래 생성 시각으로 해석하지 않는다.
 
@@ -33,7 +33,7 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 
 - #140의 Task가 정의·의존·실행 시도·외부 대기 이력을 소유한다. 이 자식들에 별도 repository를 만들지 않는다. 상태 질문·과거 요약을 새 목표로 승격하지 않고 실제 정정은 지정한 작업·필드만 변경한다. 후보 제출은 성공이 아니며 오래된 개정의 결과는 보존하되 현재 요구를 닫지 않는다. TODO는 현재 전체 원장의 투영이며 별도 완료 권한이 아니다.
 
-- 읽기 전용 목록 계약에는 collections.abc.Sequence를 사용한다. 현재 RequestSource·Task 저장소의 list 계약을 회귀 시험으로 확인한다. 내부 저장·정확한 tuple 형식 등 다른 목적의 타입 표기까지 금지하지 않는다. Sequence 자체가 실행 시 불변성을 보장하지는 않으며 소유 이력의 저장 구현에는 tuple snapshot을 사용할 수 있다. 고정된 이종 쌍의 tuple과 구분한다.
+- 읽기 전용 목록 계약에는 collections.abc.Sequence를 사용한다. 현재 원문·태스크 조회 결과의 Sequence 계약을 회귀 시험으로 확인한다. 내부 저장·정확한 tuple 형식 등 다른 목적의 타입 표기까지 금지하지 않는다. Sequence 자체가 실행 시 불변성을 보장하지는 않으며 소유 이력의 저장 구현에는 tuple snapshot을 사용할 수 있다. 고정된 이종 쌍의 tuple과 구분한다.
 - 스키마 revision은 Alembic migration 파일과 version table만 관리한다. 일반 요청은 MigrationContext의 현재 heads와 ScriptDirectory의 배포 heads로 호환성을 확인하며 별도 최신 revision 상수를 유지하지 않는다. 일반 요청에서 자동 이전하지 않는다.
 
 - 유스케이스 전용 결과 DTO는 입력 DTO와 마찬가지로 해당 유스케이스의 계약이며 같은 모듈에 정의한다. 결과 타입의 이름·접미사를 고정하거나 모든 반환에 별도 DTO를 요구하지 않는다. 반환할 데이터만 담고 상태 전이·의존 판단은 도메인, 조회 결과 구성은 해당 유스케이스가 담당한다. CLI·훅은 실제 호출자로서 출력 형식 변환을 담당한다. DTO 명칭이나 위치 변경만으로 책임 문제가 해결됐다고 판단하지 않는다.
@@ -51,4 +51,7 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 
 - 유스케이스는 UseCase 접미사만 강제한다. 서비스·저장소의 기술 접두어 규칙을 유스케이스에 확대 적용하거나 명명을 위해 유스케이스별 인터페이스를 새로 만들지 않는다. 기존 Spakky IAsyncCommandUseCase·IAsyncQueryUseCase 계약을 유지하며, 공통 구조 검사는 데코레이터·직접 및 간접 상속으로 유스케이스를 찾아 접미사 누락을 거절한다.
 
-- SQLite 접근은 aiosqlite와 Spakky IAsyncGenericRepository·AbstractAsyncGenericRepository·AsyncSessionManager·AsyncTransaction을 사용한다. DB 유스케이스와 Typer 훅 명령은 async def로 선언하고 호출을 await한다. Alembic은 async connection.run_sync로 실행한다. 관계 매핑은 비동기 조회 안에서 selectin으로 적재하여 암묵적 lazy SQL을 만들지 않는다. CLI 입출력은 transport, 외부 기술 구현은 infrastructure, 의존성 조립은 구성 루트가 담당한다. CONTEXT scope와 scan 발견, 실제 CLI·롤백·경합 시험 및 await 누락 실패를 공통 pre-commit/CI에서 확인한다.
+- SQLite 접근은 aiosqlite와 Spakky IAsyncGenericRepository·AbstractAsyncGenericRepository·AsyncSessionManager·AsyncTransaction을 사용한다. DB 유스케이스와 Typer 훅 명령은 async def로 선언하고 호출을 await한다. Alembic은 async connection.run_sync로 실행한다. 관계 매핑은 비동기 조회 안에서 selectin으로 적재하여 암묵적 lazy SQL을 만들지 않는다. CLI 입출력은 transport, 외부 기술 구현은 infrastructure, 의존성 조립은 구성 루트가 담당한다. 실제 컨테이너에서 직접 호출한 유스케이스의 커밋·롤백, 동일 앱의 반복 CLI와 요청 격리, 실행·정리 이벤트 루프, scan 발견과 await 누락을 회귀 시험으로 확인한다.
+
+- Spakky 사용법은 https://framework.spakky.com/ 의 해당 매뉴얼을 직접 읽고 설치한 버전의 실제 API와 함께 확인한다. Domain Event는 aggregate.add_event → Repository.save → @transactional 커밋 → @EventHandler/@on_event 경로로 후속 작업을 연결한다. 후속 유스케이스는 새 트랜잭션으로 실행하며 중첩 트랜잭션이나 자체 이벤트 디스패처를 도입하지 않는다. 원자적으로 끝나야 하는 한 작업은 하나의 유스케이스가 담당한다. 이벤트 핸들러 실패가 로그로 격리되는 동작을 고려하여 예약 응답을 후속 작업 완료로 해석하지 않고 DB의 실제 결과를 확인한다.
+- @immutable 값 객체의 Sequence 입력은 소유 경계에서 불변 snapshot으로 보존한다. 호출자가 원래 목록을 변경해도 저장할 이력과 aggregate 변경 토큰을 우회해 바뀌지 않아야 한다. 타입 이름이나 frozen 선언만으로 내부 값까지 불변이라고 판단하지 않는다.

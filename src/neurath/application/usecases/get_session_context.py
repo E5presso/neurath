@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from typing import override
 
-from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
+from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
 
 from neurath.application.ports.repositories.project import IProjectRepository
@@ -39,7 +39,7 @@ class GetSessionContextResult:
     session: HostSession
 
 
-@UseCase(scope=Pod.Scope.CONTEXT)
+@UseCase()
 class GetSessionContextUseCase(IAsyncQueryUseCase[GetSessionContextQuery, GetSessionContextResult]):
     """세션의 프로젝트 소속을 확인하고 프로젝트·세션을 함께 조회한다.
 
@@ -57,6 +57,7 @@ class GetSessionContextUseCase(IAsyncQueryUseCase[GetSessionContextQuery, GetSes
         self.projects = projects
         self.sessions = sessions
 
+    @transactional
     @override
     async def run(self, query: GetSessionContextQuery) -> GetSessionContextResult:
         """프로젝트 소속을 확인한 세션과 해당 프로젝트를 변경 없이 반환한다.

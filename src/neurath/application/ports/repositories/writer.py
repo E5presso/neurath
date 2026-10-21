@@ -1,6 +1,6 @@
-"""Writer 기본 CRUD를 재사용하고 현재 식별자 조회만 추가한다."""
+"""작성 임대의 기본 Aggregate 저장 계약을 제공한다."""
 
-from abc import ABC, abstractmethod
+from abc import ABC
 
 from spakky.data.persistency.repository import IAsyncGenericRepository
 
@@ -8,19 +8,4 @@ from neurath.domain.aggregates.writer import Writer
 
 
 class IWriterRepository(IAsyncGenericRepository[Writer, str], ABC):
-    """정규 작업 폴더의 현재 작성 소유자를 조회한다."""
-
-    @abstractmethod
-    async def find(self, resource: str) -> Writer | None:
-        """정규 작업 폴더의 현재 작성 소유자를 조회한다.
-
-        Args:
-            resource: 조회할 정규 작업 폴더 식별자.
-
-        Returns:
-            Writer | None: 일치하는 기록이며 없으면 None.
-
-        Raises:
-            NotImplementedError: 구체 저장소가 조회 계약을 구현하지 않은 경우.
-        """
-        raise NotImplementedError
+    """작성 소유자·턴·도구 호출·세대를 가진 임대의 식별자 조회와 저장을 프레임워크 기본 계약으로 제공한다."""

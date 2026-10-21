@@ -9,6 +9,7 @@ from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 
 from neurath.domain.aggregates.task import Task
 from neurath.domain.errors import InvalidExecutionState
+from neurath.domain.runtime_events import ExecutionCancellationRequested
 from neurath.domain.runtime_records import ExecutionStatus, HookAction
 from neurath.domain.task_records import TaskStatus
 
@@ -183,3 +184,13 @@ class Execution(AbstractAggregateRoot[str]):
             self.pause("External dependencies remain; unfinished work is preserved")
             return HookAction.PAUSE
         return HookAction.CONTINUE
+
+    def request_cancellation(self, turn_id: str) -> None:
+        """현재 턴의 추가 쓰기를 중단하고 커밋 이후 호스트 종료를 요청한다.
+
+        Args:
+            turn_id: 사용자 중단 요청이 지정한 실제 턴.
+        """
+        self.require_turn(turn_id)
+        self.pause("Cancellation requested; actual termination is pending")
+        self.add_event(ExecutionCancellationRequested(execution_id=self.uid, turn_id=turn_id))

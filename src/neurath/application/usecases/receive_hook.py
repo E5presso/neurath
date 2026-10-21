@@ -1,24 +1,36 @@
 """호스트 입력을 프로젝트·세션 범위에 연결해 현재 훅 처리 유스케이스에 전달한다."""
 
 import asyncio
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import override
 
-from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
-from spakky.data.persistency.transaction import AbstractAsyncTransaction
+from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
+from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionManager
+from sqlalchemy import select
 
+from neurath.application.ports.repositories.execution import IExecutionRepository
+from neurath.application.ports.repositories.project import IProjectRepository
+from neurath.application.ports.repositories.session import ISessionRepository
+from neurath.application.ports.repositories.task import ITaskRepository
+from neurath.application.ports.repositories.workflow import IWorkflowRepository
+from neurath.application.ports.repositories.writer import IWriterRepository
 from neurath.application.ports.services.directory_observer import IDirectoryObserverService
-from neurath.application.usecases.handle_hook import (
-    HandleHookCommand,
-    HandleHookUseCase,
-)
-from neurath.application.usecases.register_session import (
-    RegisterSessionCommand,
-    RegisterSessionUseCase,
-)
-from neurath.domain.runtime_records import HookAction
+from neurath.domain.aggregates.execution import Execution
+from neurath.domain.aggregates.project import Project
+from neurath.domain.aggregates.session import HostSession
+from neurath.domain.aggregates.task import Task
+from neurath.domain.aggregates.writer import Writer
+from neurath.domain.errors import InvalidExecutionState
+from neurath.domain.runtime_records import ExecutionStatus, HookAction, Liveness
+from neurath.infrastructure.models.execution import ExecutionModel
+from neurath.infrastructure.models.project import ProjectLocationModel, ProjectModel
+from neurath.infrastructure.models.session import SessionModel
+from neurath.infrastructure.models.task import TaskModel
+from neurath.infrastructure.models.workflow import WorkflowModel
+from neurath.infrastructure.models.writer import WriterModel
 
 
 @dataclass(frozen=True)
@@ -69,39 +81,52 @@ class ReceiveHookResult:
     message: str
 
 
-@UseCase(scope=Pod.Scope.CONTEXT)
+@UseCase()
 class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookResult]):
-    """외부 위치를 관찰하고 세션 등록과 훅 적용을 같은 요청 트랜잭션에서 조정한다."""
+    """네이티브 세션을 확인하고 훅 사건의 상태 변경을 한 트랜잭션으로 반영한다."""
 
     def __init__(
         self,
+        session_manager: AsyncSessionManager,
         directories: IDirectoryObserverService,
-        sessions: RegisterSessionUseCase,
-        hooks: HandleHookUseCase,
-        transaction: AbstractAsyncTransaction,
+        projects: IProjectRepository,
+        sessions: ISessionRepository,
+        executions: IExecutionRepository,
+        writers: IWriterRepository,
+        tasks: ITaskRepository,
+        workflows: IWorkflowRepository,
     ) -> None:
-        """관찰 서비스와 기존 세션 등록·훅 처리 유스케이스를 주입받는다.
+        """위치 관찰과 훅 상태를 저장하는 의존성을 주입받는다.
 
         Args:
-            directories: 프로젝트 위치와 공유 작성 폴더를 실제 조회하는 서비스.
-            sessions: 관찰한 프로젝트의 네이티브 세션을 등록·재사용하는 유스케이스.
-            hooks: 내부 범위에 연결한 사건을 처리하는 유스케이스.
-            transaction: 세션 등록과 사건 적용을 원자적으로 저장할 표준 트랜잭션.
+            session_manager: 조건 조회를 현재 트랜잭션의 SQLAlchemy 세션으로 수행한다.
+            directories: 첫 DB 접근 전에 작업 폴더를 관찰한다.
+            projects: 관찰한 위치의 프로젝트를 저장한다.
+            sessions: 네이티브 세션을 조회하고 등록한다.
+            executions: 실제 턴과 중단 상태를 저장한다.
+            writers: 작성 소유자와 세대를 저장한다.
+            tasks: 해당 세션의 미완료 원장을 조회한다.
+            workflows: 진행 중인 단계의 revision을 조회한다.
         """
+        self.session_manager = session_manager
         self.directories = directories
+        self.projects = projects
         self.sessions = sessions
-        self.hooks = hooks
-        self.transaction = transaction
+        self.executions = executions
+        self.writers = writers
+        self.tasks = tasks
+        self.workflows = workflows
 
+    @transactional
     @override
     async def run(self, command: ReceiveHookCommand) -> ReceiveHookResult:
-        """실제 위치와 세션을 확인한 뒤 해당 범위에서 훅 사건을 적용한다.
+        """위치를 관찰한 뒤 세션 등록과 훅 변경을 원자적으로 저장한다.
 
         Args:
-            command: 내부 범위를 꾸미지 않은 실제 호스트 사건.
+            command: 실제 호스트 신원과 정규화한 사건.
 
         Returns:
-            ReceiveHookResult: 현재 상태에 따른 호스트 판정과 TODO.
+            ReceiveHookResult: 미완료 작업과 현재 상태에 따른 호스트 제어 응답.
         """
         observation = await asyncio.to_thread(self.directories.observe, command.working_directory)
         resource = ""
@@ -109,25 +134,201 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
             resource = await asyncio.to_thread(
                 self.directories.workspace, command.working_directory
             )
-        async with self.transaction:
-            actor = await self.sessions.run(
-                RegisterSessionCommand(observation, command.provider, command.host_session_id)
+        candidates = Project.identify(observation)
+        owners = []
+        for location in candidates:
+            owner = (
+                await self.projects.get(found_id)
+                if (
+                    found_id := await self.session_manager.session.scalar(
+                        select(ProjectModel.id)
+                        .join(ProjectModel.locations)
+                        .where(
+                            ProjectLocationModel.kind == location.kind.value,
+                            ProjectLocationModel.path == location.path,
+                        )
+                    )
+                )
+                is not None
+                else None
             )
-            result = await self.hooks.run(
-                HandleHookCommand(
-                    project_id=actor.project.uid,
-                    session_id=actor.session.uid,
-                    event=command.event,
-                    start_source=command.start_source,
-                    turn_id=command.turn_id,
-                    agent_id=command.agent_id,
-                    tool_use_id=command.tool_use_id,
-                    resource=resource,
-                    finished=command.finished,
-                    interrupted=command.interrupted,
-                    repeated=command.repeated,
-                    reason=command.reason,
+            if owner is not None:
+                owners.append(owner)
+        project = Project.owner_of(owners)
+        if project is None:
+            project = Project.create(observation)
+        project.associate(candidates)
+        project = await self.projects.save(project)
+        session = (
+            await self.sessions.get(found_id)
+            if (
+                found_id := await self.session_manager.session.scalar(
+                    select(SessionModel.id).where(
+                        SessionModel.project_id == project.uid,
+                        SessionModel.provider == command.provider,
+                        SessionModel.host_session_id == command.host_session_id,
+                    )
                 )
             )
+            is not None
+            else None
+        )
+        if session is None:
+            session = await self.sessions.save(
+                HostSession.create(
+                    project.uid,
+                    command.provider,
+                    command.host_session_id,
+                    observation.working_directory,
+                )
+            )
+        execution = (
+            await self.executions.get(found_id)
+            if (
+                found_id := await self.session_manager.session.scalar(
+                    select(ExecutionModel.id).where(
+                        ExecutionModel.session_id == session.uid,
+                        ExecutionModel.agent_id == command.agent_id,
+                    )
+                )
+            )
+            is not None
+            else None
+        )
+        if execution is None:
+            execution = await self.executions.save(Execution.create(session.uid, command.agent_id))
+        tasks = tuple(
+            t
+            for t in await self.tasks.range(
+                (
+                    await self.session_manager.session.scalars(
+                        select(TaskModel.id)
+                        .where(TaskModel.project_id == project.uid)
+                        .order_by(TaskModel.created_at, TaskModel.id)
+                    )
+                ).all()
+            )
+            if t.owner_session_id == session.uid and not command.agent_id
+        )
+        todo = "\n".join(f"{t.uid}: {t.status.value} — {t.definition.title}" for t in tasks)
+        try:
+            action, _ = await self._apply(command, execution, tasks, resource)
+        except InvalidExecutionState as error:
+            return ReceiveHookResult(HookAction.PAUSE, f"{error}\n{todo}")
+        execution = await self.executions.save(execution)
+        return ReceiveHookResult(action, f"{execution.reason}\n{todo}".strip())
 
-            return ReceiveHookResult(action=result.action, message=result.message)
+    async def _apply(
+        self,
+        command: ReceiveHookCommand,
+        execution: Execution,
+        tasks: Sequence[Task],
+        resource: str,
+    ) -> tuple[HookAction, int | None]:
+        """수명 사건과 도구 사건을 해당 도메인 규칙에 전달한다.
+
+        Args:
+            command: 처리할 호스트 사건.
+            execution: 현재 실행 aggregate.
+            tasks: 해당 실행의 최신 태스크.
+            resource: 실제 관찰한 작성 폴더.
+
+        Returns:
+            tuple[HookAction, int | None]: 호스트 제어와 선택적인 작성 세대.
+
+        Raises:
+            InvalidExecutionState: 지원하지 않는 사건인 경우.
+        """
+        if command.event in ("SessionStart", "SubagentStart"):
+            execution.observe_start(command.start_source)
+            return HookAction.ALLOW, None
+        if command.event == "UserPromptSubmit":
+            execution.begin_turn(command.turn_id)
+            return HookAction.ALLOW, None
+        if command.event == "SessionEnd":
+            execution.end(command.reason)
+            return HookAction.ALLOW, None
+        if not execution.turn_id and command.turn_id:
+            execution.begin_turn(command.turn_id)
+        if command.event == "PreToolUse" and not resource:
+            return HookAction.ALLOW, None
+        execution.require_turn(command.turn_id)
+        if command.event == "Interrupt":
+            execution.cancel(command.turn_id, command.reason or "Host interrupted execution")
+            return HookAction.PAUSE, None
+        if command.event == "StopFailure":
+            execution.pause(command.reason or "Host execution failed")
+            return HookAction.PAUSE, None
+        if command.event in ("Stop", "SubagentStop"):
+            progress = []
+            for task in tasks:
+                workflow = (
+                    await self.workflows.get(found_id)
+                    if (
+                        found_id := await self.session_manager.session.scalar(
+                            select(WorkflowModel.id).where(WorkflowModel.task_id == task.uid)
+                        )
+                    )
+                    is not None
+                    else None
+                )
+                if workflow is not None:
+                    progress.append((workflow.uid, workflow.revision))
+            return execution.decide_stop(tasks, repeated=command.repeated, progress=progress), None
+        if command.event == "PreToolUse":
+            if execution.status is not ExecutionStatus.RUNNING:
+                return HookAction.PAUSE, None
+            writer = (
+                await self.writers.get(found_id)
+                if (
+                    found_id := await self.session_manager.session.scalar(
+                        select(WriterModel.id).where(WriterModel.resource == resource)
+                    )
+                )
+                is not None
+                else None
+            )
+            if writer is None:
+                writer = Writer.create(resource)
+            generation = writer.acquire(execution.uid, command.turn_id, command.tool_use_id)
+            (await self.writers.save(writer))
+            return HookAction.ALLOW, generation
+        if command.event in ("PostToolUse", "PostToolUseFailure"):
+            (await self._finish_write(command, execution, resource))
+            if command.interrupted:
+                execution.cancel(command.turn_id, command.reason or "Host interrupted execution")
+            return HookAction.ALLOW, None
+        raise InvalidExecutionState("Unsupported host event")
+
+    async def _finish_write(
+        self, command: ReceiveHookCommand, execution: Execution, resource: str
+    ) -> None:
+        """완료된 도구 사건이 가리키는 동일 작성 호출만 해제한다.
+
+        Args:
+            command: 종료 여부가 해석된 도구 사건.
+            execution: 사건을 소유하는 현재 실행.
+            resource: 실제 관찰한 작성 폴더.
+        """
+        if not resource or not command.finished:
+            return
+        writer = (
+            await self.writers.get(found_id)
+            if (
+                found_id := await self.session_manager.session.scalar(
+                    select(WriterModel.id).where(WriterModel.resource == resource)
+                )
+            )
+            is not None
+            else None
+        )
+        if writer is None:
+            return
+        if (writer.execution_id, writer.turn_id, writer.tool_use_id) != (
+            execution.uid,
+            command.turn_id,
+            command.tool_use_id,
+        ):
+            return
+        writer.release(execution.uid, writer.generation, Liveness.STOPPED)
+        (await self.writers.save(writer))

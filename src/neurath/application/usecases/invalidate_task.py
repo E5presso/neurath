@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from typing import override
 
-from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
+from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.request_source import IRequestSourceRepository
@@ -44,7 +44,7 @@ class InvalidateTaskResult:
     task: Task
 
 
-@UseCase(scope=Pod.Scope.CONTEXT)
+@UseCase()
 class InvalidateTaskUseCase(IAsyncCommandUseCase[InvalidateTaskCommand, InvalidateTaskResult]):
     """현재 요구에 대한 정정으로 태스크를 invalidated 상태로 바꾼다.
 
@@ -63,6 +63,7 @@ class InvalidateTaskUseCase(IAsyncCommandUseCase[InvalidateTaskCommand, Invalida
         self.tasks = tasks
         self.sources = sources
 
+    @transactional
     @override
     async def run(self, command: InvalidateTaskCommand) -> InvalidateTaskResult:
         """소유 범위와 revision을 확인하고 정정 출처·무효화 사유를 저장한다.

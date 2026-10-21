@@ -3,18 +3,19 @@
 from dataclasses import dataclass
 from typing import override
 
-from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
+from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
+from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionManager
+from sqlalchemy import select
 
+from neurath.application.ports.repositories.project import IProjectRepository
 from neurath.application.ports.repositories.session import ISessionRepository
-from neurath.application.usecases.register_project import (
-    RegisterProjectCommand,
-    RegisterProjectUseCase,
-)
 from neurath.domain.aggregates.project import Project
 from neurath.domain.aggregates.session import HostSession
 from neurath.domain.observations import DirectoryObservation
+from neurath.infrastructure.models.project import ProjectLocationModel, ProjectModel
+from neurath.infrastructure.models.session import SessionModel
 
 
 @dataclass(frozen=True)
@@ -45,7 +46,7 @@ class RegisterSessionResult:
     session: HostSession
 
 
-@UseCase(scope=Pod.Scope.CONTEXT)
+@UseCase()
 class RegisterSessionUseCase(IAsyncCommandUseCase[RegisterSessionCommand, RegisterSessionResult]):
     """프로젝트를 식별하고 공급자·네이티브 ID가 같은 세션을 재사용하거나 등록한다.
 
@@ -53,16 +54,24 @@ class RegisterSessionUseCase(IAsyncCommandUseCase[RegisterSessionCommand, Regist
     최근 작업 경로와 revision을 유지하며 경로 변경은 move_session에서 처리한다.
     """
 
-    def __init__(self, projects: RegisterProjectUseCase, sessions: ISessionRepository) -> None:
+    def __init__(
+        self,
+        session_manager: AsyncSessionManager,
+        projects: IProjectRepository,
+        sessions: ISessionRepository,
+    ) -> None:
         """위치 식별 유스케이스와 네이티브 세션 저장소를 받는다.
 
         Args:
+            session_manager: 조건 조회를 현재 트랜잭션의 SQLAlchemy 세션으로 수행한다.
             projects: 관찰한 위치를 RegisterProjectUseCase로 식별·등록한다.
             sessions: 프로젝트·공급자·네이티브 ID로 세션을 찾고 없을 때 새 세션을 저장한다.
         """
+        self.session_manager = session_manager
         self.projects = projects
         self.sessions = sessions
 
+    @transactional
     @override
     async def run(self, command: RegisterSessionCommand) -> RegisterSessionResult:
         """프로젝트를 등록·조회한 뒤 동일한 네이티브 세션을 재사용하거나 새로 저장한다.
@@ -73,8 +82,45 @@ class RegisterSessionUseCase(IAsyncCommandUseCase[RegisterSessionCommand, Regist
         Returns:
             RegisterSessionResult: 관찰한 위치의 프로젝트와 재사용하거나 생성한 호스트 세션.
         """
-        project = (await self.projects.run(RegisterProjectCommand(command.observation))).project
-        session = await self.sessions.find(project.id, command.provider, command.host_session_id)
+        candidates = Project.identify(command.observation)
+        owners = []
+        for location in candidates:
+            owner = (
+                await self.projects.get(found_id)
+                if (
+                    found_id := await self.session_manager.session.scalar(
+                        select(ProjectModel.id)
+                        .join(ProjectModel.locations)
+                        .where(
+                            ProjectLocationModel.kind == location.kind.value,
+                            ProjectLocationModel.path == location.path,
+                        )
+                    )
+                )
+                is not None
+                else None
+            )
+            if owner is not None:
+                owners.append(owner)
+        project = Project.owner_of(owners)
+        if project is None:
+            project = Project.create(command.observation)
+        project.associate(candidates)
+        project = await self.projects.save(project)
+        session = (
+            await self.sessions.get(found_id)
+            if (
+                found_id := await self.session_manager.session.scalar(
+                    select(SessionModel.id).where(
+                        SessionModel.project_id == project.id,
+                        SessionModel.provider == command.provider,
+                        SessionModel.host_session_id == command.host_session_id,
+                    )
+                )
+            )
+            is not None
+            else None
+        )
         if session is None:
             session = HostSession.create(
                 project_id=project.id,

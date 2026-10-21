@@ -98,6 +98,17 @@ async def test_console_entrypoint_default_database_and_main_cleanup(tmp_path, mo
     assert json.loads(result.stdout) == {}
     stopped = []
     disposed = []
+    from spakky.plugins.sqlalchemy.persistency.transaction import AsyncTransaction
+
+    execution_loops = []
+    disposal_loops = []
+    original_initialize = AsyncTransaction.initialize
+
+    async def initialize(transaction):
+        execution_loops.append(asyncio.get_running_loop())
+        await original_initialize(transaction)
+
+    monkeypatch.setattr(AsyncTransaction, "initialize", initialize)
     original_stop = SpakkyApplication.stop
     original_dispose = AsyncConnectionManager.dispose
 
@@ -107,6 +118,7 @@ async def test_console_entrypoint_default_database_and_main_cleanup(tmp_path, mo
 
     async def dispose(manager):
         disposed.append(manager)
+        disposal_loops.append(asyncio.get_running_loop())
         return await original_dispose(manager)
 
     monkeypatch.setattr(SpakkyApplication, "stop", stop)
@@ -118,6 +130,7 @@ async def test_console_entrypoint_default_database_and_main_cleanup(tmp_path, mo
     assert exited.value.code == 0
     assert json.loads(capsys.readouterr().out) == {}
     assert len(stopped) == len(disposed) == 1
+    assert execution_loops and all(loop is disposal_loops[0] for loop in execution_loops)
     async with storage_scope(database, write=False) as scope:
         assert (
             await scope.get(AsyncSessionManager).session.scalar(
@@ -127,7 +140,7 @@ async def test_console_entrypoint_default_database_and_main_cleanup(tmp_path, mo
         )
 
 
-async def test_bootstrap_failure_disposes_engine_and_preserves_error(tmp_path, monkeypatch):
+async def test_bootstrap_failure_preserves_error_before_engine_use(tmp_path, monkeypatch):
     monkeypatch.setenv(
         "SPAKKY_SQLALCHEMY__CONNECTION_STRING",
         sqlite_url(tmp_path / "missing", "rw").render_as_string(hide_password=False),
@@ -147,10 +160,10 @@ async def test_bootstrap_failure_disposes_engine_and_preserves_error(tmp_path, m
     monkeypatch.setattr(AsyncConnectionManager, "dispose", dispose)
     with pytest.raises(RuntimeError, match="startup failure"):
         await asyncio.to_thread(bootstrap.main)
-    assert len(disposed) == 1
+    assert len(disposed) == 0
 
 
-async def test_cli_command_uses_framework_context_scope_and_closes_transaction(database, tmp_path):
+async def test_cli_reuses_registered_controller_without_leaking_transaction(database, tmp_path):
     folder = tmp_path / "workspace"
     folder.mkdir()
     payload = json.dumps(
@@ -168,9 +181,8 @@ async def test_cli_command_uses_framework_context_scope_and_closes_transaction(d
 
         first, second, result = await asyncio.to_thread(invoke_in_host_thread)
         assert result.exit_code == 0 and json.loads(result.stdout) == {}
-        assert first is not second
-        assert first.usecase is not second.usecase
-        assert first.usecase.sessions.sessions is not second.usecase.sessions.sessions
+        assert first is second
+        assert first.usecase is second.usecase
         from spakky.plugins.sqlalchemy.persistency.session_manager import SessionNotInitializedError
 
         with pytest.raises(SessionNotInitializedError):

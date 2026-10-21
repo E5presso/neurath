@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from typing import override
 
-from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
+from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.request_source import IRequestSourceRepository
@@ -46,7 +46,7 @@ class RecordSourceResult:
     source: RequestSource
 
 
-@UseCase(scope=Pod.Scope.CONTEXT)
+@UseCase()
 class RecordSourceUseCase(IAsyncCommandUseCase[RecordSourceCommand, RecordSourceResult]):
     """호출 세션의 프로젝트에 원문을 새 출처로 기록한다.
 
@@ -65,6 +65,7 @@ class RecordSourceUseCase(IAsyncCommandUseCase[RecordSourceCommand, RecordSource
         self.sessions = sessions
         self.sources = sources
 
+    @transactional
     @override
     async def run(self, command: RecordSourceCommand) -> RecordSourceResult:
         """원문 용도·정정 참조와 프로젝트 범위를 확인하고 새 출처를 저장한다.

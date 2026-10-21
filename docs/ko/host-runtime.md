@@ -39,7 +39,7 @@ Codex unified-exec는 도구를 `Bash`로 정규화하고 프로세스가 종료
 
 Claude의 동기 `Bash` 결과는 `stdout`·`stderr`·`interrupted` 계약을 확인합니다. 백그라운드 핸들, 실행 중 세션 ID, 종료를 알 수 없는 결과에서는 임대를 유지합니다. 이런 실행의 회수에는 해당 실행기가 제공하는 `IWriterObserverService`의 실제 종료 관찰이 필요합니다. 현재 포함한 구체 어댑터는 실행기가 `Popen(start_new_session=True)`로 직접 생성한 POSIX 프로세스 그룹용 `PosixWriterObserverService`입니다. 외부 호스트 실행을 PID 추측으로 인수하거나 호스트 앱 전체를 종료하지 않습니다.
 
-`RecoverWriterUseCase`는 DB 잠금 밖에서 실제 생존을 조회한 뒤 소유자·세대를 다시 확인합니다. `CancelExecutionUseCase`는 먼저 추가 쓰기를 중지하고 `IExecutionControllerService`로 정확한 턴의 중단을 요청합니다. 실제 종료가 확인돼야 cancelled이며 응답 유실은 paused입니다. 오래된 중단 응답은 새 턴을 취소하지 못합니다. 두 유스케이스는 자체 트랜잭션을 사용하므로 외부 트랜잭션으로 감싸지 않습니다. 구체 실행 어댑터는 호출자가 주입합니다.
+`CancelExecutionUseCase`는 추가 쓰기를 중지하고 `ExecutionCancellationRequested`를 기록합니다. `RecoverWriterUseCase`는 현재 임대 세대를 검사하고 `WriterRecoveryRequested`를 기록합니다. 커밋 뒤 `RuntimeEventHandler`가 DB 잠금 없이 실제 호스트를 관찰하고 ConfirmCancellation 또는 ReleaseWriter를 새 트랜잭션으로 호출합니다. 이때 턴·소유자·세대를 다시 대조합니다. 요청의 반환값은 관찰 완료를 뜻하지 않으며 최신 DB 상태가 종료·회수의 근거입니다. 핸들러 실패 시 paused/활성 임대를 보존합니다.
 
 DB·훅 장애는 `continue:false`와 복구 안내로 반환합니다. 관리 경로의 명시적 `--bypass`는 DB 없이 동작하며 원장을 바꾸지 않습니다. 이 인자를 네이티브 승인으로 사용하지 않습니다. 반환된 `stopReason`·TODO는 호스트에 전달할 본문이며 JSON 생성만으로 사용자가 알림을 수신했다고 기록하지 않습니다. 알림 전달·관리 UI의 연결은 #146·#147·#151의 범위입니다.
 

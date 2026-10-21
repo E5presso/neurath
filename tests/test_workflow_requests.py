@@ -11,10 +11,10 @@ from time import monotonic, sleep
 
 import pytest
 from alembic import command
-from spakky.data.persistency.transaction import AbstractAsyncTransaction
 from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionManager
 from sqlalchemy import text
 
+from neurath.application.handlers.workflow import WorkflowEventHandler
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.application.ports.repositories.workflow import IWorkflowRepository
 from neurath.application.ports.services.phase_executor import (
@@ -93,13 +93,20 @@ async def read(database, flow):
 async def execute(database, flow, executor=None, notifier=None):
     async with spakky_context(database, write=True) as scope:
         usecase = scope.get(ExecutePhaseUseCase)
+        handler = scope.get(WorkflowEventHandler)
         if executor is not None:
-            usecase.executor = executor
+            handler.executor = executor
         if notifier is not None:
-            usecase.notifier = notifier
-        return await usecase.run(
+            handler.notifier = notifier
+        reservation = await usecase.run(
             ExecutePhaseCommand(flow.project_id, flow.session_id, flow.uid, flow.revision)
         )
+        current = (
+            await scope.get(GetWorkflowUseCase).run(
+                GetWorkflowQuery(flow.project_id, flow.session_id, flow.uid)
+            )
+        ).run
+        return replace(reservation, run=current)
 
 
 def result(phase, **changes):
@@ -416,10 +423,9 @@ async def test_primitive_repository_and_framework_transaction_are_used(database,
     _, _, flow = work
     async with storage_scope(database, write=False) as scope:
         repository = scope.get(IWorkflowRepository)
-        assert (await repository.find_by_task("missing")) is None
+        assert (await repository.get_or_none("missing")) is None
         assert (await repository.get(flow.uid)).uid == flow.uid
-        assert scope.get(ExecutePhaseUseCase).transaction is scope.get(AbstractAsyncTransaction)
-        assert scope.get(ExecutePhaseUseCase).executor is scope.get(IPhaseExecutorService)
+        assert scope.get(WorkflowEventHandler).executor is scope.get(IPhaseExecutorService)
         assert scope.get(IWorkflowNotifierService).__class__ is StderrWorkflowNotifierService
         assert (
             await scope.get(AsyncSessionManager).session.scalar(
@@ -648,8 +654,7 @@ async def test_incomplete_notification_fails_after_persisting_unfinished_state(
         return IWorkflowNotifierService.waiting(self, request_id, reason)
 
     monkeypatch.setattr(StderrWorkflowNotifierService, "waiting", incomplete)
-    with pytest.raises(NotImplementedError):
-        (await execute(database, flow, RecoverableExecutor(flow.current, fail=True)))
+    await execute(database, flow, RecoverableExecutor(flow.current, fail=True))
     assert (await read(database, flow)).attempts[0].status is PhaseStatus.WAITING
     async with storage_scope(database, write=False) as scope:
         assert (await scope.get(ITaskRepository).get(flow.task_id)).status is TaskStatus.WAITING
@@ -660,10 +665,10 @@ async def test_incomplete_workflow_lookup_rolls_back_start(database, work, monke
 
     actor, task, flow = work
 
-    def incomplete(self, task_id):
-        return IWorkflowRepository.find_by_task(self, task_id)
+    async def incomplete(self, workflow_id):
+        raise NotImplementedError("storage unavailable")
 
-    monkeypatch.setattr(SQLAlchemyWorkflowRepository, "find_by_task", incomplete)
+    monkeypatch.setattr(SQLAlchemyWorkflowRepository, "get", incomplete)
     before = snapshot(database)
     with pytest.raises(NotImplementedError):
         (
@@ -795,9 +800,8 @@ from tests.support.application import spakky_context
 from neurath.application.usecases.get_workflow import GetWorkflowUseCase, GetWorkflowQuery
 async def main():
     async with spakky_context(Path(sys.argv[1]),write=False) as scope:
-        async with scope.get(AsyncTransaction):
-            flow=(await scope.get(GetWorkflowUseCase).run(GetWorkflowQuery(*sys.argv[2:]))).run
-            print(flow.definition.version, flow.attempts[0].status.value, flow.current.target_revision)
+        flow=(await scope.get(GetWorkflowUseCase).run(GetWorkflowQuery(*sys.argv[2:]))).run
+        print(flow.definition.version, flow.attempts[0].status.value, flow.current.target_revision)
 asyncio.run(main())
 """
     child = subprocess.run(
@@ -828,7 +832,7 @@ async def test_workflow_default_crud_keeps_owned_definition_and_attempt_lifecycl
         assert (await repository.save(loaded)).revision == loaded.revision
         (await repository.delete(loaded))
     async with storage_scope(database, write=False) as scope:
-        assert (await scope.get(IWorkflowRepository).find_by_task(flow.task_id)) is None
+        assert (await scope.get(IWorkflowRepository).get_or_none(flow.uid)) is None
         session = scope.get(AsyncSessionManager).session
         for table in [
             "core_workflows",

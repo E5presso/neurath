@@ -10,7 +10,8 @@ from spakky.core.application.application_context import ApplicationContext
 from spakky.data.persistency.repository import EntityNotFoundError
 from spakky.plugins.sqlalchemy.persistency.connection_manager import AsyncConnectionManager
 from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionManager
-from sqlalchemy import event, text
+from sqlalchemy import event, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from neurath.application.ports.repositories.project import IProjectRepository
 from neurath.application.ports.repositories.session import ISessionRepository
@@ -19,6 +20,7 @@ from neurath.domain.aggregates.project import Project, ProjectKind, ProjectLocat
 from neurath.domain.aggregates.session import HostSession
 from neurath.domain.errors import ContextNotFound, ProjectIdentityConflict, RevisionConflict
 from neurath.domain.observations import DirectoryObservation
+from neurath.infrastructure.models.project import ProjectLocationModel
 from tests.conftest import initialize_git, storage_scope
 from tests.support.application import spakky_context
 from tests.support.session_requests import (
@@ -165,10 +167,20 @@ async def test_aggregate_child_removal_does_not_remove_other_project_locations(d
         repository = scope.get(IProjectRepository)
         assert (await repository.get(first.uid)).locations == first.locations
         assert (
-            await repository.find_by_location(ProjectLocation(kind=ProjectKind.FOLDER, path="/one"))
-        ) is None
+            await scope.get(AsyncSessionManager).session.scalar(
+                select(ProjectLocationModel.project_id).where(
+                    ProjectLocationModel.kind == "folder", ProjectLocationModel.path == "/one"
+                )
+            )
+            is None
+        )
         assert (await repository.get(second.uid)).locations == second.locations
-        assert (await repository.find_by_location(second.locations[0])).uid == second.uid
+        assert (
+            await scope.get(AsyncSessionManager).session.scalar(
+                select(ProjectLocationModel.project_id).where(ProjectLocationModel.path == "/two")
+            )
+            == second.uid
+        )
 
 
 async def test_unchanged_save_issues_no_update_and_preserves_version(database, repository):
@@ -330,23 +342,16 @@ async def test_incomplete_observer_fails_explicitly_without_registering_a_projec
 async def test_incomplete_repository_lookup_rolls_back_registration_instead_of_returning_fake_success(
     database, repository, monkeypatch, kind
 ):
-    from neurath.infrastructure.repositories.project import SQLAlchemyProjectRepository
-    from neurath.infrastructure.repositories.session import SQLAlchemySessionRepository
+    original = AsyncSession.scalar
 
-    if kind == "project-location":
-        adapter = SQLAlchemyProjectRepository
-        method = "find_by_location"
-        contract = IProjectRepository.find_by_location
-    else:
-        adapter = SQLAlchemySessionRepository
-        method = "find"
-        contract = ISessionRepository.find
+    async def failed_lookup(self, statement, *args, **kwargs):
+        target = "core_projects" if kind == "project-location" else "core_sessions"
+        if target in str(statement):
+            raise RuntimeError("query failed")
+        return await original(self, statement, *args, **kwargs)
 
-    def incomplete_lookup(self, *arguments):
-        return contract(self, *arguments)
-
-    monkeypatch.setattr(adapter, method, incomplete_lookup)
+    monkeypatch.setattr(AsyncSession, "scalar", failed_lookup)
     before = persisted_state(database)
-    with pytest.raises(NotImplementedError):
-        (await register_session(str(repository), "codex", "new", database_path=database))
+    with pytest.raises(RuntimeError, match="query failed"):
+        await register_session(str(repository), "codex", "new", database_path=database)
     assert persisted_state(database) == before

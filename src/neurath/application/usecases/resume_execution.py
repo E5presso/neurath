@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from typing import override
 
-from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
+from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.execution import IExecutionRepository
@@ -24,7 +24,7 @@ class ResumeExecutionCommand(AbstractCommand):
     turn_id: str
 
 
-@UseCase(scope=Pod.Scope.CONTEXT)
+@UseCase()
 class ResumeExecutionUseCase(IAsyncCommandUseCase[ResumeExecutionCommand, Execution]):
     """현재 턴의 실행 정지만 해제하고 이전 작성 임대·태스크 이력은 보존한다.
 
@@ -41,6 +41,7 @@ class ResumeExecutionUseCase(IAsyncCommandUseCase[ResumeExecutionCommand, Execut
         """
         self.executions = executions
 
+    @transactional
     @override
     async def run(self, command: ResumeExecutionCommand) -> Execution:
         """지정 턴을 검사하고 실행 정지를 해제한 상태를 저장한다.

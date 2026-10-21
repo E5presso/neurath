@@ -3,39 +3,40 @@
 [Architecture](architecture.md) · [Implementation plan](implementation-plan.md) · [한국어](../ko/core-foundation.md)
 
 #137 manages projects and sessions per request in a user-wide SQLite database.
-The foundation uses Spakky Framework 8.1.0 domain and persistence components.
+Dependencies are based on Spakky 8.1.0. `spakky-data`, `spakky-event`, and `spakky-sqlalchemy` are pinned to upstream commit `055fd3ae376a706575e30d1581f0cf1ccb521a54` for post-commit event publishing, in-process setup and request isolation fixes. `uv.lock` installs the same source without local path dependencies.
 Public CLI, hooks and installation remain subsequent implementation work.
 
 ## Framework components and responsibilities
 
 - `Project` and `HostSession` use `@mutable` and `AbstractAggregateRoot[str]` for identity, equality and change tracking. Project owns `ProjectLocation` as an `AbstractValueObject`.
 - The existing `id` reference remains a read-only compatibility property over `uid`. Identity selection, folder promotion, ownership conflicts, session scope and movement remain domain rules.
-- Repository ports inherit `IAsyncGenericRepository`, adding only location-owner and project/provider/native-session lookup.
+- Repository ports use the standard `IAsyncGenericRepository` aggregate CRUD contract. Use cases perform conditional location and native-session reads through the current SQLAlchemy session.
 - `SQLAlchemyProjectRepository` and `SQLAlchemySessionRepository` inherit `AbstractAsyncGenericRepository`. They do not redefine constructors, `get`, `get_or_none`, `contains`, `range`, `save`, `save_all`, `delete`, or `delete_all`.
 - Domain tables use `@Table(Domain)` and `AbstractMappableTable[Domain]` with explicit conversion. Owned location records use `AbstractTable` without a separate domain repository.
 - `SchemaRegistry` resolves domain/table mappings from Table tags. Repositories do not maintain another mapping registry.
 - `ApplicationContext` composes `@UseCase`, `@Repository`, observation Pods and the framework's `AsyncConnectionManager`, `AsyncSessionManager`, `AsyncTransaction`, and `AggregateCollector`.
-- Callers resolve use cases from the application container. For use cases without an owned transaction, callers enter the standard `AsyncTransaction` and await `run(command/query)`. Entry use cases that own transactions are called directly; Spakky owns commit, rollback and session closure.
+- Callers directly await `run(command/query)` on container-resolved use cases. The official `@transactional` advice owns commit, rollback and session closure.
 - Every use case implements Spakky `IAsyncCommandUseCase` or `IAsyncQueryUseCase`; inputs inherit `AbstractCommand` or `AbstractQuery`. Dedicated Command/Query and Result DTOs live with their owning UseCase. Returning an existing domain type does not require an extra DTO.
 - Framework missing-entity and storage version-conflict errors propagate through their original contracts. Use cases ask the domain to validate session/project scope.
 
 SQL for basic CRUD, merge, flush and aggregate collection belongs to the framework.
-Local repository SQL implements only the two additional lookups. The domain imports
+Use cases perform conditional reads through their current transactional SQLAlchemy session. The domain imports
 pure Spakky domain bases and mutability declarations, without SQLAlchemy or persistence adapters.
 
 ## Request lifetime and SQLite
 
 The CLI process uses `SpakkyApplication.load_plugins().scan(...).start()`.
 Default plugin discovery and package scanning register Pods, Tables and Controllers.
-Alembic execution modules and the composition root are excluded from scanning. Use cases,
-repositories and CLI Controllers use the framework's `CONTEXT` scope; spakky-typer resets
-that context at the command boundary.
+Alembic execution modules and the composition root are excluded from scanning. Stateless use cases,
+repositories and CLI Controllers use their default scope. Database sessions follow the
+current request context and each `@transactional` boundary.
 
 SQLite uses `sqlite+aiosqlite`, `AsyncSessionManager` and `AsyncTransaction`. Use-case and
 repository calls are awaited. Owned relationships use `selectin` loading to avoid implicit
 synchronous queries during mapping. Migrations run Alembic through an async connection's
 `run_sync` bridge. Engine, session and transaction implementations come from Spakky and
-are cleaned up on normal and exceptional completion.
+are cleaned up on normal and exceptional completion. The CLI disposes the async engine
+before the command execution event loop closes.
 
 Git observation finishes before the database transaction begins. The composition root
 attaches SQLite policies to the async engine's `sync_engine` events. Writers use `BEGIN IMMEDIATE`;
@@ -90,16 +91,14 @@ Alembic migration files and its version table define revisions. At the first dat
 
 ```python
 from spakky.core.pod.interfaces.container import IContainer
-from spakky.plugins.sqlalchemy.persistency.transaction import AsyncTransaction
 from neurath.application.usecases.get_session_context import GetSessionContextQuery, GetSessionContextUseCase
 
 
 async def read_session(scope: IContainer, project_id: str, session_id: str):
     # scope is the container of the application bootstrapped by neurath.bootstrap.
-    async with scope.get(AsyncTransaction):
-        return await scope.get(GetSessionContextUseCase).run(
-            GetSessionContextQuery(project_id, session_id)
-        )
+    return await scope.get(GetSessionContextUseCase).run(
+        GetSessionContextQuery(project_id, session_id)
+    )
 ```
 
 The default path is `$XDG_DATA_HOME/neurath/core.sqlite3`, falling back to

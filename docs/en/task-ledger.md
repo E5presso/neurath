@@ -15,12 +15,11 @@ as context but cannot define requirements or impersonate corrections.
 `Task` owns its definition history, all attempts and external wait/resolution history. These
 children have no independent repositories. Both aggregates use Spakky `AbstractAggregateRoot`;
 owned records are immutable values. Ports and adapters inherit `IAsyncGenericRepository` and
-`AbstractAsyncGenericRepository` constructors, CRUD and batch operations. The only added SQL is
-project-scoped full-list lookup.
+`AbstractAsyncGenericRepository` constructors, CRUD and batch operations. Conditional reads are SQLAlchemy queries in use cases; repositories retain the standard aggregate CRUD contract.
 
 `@Table`, `AbstractMappableTable`, owned relationships and `SchemaRegistry` map complete
 aggregates. Each request uses the actual `AsyncConnectionManager`, `AsyncSessionManager` and `AsyncTransaction`.
-Successful requests commit once; failures roll back all parent/child changes. Integer revisions
+Each transactional use case commits once; failures roll back its parent/child changes. Integer revisions
 and the inherited repository's optimistic checks reject stale mutations.
 
 Dependency scope, duplicates and cycles are checked by `Task.validate_dependencies()` against its own identity and current or proposed dependencies. Original-text, definition, observation and wait validation also belongs to each aggregate/value object.
@@ -59,8 +58,7 @@ prerequisites satisfy the start condition.
 
 Operations are individual use cases in `application/usecases`, invoked through `run(command/query)`.
 They implement Spakky `IAsyncCommandUseCase`/`IAsyncQueryUseCase` with `AbstractCommand`/`AbstractQuery` inputs.
-Each use-case module defines its input and Result DTO together. Results carry domain data and query output. Callers use the request container and standard
-AsyncTransaction shown in the core example. Mutations identify project, owner session,
+Each use-case module defines its input and Result DTO together. Results carry domain data and query output. Callers use the request container and `@transactional` boundary shown in the core example. Mutations identify project, owner session,
 target and observed revision. Source creation returns a `RequestSource` through
 `RecordSourceResult.source`; task creation returns a `Task` through `CreateTaskResult.task`.
 Read the identifier from the returned object's `uid`.

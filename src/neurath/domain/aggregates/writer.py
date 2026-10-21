@@ -7,6 +7,7 @@ from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 
 from neurath.domain.errors import InvalidExecutionState
+from neurath.domain.runtime_events import WriterRecoveryRequested
 from neurath.domain.runtime_records import Liveness
 
 
@@ -106,3 +107,24 @@ class Writer(AbstractAggregateRoot[str]):
         if liveness is not Liveness.STOPPED:
             raise InvalidExecutionState("Write termination is not confirmed")
         self.execution_id = None
+
+    def request_recovery(self, generation: int) -> None:
+        """현재 소유자·세대의 실제 종료 관찰을 커밋 이후 요청한다.
+
+        Args:
+            generation: 회수 요청 전에 관찰한 임대 세대.
+
+        Raises:
+            InvalidExecutionState: 현재 소유자가 없거나 세대가 달라진 경우.
+        """
+        if self.execution_id is None or self.generation != generation:
+            raise InvalidExecutionState("No matching active writer to recover")
+        self.add_event(
+            WriterRecoveryRequested(
+                writer_id=self.uid,
+                execution_id=self.execution_id,
+                turn_id=self.turn_id,
+                tool_use_id=self.tool_use_id,
+                generation=generation,
+            )
+        )

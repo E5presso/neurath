@@ -26,7 +26,7 @@
 | ReviseWorkflow | 현재 태스크 요구에 수정한 정의 연결. 이전 정의·실패·영향 없는 결과 보존 |
 | SkipPhase | 현재 선택 단계의 조건부 생략 기록 |
 
-ExecutePhase는 프레임워크 `AbstractTransaction`으로 두 저장 구간을 직접 관리하므로 **바깥 트랜잭션 없이 호출합니다.** 나머지 유스케이스는 기존 요청의 표준 AsyncTransaction 안에서 호출합니다. 업무 상태 전이는 도메인에, 실행·조회·저장 구간의 조정은 유스케이스에 있습니다.
+모든 DB 유스케이스는 `@transactional`을 사용합니다. ExecutePhase가 시도와 `PhaseExecutionRequested`를 기록하면 커밋 뒤 `WorkflowEventHandler`가 잠금 없이 실행·조회하고 ReportPhase를 새 트랜잭션으로 호출합니다. ExecutePhase의 반환값은 예약 시점 스냅샷입니다. 실제 결과는 GetWorkflow로 다시 조회하며, 핸들러 실패를 예약 성공으로 덮지 않습니다.
 
 아래 예제는 이미 저장된 태스크에서 실행합니다. 요청을 처음부터 다시 만들지 않으며, 반환된 run의 완료는 태스크 목표의 성공 보고와 별개입니다.
 
@@ -34,7 +34,6 @@ ExecutePhase는 프레임워크 `AbstractTransaction`으로 두 저장 구간을
 from pathlib import Path
 import sys
 
-from spakky.plugins.sqlalchemy.persistency.transaction import AsyncTransaction
 from neurath.application.usecases.get_task import GetTaskQuery, GetTaskUseCase
 from neurath.application.usecases.start_workflow import StartWorkflowCommand, StartWorkflowUseCase
 from neurath.application.usecases.execute_phase import ExecutePhaseCommand, ExecutePhaseResult, ExecutePhaseUseCase
@@ -52,13 +51,12 @@ async def execute_check(scope: IContainer, project_id: str, session_id: str,
     definition = WorkflowDefinition(
         skill="qa", version="example-1", phases=(phase,), inputs=(),
     )
-    async with scope.get(AsyncTransaction):
-        task = (await scope.get(GetTaskUseCase).run(
-            GetTaskQuery(project_id, session_id, task_id)
-        )).task
-        flow = (await scope.get(StartWorkflowUseCase).run(
-            StartWorkflowCommand(project_id, session_id, task_id, task.revision, definition)
-        )).run
+    task = (await scope.get(GetTaskUseCase).run(
+        GetTaskQuery(project_id, session_id, task_id)
+    )).task
+    flow = (await scope.get(StartWorkflowUseCase).run(
+        StartWorkflowCommand(project_id, session_id, task_id, task.revision, definition)
+    )).run
     return await scope.get(ExecutePhaseUseCase).run(
         ExecutePhaseCommand(project_id, session_id, flow.uid, flow.revision)
     )

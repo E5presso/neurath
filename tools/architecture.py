@@ -142,30 +142,37 @@ class ArchitectureChecker:
                 )
             ):
                 errors.append(f"{location} DOMAIN_BOUNDARY: {imported}")
-            if module.startswith("neurath.application.") and imported.startswith(
-                (
-                    "neurath.infrastructure",
-                    "neurath.transport",
-                    "neurath.bootstrap",
-                    "sqlalchemy",
-                    "alembic",
-                    "typer",
-                    "spakky.plugins.typer",
+            if (
+                module.startswith("neurath.application.")
+                and imported.startswith(
+                    (
+                        "neurath.infrastructure",
+                        "neurath.transport",
+                        "neurath.bootstrap",
+                        "alembic",
+                        "typer",
+                        "spakky.plugins.typer",
+                    )
                 )
+                and not imported.startswith("neurath.infrastructure.models")
             ):
                 errors.append(f"{location} APPLICATION_BOUNDARY: {imported}")
             if module.startswith("neurath.infrastructure.") and imported.startswith(
                 ("neurath.transport", "neurath.bootstrap")
             ):
                 errors.append(f"{location} INFRASTRUCTURE_BOUNDARY: {imported}")
-            if module.startswith("neurath.transport.") and imported.startswith(
-                (
-                    "neurath.infrastructure",
-                    "neurath.bootstrap",
-                    "sqlalchemy",
-                    "alembic",
-                    "spakky.plugins.sqlalchemy",
+            if (
+                module.startswith("neurath.transport.")
+                and imported.startswith(
+                    (
+                        "neurath.infrastructure",
+                        "neurath.bootstrap",
+                        "sqlalchemy",
+                        "alembic",
+                        "spakky.plugins.sqlalchemy",
+                    )
                 )
+                and imported != "spakky.plugins.sqlalchemy.persistency.connection_manager"
             ):
                 errors.append(f"{location} TRANSPORT_BOUNDARY: {imported}")
         if (

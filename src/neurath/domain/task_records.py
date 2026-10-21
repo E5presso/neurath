@@ -78,6 +78,12 @@ class TaskDefinition(AbstractValueObject):
         if self.number < 1 or len(set(self.dependencies)) != len(self.dependencies):
             raise ValueError("Invalid definition number or duplicate dependency")
 
+    @override
+    def __post_init__(self) -> None:
+        """호출자의 가변 목록을 소유하지 않도록 불변 값으로 보존한 뒤 검증한다."""
+        object.__setattr__(self, "dependencies", tuple(self.dependencies))
+        super().__post_init__()
+
 
 @immutable
 class SubmittedResult(AbstractValueObject):
@@ -103,6 +109,12 @@ class SubmittedResult(AbstractValueObject):
         for reference in self.references:
             if not reference.strip():
                 raise ValueError("reference must be non-empty")
+
+    @override
+    def __post_init__(self) -> None:
+        """호출자의 가변 목록을 소유하지 않도록 불변 값으로 보존한 뒤 검증한다."""
+        object.__setattr__(self, "references", tuple(self.references))
+        super().__post_init__()
 
 
 @immutable
@@ -150,6 +162,12 @@ class TaskResult(AbstractValueObject):
             return
         if self.remaining_work is None or not self.remaining_work.strip():
             raise ValueError("remaining_work must be non-empty")
+
+    @override
+    def __post_init__(self) -> None:
+        """호출자의 가변 목록을 소유하지 않도록 불변 값으로 보존한 뒤 검증한다."""
+        object.__setattr__(self, "observations", tuple(self.observations))
+        super().__post_init__()
 
 
 @immutable

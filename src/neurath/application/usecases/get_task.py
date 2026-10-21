@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from typing import override
 
-from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
+from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
 
 from neurath.application.ports.repositories.task import ITaskRepository
@@ -37,7 +37,7 @@ class GetTaskResult:
     task: Task
 
 
-@UseCase(scope=Pod.Scope.CONTEXT)
+@UseCase()
 class GetTaskUseCase(IAsyncQueryUseCase[GetTaskQuery, GetTaskResult]):
     """지정한 소유 세션의 태스크 한 건과 보존된 이력을 조회한다.
 
@@ -53,6 +53,7 @@ class GetTaskUseCase(IAsyncQueryUseCase[GetTaskQuery, GetTaskResult]):
         """
         self.tasks = tasks
 
+    @transactional
     @override
     async def run(self, query: GetTaskQuery) -> GetTaskResult:
         """태스크의 소유 범위를 확인하고 현재 상태와 이력을 반환한다.

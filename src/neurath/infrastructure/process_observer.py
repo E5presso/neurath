@@ -10,8 +10,6 @@ from spakky.core.pod.annotations.pod import Pod
 
 from neurath.application.ports.services.execution_controller import IExecutionControllerService
 from neurath.application.ports.services.writer_observer import IWriterObserverService
-from neurath.domain.aggregates.execution import Execution
-from neurath.domain.aggregates.writer import Writer
 from neurath.domain.runtime_records import Liveness
 
 
@@ -36,28 +34,29 @@ class PosixWriterObserverService(IWriterObserverService, IExecutionControllerSer
         self.processes = {} if processes is None else processes
 
     @override
-    def observe(self, writer: Writer) -> Liveness:
+    def observe(self, execution_id: str, turn_id: str, tool_use_id: str) -> Liveness:
         """일치하는 호출의 프로세스와 남은 그룹 구성원까지 확인한다.
 
         Args:
-            writer: 종료를 확인할 작성 소유자·턴·도구 호출.
+            execution_id: 관찰할 실제 실행.
+            turn_id: 해당 실행의 정확한 턴.
+            tool_use_id: 관찰할 작성 호출.
 
         Returns:
             Liveness: 핸들·권한 불명은 UNKNOWN이며 실제 그룹 소멸만 STOPPED.
         """
-        process = self.processes.get(
-            (writer.execution_id or "", writer.turn_id, writer.tool_use_id)
-        )
+        process = self.processes.get((execution_id, turn_id, tool_use_id))
         if process is None:
             return Liveness.UNKNOWN
         return self._observe(process)
 
     @override
-    def interrupt(self, execution: Execution) -> Liveness:
+    def interrupt(self, execution_id: str, turn_id: str) -> Liveness:
         """정확한 실행·턴의 소유 프로세스 그룹만 중단하고 종료를 확인한다.
 
         Args:
-            execution: 실제 중단 대상 실행과 턴.
+            execution_id: 중단할 실제 실행.
+            turn_id: 중단할 정확한 턴.
 
         Returns:
             Liveness: 대상이 없거나 그룹 소유를 확인할 수 없으면 UNKNOWN.
@@ -65,7 +64,7 @@ class PosixWriterObserverService(IWriterObserverService, IExecutionControllerSer
         processes = tuple(
             process
             for (owner, turn, _), process in self.processes.items()
-            if owner == execution.uid and turn == execution.turn_id
+            if owner == execution_id and turn == turn_id
         )
         if not processes:
             return Liveness.UNKNOWN

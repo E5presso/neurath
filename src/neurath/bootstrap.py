@@ -1,6 +1,5 @@
 """패키지 스캔과 공식 플러그인으로 애플리케이션을 구성하는 실행 진입점이다."""
 
-import asyncio
 import os
 
 from spakky.core.application.application import SpakkyApplication
@@ -37,14 +36,10 @@ def create_application() -> SpakkyApplication:
 
 def main() -> None:
     """애플리케이션 하나로 CLI를 실행하고 종료·실패 시 프레임워크 자원을 정리한다."""
-    application = create_application()
-    manager = application.container.get(AsyncConnectionManager)
+    application = create_application().start()
     try:
+        manager = application.container.get(AsyncConnectionManager)
         configure_sqlite_engine(manager.connection.sync_engine, write=True, check_schema=True)
-        application.start()
-        try:
-            application.container.get(Typer)()
-        finally:
-            application.stop()
+        application.container.get(Typer)()
     finally:
-        asyncio.run(manager.dispose())
+        application.stop()

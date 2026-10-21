@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from typing import override
 
-from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
+from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.task import ITaskRepository
@@ -42,7 +42,7 @@ class WaitTaskResult:
     task: Task
 
 
-@UseCase(scope=Pod.Scope.CONTEXT)
+@UseCase()
 class WaitTaskUseCase(IAsyncCommandUseCase[WaitTaskCommand, WaitTaskResult]):
     """active 태스크에 해소되지 않은 외부 대기를 추가하고 waiting으로 바꾼다.
 
@@ -58,6 +58,7 @@ class WaitTaskUseCase(IAsyncCommandUseCase[WaitTaskCommand, WaitTaskResult]):
         """
         self.tasks = tasks
 
+    @transactional
     @override
     async def run(self, command: WaitTaskCommand) -> WaitTaskResult:
         """소유 범위·revision·활성 상태를 확인하고 외부 대기 조건을 저장한다.

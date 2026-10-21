@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from typing import override
 
-from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
+from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.task import ITaskRepository
@@ -40,7 +40,7 @@ class PreparePhaseResult:
     run: WorkflowRun
 
 
-@UseCase(scope=Pod.Scope.CONTEXT)
+@UseCase()
 class PreparePhaseUseCase(IAsyncCommandUseCase[PreparePhaseCommand, PreparePhaseResult]):
     """실행 가능한 다음 단계를 예약하여 외부 동작 전에 시도를 저장한다.
 
@@ -59,6 +59,7 @@ class PreparePhaseUseCase(IAsyncCommandUseCase[PreparePhaseCommand, PreparePhase
         self.workflows = workflows
         self.tasks = tasks
 
+    @transactional
     @override
     async def run(self, command: PreparePhaseCommand) -> PreparePhaseResult:
         """실행 가능한 다음 단계를 예약하여 외부 동작 전에 시도를 저장한다.

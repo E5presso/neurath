@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from typing import override
 
-from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
+from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.task import ITaskRepository
@@ -44,7 +44,7 @@ class SubmitResult:
     task: Task
 
 
-@UseCase(scope=Pod.Scope.CONTEXT)
+@UseCase()
 class SubmitResultUseCase(IAsyncCommandUseCase[SubmitResultCommand, SubmitResult]):
     """미확정 시도에 후보 자료를 저장하며 성공 판정은 report_result에 남긴다.
 
@@ -60,6 +60,7 @@ class SubmitResultUseCase(IAsyncCommandUseCase[SubmitResultCommand, SubmitResult
         """
         self.tasks = tasks
 
+    @transactional
     @override
     async def run(self, command: SubmitResultCommand) -> SubmitResult:
         """소유 범위·revision을 확인하고 지정 시도의 후보 자료를 저장한다.

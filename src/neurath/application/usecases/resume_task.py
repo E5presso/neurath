@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from typing import override
 
-from spakky.core.pod.annotations.pod import Pod
 from spakky.core.stereotype.usecase import UseCase
+from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.task import ITaskRepository
@@ -41,7 +41,7 @@ class ResumeTaskResult:
     task: Task
 
 
-@UseCase(scope=Pod.Scope.CONTEXT)
+@UseCase()
 class ResumeTaskUseCase(IAsyncCommandUseCase[ResumeTaskCommand, ResumeTaskResult]):
     """waiting 태스크의 마지막 대기를 해소하고 같은 시도를 active로 되돌린다.
 
@@ -57,6 +57,7 @@ class ResumeTaskUseCase(IAsyncCommandUseCase[ResumeTaskCommand, ResumeTaskResult
         """
         self.tasks = tasks
 
+    @transactional
     @override
     async def run(self, command: ResumeTaskCommand) -> ResumeTaskResult:
         """소유 범위·revision·대기 상태를 확인하고 해소 관찰을 저장한다.

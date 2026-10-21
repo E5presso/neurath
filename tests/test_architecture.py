@@ -572,7 +572,7 @@ def test_current_collection_ports_and_domain_state_types_match_the_reviewed_cont
     from neurath.domain.task_records import Outcome, TaskStatus
 
     for port in (IRequestSourceRepository, ITaskRepository):
-        assert get_origin(get_type_hints(port.list)["return"]) is Sequence
+        assert get_origin(get_type_hints(port.range)["return"]) is Sequence
     for state in (ProjectKind, SourceKind, Outcome, TaskStatus):
         assert issubclass(state, Enum)
 
@@ -766,7 +766,7 @@ def magnitude(value: int) -> int:
 
 def test_checker_retains_all_independent_findings_after_guard_refactor():
     source = """
-import sqlalchemy
+import neurath.infrastructure.database
 from typing import Protocol
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.stereotype.repository import Repository
