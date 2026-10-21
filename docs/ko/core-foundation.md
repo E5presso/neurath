@@ -3,7 +3,7 @@
 [구조](architecture.md) · [구현 계획](implementation-plan.md) · [English](../en/core-foundation.md)
 
 #137은 사용자 단위 SQLite 안에서 프로젝트와 세션을 요청별로 관리합니다.
-현재 의존성은 Spakky 8.1.0 기반입니다. 커밋 후 이벤트 발행·인프로세스 구성·요청 격리 수정이 필요한 `spakky-data`, `spakky-event`, `spakky-sqlalchemy`는 upstream 커밋 `055fd3ae376a706575e30d1581f0cf1ccb521a54`에 고정되어 있습니다. `uv.lock`으로 동일 소스를 설치하며 로컬 경로에는 의존하지 않습니다.
+현재 의존성은 정식 Spakky 8.2.0 배포판을 사용합니다. 커밋 후 이벤트 발행·인프로세스 구성·요청 격리 수정이 포함된 이 버전으로 모든 직접 Spakky 의존성을 통일하며, `uv.lock`으로 배포 패키지를 고정합니다. 임시 Git 커밋이나 로컬 경로에는 의존하지 않습니다.
 패키지는 비동기 기반과 훅 CLI를 제공합니다. 업무 CLI·설치 전환은 후속 구현 범위입니다.
 
 ## 프레임워크 사용과 책임

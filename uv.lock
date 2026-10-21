@@ -303,12 +303,12 @@ dev = [
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.22.1" },
     { name = "alembic", specifier = "==1.20.0" },
-    { name = "spakky", specifier = "==8.1.0" },
-    { name = "spakky-data", git = "https://github.com/E5presso/spakky-framework.git?subdirectory=core%2Fspakky-data&rev=055fd3ae376a706575e30d1581f0cf1ccb521a54" },
-    { name = "spakky-domain", specifier = "==8.1.0" },
-    { name = "spakky-event", git = "https://github.com/E5presso/spakky-framework.git?subdirectory=core%2Fspakky-event&rev=055fd3ae376a706575e30d1581f0cf1ccb521a54" },
-    { name = "spakky-sqlalchemy", git = "https://github.com/E5presso/spakky-framework.git?subdirectory=plugins%2Fspakky-sqlalchemy&rev=055fd3ae376a706575e30d1581f0cf1ccb521a54" },
-    { name = "spakky-typer", specifier = "==8.1.0" },
+    { name = "spakky", specifier = "==8.2.0" },
+    { name = "spakky-data", specifier = "==8.2.0" },
+    { name = "spakky-domain", specifier = "==8.2.0" },
+    { name = "spakky-event", specifier = "==8.2.0" },
+    { name = "spakky-sqlalchemy", specifier = "==8.2.0" },
+    { name = "spakky-typer", specifier = "==8.2.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = "==2.0.54" },
 ]
 
@@ -636,55 +636,71 @@ wheels = [
 
 [[package]]
 name = "spakky"
-version = "8.1.0"
-source = { git = "https://github.com/E5presso/spakky-framework.git?subdirectory=core%2Fspakky&rev=055fd3ae376a706575e30d1581f0cf1ccb521a54#055fd3ae376a706575e30d1581f0cf1ccb521a54" }
+version = "8.2.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "uuid7" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ba/a2/7fb4363e9315543f9d15ea04433ce8fcb8fe760ee879447ab38204d1ba91/spakky-8.2.0.tar.gz", hash = "sha256:d778299c0e150a953663b333797f9d7487c5b1c663a154efa26663af3fd6d861", size = 65742, upload-time = "2026-10-21T14:42:15.646Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7a/a7/83f65462243e8ab177988c1636cf41266785a480bb642149c6fd263d7ca7/spakky-8.2.0-py3-none-any.whl", hash = "sha256:57a5445fb45f74e647fc037e52a65122cfdea0243271941314b57cc8367d6cd7", size = 80053, upload-time = "2026-10-21T14:42:14.062Z" },
 ]
 
 [[package]]
 name = "spakky-actuator"
-version = "8.1.0"
+version = "8.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic-settings" },
     { name = "spakky" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4f/0c/af35f69cfda01d4d2f1fc13ed7ac52e4815fcc00ee2b4a2b81a05106ceb7/spakky_actuator-8.1.0.tar.gz", hash = "sha256:8ee24aab18e0a3c2b93afb2138d78730932f1179ac4097a498881e8f0e0a5d9d", size = 7575, upload-time = "2026-08-22T12:30:13.342Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c7/07/772fdde450778ac0aaf552af4991fed31dbd0ba160a60f91c504dfc9fd8d/spakky_actuator-8.2.0.tar.gz", hash = "sha256:80fda77464f7f8d4a03e5c4d3a859d9f8424bc9467e423b19c9cd87762690bbb", size = 8437, upload-time = "2026-10-21T14:42:20.994Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/59/e4/b8ef124f07a44e501ea2090b25006c7f7d363587cee46e592a7cbc7ecaa1/spakky_actuator-8.1.0-py3-none-any.whl", hash = "sha256:029562046909aafb7a427b14957e488d7d81055fd8231d277be7310ffd4f8898", size = 12056, upload-time = "2026-08-22T12:30:12.221Z" },
+    { url = "https://files.pythonhosted.org/packages/9f/af/f95029f2c894370ed6b9a43c5c472cbfe410cccd5e6b1ebd70254aadfda8/spakky_actuator-8.2.0-py3-none-any.whl", hash = "sha256:a60352086b8dd1bb5afe4757878e5c6341f6b8b037757198a0a73b6ff6bdc558", size = 12055, upload-time = "2026-10-21T14:42:19.885Z" },
 ]
 
 [[package]]
 name = "spakky-auth"
-version = "8.1.0"
-source = { git = "https://github.com/E5presso/spakky-framework.git?subdirectory=core%2Fspakky-auth&rev=055fd3ae376a706575e30d1581f0cf1ccb521a54#055fd3ae376a706575e30d1581f0cf1ccb521a54" }
+version = "8.2.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic-settings" },
     { name = "spakky" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e5/92/17cbf7887a7a0e2c71625093bdafefd43ded6c58c9eff8e9e8a7fe5429cf/spakky_auth-8.2.0.tar.gz", hash = "sha256:617bfd24f21925975c62c363b9085ed2d0b3846bf0016fcceab3116ee23563ca", size = 18689, upload-time = "2026-10-21T14:42:16.63Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ef/b5/b638b74e3db06401b3df514f151d72e9c2968e5f0d05bc7a5fa4a4bac8f1/spakky_auth-8.2.0-py3-none-any.whl", hash = "sha256:ea214895d08d7e6711a0a52d3ad8f5e083075304430ea3058458e9bc1f698c17", size = 23651, upload-time = "2026-10-21T14:42:15.48Z" },
 ]
 
 [[package]]
 name = "spakky-data"
-version = "8.1.0"
-source = { git = "https://github.com/E5presso/spakky-framework.git?subdirectory=core%2Fspakky-data&rev=055fd3ae376a706575e30d1581f0cf1ccb521a54#055fd3ae376a706575e30d1581f0cf1ccb521a54" }
+version = "8.2.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic-settings" },
     { name = "spakky-domain" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/56/b8/64c96f822318979be12dc4a9505c33715d37d217238fe58df36852361f7d/spakky_data-8.2.0.tar.gz", hash = "sha256:d5163b73c4b9a133fa67c0136e48680315dc545241a8a326c0d09230cb2a9caf", size = 10056, upload-time = "2026-10-21T14:42:20.374Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3c/31/127e73bb94cf639891fc7a2b89a052f8310ef61dedaad49f2e87dde5cd64/spakky_data-8.2.0-py3-none-any.whl", hash = "sha256:d66d4f35190a3bb189a53c695acf55734c9056dc76222296a24a275c7a6b219a", size = 13852, upload-time = "2026-10-21T14:42:19.278Z" },
+]
 
 [[package]]
 name = "spakky-domain"
-version = "8.1.0"
-source = { git = "https://github.com/E5presso/spakky-framework.git?subdirectory=core%2Fspakky-domain&rev=055fd3ae376a706575e30d1581f0cf1ccb521a54#055fd3ae376a706575e30d1581f0cf1ccb521a54" }
+version = "8.2.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "spakky" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/30/f6/353addebd1313a928cc241add28866da1bf0eaa5a459f466090ad073518f/spakky_domain-8.2.0.tar.gz", hash = "sha256:17d9cea54897e22ef2f333516e540d60caa22fe82a754eef16aa83ff7b9adddd", size = 8841, upload-time = "2026-10-21T14:42:16.568Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bd/c8/2de5f4fb51101b9ba3d8ba11c6e1b6cd95693016769967c1b8a560e189d7/spakky_domain-8.2.0-py3-none-any.whl", hash = "sha256:463280907b8b407d0adee0fb3d2a0a5aeb70fb0faf0921738fbe25c6a5b1ee2c", size = 13289, upload-time = "2026-10-21T14:42:15.229Z" },
 ]
 
 [[package]]
 name = "spakky-event"
-version = "8.1.0"
-source = { git = "https://github.com/E5presso/spakky-framework.git?subdirectory=core%2Fspakky-event&rev=055fd3ae376a706575e30d1581f0cf1ccb521a54#055fd3ae376a706575e30d1581f0cf1ccb521a54" }
+version = "8.2.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
     { name = "spakky-auth" },
@@ -692,28 +708,40 @@ dependencies = [
     { name = "spakky-domain" },
     { name = "spakky-tracing" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/00/6f/908184506a3aa26713ce1ab60fb7dd32a6bd894271cbe1b013aecf76ce4f/spakky_event-8.2.0.tar.gz", hash = "sha256:028830b49b33e1d429e1d005030ebe7c1662d48b25d647096d8d7430fb591f9a", size = 13680, upload-time = "2026-10-21T14:42:13.784Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/80/b0/10207a3ae8d762ce3d6d321440a61b7e7312c19860de807d1ce1d92bf818/spakky_event-8.2.0-py3-none-any.whl", hash = "sha256:c133d1ad13e9626bc1b9b3fa94cfe9c959eb1ccfa5b29579857f5a934b3d65fb", size = 19366, upload-time = "2026-10-21T14:42:12.515Z" },
+]
 
 [[package]]
 name = "spakky-sqlalchemy"
-version = "8.1.0"
-source = { git = "https://github.com/E5presso/spakky-framework.git?subdirectory=plugins%2Fspakky-sqlalchemy&rev=055fd3ae376a706575e30d1581f0cf1ccb521a54#055fd3ae376a706575e30d1581f0cf1ccb521a54" }
+version = "8.2.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic-settings" },
     { name = "spakky-data" },
     { name = "sqlalchemy" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/67/ea/30946410beb96a87246132d09f32a1b737f3d11035ab3405216b3853770d/spakky_sqlalchemy-8.2.0.tar.gz", hash = "sha256:2cc4d1c12ee78c501d9e538a62cb20c927b136feefdc098c0b30b6ef73daf7d2", size = 21487, upload-time = "2026-10-21T14:42:32.03Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e6/50/ac06e18b562bb4bb3966d3125a4646f843062d7ef6959b502777498d912d/spakky_sqlalchemy-8.2.0-py3-none-any.whl", hash = "sha256:1d3a941813576a9508b676dc3426affd201a234148a6f487f154059824613708", size = 28848, upload-time = "2026-10-21T14:42:30.882Z" },
+]
 
 [[package]]
 name = "spakky-tracing"
-version = "8.1.0"
-source = { git = "https://github.com/E5presso/spakky-framework.git?subdirectory=core%2Fspakky-tracing&rev=055fd3ae376a706575e30d1581f0cf1ccb521a54#055fd3ae376a706575e30d1581f0cf1ccb521a54" }
+version = "8.2.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "spakky" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1d/c4/de3e7bf9f7ec3a2c7cff335e2c8ec382fc5d9f6e2bbdcd1ca354dd2498fa/spakky_tracing-8.2.0.tar.gz", hash = "sha256:b2fa6089469bdae1cf74b3eaca00b8f45b9874721d2b86b1e843ccbc175b7613", size = 5710, upload-time = "2026-10-21T14:42:14.32Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7c/8b/b86d0daa959f5e2d56446352ca4b99d69b346c4252de44439b0fa6b90bd7/spakky_tracing-8.2.0-py3-none-any.whl", hash = "sha256:66d8e6c7140f0b12043f2da7e9478432cafaf98a426dbcb772dcf65b1b646417", size = 7415, upload-time = "2026-10-21T14:42:12.999Z" },
 ]
 
 [[package]]
 name = "spakky-typer"
-version = "8.1.0"
+version = "8.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic-settings" },
@@ -722,9 +750,9 @@ dependencies = [
     { name = "spakky-auth" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ec/75/b3e3effdfba72c2854153589b283f8b06a2bbd1d9b011ac05f088a67e15b/spakky_typer-8.1.0.tar.gz", hash = "sha256:fd25ad67b409fba07d296275eac77bebce392cd1a56cd1e8102c8cc47b9b6323", size = 10715, upload-time = "2026-08-22T12:30:32.245Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/00/77/0ad67668a2329cabf82f31532a78f615a7fc103bc452c56b29d15eb36b1d/spakky_typer-8.2.0.tar.gz", hash = "sha256:053693fe99ae51e850d0e41744d82966ffc4c98eec959373cdab8cb183126b52", size = 11570, upload-time = "2026-10-21T14:42:16.447Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ab/80/6322c790a3816259074ea50690d11e067527eb32d0ab967974fc5b2088f9/spakky_typer-8.1.0-py3-none-any.whl", hash = "sha256:e80f5083f63d5db85a6ee343c618bcbca2b70efd08111b8bf601194c15855525", size = 14302, upload-time = "2026-08-22T12:30:30.745Z" },
+    { url = "https://files.pythonhosted.org/packages/e5/7d/535b87aa5d5a3364bf59a516591b106d1781c4527af8949e4d5ea8e3f86f/spakky_typer-8.2.0-py3-none-any.whl", hash = "sha256:b05e5d98022e0dca5f5924f09574dc20780daf565c5c88055584cdc58a58b42a", size = 14301, upload-time = "2026-10-21T14:42:14.871Z" },
 ]
 
 [[package]]

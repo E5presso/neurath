@@ -3,7 +3,7 @@
 [Architecture](architecture.md) · [Implementation plan](implementation-plan.md) · [한국어](../ko/core-foundation.md)
 
 #137 manages projects and sessions per request in a user-wide SQLite database.
-Dependencies are based on Spakky 8.1.0. `spakky-data`, `spakky-event`, and `spakky-sqlalchemy` are pinned to upstream commit `055fd3ae376a706575e30d1581f0cf1ccb521a54` for post-commit event publishing, in-process setup and request isolation fixes. `uv.lock` installs the same source without local path dependencies.
+Dependencies use the official Spakky 8.2.0 release, including post-commit event publishing, in-process setup and request isolation fixes. All direct Spakky dependencies use this version, with published packages locked by `uv.lock`. No temporary Git pins or local path dependencies are required.
 Public CLI, hooks and installation remain subsequent implementation work.
 
 ## Framework components and responsibilities

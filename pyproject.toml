@@ -11,12 +11,12 @@ dependencies = [
     "sqlalchemy[asyncio]==2.0.54",
     "aiosqlite>=0.22.1",
     "alembic==1.20.0",
-    "spakky==8.1.0",
-    "spakky-data @ git+https://github.com/E5presso/spakky-framework.git@055fd3ae376a706575e30d1581f0cf1ccb521a54#subdirectory=core/spakky-data",
-    "spakky-domain==8.1.0",
-    "spakky-sqlalchemy @ git+https://github.com/E5presso/spakky-framework.git@055fd3ae376a706575e30d1581f0cf1ccb521a54#subdirectory=plugins/spakky-sqlalchemy",
-    "spakky-typer==8.1.0",
-    "spakky-event @ git+https://github.com/E5presso/spakky-framework.git@055fd3ae376a706575e30d1581f0cf1ccb521a54#subdirectory=core/spakky-event",
+    "spakky==8.2.0",
+    "spakky-data==8.2.0",
+    "spakky-domain==8.2.0",
+    "spakky-sqlalchemy==8.2.0",
+    "spakky-typer==8.2.0",
+    "spakky-event==8.2.0",
 ]
 
 [project.scripts]
@@ -33,9 +33,6 @@ dev = [
     "pytest-cov>=7",
     "pytest-asyncio>=1.4.0",
 ]
-
-[tool.hatch.metadata]
-allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/neurath"]
