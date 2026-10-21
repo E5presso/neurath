@@ -6,12 +6,9 @@ from typing import override
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
-from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionManager
-from sqlalchemy import select
 
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.domain.aggregates.task import Task
-from neurath.infrastructure.models.task import TaskModel
 
 
 @dataclass(frozen=True)
@@ -50,14 +47,12 @@ class StartTaskUseCase(IAsyncCommandUseCase[StartTaskCommand, StartTaskResult]):
     다시 시작하지 않는다. 원장에 시도를 기록하는 동작이며 외부 명령을 실행하지 않는다.
     """
 
-    def __init__(self, session_manager: AsyncSessionManager, tasks: ITaskRepository) -> None:
+    def __init__(self, tasks: ITaskRepository) -> None:
         """태스크와 선행 작업의 상태를 조회하고 새 시도를 저장할 포트를 받는다.
 
         Args:
-            session_manager: 조건 조회를 현재 트랜잭션의 SQLAlchemy 세션으로 수행한다.
             tasks: 시작 대상·선행 작업을 조회하고 활성화된 태스크의 새 시도를 저장한다.
         """
-        self.session_manager = session_manager
         self.tasks = tasks
 
     @transactional
@@ -74,15 +69,5 @@ class StartTaskUseCase(IAsyncCommandUseCase[StartTaskCommand, StartTaskResult]):
         task = await self.tasks.get(command.task_id)
         task.require_scope(command.project_id, command.session_id)
         task.require_revision(command.expected_revision)
-        task.start(
-            await self.tasks.range(
-                (
-                    await self.session_manager.session.scalars(
-                        select(TaskModel.id)
-                        .where(TaskModel.project_id == command.project_id)
-                        .order_by(TaskModel.created_at, TaskModel.id)
-                    )
-                ).all()
-            )
-        )
+        task.start(await self.tasks.list(command.project_id))
         return StartTaskResult(task=(await self.tasks.save(task)))

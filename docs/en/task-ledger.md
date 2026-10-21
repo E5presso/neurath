@@ -15,7 +15,7 @@ as context but cannot define requirements or impersonate corrections.
 `Task` owns its definition history, all attempts and external wait/resolution history. These
 children have no independent repositories. Both aggregates use Spakky `AbstractAggregateRoot`;
 owned records are immutable values. Ports and adapters inherit `IAsyncGenericRepository` and
-`AbstractAsyncGenericRepository` constructors, CRUD and batch operations. Conditional reads are SQLAlchemy queries in use cases; repositories retain the standard aggregate CRUD contract.
+`AbstractAsyncGenericRepository` constructors, CRUD and batch operations. Read-model searches belong to QueryUseCases. Commands load task aggregates needed for dependency validation through repository contracts while reusing the standard CRUD implementation.
 
 `@Table`, `AbstractMappableTable`, owned relationships and `SchemaRegistry` map complete
 aggregates. Each request uses the actual `AsyncConnectionManager`, `AsyncSessionManager` and `AsyncTransaction`.

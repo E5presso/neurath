@@ -16,7 +16,7 @@
 시도와 정의에 독립 저장소를 만들지 않습니다. 두 aggregate는 Spakky의
 `AbstractAggregateRoot`를 사용하고 소유 기록은 불변 값입니다. 저장 포트와 adapter는
 `IAsyncGenericRepository`·`AbstractAsyncGenericRepository`의 기본 CRUD·배치·생성자를 상속합니다.
-프로젝트별 목록은 SQLAlchemy를 사용하는 조회 유스케이스가 반환하며 Repository는 기본 Aggregate CRUD만 제공합니다. 의존 범위·중복·순환은 `Task.validate_dependencies()`가 자신의 식별자와 현재/제안 의존을 기준으로 검사합니다. 원문·정의·관찰·대기의 텍스트 검증도 각 aggregate·값 객체의 검증/행동 메서드에 있습니다.
+조회용 프로젝트 목록은 QueryUseCase가 반환합니다. Command가 의존 관계를 검증하기 위해 필요한 태스크 aggregate 목록은 Repository 계약으로 읽으며, 기본 CRUD는 재구현하지 않습니다. 의존 범위·중복·순환은 `Task.validate_dependencies()`가 자신의 식별자와 현재/제안 의존을 기준으로 검사합니다. 원문·정의·관찰·대기의 텍스트 검증도 각 aggregate·값 객체의 검증/행동 메서드에 있습니다.
 
 `@Table`·`AbstractMappableTable`·소유 관계·`SchemaRegistry`가 전체 aggregate를 매핑합니다.
 요청마다 실제 `AsyncConnectionManager`·`AsyncSessionManager`·`AsyncTransaction`을 사용합니다. 성공한

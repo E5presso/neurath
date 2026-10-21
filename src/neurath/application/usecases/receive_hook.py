@@ -8,8 +8,6 @@ from typing import override
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
-from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionManager
-from sqlalchemy import select
 
 from neurath.application.ports.repositories.execution import IExecutionRepository
 from neurath.application.ports.repositories.project import IProjectRepository
@@ -25,12 +23,6 @@ from neurath.domain.aggregates.task import Task
 from neurath.domain.aggregates.writer import Writer
 from neurath.domain.errors import InvalidExecutionState
 from neurath.domain.runtime_records import ExecutionStatus, HookAction, Liveness
-from neurath.infrastructure.models.execution import ExecutionModel
-from neurath.infrastructure.models.project import ProjectLocationModel, ProjectModel
-from neurath.infrastructure.models.session import SessionModel
-from neurath.infrastructure.models.task import TaskModel
-from neurath.infrastructure.models.workflow import WorkflowModel
-from neurath.infrastructure.models.writer import WriterModel
 
 
 @dataclass(frozen=True)
@@ -87,7 +79,6 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
 
     def __init__(
         self,
-        session_manager: AsyncSessionManager,
         directories: IDirectoryObserverService,
         projects: IProjectRepository,
         sessions: ISessionRepository,
@@ -99,7 +90,6 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
         """위치 관찰과 훅 상태를 저장하는 의존성을 주입받는다.
 
         Args:
-            session_manager: 조건 조회를 현재 트랜잭션의 SQLAlchemy 세션으로 수행한다.
             directories: 첫 DB 접근 전에 작업 폴더를 관찰한다.
             projects: 관찰한 위치의 프로젝트를 저장한다.
             sessions: 네이티브 세션을 조회하고 등록한다.
@@ -108,7 +98,6 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
             tasks: 해당 세션의 미완료 원장을 조회한다.
             workflows: 진행 중인 단계의 revision을 조회한다.
         """
-        self.session_manager = session_manager
         self.directories = directories
         self.projects = projects
         self.sessions = sessions
@@ -137,21 +126,7 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
         candidates = Project.identify(observation)
         owners = []
         for location in candidates:
-            owner = (
-                await self.projects.get(found_id)
-                if (
-                    found_id := await self.session_manager.session.scalar(
-                        select(ProjectModel.id)
-                        .join(ProjectModel.locations)
-                        .where(
-                            ProjectLocationModel.kind == location.kind.value,
-                            ProjectLocationModel.path == location.path,
-                        )
-                    )
-                )
-                is not None
-                else None
-            )
+            owner = await self.projects.find_by_location(location)
             if owner is not None:
                 owners.append(owner)
         project = Project.owner_of(owners)
@@ -159,20 +134,7 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
             project = Project.create(observation)
         project.associate(candidates)
         project = await self.projects.save(project)
-        session = (
-            await self.sessions.get(found_id)
-            if (
-                found_id := await self.session_manager.session.scalar(
-                    select(SessionModel.id).where(
-                        SessionModel.project_id == project.uid,
-                        SessionModel.provider == command.provider,
-                        SessionModel.host_session_id == command.host_session_id,
-                    )
-                )
-            )
-            is not None
-            else None
-        )
+        session = await self.sessions.find(project.uid, command.provider, command.host_session_id)
         if session is None:
             session = await self.sessions.save(
                 HostSession.create(
@@ -182,32 +144,12 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
                     observation.working_directory,
                 )
             )
-        execution = (
-            await self.executions.get(found_id)
-            if (
-                found_id := await self.session_manager.session.scalar(
-                    select(ExecutionModel.id).where(
-                        ExecutionModel.session_id == session.uid,
-                        ExecutionModel.agent_id == command.agent_id,
-                    )
-                )
-            )
-            is not None
-            else None
-        )
+        execution = await self.executions.find(session.uid, command.agent_id)
         if execution is None:
             execution = await self.executions.save(Execution.create(session.uid, command.agent_id))
         tasks = tuple(
             t
-            for t in await self.tasks.range(
-                (
-                    await self.session_manager.session.scalars(
-                        select(TaskModel.id)
-                        .where(TaskModel.project_id == project.uid)
-                        .order_by(TaskModel.created_at, TaskModel.id)
-                    )
-                ).all()
-            )
+            for t in await self.tasks.list(project.uid)
             if t.owner_session_id == session.uid and not command.agent_id
         )
         todo = "\n".join(f"{t.uid}: {t.status.value} — {t.definition.title}" for t in tasks)
@@ -262,32 +204,14 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
         if command.event in ("Stop", "SubagentStop"):
             progress = []
             for task in tasks:
-                workflow = (
-                    await self.workflows.get(found_id)
-                    if (
-                        found_id := await self.session_manager.session.scalar(
-                            select(WorkflowModel.id).where(WorkflowModel.task_id == task.uid)
-                        )
-                    )
-                    is not None
-                    else None
-                )
+                workflow = await self.workflows.find_by_task(task.uid)
                 if workflow is not None:
                     progress.append((workflow.uid, workflow.revision))
             return execution.decide_stop(tasks, repeated=command.repeated, progress=progress), None
         if command.event == "PreToolUse":
             if execution.status is not ExecutionStatus.RUNNING:
                 return HookAction.PAUSE, None
-            writer = (
-                await self.writers.get(found_id)
-                if (
-                    found_id := await self.session_manager.session.scalar(
-                        select(WriterModel.id).where(WriterModel.resource == resource)
-                    )
-                )
-                is not None
-                else None
-            )
+            writer = await self.writers.find(resource)
             if writer is None:
                 writer = Writer.create(resource)
             generation = writer.acquire(execution.uid, command.turn_id, command.tool_use_id)
@@ -312,16 +236,7 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
         """
         if not resource or not command.finished:
             return
-        writer = (
-            await self.writers.get(found_id)
-            if (
-                found_id := await self.session_manager.session.scalar(
-                    select(WriterModel.id).where(WriterModel.resource == resource)
-                )
-            )
-            is not None
-            else None
-        )
+        writer = await self.writers.find(resource)
         if writer is None:
             return
         if (writer.execution_id, writer.turn_id, writer.tool_use_id) != (

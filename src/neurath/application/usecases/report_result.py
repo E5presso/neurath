@@ -6,14 +6,11 @@ from typing import override
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
-from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionManager
-from sqlalchemy import select
 
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.application.ports.repositories.workflow import IWorkflowRepository
 from neurath.domain.aggregates.task import Task
 from neurath.domain.task_records import Outcome, TaskResult
-from neurath.infrastructure.models.workflow import WorkflowModel
 
 
 @dataclass(frozen=True)
@@ -60,18 +57,15 @@ class ReportResultUseCase(IAsyncCommandUseCase[ReportResultCommand, ReportResult
 
     def __init__(
         self,
-        session_manager: AsyncSessionManager,
         tasks: ITaskRepository,
         workflows: IWorkflowRepository,
     ) -> None:
         """시도의 관찰 결과와 태스크 상태를 저장할 포트를 받는다.
 
         Args:
-            session_manager: 조건 조회를 현재 트랜잭션의 SQLAlchemy 세션으로 수행한다.
             tasks: 결과를 보고할 태스크를 조회하고 확정 결과·상태를 함께 저장한다.
             workflows: 선택한 절차가 현재 요구를 완료했는지 확인할 저장소.
         """
-        self.session_manager = session_manager
         self.tasks = tasks
         self.workflows = workflows
 
@@ -95,16 +89,7 @@ class ReportResultUseCase(IAsyncCommandUseCase[ReportResultCommand, ReportResult
             and attempt.definition_number == task.definition.number
             and attempt.result is None
         ):
-            workflow = (
-                await self.workflows.get(found_id)
-                if (
-                    found_id := await self.session_manager.session.scalar(
-                        select(WorkflowModel.id).where(WorkflowModel.task_id == task.uid)
-                    )
-                )
-                is not None
-                else None
-            )
+            workflow = await self.workflows.find_by_task(task.uid)
         if workflow is not None:
             workflow.require_complete(task.definition.number)
         task.report(command.attempt_number, command.result, command.expected_revision)

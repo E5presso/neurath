@@ -10,10 +10,11 @@ from alembic import command as alembic_command
 from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionManager
 from sqlalchemy import select, text
 
-from neurath.application.handlers.runtime import RuntimeEventHandler
 from neurath.application.ports.repositories.execution import IExecutionRepository
 from neurath.application.ports.repositories.writer import IWriterRepository
 from neurath.application.ports.services.writer_observer import IWriterObserverService
+from neurath.application.usecases.interrupt_execution import InterruptExecutionUseCase
+from neurath.application.usecases.observe_writer import ObserveWriterUseCase
 from neurath.application.usecases.recover_writer import RecoverWriterCommand, RecoverWriterUseCase
 from neurath.domain.aggregates.execution import Execution
 from neurath.domain.aggregates.writer import Writer
@@ -351,7 +352,7 @@ async def test_real_process_liveness_recovery_and_generation_recheck(database, n
     )
     try:
         async with spakky_context(database, write=True) as scope:
-            scope.get(RuntimeEventHandler).observer = observer
+            scope.get(ObserveWriterUseCase).observer = observer
             recovery = scope.get(RecoverWriterUseCase)
             with pytest.raises(InvalidExecutionState):
                 (await recovery.run(RecoverWriterCommand(lease.uid, lease.generation + 1)))
@@ -384,7 +385,7 @@ async def test_recovery_cannot_release_new_generation_during_external_observatio
             return Liveness.STOPPED
 
     async with spakky_context(database, write=True) as scope:
-        scope.get(RuntimeEventHandler).observer = RacingObserver()
+        scope.get(ObserveWriterUseCase).observer = RacingObserver()
         recovery = scope.get(RecoverWriterUseCase)
         await recovery.run(RecoverWriterCommand(lease.uid, lease.generation))
     assert (await writer(database, native)).generation == 2
@@ -562,7 +563,7 @@ async def test_real_targeted_cancellation_preserves_other_process_and_writes(dat
     )
     try:
         async with spakky_context(database, write=True) as scope:
-            scope.get(RuntimeEventHandler).controller = controller
+            scope.get(InterruptExecutionUseCase).controller = controller
             cancel = scope.get(CancelExecutionUseCase)
             result = await cancel.run(CancelExecutionCommand(current.uid, current.turn_id))
             assert result.status is ExecutionStatus.PAUSED
@@ -591,7 +592,7 @@ async def test_unknown_cancellation_and_late_response_cannot_cancel_new_turn(dat
 
     current = await execution(database, native[0])
     async with spakky_context(database, write=True) as scope:
-        scope.get(RuntimeEventHandler).controller = PosixWriterObserverService({})
+        scope.get(InterruptExecutionUseCase).controller = PosixWriterObserverService({})
         cancel = scope.get(CancelExecutionUseCase)
         assert (
             await cancel.run(CancelExecutionCommand(current.uid, current.turn_id))
@@ -603,7 +604,7 @@ async def test_unknown_cancellation_and_late_response_cannot_cancel_new_turn(dat
             return Liveness.STOPPED
 
     async with spakky_context(database, write=True) as scope:
-        scope.get(RuntimeEventHandler).controller = LateController()
+        scope.get(InterruptExecutionUseCase).controller = LateController()
         cancel = scope.get(CancelExecutionUseCase)
         await cancel.run(CancelExecutionCommand(current.uid, current.turn_id))
     assert (await execution(database, native[0])).turn_id == "new-turn"

@@ -26,7 +26,7 @@
 | ReviseWorkflow | 현재 태스크 요구에 수정한 정의 연결. 이전 정의·실패·영향 없는 결과 보존 |
 | SkipPhase | 현재 선택 단계의 조건부 생략 기록 |
 
-모든 DB 유스케이스는 `@transactional`을 사용합니다. ExecutePhase가 시도와 `PhaseExecutionRequested`를 기록하면 커밋 뒤 `WorkflowEventHandler`가 잠금 없이 실행·조회하고 ReportPhase를 새 트랜잭션으로 호출합니다. ExecutePhase의 반환값은 예약 시점 스냅샷입니다. 실제 결과는 GetWorkflow로 다시 조회하며, 핸들러 실패를 예약 성공으로 덮지 않습니다.
+DB 작업은 `@transactional`을 사용합니다. ExecutePhase가 시도와 `PhaseExecutionRequested`를 커밋하면 이벤트 어댑터가 RunPhase를 호출합니다. RunPhase가 외부 실행·복구를 수행하고 `PhaseExecutionObserved`를 발행하면, 어댑터가 ReportPhase를 호출해 결과를 저장합니다. 새 외부 대기는 저장 커밋 후 `PhaseWaitingRecorded`를 통해 NotifyPhaseWait가 안내합니다. 어댑터는 이벤트 변환과 유스케이스 호출만 수행하며 실행·저장·알림 서비스를 직접 호출하지 않습니다. ExecutePhase의 반환값은 예약 스냅샷이며 실제 결과는 GetWorkflow로 확인합니다.
 
 아래 예제는 이미 저장된 태스크에서 실행합니다. 요청을 처음부터 다시 만들지 않으며, 반환된 run의 완료는 태스크 목표의 성공 보고와 별개입니다.
 

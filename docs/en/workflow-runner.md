@@ -26,7 +26,7 @@ Each use-case module defines its own Command/Query and Result.
 | ReviseWorkflow | Attach a revised definition to current task requirements, retaining old definitions/failures and unaffected results |
 | SkipPhase | Record a conditional skip of the current optional phase |
 
-Every database use case uses `@transactional`. ExecutePhase records the attempt and `PhaseExecutionRequested`; after commit, `WorkflowEventHandler` executes/reconciles without DB locks and invokes ReportPhase in a new transaction. ExecutePhase returns the reservation snapshot. Read GetWorkflow for the actual outcome; a successful reservation does not imply handler success.
+Database work uses `@transactional`. After ExecutePhase commits its attempt and `PhaseExecutionRequested`, the event adapter invokes RunPhase. RunPhase performs external execution/reconciliation and publishes `PhaseExecutionObserved`; the adapter then invokes ReportPhase to persist the result. A newly recorded external wait emits `PhaseWaitingRecorded` after commit and NotifyPhaseWait sends the notice. Adapters only map events to use-case inputs and invoke them; they do not call execution, storage or notification services directly. ExecutePhase returns a reservation snapshot; GetWorkflow provides the actual outcome.
 
 This example operates on an already stored task. It does not recreate the request, and a completed run is distinct from a successful task-outcome report.
 

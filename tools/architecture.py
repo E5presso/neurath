@@ -109,6 +109,111 @@ class ArchitectureChecker:
             result.update(self._ancestors(self._name(module, base), visited))
         return result
 
+    def _is_query_module(self, module: str) -> bool:
+        """조회 계약을 구현한 유스케이스가 있는 모듈인지 확인한다.
+
+        Args:
+            module: 검사할 모듈의 정규 이름.
+
+        Returns:
+            bool: 실제 QueryUseCase 계약을 구현한 클래스가 있으면 True.
+        """
+        contracts = {
+            f"{package}.{name}"
+            for package in ("spakky.domain", "spakky.domain.application.query")
+            for name in ("IQueryUseCase", "IAsyncQueryUseCase")
+        }
+        return any(
+            symbol.rsplit(".", 1)[0] == module and bool(self._ancestors(symbol) & contracts)
+            for symbol in self.classes
+        )
+
+    def _is_orm_symbol(self, symbol: str) -> bool:
+        """SQLAlchemy API 또는 영속성 모델을 직접 참조하는 심벌인지 확인한다.
+
+        Args:
+            symbol: 별칭을 해석한 심벌 이름.
+
+        Returns:
+            bool: SQLAlchemy 또는 ORM 매핑 심벌이면 True.
+        """
+        return any(
+            symbol == prefix or symbol.startswith(prefix + ".")
+            for prefix in (
+                "sqlalchemy",
+                "spakky.plugins.sqlalchemy",
+                "neurath.infrastructure.models",
+            )
+        )
+
+    def _check_execution_boundary(
+        self, module: str, node: ast.ClassDef, ancestors: set[str], decorators: set[str]
+    ) -> list[str]:
+        """명령의 영속성 직접 접근과 이벤트 어댑터의 작업 의존성 주입을 검사한다.
+
+        Args:
+            module: 클래스가 정의된 모듈.
+            node: 검사할 클래스 구문.
+            ancestors: 별칭과 간접 상속을 해석한 기반 계약.
+            decorators: 별칭을 해석한 클래스 데코레이터.
+
+        Returns:
+            list[str]: 확인된 Command/Query·이벤트 어댑터 경계 위반.
+        """
+        commands = {
+            f"{package}.{name}"
+            for package in ("spakky.domain", "spakky.domain.application.command")
+            for name in ("ICommandUseCase", "IAsyncCommandUseCase")
+        }
+        errors = []
+        if ancestors & commands:
+            for item in ast.walk(node):
+                if isinstance(item, (ast.Name, ast.Attribute)) and self._is_orm_symbol(
+                    self._name(module, item)
+                ):
+                    errors.append(
+                        f"{module}:{item.lineno} COMMAND_PERSISTENCE: commands depend on aggregate repository contracts"
+                    )
+        handler = "spakky.event.stereotype.event_handler.EventHandler"
+        inherited_decorators = {
+            self._name(
+                parent.rsplit(".", 1)[0],
+                decorator.func if isinstance(decorator, ast.Call) else decorator,
+            )
+            for parent in ancestors
+            if parent in self.classes
+            for decorator in self.classes[parent].decorator_list
+        }
+        if handler not in decorators | inherited_decorators:
+            return errors
+        for method in node.body:
+            if not isinstance(method, ast.FunctionDef) or method.name != "__init__":
+                continue
+            for argument in (*method.args.posonlyargs, *method.args.args, *method.args.kwonlyargs):
+                if argument.arg == "self" or argument.annotation is None:
+                    continue
+                dependencies = {
+                    ancestor
+                    for item in ast.walk(argument.annotation)
+                    if isinstance(item, (ast.Name, ast.Attribute))
+                    for ancestor in self._ancestors(self._name(module, item))
+                }
+                if any(
+                    self._is_orm_symbol(dependency)
+                    or dependency.startswith(
+                        (
+                            "neurath.application.ports.services.",
+                            "neurath.application.ports.repositories.",
+                            "spakky.event.event_publisher.",
+                        )
+                    )
+                    for dependency in dependencies
+                ):
+                    errors.append(
+                        f"{module}:{argument.lineno} EVENT_HANDLER_DEPENDENCY: delegate service and repository operations to use cases"
+                    )
+        return errors
+
     def _check_import(self, module: str, node: ast.Import | ast.ImportFrom) -> list[str]:
         """단일 import의 계층 의존 방향과 명시적인 Protocol 반입을 검사한다.
 
@@ -142,21 +247,22 @@ class ArchitectureChecker:
                 )
             ):
                 errors.append(f"{location} DOMAIN_BOUNDARY: {imported}")
-            if (
-                module.startswith("neurath.application.")
-                and imported.startswith(
+            if module.startswith("neurath.application."):
+                query_read = self._is_query_module(module) and self._is_orm_symbol(imported)
+                forbidden = imported.startswith(
                     (
                         "neurath.infrastructure",
                         "neurath.transport",
                         "neurath.bootstrap",
+                        "sqlalchemy",
                         "alembic",
                         "typer",
                         "spakky.plugins.typer",
+                        "spakky.plugins.sqlalchemy",
                     )
                 )
-                and not imported.startswith("neurath.infrastructure.models")
-            ):
-                errors.append(f"{location} APPLICATION_BOUNDARY: {imported}")
+                if forbidden and not query_read:
+                    errors.append(f"{location} APPLICATION_BOUNDARY: {imported}")
             if module.startswith("neurath.infrastructure.") and imported.startswith(
                 ("neurath.transport", "neurath.bootstrap")
             ):
@@ -324,6 +430,7 @@ class ArchitectureChecker:
             and not module.startswith("neurath.transport.")
         ):
             errors.append(f"{location} CLI_BOUNDARY: CLI controllers belong to transport")
+        errors.extend(self._check_execution_boundary(module, node, ancestors, decorators))
         errors.extend(self._check_port(module, node, ancestors))
         errors.extend(self._check_role_name(module, node, ancestors, decorators))
         has_port = any(

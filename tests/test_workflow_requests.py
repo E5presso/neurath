@@ -14,7 +14,6 @@ from alembic import command
 from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionManager
 from sqlalchemy import text
 
-from neurath.application.handlers.workflow import WorkflowEventHandler
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.application.ports.repositories.workflow import IWorkflowRepository
 from neurath.application.ports.services.phase_executor import (
@@ -23,6 +22,7 @@ from neurath.application.ports.services.phase_executor import (
 )
 from neurath.application.usecases.execute_phase import ExecutePhaseCommand, ExecutePhaseUseCase
 from neurath.application.usecases.get_workflow import GetWorkflowQuery, GetWorkflowUseCase
+from neurath.application.usecases.notify_phase_wait import NotifyPhaseWaitUseCase
 from neurath.application.usecases.prepare_phase import PreparePhaseCommand, PreparePhaseUseCase
 from neurath.application.usecases.report_phase import ReportPhaseCommand, ReportPhaseUseCase
 from neurath.application.usecases.report_result import ReportResultCommand, ReportResultUseCase
@@ -30,6 +30,7 @@ from neurath.application.usecases.revise_workflow import (
     ReviseWorkflowCommand,
     ReviseWorkflowUseCase,
 )
+from neurath.application.usecases.run_phase import RunPhaseUseCase
 from neurath.application.usecases.skip_phase import SkipPhaseCommand, SkipPhaseUseCase
 from neurath.application.usecases.start_workflow import StartWorkflowCommand, StartWorkflowUseCase
 from neurath.domain.errors import InvalidWorkflowState, RevisionConflict
@@ -93,11 +94,10 @@ async def read(database, flow):
 async def execute(database, flow, executor=None, notifier=None):
     async with spakky_context(database, write=True) as scope:
         usecase = scope.get(ExecutePhaseUseCase)
-        handler = scope.get(WorkflowEventHandler)
         if executor is not None:
-            handler.executor = executor
+            scope.get(RunPhaseUseCase).executor = executor
         if notifier is not None:
-            handler.notifier = notifier
+            scope.get(NotifyPhaseWaitUseCase).notifier = notifier
         reservation = await usecase.run(
             ExecutePhaseCommand(flow.project_id, flow.session_id, flow.uid, flow.revision)
         )
@@ -425,7 +425,7 @@ async def test_primitive_repository_and_framework_transaction_are_used(database,
         repository = scope.get(IWorkflowRepository)
         assert (await repository.get_or_none("missing")) is None
         assert (await repository.get(flow.uid)).uid == flow.uid
-        assert scope.get(WorkflowEventHandler).executor is scope.get(IPhaseExecutorService)
+        assert scope.get(RunPhaseUseCase).executor is scope.get(IPhaseExecutorService)
         assert scope.get(IWorkflowNotifierService).__class__ is StderrWorkflowNotifierService
         assert (
             await scope.get(AsyncSessionManager).session.scalar(
@@ -668,7 +668,7 @@ async def test_incomplete_workflow_lookup_rolls_back_start(database, work, monke
     async def incomplete(self, workflow_id):
         raise NotImplementedError("storage unavailable")
 
-    monkeypatch.setattr(SQLAlchemyWorkflowRepository, "get", incomplete)
+    monkeypatch.setattr(SQLAlchemyWorkflowRepository, "find_by_task", incomplete)
     before = snapshot(database)
     with pytest.raises(NotImplementedError):
         (
@@ -943,3 +943,31 @@ async def test_fresh_attempt_returns_without_lookup_or_recovery_capability(datab
     completed = await execute(database, flow, host)
     assert completed.run.current is None
     assert host.calls == [("execute", f"{flow.uid}:1")]
+
+
+async def test_wait_notification_is_not_sent_when_result_storage_rolls_back(
+    database, work, monkeypatch
+):
+    from neurath.infrastructure.repositories.workflow import SQLAlchemyWorkflowRepository
+
+    _, _, flow = work
+    calls = []
+    save = SQLAlchemyWorkflowRepository.save
+
+    class Notifier(IWorkflowNotifierService):
+        def waiting(self, request_id, reason):
+            calls.append((request_id, reason))
+
+    async def fail_waiting_save(repository, aggregate):
+        if aggregate.attempts and aggregate.attempts[-1].status is PhaseStatus.WAITING:
+            raise RuntimeError("cannot commit observed result")
+        return await save(repository, aggregate)
+
+    monkeypatch.setattr(SQLAlchemyWorkflowRepository, "save", fail_waiting_save)
+    observed = await execute(
+        database, flow, RecoverableExecutor(flow.current, fail=True), Notifier()
+    )
+    assert observed.run.attempts[-1].status is PhaseStatus.RUNNING
+    assert calls == []
+    async with storage_scope(database, write=False) as scope:
+        assert (await scope.get(ITaskRepository).get(flow.task_id)).status is TaskStatus.ACTIVE

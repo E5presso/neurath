@@ -6,16 +6,12 @@ from typing import override
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
-from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionManager
-from sqlalchemy import select
 
 from neurath.application.ports.repositories.project import IProjectRepository
 from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.domain.aggregates.project import Project
 from neurath.domain.aggregates.session import HostSession
 from neurath.domain.observations import DirectoryObservation
-from neurath.infrastructure.models.project import ProjectLocationModel, ProjectModel
-from neurath.infrastructure.models.session import SessionModel
 
 
 @dataclass(frozen=True)
@@ -56,18 +52,15 @@ class RegisterSessionUseCase(IAsyncCommandUseCase[RegisterSessionCommand, Regist
 
     def __init__(
         self,
-        session_manager: AsyncSessionManager,
         projects: IProjectRepository,
         sessions: ISessionRepository,
     ) -> None:
         """위치 식별 유스케이스와 네이티브 세션 저장소를 받는다.
 
         Args:
-            session_manager: 조건 조회를 현재 트랜잭션의 SQLAlchemy 세션으로 수행한다.
             projects: 관찰한 위치를 RegisterProjectUseCase로 식별·등록한다.
             sessions: 프로젝트·공급자·네이티브 ID로 세션을 찾고 없을 때 새 세션을 저장한다.
         """
-        self.session_manager = session_manager
         self.projects = projects
         self.sessions = sessions
 
@@ -85,21 +78,7 @@ class RegisterSessionUseCase(IAsyncCommandUseCase[RegisterSessionCommand, Regist
         candidates = Project.identify(command.observation)
         owners = []
         for location in candidates:
-            owner = (
-                await self.projects.get(found_id)
-                if (
-                    found_id := await self.session_manager.session.scalar(
-                        select(ProjectModel.id)
-                        .join(ProjectModel.locations)
-                        .where(
-                            ProjectLocationModel.kind == location.kind.value,
-                            ProjectLocationModel.path == location.path,
-                        )
-                    )
-                )
-                is not None
-                else None
-            )
+            owner = await self.projects.find_by_location(location)
             if owner is not None:
                 owners.append(owner)
         project = Project.owner_of(owners)
@@ -107,20 +86,7 @@ class RegisterSessionUseCase(IAsyncCommandUseCase[RegisterSessionCommand, Regist
             project = Project.create(command.observation)
         project.associate(candidates)
         project = await self.projects.save(project)
-        session = (
-            await self.sessions.get(found_id)
-            if (
-                found_id := await self.session_manager.session.scalar(
-                    select(SessionModel.id).where(
-                        SessionModel.project_id == project.id,
-                        SessionModel.provider == command.provider,
-                        SessionModel.host_session_id == command.host_session_id,
-                    )
-                )
-            )
-            is not None
-            else None
-        )
+        session = await self.sessions.find(project.id, command.provider, command.host_session_id)
         if session is None:
             session = HostSession.create(
                 project_id=project.id,

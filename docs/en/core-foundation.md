@@ -10,7 +10,7 @@ Public CLI, hooks and installation remain subsequent implementation work.
 
 - `Project` and `HostSession` use `@mutable` and `AbstractAggregateRoot[str]` for identity, equality and change tracking. Project owns `ProjectLocation` as an `AbstractValueObject`.
 - The existing `id` reference remains a read-only compatibility property over `uid`. Identity selection, folder promotion, ownership conflicts, session scope and movement remain domain rules.
-- Repository ports use the standard `IAsyncGenericRepository` aggregate CRUD contract. Use cases perform conditional location and native-session reads through the current SQLAlchemy session.
+- Repository ports reuse standard `IAsyncGenericRepository` aggregate CRUD. Aggregate lookups by location or native identity are repository contracts for commands. CommandUseCases do not depend directly on SQLAlchemy sessions, queries or ORM models.
 - `SQLAlchemyProjectRepository` and `SQLAlchemySessionRepository` inherit `AbstractAsyncGenericRepository`. They do not redefine constructors, `get`, `get_or_none`, `contains`, `range`, `save`, `save_all`, `delete`, or `delete_all`.
 - Domain tables use `@Table(Domain)` and `AbstractMappableTable[Domain]` with explicit conversion. Owned location records use `AbstractTable` without a separate domain repository.
 - `SchemaRegistry` resolves domain/table mappings from Table tags. Repositories do not maintain another mapping registry.
@@ -20,7 +20,7 @@ Public CLI, hooks and installation remain subsequent implementation work.
 - Framework missing-entity and storage version-conflict errors propagate through their original contracts. Use cases ask the domain to validate session/project scope.
 
 SQL for basic CRUD, merge, flush and aggregate collection belongs to the framework.
-Use cases perform conditional reads through their current transactional SQLAlchemy session. The domain imports
+Command aggregate lookups belong to repositories; SQLAlchemy searches for read results belong to QueryUseCases. The domain imports
 pure Spakky domain bases and mutability declarations, without SQLAlchemy or persistence adapters.
 
 ## Request lifetime and SQLite

@@ -6,8 +6,6 @@ from typing import override
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
-from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionManager
-from sqlalchemy import select
 
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.application.ports.repositories.workflow import IWorkflowRepository
@@ -15,8 +13,6 @@ from neurath.domain.aggregates.workflow import WorkflowRun
 from neurath.domain.errors import InvalidWorkflowState
 from neurath.domain.task_records import TaskStatus
 from neurath.domain.workflow_records import WorkflowDefinition
-from neurath.infrastructure.models.task import TaskModel
-from neurath.infrastructure.models.workflow import WorkflowModel
 
 
 @dataclass(frozen=True)
@@ -60,18 +56,15 @@ class StartWorkflowUseCase(IAsyncCommandUseCase[StartWorkflowCommand, StartWorkf
 
     def __init__(
         self,
-        session_manager: AsyncSessionManager,
         tasks: ITaskRepository,
         workflows: IWorkflowRepository,
     ) -> None:
         """태스크와 연결된 절차의 조회·저장 포트를 받는다.
 
         Args:
-            session_manager: 조건 조회를 현재 트랜잭션의 SQLAlchemy 세션으로 수행한다.
             tasks: 태스크의 현재 요구·상태와 소유 범위를 조회한다.
             workflows: run의 정의·시도를 조회하고 변경 전체를 저장한다.
         """
-        self.session_manager = session_manager
         self.tasks = tasks
         self.workflows = workflows
 
@@ -91,16 +84,7 @@ class StartWorkflowUseCase(IAsyncCommandUseCase[StartWorkflowCommand, StartWorkf
         """
         task = await self.tasks.get(command.task_id)
         task.require_scope(command.project_id, command.session_id)
-        existing = (
-            await self.workflows.get(found_id)
-            if (
-                found_id := await self.session_manager.session.scalar(
-                    select(WorkflowModel.id).where(WorkflowModel.task_id == task.uid)
-                )
-            )
-            is not None
-            else None
-        )
+        existing = await self.workflows.find_by_task(task.uid)
         if existing is not None and (
             existing.definition != command.definition
             or existing.revisions[-1].task_definition_number != task.definition.number
@@ -110,17 +94,7 @@ class StartWorkflowUseCase(IAsyncCommandUseCase[StartWorkflowCommand, StartWorkf
             return StartWorkflowResult(run=existing)
         task.require_revision(command.expected_task_revision)
         if task.status is not TaskStatus.ACTIVE:
-            task.start(
-                await self.tasks.range(
-                    (
-                        await self.session_manager.session.scalars(
-                            select(TaskModel.id)
-                            .where(TaskModel.project_id == command.project_id)
-                            .order_by(TaskModel.created_at, TaskModel.id)
-                        )
-                    ).all()
-                )
-            )
+            task.start(await self.tasks.list(command.project_id))
             (await self.tasks.save(task))
         run = WorkflowRun.create(
             command.project_id,

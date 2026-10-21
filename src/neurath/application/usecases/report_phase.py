@@ -24,6 +24,7 @@ class ReportPhaseCommand(AbstractCommand):
         run_id: 결과를 기록할 run ID.
         attempt_number: 관찰 대상인 보존된 시도 번호.
         result: 대상 개정·검사·근거가 포함된 관찰 결과.
+        notify_waiting: 외부 실행 결과가 새 대기 상태이면 커밋 뒤 안내한다.
     """
 
     project_id: str
@@ -31,6 +32,7 @@ class ReportPhaseCommand(AbstractCommand):
     run_id: str
     attempt_number: int
     result: PhaseResult
+    notify_waiting: bool = False
 
 
 @dataclass(frozen=True)
@@ -76,7 +78,7 @@ class ReportPhaseUseCase(IAsyncCommandUseCase[ReportPhaseCommand, ReportPhaseRes
         """
         run = await self.workflows.get(command.run_id)
         run.require_scope(command.project_id, command.session_id)
-        run.report(command.attempt_number, command.result)
+        run.report(command.attempt_number, command.result, notify_waiting=command.notify_waiting)
         task = await self.tasks.get(run.task_id)
         if (
             not run.applies_to_current(command.attempt_number)

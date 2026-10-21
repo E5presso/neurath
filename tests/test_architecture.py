@@ -946,3 +946,99 @@ def test_spakky_cli_controller_and_bootstrap_composition_are_allowed():
         "neurath.bootstrap": "from neurath.transport.cli.hooks import HookCliController\nfrom neurath.infrastructure.providers import request_container",
     }
     assert ArchitectureChecker(sources).check() == []
+
+
+def test_command_sqlalchemy_dependency_is_rejected_even_with_query_in_same_module():
+    sources = {
+        "neurath.application.usecases.mixed": """
+from spakky.domain.application.command import IAsyncCommandUseCase as Write
+from spakky.domain.application.query import IAsyncQueryUseCase as Read
+from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionManager as Database
+from sqlalchemy import select as lookup
+class ReadUseCase(Read):
+    async def run(self, query):
+        return lookup(1)
+class BaseWriteUseCase(Write):
+    pass
+class WriteUseCase(BaseWriteUseCase):
+    def __init__(self, database: Database):
+        self.database = database
+    async def run(self, command):
+        return await self.database.session.scalar(lookup(1))
+"""
+    }
+    errors = ArchitectureChecker(sources).check()
+    assert any("COMMAND_PERSISTENCE" in error for error in errors)
+    assert not any("APPLICATION_BOUNDARY" in error for error in errors)
+
+
+def test_query_sqlalchemy_read_is_allowed_but_command_module_import_is_rejected():
+    query = """
+from spakky.domain.application.query import IAsyncQueryUseCase
+from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionManager
+from sqlalchemy import select
+from neurath.infrastructure.models.task import TaskModel
+class ReadUseCase(IAsyncQueryUseCase):
+    def __init__(self, session: AsyncSessionManager):
+        self.session = session
+    async def run(self, query):
+        return await self.session.session.scalar(select(TaskModel))
+"""
+    assert ArchitectureChecker({"neurath.application.usecases.read": query}).check() == []
+    errors = ArchitectureChecker(
+        {"neurath.application.usecases.write": "import sqlalchemy"}
+    ).check()
+    assert any("APPLICATION_BOUNDARY" in error for error in errors)
+
+
+def test_event_adapter_rejects_work_service_dependency_through_alias_and_inheritance():
+    sources = {
+        "neurath.transport.events.base": """
+from spakky.event.stereotype.event_handler import EventHandler as Event
+@Event()
+class BaseHandler:
+    pass
+""",
+        "neurath.transport.events.runtime": """
+from neurath.transport.events.base import BaseHandler
+from neurath.application.ports.services.writer_observer import IWriterObserverService as Observer
+class RuntimeHandler(BaseHandler):
+    def __init__(self, observer: Observer | None):
+        self.observer = observer
+""",
+    }
+    errors = ArchitectureChecker(sources).check()
+    assert any("EVENT_HANDLER_DEPENDENCY" in error for error in errors)
+
+
+def test_event_adapter_accepts_a_usecase_dependency_without_service_naming_rules():
+    sources = {
+        "neurath.application.usecases.run": """
+from spakky.domain.application.command import IAsyncCommandUseCase as Command
+class RunUseCase(Command):
+    async def run(self, command):
+        pass
+""",
+        "neurath.transport.events.run": """
+from spakky.event.stereotype.event_handler import EventHandler as Event
+from neurath.application.usecases.run import RunUseCase as Run
+@Event()
+class RunHandler:
+    def __init__(self, operation: Run):
+        self.operation = operation
+    async def receive(self, event):
+        await self.operation.run(event)
+""",
+    }
+    assert ArchitectureChecker(sources).check() == []
+
+
+def test_event_adapter_settings_are_not_misclassified_as_work_services():
+    source = """
+from spakky.event.stereotype.event_handler import EventHandler
+@EventHandler()
+class Handler:
+    def __init__(self, label: str):
+        self.label = label
+"""
+    assert ArchitectureChecker({"neurath.transport.events.settings": source}).check() == []

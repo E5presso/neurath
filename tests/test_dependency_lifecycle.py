@@ -350,3 +350,26 @@ async def test_session_save_inserts_and_returns_stored_entity(database):
         assert (
             await scope.get(AsyncSessionManager).session.scalar(select(SessionModel.version))
         ) == entity.version
+
+
+async def test_unimplemented_aggregate_lookups_fail_explicitly():
+    from neurath.application.ports.repositories.execution import IExecutionRepository
+    from neurath.application.ports.repositories.task import ITaskRepository
+    from neurath.application.ports.repositories.workflow import IWorkflowRepository
+    from neurath.application.ports.repositories.writer import IWriterRepository
+    from neurath.domain.aggregates.project import ProjectKind, ProjectLocation
+
+    operations = (
+        (
+            IProjectRepository.find_by_location,
+            (None, ProjectLocation(kind=ProjectKind.FOLDER, path="/repo")),
+        ),
+        (ISessionRepository.find, (None, "project", "codex", "native")),
+        (IExecutionRepository.find, (None, "session", "agent")),
+        (IWriterRepository.find, (None, "/repo")),
+        (IWorkflowRepository.find_by_task, (None, "task")),
+        (ITaskRepository.list, (None, "project")),
+    )
+    for operation, arguments in operations:
+        with pytest.raises(NotImplementedError):
+            await operation(*arguments)

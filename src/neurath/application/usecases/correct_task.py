@@ -7,13 +7,10 @@ from typing import override
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
-from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionManager
-from sqlalchemy import select
 
 from neurath.application.ports.repositories.request_source import IRequestSourceRepository
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.domain.aggregates.task import Task
-from neurath.infrastructure.models.task import TaskModel
 
 
 @dataclass(frozen=True)
@@ -63,18 +60,15 @@ class CorrectTaskUseCase(IAsyncCommandUseCase[CorrectTaskCommand, CorrectTaskRes
 
     def __init__(
         self,
-        session_manager: AsyncSessionManager,
         tasks: ITaskRepository,
         sources: IRequestSourceRepository,
     ) -> None:
         """정정할 태스크·의존 그래프와 정정 출처를 읽을 저장소를 받는다.
 
         Args:
-            session_manager: 조건 조회를 현재 트랜잭션의 SQLAlchemy 세션으로 수행한다.
             tasks: 정정 대상·선행 작업을 조회하고 새 요구 개정을 저장한다.
             sources: 현재 요구를 정정하는 원문을 조회한다.
         """
-        self.session_manager = session_manager
         self.tasks = tasks
         self.sources = sources
 
@@ -93,17 +87,7 @@ class CorrectTaskUseCase(IAsyncCommandUseCase[CorrectTaskCommand, CorrectTaskRes
         task.require_scope(command.project_id, command.session_id)
         task.require_revision(command.expected_revision)
         task.validate_dependencies(
-            (
-                await self.tasks.range(
-                    (
-                        await self.session_manager.session.scalars(
-                            select(TaskModel.id)
-                            .where(TaskModel.project_id == command.project_id)
-                            .order_by(TaskModel.created_at, TaskModel.id)
-                        )
-                    ).all()
-                )
-            ),
+            (await self.tasks.list(command.project_id)),
             command.dependencies,
         )
         task.correct(

@@ -12,7 +12,7 @@ from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 from neurath.domain.aggregates.task import Task
 from neurath.domain.errors import ContextNotFound, InvalidWorkflowState, RevisionConflict
 from neurath.domain.task_records import TaskStatus
-from neurath.domain.workflow_events import PhaseExecutionRequested
+from neurath.domain.workflow_events import PhaseExecutionRequested, PhaseWaitingRecorded
 from neurath.domain.workflow_records import (
     PhaseAttempt,
     PhaseDefinition,
@@ -264,7 +264,7 @@ class WorkflowRun(AbstractAggregateRoot[str]):
         self.attempts = tuple(self.attempts) + (attempt,)
         return attempt
 
-    def report(self, number: int, result: PhaseResult) -> None:
+    def report(self, number: int, result: PhaseResult, *, notify_waiting: bool = False) -> None:
         """시도 당시 대상과 조건을 대조하여 결과를 보존한다.
 
         현재 정의와 달라진 옛 시도도 이력에 남기지만 current 판정에는 쓰지 않는다.
@@ -273,6 +273,7 @@ class WorkflowRun(AbstractAggregateRoot[str]):
         Args:
             number: 보고할 시도 번호.
             result: 실행자 또는 검토자가 관찰한 결과.
+            notify_waiting: 새 외부 대기 결과를 저장한 뒤 알림 사건을 남길지 여부.
 
         Raises:
             ContextNotFound: 해당 시도가 없는 경우.
@@ -295,6 +296,11 @@ class WorkflowRun(AbstractAggregateRoot[str]):
             raise InvalidWorkflowState("Required checks are missing")
         updated = replace(attempt, status=result.status, result=deepcopy(result))
         self.attempts = tuple(updated if item.number == number else item for item in self.attempts)
+
+        if notify_waiting and result.status is PhaseStatus.WAITING and result != attempt.result:
+            self.add_event(
+                PhaseWaitingRecorded(request_id=f"{self.uid}:{number}", reason=result.summary)
+            )
 
     def applies_to_current(self, number: int) -> bool:
         """지정 시도가 현재 정의의 해당 단계에서 사용하는 마지막 시도인지 판단한다.

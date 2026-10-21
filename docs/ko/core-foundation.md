@@ -10,7 +10,7 @@
 
 - `Project`, `HostSession`은 `@mutable`과 `AbstractAggregateRoot[str]`로 식별자·동일성·변경 추적을 상속합니다. `ProjectLocation`은 Project가 소유하는 `AbstractValueObject`입니다.
 - 기존 `id` 참조는 `uid`를 읽는 호환 속성으로 유지합니다. 프로젝트 식별·폴더 승격·위치 충돌과 세션 범위·이동 규칙은 도메인에 있습니다.
-- 저장 포트는 `IAsyncGenericRepository`의 기본 Aggregate CRUD 계약을 사용합니다. 위치·네이티브 ID 등의 조건 조회는 유스케이스에서 현재 SQLAlchemy 세션으로 수행합니다.
+- 저장 포트는 `IAsyncGenericRepository`의 기본 Aggregate CRUD 계약을 사용합니다. Command가 위치·네이티브 ID로 작업 대상 Aggregate를 읽는 계약은 저장소가 구현합니다. CommandUseCase에는 SQLAlchemy 세션·쿼리·ORM 모델을 주입하지 않습니다.
 - `SQLAlchemyProjectRepository`, `SQLAlchemySessionRepository`는 `AbstractAsyncGenericRepository`를 상속합니다. `get`, `get_or_none`, `contains`, `range`, `save`, `save_all`, `delete`, `delete_all`과 생성자는 재구현하지 않습니다.
 - 도메인 테이블은 `@Table(Domain)`과 `AbstractMappableTable[Domain]`으로 양방향 변환을 정의합니다. 위치 자식 테이블은 도메인 매핑이 없는 `AbstractTable`입니다.
 - `SchemaRegistry`가 Table 태그를 통해 도메인과 실제 테이블을 연결합니다. 저장소가 매핑을 별도로 추적하지 않습니다.
@@ -20,7 +20,7 @@
 - 프레임워크의 미존재·저장 버전 충돌 오류는 해당 기본 계약으로 전파합니다. 세션이 요청한 프로젝트에 속하는지는 유스케이스가 도메인에 확인합니다.
 
 기본 CRUD의 SQL과 merge·flush·변경 aggregate 수집은 프레임워크 소유입니다.
-조건 조회는 현재 트랜잭션의 SQLAlchemy 세션을 사용하는 유스케이스에 있습니다. 도메인은 프레임워크의
+명령의 Aggregate 조회는 저장소에, 조회 결과용 SQLAlchemy 검색은 QueryUseCase에 있습니다. 도메인은 프레임워크의
 순수 도메인 기반과 mutability 선언만 사용하며 SQLAlchemy와 저장 어댑터에 의존하지 않습니다.
 
 ## 요청 수명과 SQLite
