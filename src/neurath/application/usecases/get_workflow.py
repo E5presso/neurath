@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from typing import override
 
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.query import AbstractQuery, IQueryUseCase
+from spakky.data.aspects.transactional import transactional
+from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
 
 from neurath.application.ports.repositories.workflow import IWorkflowRepository
 from neurath.domain.aggregates.workflow import WorkflowRun
@@ -37,7 +38,7 @@ class GetWorkflowResult:
 
 
 @UseCase()
-class GetWorkflowUseCase(IQueryUseCase[GetWorkflowQuery, GetWorkflowResult]):
+class GetWorkflowUseCase(IAsyncQueryUseCase[GetWorkflowQuery, GetWorkflowResult]):
     """선택한 절차의 현재 단계와 과거 정의·시도·결과를 조회한다.
 
     현재 단계뿐 아니라 과거 정의·시도·결과를 함께 반환한다. 조회로 외부 실행을
@@ -52,8 +53,9 @@ class GetWorkflowUseCase(IQueryUseCase[GetWorkflowQuery, GetWorkflowResult]):
         """
         self.workflows = workflows
 
+    @transactional
     @override
-    def run(self, query: GetWorkflowQuery) -> GetWorkflowResult:
+    async def run(self, query: GetWorkflowQuery) -> GetWorkflowResult:
         """선택한 절차의 현재 단계와 과거 정의·시도·결과를 조회한다.
 
         Args:
@@ -62,6 +64,6 @@ class GetWorkflowUseCase(IQueryUseCase[GetWorkflowQuery, GetWorkflowResult]):
         Returns:
             GetWorkflowResult: 소유 범위가 확인된 run. current는 다음 단계이며 모두 끝났으면 None.
         """
-        run = self.workflows.get(query.run_id)
+        run = await self.workflows.get(query.run_id)
         run.require_scope(query.project_id, query.session_id)
         return GetWorkflowResult(run=run)

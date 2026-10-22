@@ -5,12 +5,16 @@ from dataclasses import dataclass
 from typing import override
 
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.query import AbstractQuery, IQueryUseCase
+from spakky.data.aspects.transactional import transactional
+from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
+from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionManager
+from sqlalchemy import select
 
 from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.domain.aggregates.task import Task
 from neurath.domain.task_records import TaskStatus
+from neurath.infrastructure.models.task import TaskModel
 
 
 @dataclass(frozen=True)
@@ -44,7 +48,7 @@ class GetTasksResult:
 
 
 @UseCase()
-class GetTasksUseCase(IQueryUseCase[GetTasksQuery, GetTasksResult]):
+class GetTasksUseCase(IAsyncQueryUseCase[GetTasksQuery, GetTasksResult]):
     """세션의 모든 태스크를 조회하고 같은 프로젝트의 선행 작업으로 시작 가능 여부를 계산한다.
 
     완료·실패·무효 태스크도 목록에 포함한다. all_terminal은 성공·실패·무효를,
@@ -52,18 +56,26 @@ class GetTasksUseCase(IQueryUseCase[GetTasksQuery, GetTasksResult]):
     이 결과는 TODO 표시용 조회이며 태스크를 완료하거나 세션을 종료하지 않는다.
     """
 
-    def __init__(self, sessions: ISessionRepository, tasks: ITaskRepository) -> None:
+    def __init__(
+        self,
+        session_manager: AsyncSessionManager,
+        sessions: ISessionRepository,
+        tasks: ITaskRepository,
+    ) -> None:
         """TODO 소유 세션과 프로젝트 전체의 의존 상태를 읽을 저장소를 받는다.
 
         Args:
+            session_manager: 조건 조회를 현재 트랜잭션의 SQLAlchemy 세션으로 수행한다.
             sessions: 조회할 소유 세션이 지정 프로젝트에 속하는지 확인한다.
             tasks: 전체 프로젝트의 태스크를 읽어 소유 세션 목록과 선행 성공 여부를 구성한다.
         """
+        self.session_manager = session_manager
         self.sessions = sessions
         self.tasks = tasks
 
+    @transactional
     @override
-    def run(self, query: GetTasksQuery) -> GetTasksResult:
+    async def run(self, query: GetTasksQuery) -> GetTasksResult:
         """프로젝트 전체 의존 상태를 읽고 소유 세션의 TODO 조회 결과를 구성한다.
 
         Args:
@@ -72,8 +84,16 @@ class GetTasksUseCase(IQueryUseCase[GetTasksQuery, GetTasksResult]):
         Returns:
             GetTasksResult: 전체 소유 태스크, 시작 가능한 ID와 비어 있지 않은 목록의 종료·성공 판정.
         """
-        self.sessions.get(query.session_id).require_project(query.project_id)
-        tasks = self.tasks.list(query.project_id)
+        (await self.sessions.get(query.session_id)).require_project(query.project_id)
+        tasks = await self.tasks.range(
+            (
+                await self.session_manager.session.scalars(
+                    select(TaskModel.id)
+                    .where(TaskModel.project_id == query.project_id)
+                    .order_by(TaskModel.created_at, TaskModel.id)
+                )
+            ).all()
+        )
         selected = tuple(task for task in tasks if task.owner_session_id == query.session_id)
         terminal = (TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.INVALIDATED)
         return GetTasksResult(

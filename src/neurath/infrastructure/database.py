@@ -1,7 +1,6 @@
 """SQLite 엔진 설정과 명시적인 Alembic 초기화를 제공한다."""
 
 import os
-import sqlite3
 from pathlib import Path
 from urllib.parse import quote
 
@@ -9,8 +8,10 @@ from alembic import command
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import create_engine, event, inspect
+from sqlalchemy import event, inspect
 from sqlalchemy.engine import URL, Connection, Engine
+from sqlalchemy.engine.interfaces import DBAPIConnection
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import ConnectionPoolEntry, NullPool
 
 from neurath.domain.errors import StorageNotReady
@@ -34,7 +35,7 @@ def user_database_path() -> Path:
 
 def create_database_engine(
     path: Path | None = None, *, write: bool, create: bool = False, timeout: float = 5.0
-) -> Engine:
+) -> AsyncEngine:
     """읽기·쓰기 정책이 연결된 NullPool SQLite 엔진을 생성한다.
 
     초기화용 엔진을 구성하며 스키마 호환성 검사는 여기서 활성화하지 않는다.
@@ -47,14 +48,14 @@ def create_database_engine(
         timeout: SQLite가 데이터베이스 잠금을 기다리는 시간(초).
 
     Returns:
-        Engine: 사용 후 호출자가 정리해야 하는 풀 없는 엔진.
+        AsyncEngine: 사용 후 호출자가 await dispose로 정리할 비동기 엔진.
     """
-    engine = create_engine(
+    engine = create_async_engine(
         database_url(path, write=write, create=create),
         poolclass=NullPool,
         connect_args={"timeout": timeout},
     )
-    configure_sqlite_engine(engine, write=write)
+    configure_sqlite_engine(engine.sync_engine, write=write)
     return engine
 
 
@@ -76,8 +77,22 @@ def database_url(path: Path | None = None, *, write: bool, create: bool = False)
     if not create and not path.is_file():
         raise StorageNotReady("Database is missing; initialize it explicitly")
     mode = "rwc" if create else ("rw" if write else "ro")
+    return sqlite_url(path, mode)
+
+
+def sqlite_url(path: Path, mode: str) -> URL:
+    """파일을 열지 않고 SQLite 연결 URI만 구성한다.
+
+    Args:
+        path: 연결할 SQLite 파일 경로.
+        mode: SQLite의 rw·ro·rwc 연결 모드.
+
+    Returns:
+        URL: 파일 생성이나 연결을 수행하지 않은 접속 주소.
+    """
+    path = path.expanduser().resolve()
     return URL.create(
-        "sqlite+pysqlite",
+        "sqlite+aiosqlite",
         database="file:" + quote(str(path), safe="/"),
         query={"mode": mode, "uri": "true"},
     )
@@ -96,17 +111,21 @@ def configure_sqlite_engine(engine: Engine, *, write: bool, check_schema: bool =
         check_schema: 일반 요청의 트랜잭션에서 Alembic 스키마를 검사할지 여부.
     """
 
-    def configure(connection: sqlite3.Connection, record: ConnectionPoolEntry) -> None:
+    def configure(connection: DBAPIConnection, record: ConnectionPoolEntry) -> None:
         """SQLAlchemy가 트랜잭션을 시작하게 하고 모든 연결에 외래 키 제약을 적용한다.
 
         Args:
             connection: SQLite 트랜잭션 동작을 설정할 연결.
             record: SQLAlchemy 연결 이벤트가 전달한 풀 항목.
         """
-        connection.isolation_level = None
-        connection.execute("PRAGMA foreign_keys=ON")
-        if not write:
-            connection.execute("PRAGMA query_only=ON")
+        engine.dialect.set_isolation_level(connection, "AUTOCOMMIT")
+        cursor = connection.cursor()
+        try:
+            cursor.execute("PRAGMA foreign_keys=ON")
+            if not write:
+                cursor.execute("PRAGMA query_only=ON")
+        finally:
+            cursor.close()
 
     def begin(connection: Connection) -> None:
         """쓰기에는 BEGIN IMMEDIATE, 읽기에는 BEGIN을 실행하고 선택적으로 스키마를 검사한다.
@@ -122,35 +141,44 @@ def configure_sqlite_engine(engine: Engine, *, write: bool, check_schema: bool =
     event.listen(engine, "begin", begin)
 
 
-def initialize_database(path: Path | None = None) -> None:
+async def initialize_database(path: Path | None = None) -> None:
     """비어 있거나 Neurath revision 표를 가진 DB에 배포된 Alembic head를 적용한다.
 
     부모 디렉터리와 DB 파일을 필요하면 생성하고 DDL·자료·revision을 한
     트랜잭션으로 이전한다. 실패 시 롤백하고 엔진을 정리한다. 과거 하네스 DB를
-    현재 도메인 모델로 변환하는 자료 이전 기능은 아니다.
+    현재 도메인 모델로 변환하는 자료 이전 기능은 아니다. 기존 DB가 현재 저장소로
+    식별되지 않으면 run_sync 경계에서 발생한 StorageNotReady를 전파한다.
 
     Args:
         path: 명시적인 데이터베이스 경로이며 None이면 사용자 단위 기본 경로.
 
-    Raises:
-        StorageNotReady: 기존 테이블이 있지만 core_schema_revision 표가 없어 현재 저장소로 식별할 수 없는 경우.
     """
     path = (path if path is not None else user_database_path()).expanduser().resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
     engine = create_database_engine(path, write=True, create=True)
     try:
-        with engine.begin() as connection:
-            tables = set(inspect(connection).get_table_names())
-            if tables and "core_schema_revision" not in tables:
-                raise StorageNotReady(
-                    "Existing database is not a current store; migration required"
-                )
-            config = Config()
-            config.set_main_option("script_location", "neurath.infrastructure:migrations")
-            config.attributes["connection"] = connection
-            command.upgrade(config, "head")
+        async with engine.begin() as connection:
+            await connection.run_sync(_upgrade_store)
     finally:
-        engine.dispose()
+        await engine.dispose()
+
+
+def _upgrade_store(connection: Connection) -> None:
+    """비동기 연결의 run_sync 경계에서 Alembic의 동기 API를 실행한다.
+
+    Args:
+        connection: aiosqlite 드라이버에 연결된 SQLAlchemy의 동기 API 어댑터.
+
+    Raises:
+        StorageNotReady: 기존 DB가 현재 스키마의 저장소로 식별되지 않은 경우.
+    """
+    tables = set(inspect(connection).get_table_names())
+    if tables and "core_schema_revision" not in tables:
+        raise StorageNotReady("Existing database is not a current store; migration required")
+    config = Config()
+    config.set_main_option("script_location", "neurath.infrastructure:migrations")
+    config.attributes["connection"] = connection
+    command.upgrade(config, "head")
 
 
 def verify_schema(connection: Connection) -> None:

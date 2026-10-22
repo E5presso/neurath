@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from typing import override
 
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.command import AbstractCommand, ICommandUseCase
+from spakky.data.aspects.transactional import transactional
+from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.domain.aggregates.task import Task
@@ -42,7 +43,7 @@ class WaitTaskResult:
 
 
 @UseCase()
-class WaitTaskUseCase(ICommandUseCase[WaitTaskCommand, WaitTaskResult]):
+class WaitTaskUseCase(IAsyncCommandUseCase[WaitTaskCommand, WaitTaskResult]):
     """active 태스크에 해소되지 않은 외부 대기를 추가하고 waiting으로 바꾼다.
 
     대상·해소 조건·후속 범위·관찰이 필요하며 이미 resolution이 있는 대기는 거부한다.
@@ -57,8 +58,9 @@ class WaitTaskUseCase(ICommandUseCase[WaitTaskCommand, WaitTaskResult]):
         """
         self.tasks = tasks
 
+    @transactional
     @override
-    def run(self, command: WaitTaskCommand) -> WaitTaskResult:
+    async def run(self, command: WaitTaskCommand) -> WaitTaskResult:
         """소유 범위·revision·활성 상태를 확인하고 외부 대기 조건을 저장한다.
 
         Args:
@@ -67,8 +69,8 @@ class WaitTaskUseCase(ICommandUseCase[WaitTaskCommand, WaitTaskResult]):
         Returns:
             WaitTaskResult: 대기 이력이 추가된 waiting 태스크.
         """
-        task = self.tasks.get(command.task_id)
+        task = await self.tasks.get(command.task_id)
         task.require_scope(command.project_id, command.session_id)
         task.require_revision(command.expected_revision)
         task.wait(command.condition)
-        return WaitTaskResult(task=self.tasks.save(task))
+        return WaitTaskResult(task=(await self.tasks.save(task)))

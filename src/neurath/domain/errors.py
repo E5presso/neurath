@@ -27,3 +27,7 @@ class InvalidTaskState(NeurathError):
 
 class InvalidWorkflowState(NeurathError):
     """단계 순서·현재 정의·검증 조건 또는 실행 한도에 맞지 않는 전이 요청이다."""
+
+
+class InvalidExecutionState(NeurathError):
+    """현재 턴·작성 세대·실제 실행 관찰과 일치하지 않는 런타임 요청이다."""

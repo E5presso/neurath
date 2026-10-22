@@ -1,9 +1,9 @@
-"""세션의 기본 CRUD와 낙관적 잠금을 프레임워크 구현에 위임한다."""
+"""호스트 세션의 기본 Aggregate 저장 계약을 제공한다."""
 
 from typing import override
 
 from spakky.data.stereotype.repository import Repository
-from spakky.plugins.sqlalchemy.persistency.repository import AbstractGenericRepository
+from spakky.plugins.sqlalchemy.persistency.repository import AbstractAsyncGenericRepository
 from sqlalchemy import select
 
 from neurath.application.ports.repositories.session import ISessionRepository
@@ -12,22 +12,26 @@ from neurath.infrastructure.models.session import SessionModel
 
 
 @Repository()
-class SessionRepository(AbstractGenericRepository[HostSession, str], ISessionRepository):
-    """기본 메서드를 상속하고 프로젝트·공급자·네이티브 ID 조회만 확장한다."""
+class SQLAlchemySessionRepository(
+    AbstractAsyncGenericRepository[HostSession, str], ISessionRepository
+):
+    """프로젝트 소속과 작업 경로를 가진 세션를 표준 SQLAlchemy 매핑·CRUD·낙관적 잠금으로 저장한다."""
 
     @override
-    def find(self, project_id: str, provider: str, host_session_id: str) -> HostSession | None:
-        """프로젝트와 공급자 범위 안에서만 네이티브 식별자를 찾는다.
+    async def find_by_project_id_and_provider_and_host_session_id(
+        self, project_id: str, provider: str, host_session_id: str
+    ) -> HostSession | None:
+        """프로젝트 안에서 실제 네이티브 식별자에 대응하는 세션을 찾는다.
 
         Args:
-            project_id: 조회 대상 프로젝트의 안정적인 식별자.
-            provider: 네이티브 세션 식별자의 호스트 공급자 이름 공간.
-            host_session_id: 호스트 공급자가 전달한 네이티브 세션 식별자.
+            project_id: 세션을 소유한 프로젝트.
+            provider: 호스트 공급자.
+            host_session_id: 실제 호스트의 세션 식별자.
 
         Returns:
-            HostSession | None: 해당 프로젝트·공급자 범위의 세션이며 없으면 None.
+            HostSession | None: 프로젝트·공급자·네이티브 ID가 일치하는 세션이며 미등록이면 None.
         """
-        record = self._session_manager.session.scalar(
+        record = await self._session_manager.session.scalar(
             select(SessionModel).where(
                 SessionModel.project_id == project_id,
                 SessionModel.provider == provider,

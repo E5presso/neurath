@@ -4,13 +4,11 @@ from dataclasses import dataclass
 from typing import override
 
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.command import AbstractCommand, ICommandUseCase
+from spakky.data.aspects.transactional import transactional
+from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
+from neurath.application.ports.repositories.project import IProjectRepository
 from neurath.application.ports.repositories.session import ISessionRepository
-from neurath.application.usecases.register_project import (
-    RegisterProjectCommand,
-    RegisterProjectUseCase,
-)
 from neurath.domain.aggregates.project import Project
 from neurath.domain.aggregates.session import HostSession
 from neurath.domain.observations import DirectoryObservation
@@ -47,7 +45,7 @@ class MoveSessionResult:
 
 
 @UseCase()
-class MoveSessionUseCase(ICommandUseCase[MoveSessionCommand, MoveSessionResult]):
+class MoveSessionUseCase(IAsyncCommandUseCase[MoveSessionCommand, MoveSessionResult]):
     """세션의 프로젝트를 유지한 채 관찰된 작업 디렉터리로 이동한다.
 
     이동 목적지의 프로젝트를 식별하고 기존 프로젝트와 같을 때만 경로를 변경한다.
@@ -55,18 +53,23 @@ class MoveSessionUseCase(ICommandUseCase[MoveSessionCommand, MoveSessionResult])
     같은 경로로 이동하면 변경 토큰과 revision은 유지한다.
     """
 
-    def __init__(self, projects: RegisterProjectUseCase, sessions: ISessionRepository) -> None:
+    def __init__(
+        self,
+        projects: IProjectRepository,
+        sessions: ISessionRepository,
+    ) -> None:
         """목적지 프로젝트 식별과 세션 경로 저장에 필요한 의존성을 받는다.
 
         Args:
-            projects: 목적지 관찰을 RegisterProjectUseCase로 식별하여 기존 프로젝트와 대조한다.
+            projects: 목적지 관찰을 소유 위치로 식별하여 기존 프로젝트와 대조한다.
             sessions: 이동할 세션을 조회하고 같은 프로젝트의 새 작업 경로를 저장한다.
         """
         self.projects = projects
         self.sessions = sessions
 
+    @transactional
     @override
-    def run(self, command: MoveSessionCommand) -> MoveSessionResult:
+    async def run(self, command: MoveSessionCommand) -> MoveSessionResult:
         """목적지의 프로젝트와 세션 revision을 확인하고 작업 경로 변경을 저장한다.
 
         Args:
@@ -75,10 +78,20 @@ class MoveSessionUseCase(ICommandUseCase[MoveSessionCommand, MoveSessionResult])
         Returns:
             MoveSessionResult: 프로젝트와 이동한 세션. 같은 경로이면 기존 상태를 유지한다.
         """
-        session = self.sessions.get(command.session_id)
+        session = await self.sessions.get(command.session_id)
         session.require_project(command.project_id)
-        project = self.projects.run(RegisterProjectCommand(command.observation)).project
+        candidates = Project.identify(command.observation)
+        owners = []
+        for location in candidates:
+            owner = await self.projects.find_by_location(location)
+            if owner is not None:
+                owners.append(owner)
+        project = Project.owner_of(owners)
+        if project is None:
+            project = Project.create(command.observation)
+        project.associate(candidates)
+        project = await self.projects.save(project)
         session.require_project(project.id)
         session.move(command.observation.working_directory, command.expected_revision)
-        session = self.sessions.save(session)
+        session = await self.sessions.save(session)
         return MoveSessionResult(project=project, session=session)

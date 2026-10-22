@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from typing import override
 
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.query import AbstractQuery, IQueryUseCase
+from spakky.data.aspects.transactional import transactional
+from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
 
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.domain.aggregates.task import Task
@@ -37,7 +38,7 @@ class GetTaskResult:
 
 
 @UseCase()
-class GetTaskUseCase(IQueryUseCase[GetTaskQuery, GetTaskResult]):
+class GetTaskUseCase(IAsyncQueryUseCase[GetTaskQuery, GetTaskResult]):
     """지정한 소유 세션의 태스크 한 건과 보존된 이력을 조회한다.
 
     프로젝트 또는 소유 세션이 다르면 ContextNotFound가 발생한다.
@@ -52,8 +53,9 @@ class GetTaskUseCase(IQueryUseCase[GetTaskQuery, GetTaskResult]):
         """
         self.tasks = tasks
 
+    @transactional
     @override
-    def run(self, query: GetTaskQuery) -> GetTaskResult:
+    async def run(self, query: GetTaskQuery) -> GetTaskResult:
         """태스크의 소유 범위를 확인하고 현재 상태와 이력을 반환한다.
 
         Args:
@@ -62,6 +64,6 @@ class GetTaskUseCase(IQueryUseCase[GetTaskQuery, GetTaskResult]):
         Returns:
             GetTaskResult: 저장된 현재 요구와 모든 시도·대기 기록을 가진 태스크.
         """
-        task = self.tasks.get(query.task_id)
+        task = await self.tasks.get(query.task_id)
         task.require_scope(query.project_id, query.session_id)
         return GetTaskResult(task=task)

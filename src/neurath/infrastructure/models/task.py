@@ -79,13 +79,13 @@ class TaskModel(AbstractMappableTable[Task]):
     )
     invalidated_reason: Mapped[str | None] = mapped_column(String, nullable=True)
     definitions: Mapped[list[TaskDefinitionModel]] = relationship(
-        cascade="all, delete-orphan", order_by="TaskDefinitionModel.number"
+        lazy="selectin", cascade="all, delete-orphan", order_by="TaskDefinitionModel.number"
     )
     attempts: Mapped[list[TaskAttemptModel]] = relationship(
-        cascade="all, delete-orphan", order_by="TaskAttemptModel.number"
+        lazy="selectin", cascade="all, delete-orphan", order_by="TaskAttemptModel.number"
     )
     waits: Mapped[list[TaskWaitModel]] = relationship(
-        cascade="all, delete-orphan", order_by="TaskWaitModel.number"
+        lazy="selectin", cascade="all, delete-orphan", order_by="TaskWaitModel.number"
     )
 
     @classmethod
@@ -175,7 +175,9 @@ class TaskDefinitionModel(AbstractTable):
     title: Mapped[str] = mapped_column(String, nullable=False)
     required_result: Mapped[str] = mapped_column(String, nullable=False)
     dependencies: Mapped[list[TaskDependencyModel]] = relationship(
-        cascade="all, delete-orphan", order_by="TaskDependencyModel.prerequisite_id"
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        order_by="TaskDependencyModel.prerequisite_id",
     )
 
     @classmethod

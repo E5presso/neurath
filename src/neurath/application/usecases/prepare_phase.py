@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from typing import override
 
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.command import AbstractCommand, ICommandUseCase
+from spakky.data.aspects.transactional import transactional
+from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.application.ports.repositories.workflow import IWorkflowRepository
@@ -40,7 +41,7 @@ class PreparePhaseResult:
 
 
 @UseCase()
-class PreparePhaseUseCase(ICommandUseCase[PreparePhaseCommand, PreparePhaseResult]):
+class PreparePhaseUseCase(IAsyncCommandUseCase[PreparePhaseCommand, PreparePhaseResult]):
     """실행 가능한 다음 단계를 예약하여 외부 동작 전에 시도를 저장한다.
 
     활성 태스크의 요구 개정과 run이 맞는지 확인한다. 실행 가능한 첫 단계에
@@ -58,8 +59,9 @@ class PreparePhaseUseCase(ICommandUseCase[PreparePhaseCommand, PreparePhaseResul
         self.workflows = workflows
         self.tasks = tasks
 
+    @transactional
     @override
-    def run(self, command: PreparePhaseCommand) -> PreparePhaseResult:
+    async def run(self, command: PreparePhaseCommand) -> PreparePhaseResult:
         """실행 가능한 다음 단계를 예약하여 외부 동작 전에 시도를 저장한다.
 
         Args:
@@ -68,9 +70,9 @@ class PreparePhaseUseCase(ICommandUseCase[PreparePhaseCommand, PreparePhaseResul
         Returns:
             PreparePhaseResult: 새 running 시도가 마지막에 추가된 run. 호출자는 저장 후 외부 실행을 연결한다.
         """
-        run = self.workflows.get(command.run_id)
+        run = await self.workflows.get(command.run_id)
         run.require_scope(command.project_id, command.session_id)
         run.require_revision(command.expected_revision)
-        run.require_task(self.tasks.get(run.task_id))
+        run.require_task(await self.tasks.get(run.task_id))
         run.begin()
-        return PreparePhaseResult(run=self.workflows.save(run))
+        return PreparePhaseResult(run=(await self.workflows.save(run)))

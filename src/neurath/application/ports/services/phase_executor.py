@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from neurath.domain.workflow_records import PhaseDefinition, PhaseResult
 
 
-class IPhaseExecutor(ABC):
+class IPhaseExecutorService(ABC):
     """같은 시도 식별자로 실행을 제출하고 유실된 결과를 조회한다."""
 
     @property
@@ -54,7 +54,7 @@ class IPhaseExecutor(ABC):
         raise NotImplementedError
 
 
-class IWorkflowNotifier(ABC):
+class IWorkflowNotifierService(ABC):
     """재실행할 수 없는 결과 불명을 호출 환경에 알린다."""
 
     @abstractmethod

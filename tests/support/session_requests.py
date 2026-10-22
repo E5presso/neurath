@@ -1,14 +1,12 @@
 """통합 시험에서 Git 관찰과 요청 컨테이너·트랜잭션을 실제로 실행한다.
 
 Git 관찰을 DB 트랜잭션 전에 마친다. Transaction은 성공 시 커밋하고 실패 시
-롤백하며, request_container는 요청 종료 시 세션·컨테이너·엔진을 정리한다.
+롤백하며, 테스트 fixture가 앱 종료 시 프레임워크 자원을 정리한다.
 """
 
 from pathlib import Path
 
-from spakky.plugins.sqlalchemy.persistency.transaction import Transaction
-
-from neurath.application.ports.services.directory_observer import IDirectoryObserver
+from neurath.application.ports.services.directory_observer import IDirectoryObserverService
 from neurath.application.usecases.get_session_context import (
     GetSessionContextQuery,
     GetSessionContextResult,
@@ -24,10 +22,10 @@ from neurath.application.usecases.register_session import (
     RegisterSessionResult,
     RegisterSessionUseCase,
 )
-from neurath.infrastructure.providers import DatabaseSettings, request_container
+from tests.support.application import spakky_context
 
 
-def register_session(
+async def register_session(
     working_directory: str,
     provider: str,
     host_session_id: str,
@@ -45,16 +43,15 @@ def register_session(
     Returns:
         RegisterSessionResult: 기존 또는 새로 등록한 호스트 세션 컨텍스트.
     """
-    with request_container(DatabaseSettings(database_path, write=True)) as scope:
-        observation = scope.get(IDirectoryObserver).observe(working_directory)
+    async with spakky_context(database_path, write=True) as scope:
+        observation = scope.get(IDirectoryObserverService).observe(working_directory)
         request = RegisterSessionCommand(
             observation=observation, provider=provider, host_session_id=host_session_id
         )
-        with scope.get(Transaction):
-            return scope.get(RegisterSessionUseCase).run(request)
+        return await scope.get(RegisterSessionUseCase).run(request)
 
 
-def get_session_context(
+async def get_session_context(
     project_id: str, session_id: str, *, database_path: Path | None = None
 ) -> GetSessionContextResult:
     """SQLite 읽기 전용 연결로 지정한 프로젝트와 세션만 조회한다.
@@ -68,12 +65,11 @@ def get_session_context(
         GetSessionContextResult: 명시적으로 지정한 세션의 현재 상태.
     """
     request = GetSessionContextQuery(project_id=project_id, session_id=session_id)
-    with request_container(DatabaseSettings(database_path, write=False)) as scope:
-        with scope.get(Transaction):
-            return scope.get(GetSessionContextUseCase).run(request)
+    async with spakky_context(database_path, write=False) as scope:
+        return await scope.get(GetSessionContextUseCase).run(request)
 
 
-def move_session(
+async def move_session(
     project_id: str,
     session_id: str,
     working_directory: str,
@@ -93,16 +89,15 @@ def move_session(
     Returns:
         MoveSessionResult: 이동 후 프로젝트와 세션. 같은 경로라면 기존 revision을 유지한다.
     """
-    with request_container(DatabaseSettings(database_path, write=True)) as scope:
-        observation = scope.get(IDirectoryObserver).observe(working_directory)
+    async with spakky_context(database_path, write=True) as scope:
+        observation = scope.get(IDirectoryObserverService).observe(working_directory)
         request = MoveSessionCommand(
             project_id=project_id,
             session_id=session_id,
             observation=observation,
             expected_revision=expected_revision,
         )
-        with scope.get(Transaction):
-            return scope.get(MoveSessionUseCase).run(request)
+        return await scope.get(MoveSessionUseCase).run(request)
 
 
 def session_state(result):

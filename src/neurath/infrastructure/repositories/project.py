@@ -1,9 +1,9 @@
-"""프레임워크의 기본 CRUD를 재사용하고 프로젝트 위치 조회만 구현한다."""
+"""프로젝트와 소유 위치의 기본 Aggregate 저장 계약을 제공한다."""
 
 from typing import override
 
 from spakky.data.stereotype.repository import Repository
-from spakky.plugins.sqlalchemy.persistency.repository import AbstractGenericRepository
+from spakky.plugins.sqlalchemy.persistency.repository import AbstractAsyncGenericRepository
 from sqlalchemy import select
 
 from neurath.application.ports.repositories.project import IProjectRepository
@@ -12,20 +12,20 @@ from neurath.infrastructure.models.project import ProjectLocationModel, ProjectM
 
 
 @Repository()
-class ProjectRepository(AbstractGenericRepository[Project, str], IProjectRepository):
-    """기본 조회·저장·삭제는 상속하고 위치 소유 조회만 확장한다."""
+class SQLAlchemyProjectRepository(AbstractAsyncGenericRepository[Project, str], IProjectRepository):
+    """프로젝트의 위치 값들을 포함한 aggregate를 표준 SQLAlchemy 매핑·CRUD·낙관적 잠금으로 저장한다."""
 
     @override
-    def find_by_location(self, location: ProjectLocation) -> Project | None:
-        """위치 값을 소유하는 프로젝트 전체를 조회한다.
+    async def find_by_location(self, location: ProjectLocation) -> Project | None:
+        """위치 값의 현재 소유 프로젝트를 조회한다.
 
         Args:
-            location: 소유 프로젝트를 조회할 위치 값.
+            location: 도메인이 식별한 폴더 또는 Git 위치.
 
         Returns:
-            Project | None: 해당 위치의 소유자이며 없으면 None.
+            Project | None: 지정한 위치의 소유 프로젝트이며 등록된 위치가 없으면 None.
         """
-        record = self._session_manager.session.scalar(
+        record = await self._session_manager.session.scalar(
             select(ProjectModel)
             .join(ProjectModel.locations)
             .where(

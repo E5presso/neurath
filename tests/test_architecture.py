@@ -10,11 +10,11 @@ from neurath.application.ports.repositories.project import IProjectRepository
 from neurath.application.ports.repositories.request_source import IRequestSourceRepository
 from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.application.ports.repositories.task import ITaskRepository
-from neurath.application.ports.services.directory_observer import IDirectoryObserver
+from neurath.application.ports.services.directory_observer import IDirectoryObserverService
 from neurath.application.usecases.register_session import RegisterSessionUseCase
-from neurath.infrastructure.directory_observer import GitDirectoryObserver
-from neurath.infrastructure.repositories.project import ProjectRepository
-from neurath.infrastructure.repositories.session import SessionRepository
+from neurath.infrastructure.directory_observer import GitDirectoryObserverService
+from neurath.infrastructure.repositories.project import SQLAlchemyProjectRepository
+from neurath.infrastructure.repositories.session import SQLAlchemySessionRepository
 from tools.architecture import ArchitectureChecker, check_tree
 
 
@@ -31,15 +31,15 @@ class IProjectRepository(AbstractBase):
 ''',
         "neurath.infrastructure.base_repository": '''"""구조 계약을 검증하는 테스트 대상이다."""
 from neurath.application.ports.repositories.project import IProjectRepository as Contract
-class BaseRepository(Contract):
+class SQLAlchemyProjectRepository(Contract):
     """구조 계약을 검증하는 테스트 대상이다."""
     def get(self, project_id: str) -> str:
         """구조 계약을 검증하는 테스트 대상이다."""
         return project_id
 ''',
         "neurath.infrastructure.repositories.project": '''"""구조 계약을 검증하는 테스트 대상이다."""
-from neurath.infrastructure.base_repository import BaseRepository as Parent
-class ProjectRepository(Parent):
+from neurath.infrastructure.base_repository import SQLAlchemyProjectRepository as Parent
+class SQLAlchemyProjectRepository(Parent):
     """구조 계약을 검증하는 테스트 대상이다."""
 ''',
         "neurath.infrastructure.models.base": '''"""구조 계약을 검증하는 테스트 대상이다."""
@@ -75,13 +75,13 @@ def test_only_external_ports_are_nominal_and_abstract():
         ITaskRepository,
         IProjectRepository,
         ISessionRepository,
-        IDirectoryObserver,
+        IDirectoryObserverService,
     ):
         with pytest.raises(TypeError):
             interface()
-    assert issubclass(ProjectRepository, IProjectRepository)
-    assert issubclass(SessionRepository, ISessionRepository)
-    assert issubclass(GitDirectoryObserver, IDirectoryObserver)
+    assert issubclass(SQLAlchemyProjectRepository, IProjectRepository)
+    assert issubclass(SQLAlchemySessionRepository, ISessionRepository)
+    assert issubclass(GitDirectoryObserverService, IDirectoryObserverService)
     assert RegisterSessionUseCase.__abstractmethods__ == frozenset()
 
 
@@ -538,9 +538,8 @@ def test_registered_usecases_use_framework_contracts():
     from spakky.domain.application.command import (
         AbstractCommand,
         IAsyncCommandUseCase,
-        ICommandUseCase,
     )
-    from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase, IQueryUseCase
+    from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
 
     import neurath.application.usecases as package
 
@@ -552,11 +551,10 @@ def test_registered_usecases_use_framework_contracts():
                 continue
             if inspect.isabstract(handler):
                 continue
-            assert issubclass(
-                handler, (ICommandUseCase, IAsyncCommandUseCase, IQueryUseCase, IAsyncQueryUseCase)
-            )
+            assert issubclass(handler, (IAsyncCommandUseCase, IAsyncQueryUseCase))
+            assert inspect.iscoroutinefunction(handler.run)
             hints = get_type_hints(handler.run)
-            if issubclass(handler, (ICommandUseCase, IAsyncCommandUseCase)):
+            if issubclass(handler, IAsyncCommandUseCase):
                 assert issubclass(hints["command"], AbstractCommand)
             else:
                 assert issubclass(hints["query"], AbstractQuery)
@@ -574,7 +572,7 @@ def test_current_collection_ports_and_domain_state_types_match_the_reviewed_cont
     from neurath.domain.task_records import Outcome, TaskStatus
 
     for port in (IRequestSourceRepository, ITaskRepository):
-        assert get_origin(get_type_hints(port.list)["return"]) is Sequence
+        assert get_origin(get_type_hints(port.range)["return"]) is Sequence
     for state in (ProjectKind, SourceKind, Outcome, TaskStatus):
         assert issubclass(state, Enum)
 
@@ -605,6 +603,7 @@ def test_current_collection_ports_and_domain_state_types_match_the_reviewed_cont
         ("revise_workflow", "ReviseWorkflowUseCase", "ReviseWorkflowResult"),
         ("skip_phase", "SkipPhaseUseCase", "SkipPhaseResult"),
         ("execute_phase", "ExecutePhaseUseCase", "ExecutePhaseResult"),
+        ("receive_hook", "ReceiveHookUseCase", "ReceiveHookResult"),
     ],
 )
 def test_reviewed_case_specific_result_contract_is_colocated(
@@ -767,7 +766,7 @@ def magnitude(value: int) -> int:
 
 def test_checker_retains_all_independent_findings_after_guard_refactor():
     source = """
-import sqlalchemy
+import neurath.infrastructure.database
 from typing import Protocol
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.stereotype.repository import Repository
@@ -787,6 +786,323 @@ class IInvalid:
         "NOMINAL_PORT",
         "ABSTRACT_METHOD",
         "NOMINAL_IMPLEMENTATION",
+        "IMPLEMENTATION_NAME",
+        "USECASE_NAME",
         "FRAMEWORK_USECASE",
         "DECLARATIVE_ORM",
     }
+
+
+def role_sources(suffix, interface, implementation, *, aliased=False):
+    role = "services" if suffix == "Service" else "repositories"
+    contract = f"neurath.application.ports.{role}.probe"
+    interface_source = f"from abc import ABC, abstractmethod\nclass {interface}(ABC):\n @abstractmethod\n def probe(self): raise NotImplementedError\n"
+    if aliased:
+        base = f"from {contract} import {interface} as Contract\nclass GitProbeService(Contract):\n def probe(self): return 'observed'\n"
+        concrete = f"from neurath.infrastructure.base import GitProbeService as Parent\nclass {implementation}(Parent): pass\n"
+        return {
+            contract: interface_source,
+            "neurath.infrastructure.base": base,
+            "neurath.infrastructure.probe": concrete,
+        }
+    concrete = f"from {contract} import {interface} as Contract\nclass {implementation}(Contract):\n def probe(self): return 'observed'\n"
+    return {contract: interface_source, "neurath.infrastructure.probe": concrete}
+
+
+@pytest.mark.parametrize(
+    "suffix,interface,implementation,code",
+    [
+        ("Service", "IProbe", "GitProbe", "INTERFACE_NAME"),
+        ("Service", "ProbeService", "GitProbeService", "INTERFACE_NAME"),
+        ("Service", "IService", "GitService", "INTERFACE_NAME"),
+        ("Repository", "IProbe", "SQLAlchemyProbe", "INTERFACE_NAME"),
+        ("Repository", "ProbeRepository", "SQLAlchemyProbeRepository", "INTERFACE_NAME"),
+        ("Service", "IProbeService", "GitProbe", "IMPLEMENTATION_NAME"),
+        ("Service", "IProbeService", "ProbeService", "IMPLEMENTATION_NAME"),
+        ("Service", "IProbeService", "IProbeService", "IMPLEMENTATION_NAME"),
+        ("Service", "IProbeService", "DefaultProbeService", "IMPLEMENTATION_NAME"),
+        ("Service", "IProbeService", "GitOtherService", "IMPLEMENTATION_NAME"),
+        ("Repository", "IProbeRepository", "SQLAlchemyProbe", "IMPLEMENTATION_NAME"),
+        ("Repository", "IProbeRepository", "ProbeRepository", "IMPLEMENTATION_NAME"),
+        ("Repository", "IProbeRepository", "DefaultProbeRepository", "IMPLEMENTATION_NAME"),
+        ("Repository", "IProbeRepository", "SQLAlchemyOtherRepository", "IMPLEMENTATION_NAME"),
+    ],
+)
+def test_role_naming_rejects_missing_suffix_interface_prefix_and_technology(
+    suffix, interface, implementation, code
+):
+    errors = ArchitectureChecker(role_sources(suffix, interface, implementation)).check()
+    assert any(code in error for error in errors), errors
+
+
+@pytest.mark.parametrize(
+    "suffix,interface,implementation",
+    [
+        ("Service", "IProbeService", "GitProbeService"),
+        ("Service", "IProbeService", "SubprocessProbeService"),
+        ("Service", "IProbeService", "StderrProbeService"),
+        ("Service", "IProbeService", "PosixProbeService"),
+        ("Repository", "IProbeRepository", "SQLAlchemyProbeRepository"),
+    ],
+)
+def test_role_naming_accepts_new_contracts_without_class_allowlist(
+    suffix, interface, implementation
+):
+    assert ArchitectureChecker(role_sources(suffix, interface, implementation)).check() == []
+
+
+def test_role_naming_follows_aliases_and_indirect_inheritance_even_after_module_move():
+    good = role_sources("Service", "IProbeService", "GitProbeService", aliased=True)
+    assert ArchitectureChecker(good).check() == []
+    bad = role_sources("Service", "IProbeService", "ProbeService", aliased=True)
+    bad["neurath.other.probe"] = bad.pop("neurath.infrastructure.probe")
+    assert any("IMPLEMENTATION_NAME" in error for error in ArchitectureChecker(bad).check())
+
+
+def test_naming_gate_returns_failure_for_new_source_file(tmp_path):
+    import shutil
+
+    root = Path(__file__).resolve().parents[1]
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    shutil.copyfile(root / "tools/architecture.py", tools / "architecture.py")
+    sources = role_sources("Service", "IProbeService", "GitProbeService")
+    for module, source in sources.items():
+        target = tmp_path / "src" / Path(*module.split(".")).with_suffix(".py")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(source)
+    passed = subprocess.run(
+        [sys.executable, str(tools / "architecture.py")], capture_output=True, text=True
+    )
+    assert passed.returncode == 0, passed.stdout + passed.stderr
+    target = tmp_path / "src/neurath/infrastructure/new_service.py"
+    target.write_text(
+        "from neurath.application.ports.services.probe import IProbeService\nclass ProbeService(IProbeService):\n def probe(self): return None\n"
+    )
+    failed = subprocess.run(
+        [sys.executable, str(tools / "architecture.py")], capture_output=True, text=True
+    )
+    assert failed.returncode == 1
+    assert "new_service" in failed.stdout and "IMPLEMENTATION_NAME" in failed.stdout
+    assert "ARCHITECTURE_CHECK_OK" not in failed.stdout
+
+
+@pytest.mark.parametrize(
+    "base", ["ICommandUseCase", "IQueryUseCase", "IAsyncCommandUseCase", "IAsyncQueryUseCase"]
+)
+def test_usecase_suffix_is_required_without_technology_prefix(base):
+    package = "command" if "Command" in base else "query"
+    source = f"from spakky.domain.application.{package} import {base} as Contract\nclass CreateTask(Contract): pass\n"
+    errors = ArchitectureChecker({"neurath.application.usecases.create_task": source}).check()
+    assert any("USECASE_NAME" in error for error in errors)
+    fixed = source.replace("class CreateTask(", "class CreateTaskUseCase(")
+    assert ArchitectureChecker({"neurath.application.usecases.create_task": fixed}).check() == []
+
+
+def test_usecase_suffix_follows_decorator_alias_and_indirect_framework_contract():
+    source = "from spakky.core.stereotype.usecase import UseCase as Registered\n@Registered()\nclass CreateTask: pass\n"
+    errors = ArchitectureChecker({"neurath.application.usecases.create_task": source}).check()
+    assert any("USECASE_NAME" in error for error in errors)
+    sources = {
+        "neurath.application.base": "from spakky.domain.application.command import ICommandUseCase as Contract\nclass BaseUseCase(Contract): pass\n",
+        "neurath.application.usecases.create_task": "from neurath.application.base import BaseUseCase as Parent\nclass CreateTask(Parent): pass\n",
+    }
+    assert any("USECASE_NAME" in error for error in ArchitectureChecker(sources).check())
+    sources["neurath.application.usecases.create_task"] = sources[
+        "neurath.application.usecases.create_task"
+    ].replace("class CreateTask(", "class CreateTaskUseCase(")
+    assert ArchitectureChecker(sources).check() == []
+
+
+@pytest.mark.parametrize(
+    "module,source,code",
+    [
+        (
+            "neurath.infrastructure.hooks",
+            'from spakky.plugins.typer.stereotypes.cli_controller import CliController as CLI\n@CLI("hook")\nclass HookCliController: pass',
+            "CLI_BOUNDARY",
+        ),
+        (
+            "neurath.transport.cli.hooks",
+            "from neurath.infrastructure.providers import request_container",
+            "TRANSPORT_BOUNDARY",
+        ),
+        (
+            "neurath.transport.cli.hooks",
+            "import spakky.plugins.sqlalchemy.persistency.transaction",
+            "TRANSPORT_BOUNDARY",
+        ),
+        ("neurath.application.usecases.hook", "import typer", "APPLICATION_BOUNDARY"),
+        ("neurath.domain.hook", "import spakky.plugins.typer", "DOMAIN_BOUNDARY"),
+    ],
+)
+def test_cli_boundary_keeps_protocol_in_transport_and_composition_outside(module, source, code):
+    assert any(code in error for error in ArchitectureChecker({module: source}).check())
+
+
+def test_spakky_cli_controller_and_bootstrap_composition_are_allowed():
+    sources = {
+        "neurath.transport.cli.hooks": 'from spakky.plugins.typer.stereotypes.cli_controller import CliController\n@CliController("hook")\nclass HookCliController: pass',
+        "neurath.bootstrap": "from neurath.transport.cli.hooks import HookCliController\nfrom neurath.infrastructure.providers import request_container",
+    }
+    assert ArchitectureChecker(sources).check() == []
+
+
+def test_command_sqlalchemy_dependency_is_rejected_even_with_query_in_same_module():
+    sources = {
+        "neurath.application.usecases.mixed": """
+from spakky.domain.application.command import IAsyncCommandUseCase as Write
+from spakky.domain.application.query import IAsyncQueryUseCase as Read
+from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionManager as Database
+from sqlalchemy import select as lookup
+class ReadUseCase(Read):
+    async def run(self, query):
+        return lookup(1)
+class BaseWriteUseCase(Write):
+    pass
+class WriteUseCase(BaseWriteUseCase):
+    def __init__(self, database: Database):
+        self.database = database
+    async def run(self, command):
+        return await self.database.session.scalar(lookup(1))
+"""
+    }
+    errors = ArchitectureChecker(sources).check()
+    assert any("COMMAND_PERSISTENCE" in error for error in errors)
+    assert not any("APPLICATION_BOUNDARY" in error for error in errors)
+
+
+def test_query_sqlalchemy_read_is_allowed_but_command_module_import_is_rejected():
+    query = """
+from spakky.domain.application.query import IAsyncQueryUseCase
+from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionManager
+from sqlalchemy import select
+from neurath.infrastructure.models.task import TaskModel
+class ReadUseCase(IAsyncQueryUseCase):
+    def __init__(self, session: AsyncSessionManager):
+        self.session = session
+    async def run(self, query):
+        return await self.session.session.scalar(select(TaskModel))
+"""
+    assert ArchitectureChecker({"neurath.application.usecases.read": query}).check() == []
+    errors = ArchitectureChecker(
+        {"neurath.application.usecases.write": "import sqlalchemy"}
+    ).check()
+    assert any("APPLICATION_BOUNDARY" in error for error in errors)
+
+
+def test_event_adapter_rejects_work_service_dependency_through_alias_and_inheritance():
+    sources = {
+        "neurath.transport.events.base": """
+from spakky.event.stereotype.event_handler import EventHandler as Event
+@Event()
+class BaseHandler:
+    pass
+""",
+        "neurath.transport.events.runtime": """
+from neurath.transport.events.base import BaseHandler
+from neurath.application.ports.services.writer_observer import IWriterObserverService as Observer
+class RuntimeHandler(BaseHandler):
+    def __init__(self, observer: Observer | None):
+        self.observer = observer
+""",
+    }
+    errors = ArchitectureChecker(sources).check()
+    assert any("EVENT_HANDLER_DEPENDENCY" in error for error in errors)
+
+
+def test_event_adapter_accepts_a_usecase_dependency_without_service_naming_rules():
+    sources = {
+        "neurath.application.usecases.run": """
+from spakky.domain.application.command import IAsyncCommandUseCase as Command
+class RunUseCase(Command):
+    async def run(self, command):
+        pass
+""",
+        "neurath.transport.events.run": """
+from spakky.event.stereotype.event_handler import EventHandler as Event
+from neurath.application.usecases.run import RunUseCase as Run
+@Event()
+class RunHandler:
+    def __init__(self, operation: Run):
+        self.operation = operation
+    async def receive(self, event):
+        await self.operation.run(event)
+""",
+    }
+    assert ArchitectureChecker(sources).check() == []
+
+
+def test_event_adapter_settings_are_not_misclassified_as_work_services():
+    source = """
+from spakky.event.stereotype.event_handler import EventHandler
+@EventHandler()
+class Handler:
+    def __init__(self, label: str):
+        self.label = label
+"""
+    assert ArchitectureChecker({"neurath.transport.events.settings": source}).check() == []
+
+
+@pytest.mark.parametrize("method", ["find", "list"])
+def test_repository_lookups_name_their_criteria(method):
+    source = f"""from abc import ABC, abstractmethod
+from spakky.data.persistency.repository import IAsyncGenericRepository
+class ITaskRepository(IAsyncGenericRepository, ABC):
+    @abstractmethod
+    async def {method}(self, project_id: str):
+        raise NotImplementedError
+"""
+    key = "neurath.application.ports.repositories.task"
+    assert any("REPOSITORY_LOOKUP_NAME" in e for e in ArchitectureChecker({key: source}).check())
+    assert (
+        ArchitectureChecker(
+            {key: source.replace(f"def {method}", "def find_by_project_id")}
+        ).check()
+        == []
+    )
+
+
+def test_immutable_assignment_bypass_is_rejected_without_requiring_tuple_inputs():
+    source = """from spakky.core.common.mutability import immutable
+from collections.abc import Sequence
+@immutable
+class Value:
+    items: Sequence[str]
+    def __post_init__(self):
+        object.__setattr__(self, "items", tuple(self.items))
+"""
+    key = "neurath.domain.example"
+    assert any("IMMUTABLE_ASSIGNMENT" in e for e in ArchitectureChecker({key: source}).check())
+    assert ArchitectureChecker({key: source[: source.index("    def __post_init__")]}).check() == []
+
+
+def test_pyrefly_checks_hook_enum_and_read_only_sequence(tmp_path):
+    fixture = tmp_path / "contracts.py"
+    fixture.write_text("""from neurath.application.usecases.receive_hook import ReceiveHookCommand
+from neurath.domain.runtime_records import HookEvent
+from neurath.domain.task_records import SubmittedResult
+ReceiveHookCommand(provider="codex", host_session_id="id", working_directory="/tmp", event="Stop")
+value = SubmittedResult(summary="candidate", references=["evidence"])
+value.references.append("unexpected")
+""")
+    arguments = [
+        sys.executable,
+        "-m",
+        "pyrefly",
+        "check",
+        "--config",
+        str(Path(__file__).resolve().parents[1] / "pyproject.toml"),
+        str(fixture),
+    ]
+    result = subprocess.run(arguments, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "bad-argument-type" in result.stdout
+    assert "append" in result.stdout
+    fixture.write_text(
+        fixture.read_text()
+        .replace('event="Stop"', "event=HookEvent.STOP")
+        .replace('value.references.append("unexpected")', "tuple(value.references)")
+    )
+    result = subprocess.run(arguments, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr

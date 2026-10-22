@@ -2,7 +2,7 @@
 
 [Home](README.md) · [한국어](CONTRIBUTING.ko.md)
 
-The [core foundation](docs/en/core-foundation.md) and [task ledger](docs/en/task-ledger.md) describe current implementation and internal APIs. The [specification](docs/en/specification.md) defines product requirements. Public CLI, host hooks and installation are not yet available in this candidate.
+The [core foundation](docs/en/core-foundation.md) and [task ledger](docs/en/task-ledger.md) describe current implementation and internal APIs. The [specification](docs/en/specification.md) defines product requirements. This candidate provides asynchronous SQLite access and the hook CLI; remaining business CLI commands and installation wiring are subsequent work.
 
 ## Environment and checks
 
@@ -27,7 +27,7 @@ Type/docstring checks cover all production sources and development tools. Tests 
 
 - Put invariants and transitions in domain objects owning the relevant state and meaning. Use cases coordinate reads, domain calls and persistence; they may raise, propagate or translate domain exceptions.
 - Express ports through explicit `ABC`/`@abstractmethod` contracts and adapters through corresponding inheritance. Do not use Protocol.
-- Use cases implement Spakky `ICommandUseCase`/`IQueryUseCase` and `run(command/query)`. Inputs inherit `AbstractCommand`/`AbstractQuery`; colocate dedicated inputs and result DTOs with their use case.
+- Use cases implement Spakky `IAsyncCommandUseCase`/`IAsyncQueryUseCase` and `run(command/query)`. Inputs inherit `AbstractCommand`/`AbstractQuery`; colocate dedicated inputs and result DTOs with their use case.
 - Reuse Spakky domain bases, default repository CRUD/batches, declarative mapping/SchemaRegistry, constructor injection and request transactions. The core foundation describes current composition. Assess additional adapters/abstractions by responsibility and need.
 - Express read-only list contracts with `Sequence`. Use `Self` for classmethod construction/conversion preserving the invoking subclass. Ruff UP checks supported Python 3.14 syntax.
 - Use guard clauses and early returns for errors, inapplicable work and no-op paths so the normal flow stays shallow. Use continue/break in loops. Preserve validation, persistence, notification and transaction/finally cleanup order. Extract cohesive operations within the same responsibility.
@@ -49,3 +49,11 @@ Do not meet the threshold using omit settings, custom exclusions, `pragma: no co
 ## Documentation
 
 Keep public documents paired under `docs/en` and `docs/ko` with matching relative paths and equivalent scope. README and CONTRIBUTING also have English/Korean editions. Keep private paths and raw validation logs out of public documentation/packages. The [documentation index](docs/en/index.md) explains page responsibilities and separates implementation from product design.
+
+## Service and repository naming
+
+Production services end with `Service`; repositories end with `Repository`. Interfaces start with `I`, and concrete implementations replace that `I` with their actual technology. For example, `IDirectoryObserverService` is implemented by `GitDirectoryObserverService`, and `IProjectRepository` by `SQLAlchemyProjectRepository`.
+
+`tools/architecture.py` scans all source modules and resolves ports, registration decorators, aliases and indirect inheritance. Missing suffixes, missing interface `I`, and missing or mismatched technology prefixes fail shared pre-commit and required CI. Current technology prefixes are `Git`, `Subprocess`, `Stderr`, `Posix` and `SQLAlchemy`. Add the corresponding prefix and positive/negative regression fixtures when introducing another technology; individual implementation classes are not allowlisted.
+
+Use cases require only the `UseCase` suffix. Keep names such as `CreateTaskUseCase` without a technology prefix, and retain the existing Spakky `IAsyncCommandUseCase`/`IAsyncQueryUseCase` contracts instead of adding per-use-case interfaces for naming purposes. The same gate detects missing suffixes through decorators and direct or indirect inheritance.

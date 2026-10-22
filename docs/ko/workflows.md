@@ -2,7 +2,7 @@
 
 [문서 안내](index.md) · [English](../en/workflows.md)
 
-아래는 [제품 명세](specification.md)에 따른 계획된 흐름입니다. 현재 체크아웃의 공개 CLI·호스트 연동은 미구현이며, 지금 호출할 수 있는 내부 API는 [프로젝트·세션 기반](core-foundation.md)과 [태스크 원장](task-ledger.md)에 있습니다.
+아래는 [제품 명세](specification.md)에 따른 계획된 흐름입니다. 현재 체크아웃은 훅 CLI를 제공하고 나머지 업무 CLI·실설치 연동은 후속 범위이며, 지금 호출할 수 있는 내부 API는 [프로젝트·세션 기반](core-foundation.md)과 [태스크 원장](task-ledger.md)에 있습니다.
 
 ## 요청하고 진행 확인하기
 

@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from typing import override
 
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.command import AbstractCommand, ICommandUseCase
+from spakky.data.aspects.transactional import transactional
+from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.request_source import IRequestSourceRepository
 from neurath.application.ports.repositories.task import ITaskRepository
@@ -44,7 +45,7 @@ class InvalidateTaskResult:
 
 
 @UseCase()
-class InvalidateTaskUseCase(ICommandUseCase[InvalidateTaskCommand, InvalidateTaskResult]):
+class InvalidateTaskUseCase(IAsyncCommandUseCase[InvalidateTaskCommand, InvalidateTaskResult]):
     """현재 요구에 대한 정정으로 태스크를 invalidated 상태로 바꾼다.
 
     정정 출처를 새 요구 개정에 연결하고 현재 시도 연결을 해제하되 과거 이력은 보존한다.
@@ -62,8 +63,9 @@ class InvalidateTaskUseCase(ICommandUseCase[InvalidateTaskCommand, InvalidateTas
         self.tasks = tasks
         self.sources = sources
 
+    @transactional
     @override
-    def run(self, command: InvalidateTaskCommand) -> InvalidateTaskResult:
+    async def run(self, command: InvalidateTaskCommand) -> InvalidateTaskResult:
         """소유 범위와 revision을 확인하고 정정 출처·무효화 사유를 저장한다.
 
         Args:
@@ -72,8 +74,8 @@ class InvalidateTaskUseCase(ICommandUseCase[InvalidateTaskCommand, InvalidateTas
         Returns:
             InvalidateTaskResult: invalidated 상태와 정정 개정·사유가 기록된 태스크.
         """
-        task = self.tasks.get(command.task_id)
+        task = await self.tasks.get(command.task_id)
         task.require_scope(command.project_id, command.session_id)
         task.require_revision(command.expected_revision)
-        task.invalidate(self.sources.get(command.source_id), command.reason)
-        return InvalidateTaskResult(task=self.tasks.save(task))
+        task.invalidate((await self.sources.get(command.source_id)), command.reason)
+        return InvalidateTaskResult(task=(await self.tasks.save(task)))

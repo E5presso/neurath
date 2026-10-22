@@ -11,7 +11,7 @@ import pytest
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from spakky.plugins.sqlalchemy.orm.table import AbstractTable
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from neurath.domain.errors import StorageNotReady
 from neurath.infrastructure.database import (
@@ -43,82 +43,95 @@ def test_database_path_is_user_wide_and_relative_xdg_is_rejected(tmp_path, monke
         user_database_path()
 
 
-def test_missing_database_is_not_implicitly_created_and_initialize_is_idempotent(tmp_path):
+async def test_missing_database_is_not_implicitly_created_and_initialize_is_idempotent(tmp_path):
     database = tmp_path / "new.sqlite3"
     with pytest.raises(StorageNotReady):
-        get_session_context("missing", "missing", database_path=database)
+        (await get_session_context("missing", "missing", database_path=database))
     assert not database.exists()
-    initialize_database(database)
-    first = register_session(str(tmp_path), "codex", "native", database_path=database)
-    initialize_database(database)
+    (await initialize_database(database))
+    first = await register_session(str(tmp_path), "codex", "native", database_path=database)
+    (await initialize_database(database))
     assert session_state(
-        get_session_context(first.project.id, first.session.id, database_path=database)
+        await get_session_context(first.project.id, first.session.id, database_path=database)
     ) == session_state(first)
 
 
-def test_legacy_database_bytes_are_preserved_on_rejected_initialization(tmp_path):
+async def test_legacy_database_bytes_are_preserved_on_rejected_initialization(tmp_path):
     path = tmp_path / "legacy.sqlite3"
     with closing(sqlite3.connect(path)) as connection, connection:
-        connection.execute("CREATE TABLE task (source TEXT)")
-        connection.execute("INSERT INTO task VALUES ('unfinished original source')")
+        (connection.execute("CREATE TABLE task (source TEXT)"))
+        (connection.execute("INSERT INTO task VALUES ('unfinished original source')"))
     before = path.read_bytes()
     with pytest.raises(StorageNotReady, match="migration"):
-        initialize_database(path)
+        (await initialize_database(path))
     assert path.read_bytes() == before
 
 
-def test_original_schema_records_are_readable_and_updatable_without_data_conversion(tmp_path):
+async def test_original_schema_records_are_readable_and_updatable_without_data_conversion(tmp_path):
     path = tmp_path / "original.sqlite3"
     folder = tmp_path / "project"
     folder.mkdir()
     fixture = Path(__file__).parent / "fixtures" / "core_0001.sql"
     with closing(sqlite3.connect(path)) as connection, connection:
         connection.executescript(fixture.read_text())
-        connection.execute(
-            "INSERT INTO core_projects (id, root_path) VALUES ('original-project', ?)",
-            (str(folder),),
+        (
+            connection.execute(
+                "INSERT INTO core_projects (id, root_path) VALUES ('original-project', ?)",
+                (str(folder),),
+            )
         )
-        connection.execute(
-            "INSERT INTO core_project_locations VALUES ('folder', ?, 'original-project')",
-            (str(folder),),
+        (
+            connection.execute(
+                "INSERT INTO core_project_locations VALUES ('folder', ?, 'original-project')",
+                (str(folder),),
+            )
         )
-        connection.execute(
-            "INSERT INTO core_sessions (id, project_id, provider, host_session_id, working_directory, revision) VALUES ('original-session', 'original-project', 'codex', 'native', ?, 7)",
-            (str(folder),),
+        (
+            connection.execute(
+                "INSERT INTO core_sessions (id, project_id, provider, host_session_id, working_directory, revision) VALUES ('original-session', 'original-project', 'codex', 'native', ?, 7)",
+                (str(folder),),
+            )
         )
     database = path
     before = path.read_bytes()
     with pytest.raises(StorageNotReady):
-        get_session_context("original-project", "original-session", database_path=path)
+        (await get_session_context("original-project", "original-session", database_path=path))
     assert path.read_bytes() == before
-    initialize_database(database)
-    original = get_session_context("original-project", "original-session", database_path=path)
+    (await initialize_database(database))
+    original = await get_session_context("original-project", "original-session", database_path=path)
     assert original.session.revision == 7
     initialize_git(folder)
     child = folder / "child"
     child.mkdir()
     assert session_state(
-        register_session(str(folder), "codex", "native", database_path=path)
+        await register_session(str(folder), "codex", "native", database_path=path)
     ) == session_state(original)
-    changed = move_session(
+    changed = await move_session(
         original.project.id, original.session.id, str(child), 7, database_path=path
     )
     assert changed.session.id == "original-session"
     assert changed.session.revision == 8
     engine = create_database_engine(database, write=False)
     try:
-        with engine.connect() as connection:
-            context = MigrationContext.configure(
-                connection, opts={"version_table": "core_schema_revision"}
+        async with engine.connect() as connection:
+            differences = await connection.run_sync(
+                lambda sync_connection: compare_metadata(
+                    MigrationContext.configure(
+                        sync_connection, opts={"version_table": "core_schema_revision"}
+                    ),
+                    AbstractTable.metadata,
+                )
             )
-            assert compare_metadata(context, AbstractTable.metadata) == []
+            assert differences == []
     finally:
-        engine.dispose()
+        (await engine.dispose())
 
 
-def test_initialization_is_serialized_between_processes_and_unknown_revision_is_rejected(tmp_path):
+async def test_initialization_is_serialized_between_processes_and_unknown_revision_is_rejected(
+    tmp_path,
+):
     path = tmp_path / "concurrent.sqlite3"
-    script = "from neurath.infrastructure.database import initialize_database; from pathlib import Path; import sys; initialize_database(Path(sys.argv[1]))"
+    script = "from neurath.infrastructure.database import initialize_database; from pathlib import Path; import sys, asyncio; asyncio.run(initialize_database(Path(sys.argv[1])))"
 
     def initialize(_):
         subprocess.run([sys.executable, "-c", script, str(path)], check=True, capture_output=True)
@@ -126,27 +139,27 @@ def test_initialization_is_serialized_between_processes_and_unknown_revision_is_
     with ThreadPoolExecutor(max_workers=3) as pool:
         list(pool.map(initialize, range(3)))
     with closing(sqlite3.connect(path)) as connection, connection:
-        connection.execute("UPDATE core_schema_revision SET version_num='future'")
+        (connection.execute("UPDATE core_schema_revision SET version_num='future'"))
     before = path.read_bytes()
     with pytest.raises(StorageNotReady, match="version"):
-        get_session_context("project", "session", database_path=path)
+        (await get_session_context("project", "session", database_path=path))
     assert path.read_bytes() == before
 
 
-def test_existing_empty_file_requires_initialization(tmp_path):
+async def test_existing_empty_file_requires_initialization(tmp_path):
     path = tmp_path / "empty.sqlite3"
     path.touch()
     database = path
     engine = create_database_engine(database, write=False)
     try:
-        with Session(engine) as session, session.begin():
+        async with AsyncSession(engine) as session, session.begin():
             with pytest.raises(StorageNotReady, match="Schema missing"):
-                verify_schema(session.connection())
+                await (await session.connection()).run_sync(verify_schema)
     finally:
-        engine.dispose()
+        (await engine.dispose())
 
 
-def test_framework_migration_preserves_legacy_values_and_marks_unknown_metadata(tmp_path):
+async def test_framework_migration_preserves_legacy_values_and_marks_unknown_metadata(tmp_path):
     from datetime import UTC, datetime
     from uuid import UUID
 
@@ -158,25 +171,35 @@ def test_framework_migration_preserves_legacy_values_and_marks_unknown_metadata(
     fixture = Path(__file__).parent / "fixtures" / "core_0001.sql"
     with closing(sqlite3.connect(path)) as connection, connection:
         connection.executescript(fixture.read_text())
-        connection.execute(
-            "INSERT INTO core_projects (id, root_path) VALUES ('retained', '/legacy')"
+        (
+            connection.execute(
+                "INSERT INTO core_projects (id, root_path) VALUES ('retained', '/legacy')"
+            )
         )
-        connection.execute(
-            "INSERT INTO core_project_locations VALUES ('folder', '/legacy', 'retained')"
+        (
+            connection.execute(
+                "INSERT INTO core_project_locations VALUES ('folder', '/legacy', 'retained')"
+            )
         )
-        connection.execute(
-            "INSERT INTO core_sessions (id, project_id, provider, host_session_id, working_directory, revision) VALUES ('native', 'retained', 'codex', 'original', '/legacy/sub', 17)"
+        (
+            connection.execute(
+                "INSERT INTO core_sessions (id, project_id, provider, host_session_id, working_directory, revision) VALUES ('native', 'retained', 'codex', 'original', '/legacy/sub', 17)"
+            )
         )
-        connection.execute(
-            "CREATE TABLE dependent_fixture (project_id TEXT REFERENCES core_projects(id), source TEXT)"
+        (
+            connection.execute(
+                "CREATE TABLE dependent_fixture (project_id TEXT REFERENCES core_projects(id), source TEXT)"
+            )
         )
-        connection.execute(
-            "INSERT INTO dependent_fixture VALUES ('retained', 'unfinished original source')"
+        (
+            connection.execute(
+                "INSERT INTO dependent_fixture VALUES ('retained', 'unfinished original source')"
+            )
         )
-    initialize_database(path)
-    with storage_scope(path, write=False) as scope:
-        project = scope.get(IProjectRepository).get("retained")
-        session = scope.get(ISessionRepository).get("native")
+    (await initialize_database(path))
+    async with storage_scope(path, write=False) as scope:
+        project = await scope.get(IProjectRepository).get("retained")
+        session = await scope.get(ISessionRepository).get("native")
         assert project.uid == "retained" and project.root_path == "/legacy"
         assert project.locations[0].path == "/legacy"
         assert session.project_id == "retained" and session.revision == 17
@@ -186,24 +209,28 @@ def test_framework_migration_preserves_legacy_values_and_marks_unknown_metadata(
             assert entity.created_at == datetime(1970, 1, 1, tzinfo=UTC)
             assert entity.updated_at == entity.created_at
     before = path.read_bytes()
-    initialize_database(path)
+    (await initialize_database(path))
     assert path.read_bytes() == before
     with closing(sqlite3.connect(path)) as connection:
-        assert connection.execute("SELECT * FROM dependent_fixture").fetchall() == [
+        assert (connection.execute("SELECT * FROM dependent_fixture")).fetchall() == [
             ("retained", "unfinished original source")
         ]
-        assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+        assert (connection.execute("PRAGMA foreign_key_check")).fetchall() == []
 
 
-def test_failed_framework_migration_rolls_back_schema_data_and_revision(tmp_path, monkeypatch):
+async def test_failed_framework_migration_rolls_back_schema_data_and_revision(
+    tmp_path, monkeypatch
+):
     from neurath.infrastructure import database as database_module
 
     path = tmp_path / "rollback.sqlite3"
     fixture = Path(__file__).parent / "fixtures" / "core_0001.sql"
     with closing(sqlite3.connect(path)) as connection, connection:
         connection.executescript(fixture.read_text())
-        connection.execute(
-            "INSERT INTO core_projects (id, root_path) VALUES ('retained', '/legacy')"
+        (
+            connection.execute(
+                "INSERT INTO core_projects (id, root_path) VALUES ('retained', '/legacy')"
+            )
         )
     before = path.read_bytes()
     original_upgrade = database_module.command.upgrade
@@ -214,16 +241,16 @@ def test_failed_framework_migration_rolls_back_schema_data_and_revision(tmp_path
 
     monkeypatch.setattr(database_module.command, "upgrade", fail_after_upgrade)
     with pytest.raises(RuntimeError, match="after schema migration"):
-        initialize_database(path)
+        (await initialize_database(path))
     assert path.read_bytes() == before
     with closing(sqlite3.connect(path)) as connection:
-        assert connection.execute("SELECT * FROM core_projects").fetchall() == [
+        assert (connection.execute("SELECT * FROM core_projects")).fetchall() == [
             ("retained", "/legacy")
         ]
-        assert connection.execute("SELECT version_num FROM core_schema_revision").fetchone() == (
+        assert (connection.execute("SELECT version_num FROM core_schema_revision")).fetchone() == (
             "core_0001",
         )
-        assert [row[1] for row in connection.execute("PRAGMA table_info(core_projects)")] == [
+        assert [row[1] for row in (connection.execute("PRAGMA table_info(core_projects)"))] == [
             "id",
             "root_path",
         ]
@@ -238,35 +265,42 @@ def migration_config(connection):
     return config
 
 
-def test_metadata_downgrade_preserves_original_records_and_can_upgrade(database, repository):
+async def test_metadata_downgrade_preserves_original_records_and_can_upgrade(database, repository):
     from alembic import command
     from sqlalchemy import text
 
-    original = register_session(str(repository), "codex", "retained", database_path=database)
+    original = await register_session(str(repository), "codex", "retained", database_path=database)
     with closing(sqlite3.connect(database)) as connection, connection:
-        connection.execute(
-            "CREATE TABLE dependent_fixture (project_id TEXT REFERENCES core_projects(id), source TEXT)"
+        (
+            connection.execute(
+                "CREATE TABLE dependent_fixture (project_id TEXT REFERENCES core_projects(id), source TEXT)"
+            )
         )
-        connection.execute(
-            "INSERT INTO dependent_fixture VALUES (?, 'unfinished original source')",
-            (original.project.id,),
+        (
+            connection.execute(
+                "INSERT INTO dependent_fixture VALUES (?, 'unfinished original source')",
+                (original.project.id,),
+            )
         )
     engine = create_database_engine(database, write=True)
     try:
-        with engine.begin() as connection:
-            command.downgrade(migration_config(connection), "core_0001")
-        with engine.connect() as connection:
-            assert (
-                connection.execute(
-                    text("SELECT version_num FROM core_schema_revision")
-                ).scalar_one()
-                == "core_0001"
+        async with engine.begin() as connection:
+            await connection.run_sync(
+                lambda sync_connection: command.downgrade(
+                    migration_config(sync_connection), "core_0001"
+                )
             )
+        async with engine.connect() as connection:
+            assert (
+                await connection.execute(text("SELECT version_num FROM core_schema_revision"))
+            ).scalar_one() == "core_0001"
             assert [
-                row[1] for row in connection.exec_driver_sql("PRAGMA table_info(core_projects)")
+                row[1]
+                for row in (await connection.exec_driver_sql("PRAGMA table_info(core_projects)"))
             ] == ["id", "root_path"]
             assert [
-                row[1] for row in connection.exec_driver_sql("PRAGMA table_info(core_sessions)")
+                row[1]
+                for row in (await connection.exec_driver_sql("PRAGMA table_info(core_sessions)"))
             ] == [
                 "id",
                 "project_id",
@@ -275,56 +309,61 @@ def test_metadata_downgrade_preserves_original_records_and_can_upgrade(database,
                 "working_directory",
                 "revision",
             ]
-            assert connection.execute(
-                text("SELECT id, project_id, host_session_id, revision FROM core_sessions")
+            assert (
+                await connection.execute(
+                    text("SELECT id, project_id, host_session_id, revision FROM core_sessions")
+                )
             ).one() == (original.session.id, original.project.id, "retained", 1)
-            assert connection.execute(text("SELECT * FROM dependent_fixture")).one() == (
+            assert (await connection.execute(text("SELECT * FROM dependent_fixture"))).one() == (
                 original.project.id,
                 "unfinished original source",
             )
-            assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
+            assert (await connection.exec_driver_sql("PRAGMA foreign_key_check")).all() == []
             assert (
-                connection.execute(
+                await connection.execute(
                     text("SELECT name FROM sqlite_master WHERE type='trigger'")
-                ).all()
-                == []
-            )
+                )
+            ).all() == []
     finally:
-        engine.dispose()
-    initialize_database(database)
+        (await engine.dispose())
+    (await initialize_database(database))
     assert session_state(
-        get_session_context(original.project.id, original.session.id, database_path=database)
+        await get_session_context(original.project.id, original.session.id, database_path=database)
     ) == session_state(original)
     with closing(sqlite3.connect(database)) as connection:
-        assert connection.execute(
-            "SELECT name FROM sqlite_master WHERE type='trigger'"
+        assert (
+            connection.execute("SELECT name FROM sqlite_master WHERE type='trigger'")
         ).fetchall() == [("core_location_owner_immutable",)]
 
 
-def test_destructive_downgrade_is_rejected_and_rolls_back_intermediate_metadata_removal(
+async def test_destructive_downgrade_is_rejected_and_rolls_back_intermediate_metadata_removal(
     database, repository
 ):
     from alembic import command
 
-    original = register_session(str(repository), "codex", "retained", database_path=database)
+    original = await register_session(str(repository), "codex", "retained", database_path=database)
     before = database.read_bytes()
     engine = create_database_engine(database, write=True)
     try:
         with pytest.raises(RuntimeError, match="Destructive core downgrade is unsupported"):
-            with engine.begin() as connection:
-                command.downgrade(migration_config(connection), "base")
+            async with engine.begin() as connection:
+                await connection.run_sync(
+                    lambda sync_connection: command.downgrade(
+                        migration_config(sync_connection), "base"
+                    )
+                )
     finally:
-        engine.dispose()
+        (await engine.dispose())
     assert database.read_bytes() == before
     assert session_state(
-        get_session_context(original.project.id, original.session.id, database_path=database)
+        await get_session_context(original.project.id, original.session.id, database_path=database)
     ) == session_state(original)
     with closing(sqlite3.connect(database)) as connection:
-        assert connection.execute("SELECT version_num FROM core_schema_revision").fetchone() == (
-            "core_0004",
+        assert (connection.execute("SELECT version_num FROM core_schema_revision")).fetchone() == (
+            "core_0005",
         )
-        assert connection.execute(
-            "SELECT name FROM sqlite_master WHERE type='trigger'"
+        assert (
+            connection.execute("SELECT name FROM sqlite_master WHERE type='trigger'")
         ).fetchall() == [("core_location_owner_immutable",)]
 
 
@@ -340,7 +379,7 @@ def test_migration_rejects_non_connection_input_before_touching_database(
     assert database.read_bytes() == before
 
 
-def test_alembic_files_alone_define_the_deployed_schema_head(
+async def test_alembic_files_alone_define_the_deployed_schema_head(
     database, repository, tmp_path, monkeypatch
 ):
     from shutil import copytree
@@ -349,7 +388,7 @@ def test_alembic_files_alone_define_the_deployed_schema_head(
 
     import neurath.infrastructure.migrations as migrations
 
-    first = register_session(str(repository), "codex", "native", database_path=database)
+    first = await register_session(str(repository), "codex", "native", database_path=database)
     scripts = tmp_path / "deployment-migrations"
     copytree(Path(migrations.__file__).parent, scripts)
     deployed_head = ScriptDirectory(str(scripts)).get_current_head()
@@ -372,23 +411,23 @@ def downgrade():
     )
     before = database.read_bytes()
     with pytest.raises(StorageNotReady, match="version differs"):
-        get_session_context(first.project.id, first.session.id, database_path=database)
+        (await get_session_context(first.project.id, first.session.id, database_path=database))
     assert database.read_bytes() == before
-    initialize_database(database)
+    (await initialize_database(database))
     assert session_state(
-        get_session_context(first.project.id, first.session.id, database_path=database)
+        await get_session_context(first.project.id, first.session.id, database_path=database)
     ) == session_state(first)
     with closing(sqlite3.connect(database)) as connection:
-        assert connection.execute("SELECT version_num FROM core_schema_revision").fetchone() == (
+        assert (connection.execute("SELECT version_num FROM core_schema_revision")).fetchone() == (
             "review_probe",
         )
-        assert connection.execute("SELECT COUNT(*) FROM review_probe").fetchone() == (0,)
+        assert (connection.execute("SELECT COUNT(*) FROM review_probe")).fetchone() == (0,)
 
 
-def test_ordinary_request_checks_missing_schema_before_reading_entities(tmp_path):
+async def test_ordinary_request_checks_missing_schema_before_reading_entities(tmp_path):
     path = tmp_path / "uninitialized.sqlite3"
     path.touch()
     before = path.read_bytes()
     with pytest.raises(StorageNotReady, match="Schema missing"):
-        get_session_context("project", "session", database_path=path)
+        (await get_session_context("project", "session", database_path=path))
     assert path.read_bytes() == before

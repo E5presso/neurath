@@ -2,7 +2,7 @@
 
 [Documentation](index.md) · [Execution architecture](architecture.md) · [한국어](../ko/workflow-runner.md)
 
-#141 provides internal Python APIs connecting selected skill definitions and phase execution to the task ledger. It includes a real local-process adapter; public CLI, native hooks and provider delegation remain subsequent work.
+#141 provides internal Python APIs connecting selected skill definitions and phase execution to the task ledger. It includes a real local-process adapter; the hook CLI is provided by #142; business CLI, provider delegation and installed host wiring remain subsequent work.
 
 ## Definitions and outcomes
 
@@ -26,7 +26,7 @@ Each use-case module defines its own Command/Query and Result.
 | ReviseWorkflow | Attach a revised definition to current task requirements, retaining old definitions/failures and unaffected results |
 | SkipPhase | Record a conditional skip of the current optional phase |
 
-ExecutePhase owns its two storage boundaries through framework `AbstractTransaction`; **invoke it without an enclosing transaction.** Other use cases run inside the request's standard Transaction. The domain owns transitions; the use case coordinates execution, lookup and persistence.
+Database work uses `@transactional`. After ExecutePhase commits its attempt and `PhaseExecutionRequested`, the event adapter invokes RunPhase. RunPhase performs external execution/reconciliation and publishes `PhaseExecutionObserved`; the adapter then invokes ReportPhase to persist the result. A newly recorded external wait emits `PhaseWaitingRecorded` after commit and NotifyPhaseWait sends the notice. Adapters only map events to use-case inputs and invoke them; they do not call execution, storage or notification services directly. ExecutePhase returns a reservation snapshot; GetWorkflow provides the actual outcome.
 
 This example operates on an already stored task. It does not recreate the request, and a completed run is distinct from a successful task-outcome report.
 
@@ -34,15 +34,14 @@ This example operates on an already stored task. It does not recreate the reques
 from pathlib import Path
 import sys
 
-from spakky.plugins.sqlalchemy.persistency.transaction import Transaction
 from neurath.application.usecases.get_task import GetTaskQuery, GetTaskUseCase
 from neurath.application.usecases.start_workflow import StartWorkflowCommand, StartWorkflowUseCase
 from neurath.application.usecases.execute_phase import ExecutePhaseCommand, ExecutePhaseResult, ExecutePhaseUseCase
 from neurath.domain.workflow_records import PhaseDefinition, WorkflowDefinition
-from neurath.infrastructure.providers import DatabaseSettings, request_container
+from spakky.core.pod.interfaces.container import IContainer
 
 
-def execute_check(database: Path, project_id: str, session_id: str,
+async def execute_check(scope: IContainer, project_id: str, session_id: str,
                   task_id: str, directory: Path, target_revision: str) -> ExecutePhaseResult:
     phase = PhaseDefinition(
         key="check", purpose="프로그램 정상 종료 확인",
@@ -52,22 +51,20 @@ def execute_check(database: Path, project_id: str, session_id: str,
     definition = WorkflowDefinition(
         skill="qa", version="example-1", phases=(phase,), inputs=(),
     )
-    with request_container(DatabaseSettings(database, write=True)) as scope:
-        with scope.get(Transaction):
-            task = scope.get(GetTaskUseCase).run(
-                GetTaskQuery(project_id, session_id, task_id)
-            ).task
-            flow = scope.get(StartWorkflowUseCase).run(
-                StartWorkflowCommand(project_id, session_id, task_id, task.revision, definition)
-            ).run
-        return scope.get(ExecutePhaseUseCase).run(
-            ExecutePhaseCommand(project_id, session_id, flow.uid, flow.revision)
-        )
+    task = (await scope.get(GetTaskUseCase).run(
+        GetTaskQuery(project_id, session_id, task_id)
+    )).task
+    flow = (await scope.get(StartWorkflowUseCase).run(
+        StartWorkflowCommand(project_id, session_id, task_id, task.revision, definition)
+    )).run
+    return await scope.get(ExecutePhaseUseCase).run(
+        ExecutePhaseCommand(project_id, session_id, flow.uid, flow.revision)
+    )
 ```
 
 ## Execution, recovery and task state
 
-The default `SubprocessPhaseExecutor` runs a POSIX process group. It observes failure exit codes, timeout and interrupt signals, then terminates/reaps the group. It continuously drains the pipe while retaining only the configured byte limit in memory. It automatically satisfies only exit:0. Additional required checks leave even a successful process outcome waiting for a separate observation/review report.
+The default `SubprocessPhaseExecutorService` runs a POSIX process group. It observes failure exit codes, timeout and interrupt signals, then terminates/reaps the group. It continuously drains the pipe while retaining only the configured byte limit in memory. It automatically satisfies only exit:0. Additional required checks leave even a successful process outcome waiting for a separate observation/review report.
 
 External execution uses the run ID and attempt number. Resume performs lookup first and resubmits only when the executor guarantees deduplication for that same ID. The local-process adapter cannot guarantee post-restart lookup/deduplication. It retains the same attempt as waiting and reports the reason to stderr, without repeating execution/notification for unchanged uncertainty or claiming native UI receipt.
 

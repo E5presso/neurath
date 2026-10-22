@@ -51,7 +51,7 @@ CLI는 에이전트가 직접 전달해야 하는 의도 또는 직접 조회할
 
 ## 3. CLI 전용 인터페이스
 
-**기술 스택은 Python + Typer입니다.** `neurath` 진입점과 업무·관리 명령을 Typer 애플리케이션으로 정의합니다. Python 타입 힌트와 Typer의 명령·인자·옵션·도움말 정의를 사용하고, 실제 도메인 동작은 기존 Application 유스케이스에 위임합니다. Typer 의존성은 CLI 전송 계층에 두며 Domain에 넣지 않습니다. [공식 Typer 문서](https://typer.tiangolo.com/).
+**기술 스택은 Python + spakky-typer (Typer)입니다.** `neurath` 진입점과 업무·관리 명령을 Typer 애플리케이션으로 정의합니다. Python 타입 힌트와 Typer의 명령·인자·옵션·도움말 정의를 사용하고, 실제 도메인 동작은 기존 Application 유스케이스에 위임합니다. Typer 의존성은 CLI 전송 계층에 두며 Domain에 넣지 않습니다. [공식 Typer 문서](https://typer.tiangolo.com/).
 
 업무 명령 이름은 **동사-목적어** 형식의 kebab-case입니다. 스킬은 동작 이름에 kebab-case를 사용하며 `autopilot`, `qa`는 확립된 절차 이름을 유지합니다.
 

@@ -5,11 +5,14 @@ from dataclasses import dataclass
 from typing import override
 
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.query import AbstractQuery, IQueryUseCase
+from spakky.data.aspects.transactional import transactional
+from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
+from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionManager
+from sqlalchemy import select
 
-from neurath.application.ports.repositories.request_source import IRequestSourceRepository
 from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.domain.aggregates.request_source import RequestSource
+from neurath.infrastructure.models.request_source import RequestSourceModel
 
 
 @dataclass(frozen=True)
@@ -37,25 +40,30 @@ class GetSourcesResult:
 
 
 @UseCase()
-class GetSourcesUseCase(IQueryUseCase[GetSourcesQuery, GetSourcesResult]):
+class GetSourcesUseCase(IAsyncQueryUseCase[GetSourcesQuery, GetSourcesResult]):
     """호출 세션의 프로젝트를 확인한 뒤 프로젝트 전체 출처를 조회한다.
 
     다른 세션이 기록한 출처도 포함하므로 기존 원문을 재사용하고 정정 계보를
     찾을 수 있다. 정정 관계는 각 출처의 corrects_id에 남으며 새 요구를 만들지 않는다.
     """
 
-    def __init__(self, sessions: ISessionRepository, sources: IRequestSourceRepository) -> None:
+    def __init__(
+        self,
+        session_manager: AsyncSessionManager,
+        sessions: ISessionRepository,
+    ) -> None:
         """호출 세션의 범위와 프로젝트 원문 목록을 읽을 저장소를 받는다.
 
         Args:
+            session_manager: 조건 조회를 현재 트랜잭션의 SQLAlchemy 세션으로 수행한다.
             sessions: 호출 세션의 프로젝트 소속을 확인한다.
-            sources: 기록한 세션에 관계없이 프로젝트의 모든 출처를 조회한다.
         """
+        self.session_manager = session_manager
         self.sessions = sessions
-        self.sources = sources
 
+    @transactional
     @override
-    def run(self, query: GetSourcesQuery) -> GetSourcesResult:
+    async def run(self, query: GetSourcesQuery) -> GetSourcesResult:
         """세션의 프로젝트 소속을 확인하고 해당 프로젝트의 모든 출처를 반환한다.
 
         Args:
@@ -64,5 +72,12 @@ class GetSourcesUseCase(IQueryUseCase[GetSourcesQuery, GetSourcesResult]):
         Returns:
             GetSourcesResult: 최초 기록 세션에 관계없이 프로젝트에 보존된 출처 목록.
         """
-        self.sessions.get(query.session_id).require_project(query.project_id)
-        return GetSourcesResult(sources=self.sources.list(query.project_id))
+        (await self.sessions.get(query.session_id)).require_project(query.project_id)
+        records = (
+            await self.session_manager.session.scalars(
+                select(RequestSourceModel)
+                .where(RequestSourceModel.project_id == query.project_id)
+                .order_by(RequestSourceModel.created_at, RequestSourceModel.id)
+            )
+        ).all()
+        return GetSourcesResult(sources=tuple(record.to_domain() for record in records))

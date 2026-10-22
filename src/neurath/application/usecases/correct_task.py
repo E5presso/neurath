@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from typing import override
 
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.command import AbstractCommand, ICommandUseCase
+from spakky.data.aspects.transactional import transactional
+from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.request_source import IRequestSourceRepository
 from neurath.application.ports.repositories.task import ITaskRepository
@@ -49,7 +50,7 @@ class CorrectTaskResult:
 
 
 @UseCase()
-class CorrectTaskUseCase(ICommandUseCase[CorrectTaskCommand, CorrectTaskResult]):
+class CorrectTaskUseCase(IAsyncCommandUseCase[CorrectTaskCommand, CorrectTaskResult]):
     """현재 요구를 가리키는 정정 출처로 태스크의 지정한 필드만 변경한다.
 
     값이 달라지면 요구 개정을 추가하고 pending으로 되돌리며 과거 시도는 보존한다.
@@ -57,7 +58,11 @@ class CorrectTaskUseCase(ICommandUseCase[CorrectTaskCommand, CorrectTaskResult])
     다른 프로젝트의 출처, 현재 요구와 관계없는 정정, 잘못된 의존은 수용하지 않는다.
     """
 
-    def __init__(self, tasks: ITaskRepository, sources: IRequestSourceRepository) -> None:
+    def __init__(
+        self,
+        tasks: ITaskRepository,
+        sources: IRequestSourceRepository,
+    ) -> None:
         """정정할 태스크·의존 그래프와 정정 출처를 읽을 저장소를 받는다.
 
         Args:
@@ -67,8 +72,9 @@ class CorrectTaskUseCase(ICommandUseCase[CorrectTaskCommand, CorrectTaskResult])
         self.tasks = tasks
         self.sources = sources
 
+    @transactional
     @override
-    def run(self, command: CorrectTaskCommand) -> CorrectTaskResult:
+    async def run(self, command: CorrectTaskCommand) -> CorrectTaskResult:
         """소유 범위·저장 revision·의존을 확인하고 정정한 태스크를 저장한다.
 
         Args:
@@ -77,14 +83,17 @@ class CorrectTaskUseCase(ICommandUseCase[CorrectTaskCommand, CorrectTaskResult])
         Returns:
             CorrectTaskResult: 새 요구 개정 또는 변경 없는 기존 요구를 가진 태스크.
         """
-        task = self.tasks.get(command.task_id)
+        task = await self.tasks.get(command.task_id)
         task.require_scope(command.project_id, command.session_id)
         task.require_revision(command.expected_revision)
-        task.validate_dependencies(self.tasks.list(command.project_id), command.dependencies)
+        task.validate_dependencies(
+            (await self.tasks.find_by_project_id(command.project_id)),
+            command.dependencies,
+        )
         task.correct(
-            self.sources.get(command.source_id),
+            (await self.sources.get(command.source_id)),
             command.title,
             command.required_result,
             command.dependencies,
         )
-        return CorrectTaskResult(task=self.tasks.save(task))
+        return CorrectTaskResult(task=(await self.tasks.save(task)))

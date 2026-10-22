@@ -2,7 +2,7 @@
 
 [문서 안내](index.md) · [실행 구조](architecture.md) · [English](../en/workflow-runner.md)
 
-#141은 선택한 스킬 정의와 단계 실행을 태스크 원장에 연결하는 내부 Python API입니다. 실제 로컬 프로세스 어댑터를 제공하며, 공개 CLI·네이티브 훅·provider 위임 연결은 후속 범위입니다.
+#141은 선택한 스킬 정의와 단계 실행을 태스크 원장에 연결하는 내부 Python API입니다. 실제 로컬 프로세스 어댑터를 제공하며, 훅 CLI는 #142에서 제공합니다. 업무 CLI·provider 위임·실설치 연결은 후속 범위입니다.
 
 ## 정의와 결과
 
@@ -26,7 +26,7 @@
 | ReviseWorkflow | 현재 태스크 요구에 수정한 정의 연결. 이전 정의·실패·영향 없는 결과 보존 |
 | SkipPhase | 현재 선택 단계의 조건부 생략 기록 |
 
-ExecutePhase는 프레임워크 `AbstractTransaction`으로 두 저장 구간을 직접 관리하므로 **바깥 트랜잭션 없이 호출합니다.** 나머지 유스케이스는 기존 요청의 표준 Transaction 안에서 호출합니다. 업무 상태 전이는 도메인에, 실행·조회·저장 구간의 조정은 유스케이스에 있습니다.
+DB 작업은 `@transactional`을 사용합니다. ExecutePhase가 시도와 `PhaseExecutionRequested`를 커밋하면 이벤트 어댑터가 RunPhase를 호출합니다. RunPhase가 외부 실행·복구를 수행하고 `PhaseExecutionObserved`를 발행하면, 어댑터가 ReportPhase를 호출해 결과를 저장합니다. 새 외부 대기는 저장 커밋 후 `PhaseWaitingRecorded`를 통해 NotifyPhaseWait가 안내합니다. 어댑터는 이벤트 변환과 유스케이스 호출만 수행하며 실행·저장·알림 서비스를 직접 호출하지 않습니다. ExecutePhase의 반환값은 예약 스냅샷이며 실제 결과는 GetWorkflow로 확인합니다.
 
 아래 예제는 이미 저장된 태스크에서 실행합니다. 요청을 처음부터 다시 만들지 않으며, 반환된 run의 완료는 태스크 목표의 성공 보고와 별개입니다.
 
@@ -34,15 +34,14 @@ ExecutePhase는 프레임워크 `AbstractTransaction`으로 두 저장 구간을
 from pathlib import Path
 import sys
 
-from spakky.plugins.sqlalchemy.persistency.transaction import Transaction
 from neurath.application.usecases.get_task import GetTaskQuery, GetTaskUseCase
 from neurath.application.usecases.start_workflow import StartWorkflowCommand, StartWorkflowUseCase
 from neurath.application.usecases.execute_phase import ExecutePhaseCommand, ExecutePhaseResult, ExecutePhaseUseCase
 from neurath.domain.workflow_records import PhaseDefinition, WorkflowDefinition
-from neurath.infrastructure.providers import DatabaseSettings, request_container
+from spakky.core.pod.interfaces.container import IContainer
 
 
-def execute_check(database: Path, project_id: str, session_id: str,
+async def execute_check(scope: IContainer, project_id: str, session_id: str,
                   task_id: str, directory: Path, target_revision: str) -> ExecutePhaseResult:
     phase = PhaseDefinition(
         key="check", purpose="프로그램 정상 종료 확인",
@@ -52,22 +51,20 @@ def execute_check(database: Path, project_id: str, session_id: str,
     definition = WorkflowDefinition(
         skill="qa", version="example-1", phases=(phase,), inputs=(),
     )
-    with request_container(DatabaseSettings(database, write=True)) as scope:
-        with scope.get(Transaction):
-            task = scope.get(GetTaskUseCase).run(
-                GetTaskQuery(project_id, session_id, task_id)
-            ).task
-            flow = scope.get(StartWorkflowUseCase).run(
-                StartWorkflowCommand(project_id, session_id, task_id, task.revision, definition)
-            ).run
-        return scope.get(ExecutePhaseUseCase).run(
-            ExecutePhaseCommand(project_id, session_id, flow.uid, flow.revision)
-        )
+    task = (await scope.get(GetTaskUseCase).run(
+        GetTaskQuery(project_id, session_id, task_id)
+    )).task
+    flow = (await scope.get(StartWorkflowUseCase).run(
+        StartWorkflowCommand(project_id, session_id, task_id, task.revision, definition)
+    )).run
+    return await scope.get(ExecutePhaseUseCase).run(
+        ExecutePhaseCommand(project_id, session_id, flow.uid, flow.revision)
+    )
 ```
 
 ## 실행·복구와 태스크 상태
 
-기본 `SubprocessPhaseExecutor`는 POSIX 프로세스 그룹을 실행합니다. 실패 종료 코드, 시간 초과, interrupt 신호를 관찰하며 그룹을 종료·회수합니다. 파이프를 계속 비우면서 출력은 지정 바이트 한도만 메모리에 보존합니다. 자동으로 충족시키는 검사는 exit:0뿐입니다. 추가 검사가 있으면 프로세스가 성공해도 결과를 waiting으로 두고 별도 관찰·검토 보고를 기다립니다.
+기본 `SubprocessPhaseExecutorService`는 POSIX 프로세스 그룹을 실행합니다. 실패 종료 코드, 시간 초과, interrupt 신호를 관찰하며 그룹을 종료·회수합니다. 파이프를 계속 비우면서 출력은 지정 바이트 한도만 메모리에 보존합니다. 자동으로 충족시키는 검사는 exit:0뿐입니다. 추가 검사가 있으면 프로세스가 성공해도 결과를 waiting으로 두고 별도 관찰·검토 보고를 기다립니다.
 
 외부 실행은 run ID와 시도 번호로 식별합니다. 재개는 lookup을 먼저 사용하고, 실행기가 같은 ID의 중복 제거를 보장할 때만 재제출합니다. 로컬 프로세스 어댑터는 재시작 후 조회·중복 제거를 보장하지 않습니다. 이때 같은 시도를 waiting으로 보존하고 stderr에 원인을 알립니다. 동일한 미확인 상태로 실행·알림을 반복하지 않으며 네이티브 UI의 수신을 주장하지 않습니다.
 

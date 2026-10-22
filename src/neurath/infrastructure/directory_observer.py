@@ -7,13 +7,13 @@ from typing import override
 
 from spakky.core.pod.annotations.pod import Pod
 
-from neurath.application.ports.services.directory_observer import IDirectoryObserver
+from neurath.application.ports.services.directory_observer import IDirectoryObserverService
 from neurath.domain.errors import NeurathError
 from neurath.domain.observations import DirectoryObservation
 
 
 @Pod()
-class GitDirectoryObserver(IDirectoryObserver):
+class GitDirectoryObserverService(IDirectoryObserverService):
     """프로젝트 동일성을 선택하지 않고 파일 시스템과 Git의 정규화된 사실을 읽는다."""
 
     def _git(self, directory: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
@@ -87,3 +87,24 @@ class GitDirectoryObserver(IDirectoryObserver):
             git_common_directory=str(Path(common.stdout.strip()).resolve()),
             primary_worktree=str(root),
         )
+
+    @override
+    def workspace(self, working_directory: str) -> str:
+        """같은 작업 트리의 하위 경로를 하나의 정규 작성 범위로 묶는다.
+
+        Args:
+            working_directory: 실제 호출의 작업 디렉터리.
+
+        Returns:
+            str: 현재 Git 작업 트리의 루트이며 일반 폴더에서는 정규 입력 경로.
+
+        Raises:
+            NeurathError: Git이 저장소 부재 외의 오류를 반환한 경우.
+        """
+        directory = Path(working_directory).expanduser().resolve(strict=True)
+        result = self._git(directory, "rev-parse", "--show-toplevel")
+        if result.returncode == 0:
+            return str(Path(result.stdout.strip()).resolve())
+        if "not a git repository" in result.stderr:
+            return str(directory)
+        raise NeurathError(f"Cannot inspect working tree: {result.stderr.strip()}")

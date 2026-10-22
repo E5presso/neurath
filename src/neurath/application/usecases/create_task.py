@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from typing import override
 
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.command import AbstractCommand, ICommandUseCase
+from spakky.data.aspects.transactional import transactional
+from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.request_source import IRequestSourceRepository
 from neurath.application.ports.repositories.session import ISessionRepository
@@ -48,7 +49,7 @@ class CreateTaskResult:
 
 
 @UseCase()
-class CreateTaskUseCase(ICommandUseCase[CreateTaskCommand, CreateTaskResult]):
+class CreateTaskUseCase(IAsyncCommandUseCase[CreateTaskCommand, CreateTaskResult]):
     """같은 프로젝트의 원문을 재사용하여 소유 세션의 새 태스크를 등록한다.
 
     상태 질문·요약은 목표 출처로 쓰지 않으며 선행 작업의 존재·중복·순환을 확인한다.
@@ -73,8 +74,9 @@ class CreateTaskUseCase(ICommandUseCase[CreateTaskCommand, CreateTaskResult]):
         self.sources = sources
         self.tasks = tasks
 
+    @transactional
     @override
-    def run(self, command: CreateTaskCommand) -> CreateTaskResult:
+    async def run(self, command: CreateTaskCommand) -> CreateTaskResult:
         """세션·출처·의존 범위를 확인하고 최초 정의를 가진 태스크를 저장한다.
 
         Args:
@@ -83,8 +85,8 @@ class CreateTaskUseCase(ICommandUseCase[CreateTaskCommand, CreateTaskResult]):
         Returns:
             CreateTaskResult: 새 uid와 첫 요구 개정을 가진 pending 태스크.
         """
-        self.sessions.get(command.session_id).require_project(command.project_id)
-        source = self.sources.get(command.source_id)
+        (await self.sessions.get(command.session_id)).require_project(command.project_id)
+        source = await self.sources.get(command.source_id)
         task = Task.create(
             command.project_id,
             command.session_id,
@@ -94,8 +96,8 @@ class CreateTaskUseCase(ICommandUseCase[CreateTaskCommand, CreateTaskResult]):
             command.dependencies,
             command.follow_up_of,
         )
-        task.validate_dependencies(self.tasks.list(command.project_id))
+        task.validate_dependencies(await self.tasks.find_by_project_id(command.project_id))
         if command.follow_up_of is not None:
-            parent = self.tasks.get(command.follow_up_of)
+            parent = await self.tasks.get(command.follow_up_of)
             parent.require_project(command.project_id)
-        return CreateTaskResult(task=self.tasks.save(task))
+        return CreateTaskResult(task=(await self.tasks.save(task)))

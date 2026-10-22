@@ -1,10 +1,10 @@
-"""Task의 기본 저장은 상속하고 프로젝트 목록만 조회한다."""
+"""태스크 원장의 기본 Aggregate 저장 계약을 제공한다."""
 
 from collections.abc import Sequence
 from typing import override
 
 from spakky.data.stereotype.repository import Repository
-from spakky.plugins.sqlalchemy.persistency.repository import AbstractGenericRepository
+from spakky.plugins.sqlalchemy.persistency.repository import AbstractAsyncGenericRepository
 from sqlalchemy import select
 
 from neurath.application.ports.repositories.task import ITaskRepository
@@ -13,22 +13,24 @@ from neurath.infrastructure.models.task import TaskModel
 
 
 @Repository()
-class TaskRepository(AbstractGenericRepository[Task, str], ITaskRepository):
-    """태스크을 SQLite에 매핑하고 프로젝트 전체 목록을 도메인 객체로 조회한다."""
+class SQLAlchemyTaskRepository(AbstractAsyncGenericRepository[Task, str], ITaskRepository):
+    """요구 개정·실행 시도·외부 대기를 소유하는 태스크를 표준 SQLAlchemy 매핑·CRUD·낙관적 잠금으로 저장한다."""
 
     @override
-    def list(self, project_id: str) -> Sequence[Task]:
-        """프로젝트의 태스크을 생성 시각·ID 순으로 조회해 tuple로 반환한다.
+    async def find_by_project_id(self, project_id: str) -> Sequence[Task]:
+        """의존 관계와 실행 가능성을 검증할 프로젝트의 태스크들을 읽는다.
 
         Args:
-            project_id: 조회 범위를 제한할 프로젝트 ID.
+            project_id: 의존 관계 검사의 프로젝트 범위.
 
         Returns:
-            Sequence[Task]: ORM 객체와 분리된 전체 태스크 목록. 없으면 빈 tuple.
+            Sequence[Task]: 완료 상태를 포함한 프로젝트의 모든 태스크이며 생성 시각·ID 순서로 반환한다.
         """
-        records = self._session_manager.session.scalars(
-            select(TaskModel)
-            .where(TaskModel.project_id == project_id)
-            .order_by(TaskModel.created_at, TaskModel.id)
+        records = (
+            await self._session_manager.session.scalars(
+                select(TaskModel)
+                .where(TaskModel.project_id == project_id)
+                .order_by(TaskModel.created_at, TaskModel.id)
+            )
         ).all()
         return tuple(record.to_domain() for record in records)

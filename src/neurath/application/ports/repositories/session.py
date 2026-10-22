@@ -1,28 +1,30 @@
-"""세션 기본 CRUD를 상속하고 네이티브 식별자 조회만 추가한다."""
+"""호스트 세션의 기본 Aggregate 저장 계약을 제공한다."""
 
 from abc import ABC, abstractmethod
 
-from spakky.data.persistency.repository import IGenericRepository
+from spakky.data.persistency.repository import IAsyncGenericRepository
 
 from neurath.domain.aggregates.session import HostSession
 
 
-class ISessionRepository(IGenericRepository[HostSession, str], ABC):
-    """기본 저장 계약과 프로젝트·공급자별 네이티브 식별자 조회를 제공한다."""
+class ISessionRepository(IAsyncGenericRepository[HostSession, str], ABC):
+    """프로젝트 소속과 작업 경로를 가진 세션의 식별자 조회와 저장을 프레임워크 기본 계약으로 제공한다."""
 
     @abstractmethod
-    def find(self, project_id: str, provider: str, host_session_id: str) -> HostSession | None:
-        """지정한 범위의 네이티브 세션을 조회한다.
+    async def find_by_project_id_and_provider_and_host_session_id(
+        self, project_id: str, provider: str, host_session_id: str
+    ) -> HostSession | None:
+        """프로젝트 안에서 실제 네이티브 식별자에 대응하는 세션을 찾는다.
 
         Args:
-            project_id: 조회 대상 프로젝트의 안정적인 식별자.
-            provider: 네이티브 세션 식별자의 호스트 공급자 이름 공간.
-            host_session_id: 호스트 공급자가 전달한 네이티브 세션 식별자.
+            project_id: 세션을 소유한 프로젝트.
+            provider: 호스트 공급자.
+            host_session_id: 실제 호스트의 세션 식별자.
 
         Returns:
-            HostSession | None: 해당 프로젝트·공급자 범위의 세션이며 없으면 None.
+            HostSession | None: 프로젝트·공급자·네이티브 ID가 일치하는 세션이며 미등록이면 None.
 
         Raises:
-            NotImplementedError: 구체 어댑터가 추가 조회 메서드를 구현하지 않은 경우.
+            NotImplementedError: 저장 어댑터가 조회 계약을 구현하지 않은 경우.
         """
         raise NotImplementedError

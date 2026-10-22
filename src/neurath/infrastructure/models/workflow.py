@@ -65,10 +65,10 @@ class WorkflowModel(AbstractMappableTable[WorkflowRun]):
 
     __mapper_args__ = {"version_id_col": revision}
     revisions: Mapped[list[WorkflowRevisionModel]] = relationship(
-        cascade="all, delete-orphan", order_by="WorkflowRevisionModel.number"
+        lazy="selectin", cascade="all, delete-orphan", order_by="WorkflowRevisionModel.number"
     )
     attempts: Mapped[list[PhaseAttemptModel]] = relationship(
-        cascade="all, delete-orphan", order_by="PhaseAttemptModel.number"
+        lazy="selectin", cascade="all, delete-orphan", order_by="PhaseAttemptModel.number"
     )
 
     @classmethod
@@ -144,7 +144,7 @@ class WorkflowRevisionModel(AbstractTable):
     reason: Mapped[str] = mapped_column(String, nullable=False)
 
     phases: Mapped[list[PhaseDefinitionModel]] = relationship(
-        cascade="all, delete-orphan", order_by="PhaseDefinitionModel.position"
+        lazy="selectin", cascade="all, delete-orphan", order_by="PhaseDefinitionModel.position"
     )
 
     @classmethod

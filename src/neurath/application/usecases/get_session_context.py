@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from typing import override
 
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.query import AbstractQuery, IQueryUseCase
+from spakky.data.aspects.transactional import transactional
+from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
 
 from neurath.application.ports.repositories.project import IProjectRepository
 from neurath.application.ports.repositories.session import ISessionRepository
@@ -39,7 +40,7 @@ class GetSessionContextResult:
 
 
 @UseCase()
-class GetSessionContextUseCase(IQueryUseCase[GetSessionContextQuery, GetSessionContextResult]):
+class GetSessionContextUseCase(IAsyncQueryUseCase[GetSessionContextQuery, GetSessionContextResult]):
     """세션의 프로젝트 소속을 확인하고 프로젝트·세션을 함께 조회한다.
 
     저장된 작업 경로와 revision을 읽으며 새 등록·위치 관찰·경로 변경을 수행하지 않는다.
@@ -56,8 +57,9 @@ class GetSessionContextUseCase(IQueryUseCase[GetSessionContextQuery, GetSessionC
         self.projects = projects
         self.sessions = sessions
 
+    @transactional
     @override
-    def run(self, query: GetSessionContextQuery) -> GetSessionContextResult:
+    async def run(self, query: GetSessionContextQuery) -> GetSessionContextResult:
         """프로젝트 소속을 확인한 세션과 해당 프로젝트를 변경 없이 반환한다.
 
         Args:
@@ -66,7 +68,7 @@ class GetSessionContextUseCase(IQueryUseCase[GetSessionContextQuery, GetSessionC
         Returns:
             GetSessionContextResult: 저장된 프로젝트와 작업 경로·revision을 가진 세션.
         """
-        session = self.sessions.get(query.session_id)
+        session = await self.sessions.get(query.session_id)
         session.require_project(query.project_id)
-        project = self.projects.get(query.project_id)
+        project = await self.projects.get(query.project_id)
         return GetSessionContextResult(project=project, session=session)

@@ -1,5 +1,6 @@
 """프로세스·범위·트랜잭션·Git 변경에 걸친 요청의 관찰 가능한 행동을 검증한다."""
 
+import asyncio
 import json
 import sqlite3
 import subprocess
@@ -8,10 +9,10 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 
 import pytest
-from spakky.plugins.sqlalchemy.persistency.session_manager import SessionManager
+from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionManager
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError, OperationalError
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.application.usecases.register_project import (
@@ -29,8 +30,9 @@ from neurath.domain.observations import DirectoryObservation
 from neurath.infrastructure.database import create_database_engine
 from neurath.infrastructure.models.project import ProjectModel
 from neurath.infrastructure.models.session import SessionModel
-from neurath.infrastructure.repositories.session import SessionRepository
+from neurath.infrastructure.repositories.session import SQLAlchemySessionRepository
 from tests.conftest import git, initialize_git, storage_scope
+from tests.support.application import spakky_context
 from tests.support.session_requests import (
     get_session_context,
     move_session,
@@ -39,29 +41,32 @@ from tests.support.session_requests import (
 )
 
 PROCESS = """
-import json, sys
+import asyncio, json, sys
 from pathlib import Path
 from tests.support.session_requests import register_session, get_session_context, move_session, session_state
 from neurath.domain.errors import RevisionConflict
 path = Path(sys.argv[1])
 mode = sys.argv[2]
-try:
-    if mode == "register":
-        result = register_session(sys.argv[3], sys.argv[4], sys.argv[5], database_path=path)
-    elif mode == "read":
-        result = get_session_context(sys.argv[3], sys.argv[4], database_path=path)
-    elif mode == "move":
-        result = move_session(sys.argv[3], sys.argv[4], sys.argv[5], int(sys.argv[6]), database_path=path)
-    else:
-        raise ValueError(mode)
-    print(json.dumps(session_state(result)))
-except RevisionConflict:
-    print(json.dumps({"conflict": True}))
+async def main():
+    try:
+        if mode == "register":
+            result = await register_session(sys.argv[3], sys.argv[4], sys.argv[5], database_path=path)
+        elif mode == "read":
+            result = await get_session_context(sys.argv[3], sys.argv[4], database_path=path)
+        elif mode == "move":
+            result = await move_session(sys.argv[3], sys.argv[4], sys.argv[5], int(sys.argv[6]), database_path=path)
+        else:
+            raise ValueError(mode)
+        print(json.dumps(session_state(result)))
+    except RevisionConflict:
+        print(json.dumps({"conflict": True}))
+asyncio.run(main())
 """
 
 
-def request(database, mode, *arguments):
-    result = subprocess.run(
+async def request(database, mode, *arguments):
+    result = await asyncio.to_thread(
+        subprocess.run,
         [
             sys.executable,
             "-c",
@@ -77,20 +82,20 @@ def request(database, mode, *arguments):
     return json.loads(result.stdout)
 
 
-def test_independent_process_restart_reads_latest_revision(database, repository):
-    first = request(database, "register", repository, "codex", "native")
+async def test_independent_process_restart_reads_latest_revision(database, repository):
+    first = await request(database, "register", repository, "codex", "native")
     project_id, session_id = first["project"]["uid"], first["session"]["uid"]
-    assert request(database, "read", project_id, session_id) == first
+    assert (await request(database, "read", project_id, session_id)) == first
     child = repository / "child"
     child.mkdir()
-    changed = request(database, "move", project_id, session_id, child, 1)
+    changed = await request(database, "move", project_id, session_id, child, 1)
     assert changed["session"]["revision"] == 2
     assert changed["session"]["working_directory"] == str(child)
-    assert request(database, "read", project_id, session_id) == changed
-    assert request(database, "register", repository, "codex", "native") == changed
+    assert (await request(database, "read", project_id, session_id)) == changed
+    assert (await request(database, "register", repository, "codex", "native")) == changed
 
 
-def test_worktrees_and_subfolders_share_project_but_keep_observed_directory(
+async def test_worktrees_and_subfolders_share_project_but_keep_observed_directory(
     database, repository, tmp_path
 ):
     linked = tmp_path / "linked"
@@ -98,7 +103,7 @@ def test_worktrees_and_subfolders_share_project_but_keep_observed_directory(
     child = linked / "child"
     child.mkdir()
     contexts = [
-        register_session(str(folder), "codex", str(index), database_path=database)
+        (await register_session(str(folder), "codex", str(index), database_path=database))
         for index, folder in enumerate((repository, linked, child))
     ]
     assert len({context.project.id for context in contexts}) == 1
@@ -110,7 +115,7 @@ def test_worktrees_and_subfolders_share_project_but_keep_observed_directory(
     ]
 
 
-def test_clones_same_remote_same_native_id_and_other_providers_are_scoped(
+async def test_clones_same_remote_same_native_id_and_other_providers_are_scoped(
     database, repository, tmp_path
 ):
     clones = [tmp_path / "a", tmp_path / "b"]
@@ -120,132 +125,150 @@ def test_clones_same_remote_same_native_id_and_other_providers_are_scoped(
         clones[1], "remote", "get-url", "origin"
     )
     first, second = [
-        register_session(str(clone), "codex", "same", database_path=database) for clone in clones
+        (await register_session(str(clone), "codex", "same", database_path=database))
+        for clone in clones
     ]
     assert first.project.id != second.project.id
     with pytest.raises(ContextNotFound):
-        get_session_context(first.project.id, second.session.id, database_path=database)
+        (await get_session_context(first.project.id, second.session.id, database_path=database))
     with pytest.raises(ContextNotFound):
-        move_session(first.project.id, first.session.id, str(clones[1]), 1, database_path=database)
+        (
+            await move_session(
+                first.project.id, first.session.id, str(clones[1]), 1, database_path=database
+            )
+        )
     assert session_state(
-        get_session_context(first.project.id, first.session.id, database_path=database)
+        await get_session_context(first.project.id, first.session.id, database_path=database)
     ) == session_state(first)
-    other = register_session(str(clones[0]), "claude", "same", database_path=database)
+    other = await register_session(str(clones[0]), "claude", "same", database_path=database)
     assert other.project == first.project
     assert other.session.id != first.session.id
 
 
-def test_folder_to_git_promotion_preserves_foreign_keys_from_first_linked_request(
+async def test_folder_to_git_promotion_preserves_foreign_keys_from_first_linked_request(
     database, tmp_path
 ):
     plain = tmp_path / "plain"
     plain.mkdir()
-    before = register_session(str(plain), "codex", "native", database_path=database)
+    before = await register_session(str(plain), "codex", "native", database_path=database)
     with closing(sqlite3.connect(database)) as connection, connection:
-        connection.execute("PRAGMA foreign_keys=ON")
-        connection.execute(
-            "CREATE TABLE dependent_fixture (project_id TEXT REFERENCES core_projects(id), source TEXT)"
+        (connection.execute("PRAGMA foreign_keys=ON"))
+        (
+            connection.execute(
+                "CREATE TABLE dependent_fixture (project_id TEXT REFERENCES core_projects(id), source TEXT)"
+            )
         )
-        connection.execute(
-            "INSERT INTO dependent_fixture VALUES (?, ?)",
-            (before.project.id, "unfinished original source"),
+        (
+            connection.execute(
+                "INSERT INTO dependent_fixture VALUES (?, ?)",
+                (before.project.id, "unfinished original source"),
+            )
         )
     initialize_git(plain)
     linked = tmp_path / "linked"
     git(plain, "worktree", "add", "-b", "branch", str(linked))
-    after = request(database, "register", linked, "codex", "another")
+    after = await request(database, "register", linked, "codex", "another")
     assert after["project"]["uid"] == before.project.id
-    assert request(database, "read", before.project.id, before.session.id) == session_state(before)
+    assert (await request(database, "read", before.project.id, before.session.id)) == session_state(
+        before
+    )
     with closing(sqlite3.connect(database)) as connection, connection:
-        assert connection.execute("SELECT * FROM dependent_fixture").fetchall() == [
+        assert (connection.execute("SELECT * FROM dependent_fixture")).fetchall() == [
             (before.project.id, "unfinished original source")
         ]
-        assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+        assert (connection.execute("PRAGMA foreign_key_check")).fetchall() == []
 
 
 def test_concurrent_process_registration_returns_one_identity(database, repository):
     def register(_):
-        return request(database, "register", repository, "codex", "same")
+        return asyncio.run(request(database, "register", repository, "codex", "same"))
 
     with ThreadPoolExecutor(max_workers=4) as pool:
         contexts = list(pool.map(register, range(8)))
     assert all(context == contexts[0] for context in contexts)
 
 
-def test_concurrent_revision_change_has_one_winner(database, repository):
-    first = register_session(str(repository), "codex", "native", database_path=database)
+async def test_concurrent_revision_change_has_one_winner(database, repository):
+    first = await register_session(str(repository), "codex", "native", database_path=database)
     folders = [repository / "left", repository / "right"]
     for folder in folders:
         folder.mkdir()
 
     def move(folder):
-        return request(database, "move", first.project.id, first.session.id, folder, 1)
+        return asyncio.run(request(database, "move", first.project.id, first.session.id, folder, 1))
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(move, folders))
     winners = [result for result in results if "conflict" not in result]
     assert len(winners) == 1
     assert winners[0]["session"]["revision"] == 2
-    assert request(database, "read", first.project.id, first.session.id) == winners[0]
+    assert (await request(database, "read", first.project.id, first.session.id)) == winners[0]
 
 
-def test_failed_registration_rolls_back_project_alias_and_session(
+async def test_failed_registration_rolls_back_project_alias_and_session(
     database, repository, monkeypatch
 ):
-    original_save = SessionRepository.save
+    original_save = SQLAlchemySessionRepository.save
 
-    def fail_after_flush(self, session):
-        original_save(self, session)
+    async def fail_after_flush(self, session):
+        await original_save(self, session)
         raise RuntimeError("after flush")
 
-    monkeypatch.setattr(SessionRepository, "save", fail_after_flush)
+    monkeypatch.setattr(SQLAlchemySessionRepository, "save", fail_after_flush)
     with pytest.raises(RuntimeError, match="after flush"):
-        register_session(str(repository), "codex", "native", database_path=database)
+        (await register_session(str(repository), "codex", "native", database_path=database))
     with closing(sqlite3.connect(database)) as connection, connection:
         for table in ("core_projects", "core_project_locations", "core_sessions"):
-            assert connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone() == (0,)
+            assert (connection.execute(f"SELECT COUNT(*) FROM {table}")).fetchone() == (0,)
 
 
-def test_related_changes_roll_back_together_using_actual_session(database, repository):
-    first = register_session(str(repository), "codex", "native", database_path=database)
+async def test_related_changes_roll_back_together_using_actual_session(database, repository):
+    first = await register_session(str(repository), "codex", "native", database_path=database)
     with pytest.raises(RuntimeError, match="rollback"):
-        with storage_scope(database) as scope:
+        async with storage_scope(database) as scope:
             sessions = scope.get(ISessionRepository)
-            changed = sessions.get(first.session.id)
+            changed = await sessions.get(first.session.id)
             changed.move("new-directory", 1)
-            sessions.save(changed)
-            sessions.save(HostSession.create(first.project.id, "codex", "second", "new"))
+            (await sessions.save(changed))
+            (await sessions.save(HostSession.create(first.project.id, "codex", "second", "new")))
             raise RuntimeError("rollback")
     assert session_state(
-        get_session_context(first.project.id, first.session.id, database_path=database)
+        await get_session_context(first.project.id, first.session.id, database_path=database)
     ) == session_state(first)
-    with storage_scope(database, write=False) as scope:
+    async with storage_scope(database, write=False) as scope:
         assert (
-            scope.get(SessionManager).session.scalar(text("SELECT COUNT(*) FROM core_sessions"))
-            == 1
-        )
+            await scope.get(AsyncSessionManager).session.scalar(
+                text("SELECT COUNT(*) FROM core_sessions")
+            )
+        ) == 1
 
 
-def test_uncommitted_data_is_invisible_and_read_only_connection_rejects_writes(
+async def test_uncommitted_data_is_invisible_and_read_only_connection_rejects_writes(
     database, repository
 ):
-    first = register_session(str(repository), "codex", "native", database_path=database)
-    with storage_scope(database) as scope:
+    first = await register_session(str(repository), "codex", "native", database_path=database)
+    async with storage_scope(database) as scope:
         sessions = scope.get(ISessionRepository)
-        changed = sessions.get(first.session.id)
+        changed = await sessions.get(first.session.id)
         changed.move("uncommitted", 1)
-        sessions.save(changed)
-        assert request(database, "read", first.project.id, first.session.id) == session_state(first)
+        (await sessions.save(changed))
+        assert (
+            await request(database, "read", first.project.id, first.session.id)
+        ) == session_state(first)
     with pytest.raises(OperationalError, match="readonly"):
-        with storage_scope(database, write=False) as scope:
-            scope.get(SessionManager).session.execute(text("DELETE FROM core_sessions"))
+        async with storage_scope(database, write=False) as scope:
+            (
+                await scope.get(AsyncSessionManager).session.execute(
+                    text("DELETE FROM core_sessions")
+                )
+            )
 
 
-def test_foreign_keys_and_positive_revisions_are_enforced(database):
+async def test_foreign_keys_and_positive_revisions_are_enforced(database):
     engine = create_database_engine(database, write=True)
     try:
         with pytest.raises(IntegrityError):
-            with Session(engine) as session, session.begin():
+            async with AsyncSession(engine) as session, session.begin():
                 session.add(
                     SessionModel(
                         id="bad",
@@ -257,74 +280,130 @@ def test_foreign_keys_and_positive_revisions_are_enforced(database):
                     )
                 )
         with pytest.raises(IntegrityError):
-            with Session(engine) as session, session.begin():
+            async with AsyncSession(engine) as session, session.begin():
                 session.add(ProjectModel(id="project", root_path="/tmp"))
-                session.flush()
-                session.execute(
-                    text(
-                        "INSERT INTO core_sessions (id, project_id, provider, host_session_id, working_directory, revision) VALUES ('bad', 'project', 'test', 'x', '/tmp', 0)"
+                (await session.flush())
+                (
+                    await session.execute(
+                        text(
+                            "INSERT INTO core_sessions (id, project_id, provider, host_session_id, working_directory, revision) VALUES ('bad', 'project', 'test', 'x', '/tmp', 0)"
+                        )
                     )
                 )
     finally:
-        engine.dispose()
+        (await engine.dispose())
 
 
-def test_identity_conflict_does_not_merge_or_modify_existing_aliases(database):
-    with storage_scope(database) as scope:
+async def test_identity_conflict_does_not_merge_or_modify_existing_aliases(database):
+    async with spakky_context(database) as scope:
         projects = scope.get(RegisterProjectUseCase)
-        first = projects.run(
+        first = await projects.run(
             RegisterProjectCommand(DirectoryObservation("/one", "/one/.git", "/one"))
         )
-        second = projects.run(RegisterProjectCommand(DirectoryObservation("/two")))
+        second = await projects.run(RegisterProjectCommand(DirectoryObservation("/two")))
     with pytest.raises(ProjectIdentityConflict):
-        with storage_scope(database) as scope:
-            scope.get(RegisterProjectUseCase).run(
-                RegisterProjectCommand(DirectoryObservation("/two", "/one/.git", "/two"))
+        async with spakky_context(database) as scope:
+            (
+                await scope.get(RegisterProjectUseCase).run(
+                    RegisterProjectCommand(DirectoryObservation("/two", "/one/.git", "/two"))
+                )
             )
-    with storage_scope(database, write=False) as scope:
-        assert set(scope.get(SessionManager).session.scalars(select(ProjectModel.id))) == {
+    async with storage_scope(database, write=False) as scope:
+        assert set(
+            await scope.get(AsyncSessionManager).session.scalars(select(ProjectModel.id))
+        ) == {
             first.project.id,
             second.project.id,
         }
     with pytest.raises(ProjectIdentityConflict):
-        with storage_scope(database) as scope:
-            scope.get(RegisterProjectUseCase).run(
-                RegisterProjectCommand(DirectoryObservation("/one", "/different/.git", "/one"))
+        async with spakky_context(database) as scope:
+            (
+                await scope.get(RegisterProjectUseCase).run(
+                    RegisterProjectCommand(DirectoryObservation("/one", "/different/.git", "/one"))
+                )
             )
 
 
-def test_wrong_revision_and_empty_native_identifiers_fail_without_mutation(database, repository):
-    first = register_session(str(repository), "codex", "native", database_path=database)
+async def test_wrong_revision_and_empty_native_identifiers_fail_without_mutation(
+    database, repository
+):
+    first = await register_session(str(repository), "codex", "native", database_path=database)
     with pytest.raises(RevisionConflict):
-        move_session(first.project.id, first.session.id, str(repository), 0, database_path=database)
+        (
+            await move_session(
+                first.project.id, first.session.id, str(repository), 0, database_path=database
+            )
+        )
     for provider, native in ((" ", "native"), ("codex", "")):
         with pytest.raises(ValueError):
-            register_session(str(repository), provider, native, database_path=database)
+            (await register_session(str(repository), provider, native, database_path=database))
     assert session_state(
-        get_session_context(first.project.id, first.session.id, database_path=database)
+        await get_session_context(first.project.id, first.session.id, database_path=database)
     ) == session_state(first)
 
 
-def test_git_environment_is_ignored_and_errors_are_not_folder_fallback(
+async def test_git_environment_is_ignored_and_errors_are_not_folder_fallback(
     database, repository, tmp_path, monkeypatch
 ):
     monkeypatch.setenv("GIT_DIR", str(repository / ".git"))
     plain = tmp_path / "plain"
     plain.mkdir()
-    first = register_session(str(repository), "codex", "native", database_path=database)
-    second = register_session(str(plain), "codex", "native", database_path=database)
+    first = await register_session(str(repository), "codex", "native", database_path=database)
+    second = await register_session(str(plain), "codex", "native", database_path=database)
     assert first.project.id != second.project.id
-    from neurath.infrastructure.directory_observer import GitDirectoryObserver
+    from neurath.infrastructure.directory_observer import GitDirectoryObserverService
 
     def fail(self, directory, *arguments):
         return subprocess.CompletedProcess(arguments, 128, "", "fatal: dubious ownership")
 
-    monkeypatch.setattr(GitDirectoryObserver, "_git", fail)
+    monkeypatch.setattr(GitDirectoryObserverService, "_git", fail)
     with pytest.raises(NeurathError, match="dubious ownership"):
-        register_session(str(repository), "codex", "new", database_path=database)
+        (await register_session(str(repository), "codex", "new", database_path=database))
 
 
-def test_request_releases_writer_before_following_external_action(database, repository):
-    first = register_session(str(repository), "codex", "native", database_path=database)
-    following = request(database, "register", repository, "codex", "external-result")
+async def test_request_releases_writer_before_following_external_action(database, repository):
+    first = await register_session(str(repository), "codex", "native", database_path=database)
+    following = await request(database, "register", repository, "codex", "external-result")
     assert following["project"]["uid"] == first.project.id
+
+
+async def test_project_locations_are_batch_eager_loaded_without_per_project_queries(database):
+    from sqlalchemy import event
+
+    from neurath.application.ports.repositories.project import IProjectRepository
+
+    projects = []
+    async with spakky_context(database) as scope:
+        for name in ("one", "two", "three"):
+            result = await scope.get(RegisterProjectUseCase).run(
+                RegisterProjectCommand(DirectoryObservation("/" + name))
+            )
+            projects.append(result.project)
+    statements = []
+    async with storage_scope(database, write=False) as scope:
+        manager = scope.get(AsyncSessionManager)
+        connection = await manager.session.connection()
+
+        def record(connection, cursor, statement, parameters, context, executemany):
+            if statement.lstrip().upper().startswith("SELECT"):
+                statements.append(statement)
+
+        event.listen(connection.sync_connection, "before_cursor_execute", record)
+        try:
+            restored = await scope.get(IProjectRepository).range(
+                [project.uid for project in projects]
+            )
+            assert len(restored) == 3
+            assert all(project.locations for project in restored)
+            assert len(statements) == 2
+            assert "core_projects" in statements[0]
+            assert "core_project_locations" in statements[1]
+            assert " IN " in statements[1]
+        finally:
+            event.remove(connection.sync_connection, "before_cursor_execute", record)
+    assert {location.path for project in restored for location in project.locations} == {
+        "/one",
+        "/two",
+        "/three",
+    }
+    assert len(statements) == 2
