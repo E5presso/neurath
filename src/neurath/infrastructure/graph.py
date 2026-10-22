@@ -87,7 +87,7 @@ class SubprocessGraphService(IGraphService):
             set[str]: 문서 노드·연결·하이퍼엣지의 정규화된 의미 기록.
 
         Raises:
-            ValueError: 구조가 잘못됐거나 문서 노드가 없는 경우.
+            ValueError: 그래프 구조 또는 관계의 연결 대상이 잘못된 경우.
         """
         data: object = json.loads(content)
         if not isinstance(data, dict):
@@ -109,8 +109,6 @@ class SubprocessGraphService(IGraphService):
             if "id" in node
             and Path(str(node.get("source_file", ""))).suffix.lower() in (".md", ".rst", ".txt")
         }
-        if not docs:
-            raise ValueError("Document relationships are missing from the graph")
         identifiers = {str(node.get("id")) for node in nodes}
         records = {
             "node:" + SubprocessGraphService._semantic_record(node)

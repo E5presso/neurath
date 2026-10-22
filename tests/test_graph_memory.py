@@ -110,12 +110,6 @@ def test_graph_update_failure_restores_original_and_preserves_failed_output(
             ],
         },
         {
-            "nodes": [{"id": "code", "source_file": "main.py"}],
-            "links": [
-                {"source": "code", "target": "code", "relation": "calls"},
-            ],
-        },
-        {
             "nodes": [{"id": "doc", "source_file": "doc.md"}],
             "links": [
                 {"source": "code", "target": "code", "relation": "calls"},
@@ -124,7 +118,7 @@ def test_graph_update_failure_restores_original_and_preserves_failed_output(
         },
     ],
 )
-def test_graph_validation_does_not_accept_missing_document_relationships(data):
+def test_graph_validation_rejects_malformed_records_and_dangling_links(data):
     with pytest.raises(ValueError):
         SubprocessGraphService._document_records(json.dumps(data).encode())
 
@@ -152,3 +146,17 @@ def test_malformed_hyperedge_members_are_rejected_before_semantic_comparison():
     data["hyperedges"][0]["nodes"] = "not a member list"
     with pytest.raises(ValueError, match="members must be a list"):
         SubprocessGraphService._document_records(json.dumps(data).encode())
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"nodes": [], "links": []},
+        {
+            "nodes": [{"id": "code", "source_file": "main.py"}],
+            "links": [{"source": "code", "target": "code", "relation": "calls"}],
+        },
+    ],
+)
+def test_document_preservation_does_not_require_every_project_to_have_documents(data):
+    assert SubprocessGraphService._document_records(json.dumps(data).encode()) == set()
