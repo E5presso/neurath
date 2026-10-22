@@ -6,7 +6,7 @@ from uuid import uuid4
 from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 
-from neurath.domain.errors import ContextNotFound, RevisionConflict
+from neurath.domain.errors import ContextNotFound, InvalidExecutionState, RevisionConflict
 
 
 @mutable
@@ -19,6 +19,7 @@ class HostSession(AbstractAggregateRoot[str]):
         host_session_id: 인증 수단이 아닌 네이티브 식별자.
         working_directory: 가장 최근에 수용한 정규 디렉터리.
         revision: 오래된 요청을 거부하기 위해 저장한 낙관적 버전.
+        successor_id: 인수가 확정된 후속 세션이며 아직 없으면 None.
     """
 
     project_id: str
@@ -26,6 +27,7 @@ class HostSession(AbstractAggregateRoot[str]):
     host_session_id: str
     working_directory: str
     revision: int
+    successor_id: str | None = None
 
     @property
     def id(self) -> str:
@@ -104,3 +106,32 @@ class HostSession(AbstractAggregateRoot[str]):
             raise RevisionConflict("Session changed; read current context before updating")
         if self.working_directory != working_directory:
             self.working_directory = working_directory
+
+    def require_current_owner(self) -> None:
+        """후속 세션에 넘긴 원 실행의 쓰기 재개를 거절한다.
+
+        Raises:
+            InvalidExecutionState: 인수가 이미 확정된 세션인 경우.
+        """
+        if self.successor_id is not None:
+            raise InvalidExecutionState(f"Session work was handed off to {self.successor_id}")
+
+    def hand_off(self, successor: Self, expected_revision: int) -> None:
+        """같은 프로젝트의 후속 세션으로 작업 연결을 넘긴 사실을 보존한다.
+
+        Args:
+            successor: 실제 등록된 후속 세션.
+            expected_revision: 인수 미리보기에서 읽은 원 세션 개정.
+
+        Raises:
+            RevisionConflict: 원 세션이 미리보기 이후 변경된 경우.
+            InvalidExecutionState: 자기 자신에게 인수를 요청한 경우.
+        """
+        self.require_current_owner()
+        successor.require_current_owner()
+        successor.require_project(self.project_id)
+        if self.revision != expected_revision:
+            raise RevisionConflict("Source session changed")
+        if successor.uid == self.uid:
+            raise InvalidExecutionState("A handoff requires a different session")
+        self.successor_id = successor.uid

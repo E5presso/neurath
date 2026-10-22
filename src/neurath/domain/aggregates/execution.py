@@ -194,3 +194,12 @@ class Execution(AbstractAggregateRoot[str]):
         self.require_turn(turn_id)
         self.pause("Cancellation requested; actual termination is pending")
         self.add_event(ExecutionCancellationRequested(execution_id=self.uid, turn_id=turn_id))
+
+    def require_stopped(self) -> None:
+        """진행 중인 실제 작업을 인수 완료로 취급하지 않는다.
+
+        Raises:
+            InvalidExecutionState: 종료 또는 결과가 아직 확인되지 않은 경우.
+        """
+        if self.status not in (ExecutionStatus.CANCELLED, ExecutionStatus.ENDED):
+            raise InvalidExecutionState("Source execution has not stopped")

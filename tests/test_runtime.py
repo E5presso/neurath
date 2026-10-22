@@ -81,7 +81,7 @@ async def test_stop_feedback_once_preserves_tasks_and_cancelled_turn(database, n
     assert "No progress" in paused["stopReason"]
     assert (await execution(database, actor)).status is ExecutionStatus.PAUSED
     assert (await send(native, "Stop"))["continue"] is False
-    assert (await send(native, "SessionStart", source="resume")) == {}
+    assert "hookSpecificOutput" in await send(native, "SessionStart", source="resume")
     assert (await execution(database, actor)).status is ExecutionStatus.PAUSED
     assert (await send(native, "UserPromptSubmit", turn_id="turn-2")) == {}
     assert (await send(native, "Interrupt", turn_id="turn-2"))["continue"] is False

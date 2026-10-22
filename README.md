@@ -5,11 +5,11 @@
 Neurath is being rewritten as a local, CLI-only agent harness. The approved
 [specification](docs/en/specification.md) retains tasks, ordered execution phases,
 hooks, memory, collaboration, and recovery. This checkout currently implements
-the #137 user-wide project/session foundation, #140 source/task/TODO ledger, #141 skill phase execution, and the #142 [host runtime](docs/en/host-runtime.md) library.
+the #137 user-wide project/session foundation, #140 source/task/TODO ledger, #141 skill phase execution, the #142 [host runtime](docs/en/host-runtime.md), and #143 [memory and handoff](docs/en/memory.md) libraries.
 
 The candidate package contains mutable domain entities and immutable request values, explicit application
 ports and use cases, inherited Spakky SQLAlchemy repositories and table mappings, and request-scoped session
-functions. It provides a spakky-typer hook CLI, but not the former MCP server, remaining business CLI commands, an installer,
+functions. It provides spakky-typer hook, memory and handoff commands, but not the former MCP server, remaining business CLI commands, an installer,
 or the rest of the planned harness. The previous runtime remains recoverable in
 Git history. Existing installed distributions and user databases are not changed
 by editing or validating this checkout.

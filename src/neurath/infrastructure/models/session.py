@@ -33,6 +33,7 @@ class SessionModel(AbstractMappableTable[HostSession]):
         host_session_id: 호스트 공급자가 전달한 네이티브 세션 식별자.
         working_directory: 가장 최근에 수용한 정규 작업 디렉터리.
         revision: 쓰기 시 SQLAlchemy가 생성하여 저장한 낙관적 버전.
+        successor_id: 작업 인수가 확정된 후속 세션 ID.
     """
 
     __tablename__ = "core_sessions"
@@ -58,6 +59,8 @@ class SessionModel(AbstractMappableTable[HostSession]):
     working_directory: Mapped[str] = mapped_column(String, nullable=False)
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
 
+    successor_id: Mapped[str | None] = mapped_column(String)
+
     __mapper_args__ = {"version_id_col": revision}
 
     @classmethod
@@ -81,6 +84,7 @@ class SessionModel(AbstractMappableTable[HostSession]):
             host_session_id=domain.host_session_id,
             working_directory=domain.working_directory,
             revision=domain.revision,
+            successor_id=domain.successor_id,
         )
 
     @override
@@ -100,4 +104,5 @@ class SessionModel(AbstractMappableTable[HostSession]):
             host_session_id=self.host_session_id,
             working_directory=self.working_directory,
             revision=self.revision,
+            successor_id=self.successor_id,
         )

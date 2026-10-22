@@ -16,7 +16,7 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 - 코드·설치 수정은 승인된 로컬 작업이다. 공개 push·PR·배포는 사용자의 별도 요청 없이 수행하지 않는다.
 - 도메인 aggregate, 명시적 ABC port, 개별 command/query use case, 구체 repository adapter와 declarative ORM 모델의 책임을 구분한다. Protocol은 사용하지 않고 명시적 상속·추상 계약을 사용한다. 참고 구조의 불필요한 중복 유스케이스 인터페이스나 ORM 수명 구현을 복제하지 않는다. 이름만으로 인터페이스·클래스의 필요성을 단정하지 않는다. 모든 유스케이스는 Spakky의 IAsyncCommandUseCase 또는 IAsyncQueryUseCase와 run 계약을 구현하고 입력은 AbstractCommand 또는 AbstractQuery를 상속한다. Spakky Framework 8.2.0의 AbstractAggregateRoot·AbstractValueObject·IAsyncGenericRepository·AbstractAsyncGenericRepository·AbstractMappableTable·Table·SchemaRegistry와 AsyncConnectionManager·AsyncSessionManager·AsyncTransaction을 사용한다. 현재 저장소의 기본 CRUD·배치는 프레임워크 구현을 재사용한다. Command가 작업 대상 Aggregate와 그 의존 범위를 읽는 계약은 Repository에 둔다. 기본 CRUD·배치는 그대로 재사용하며 추가 계약은 도메인 aggregate를 반환한다. 조회용 검색·목록·투영은 QueryUseCase가 SQLAlchemy로 처리하여 자신의 반환 계약을 구성한다. DB 유스케이스의 run은 공식 @transactional로 경계를 선언한다. 호출자는 컨테이너에서 받은 유스케이스를 직접 호출하며 외부에서 다시 트랜잭션을 감싸지 않는다. 메서드 이름·클래스 이름이나 contextmanager 문법 자체를 금지하지 않는다.
 - 전체 현재 src와 tools에 strict Pyrefly·Google 형식 pydoclint·Ruff 검사를 적용한다. pre-commit과 CI는 tools/quality.py를 공유한다. 모듈 의미와 문서의 유용성은 별도 사람 검토 사항이다. 저장소는 조회·저장만 제공하며 위치 식별·승격·충돌 규칙은 Project aggregate가 소유한다. 엔티티는 가변 상태·동일성을 가지며 불변 관찰·명령·응답 값과 구분한다.
-- 현재 후보는 #137의 프로젝트·세션 기반, #140의 원문·태스크 원장, #141의 단계 실행 및 #142의 호스트 런타임 라이브러리다. 이전 MCP runtime은 Git 기록에 있으며 새 패키지에는 포함하지 않는다. 훅 CLI는 spakky-typer로 제공한다. 나머지 업무 CLI·설치·기존 자료 변환은 후속 티켓이며 이 후보를 실설치하지 않는다.
+- 현재 후보는 #137의 프로젝트·세션 기반, #140의 원문·태스크 원장, #141의 단계 실행 및 #142의 호스트 런타임과 #143의 기억·enclave·재개 라이브러리다. 이전 MCP runtime은 Git 기록에 있으며 새 패키지에는 포함하지 않는다. 훅 CLI는 spakky-typer로 제공한다. 나머지 업무 CLI·설치·기존 자료 변환은 후속 티켓이며 이 후보를 실설치하지 않는다.
 
 - ProjectLocation은 Project.locations에 종속된 불변 값이다. 별도 위치 repository·DI·생명주기를 만들지 않는다. 물리적 자식 테이블은 선언형 ORM 관계로 매핑하고 프로젝트 저장 시 원자적으로 반영한다. 소유자 선택·승격은 도메인에 두고 repository에는 조회·저장 매핑만 둔다.
 - repository는 신규·기존 엔티티를 모두 save(entity) -> entity로 저장한다. add/insert/create/update 저장 별칭을 만들지 않는다. 도메인의 create와 SQLAlchemy Session.add는 이 계약 명칭 규칙과 구분한다. 세션의 ORM 버전 검사·동일 값 no-op·분리된 오래된 엔티티 충돌을 보존한다.
@@ -62,3 +62,6 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 - 저장소의 추가 조회 계약은 find_by_project_id·find_by_resource처럼 조회 조건을 드러내는 find_by_<조건> 이름을 사용한다. 복합 조건은 _and_로 연결하며 포트·구현·호출자가 같은 이름을 쓴다. 프레임워크에서 상속하는 CRUD 메서드는 그대로 재사용한다.
 - 지원 훅 사건은 HookEvent로 표현하고 네이티브 문자열은 transport에서 Enum으로 변환한다. 외부 입력의 임의 문자열까지 모두 Enum으로 만들지 않는다.
 - Typer 실행 진입점은 공식 가이드처럼 스캔·시작한 애플리케이션에서 가져온 모듈 전역 cli 객체를 노출한다. 설치된 console script는 해당 객체를 호출하며 비동기 연결 정리는 명령의 이벤트 루프에서 수행한다.
+
+- #143의 enclave는 현재 맥락이며 Memory의 과거 기록·체크포인트와 구분한다. 기대 개정은 저장소의 낙관적 revision으로, 여러 변경의 이력은 aggregate 안의 순번으로 관리한다. 삭제 기록과 원문은 남기되 복원은 최신 현재 항목만 사용한다. 미리보기는 소유권을 바꾸지 않으며 실제 인수는 원 실행 종료·작성 해제·후속 턴을 확인한다. 인수된 원 세션은 다시 쓰기를 시작하지 못한다.
+- 압축 후 복원은 실제 SessionStart/compact 입력과 additionalContext 계약을 사용한다. CLI stdout 생성, 호스트 훅 호출, 다음 모델 입력·응답에서의 실제 전달을 구분해 검증한다. 호스트 한도를 넘는 맥락을 조용히 잘라 성공으로 보고하지 않는다. Graphify는 기존 CLI를 사용하고 문서 의미 관계가 유실된 갱신을 거절하여 원 그래프를 복원한다.

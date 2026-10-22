@@ -1,6 +1,7 @@
 """호스트 실행 상태의 기본 Aggregate 저장 계약을 제공한다."""
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 
 from spakky.data.persistency.repository import IAsyncGenericRepository
 
@@ -25,5 +26,20 @@ class IExecutionRepository(IAsyncGenericRepository[Execution, str], ABC):
 
         Raises:
             NotImplementedError: 저장 어댑터가 조회 계약을 구현하지 않은 경우.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    async def find_by_session_id(self, session_id: str) -> Sequence[Execution]:
+        """인수 확인에 필요한 범위의 실행 또는 작성 기록을 조회한다.
+
+        Args:
+            session_id: 조회할 소유 범위의 ID.
+
+        Returns:
+            Sequence[Execution]: 상태를 생략하지 않은 aggregate 목록.
+
+        Raises:
+            NotImplementedError: 추상 조회를 직접 호출한 경우.
         """
         raise NotImplementedError

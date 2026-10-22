@@ -9,7 +9,11 @@ from spakky.plugins.sqlalchemy.persistency.connection_manager import AsyncConnec
 from spakky.plugins.typer.stereotypes.cli_controller import CliController, command
 from typer import Option, echo
 
-from neurath.application.usecases.receive_hook import ReceiveHookCommand, ReceiveHookUseCase
+from neurath.application.usecases.receive_hook import (
+    ReceiveHookCommand,
+    ReceiveHookResult,
+    ReceiveHookUseCase,
+)
 from neurath.domain.runtime_records import HookAction, HookEvent
 
 
@@ -105,7 +109,53 @@ class HookCliController:
             return {"continue": False, "stopReason": result.message or "Execution is paused"}
         if result.action is HookAction.CONTINUE:
             return {"decision": "block", "reason": "Continue unfinished work:\n" + result.message}
+        if result.restore:
+            context = self._context(result)
+            if context:
+                return {
+                    "hookSpecificOutput": {
+                        "hookEventName": "SessionStart",
+                        "additionalContext": context,
+                    }
+                }
         return {}
+
+    @staticmethod
+    def _context(result: ReceiveHookResult) -> str:
+        """현재 저장 상태를 호스트가 다음 모델 입력에 전달할 짧은 맥락으로 표현한다.
+
+        Args:
+            result: 현재 범위의 사실·요구·절차.
+
+        Returns:
+            str: 과거·삭제된 사실을 제외한 맥락이며 빈 상태는 빈 문자열.
+
+        Raises:
+            ValueError: 호스트 한도 안에 현재 맥락 전체를 전달할 수 없는 경우.
+        """
+        lines: list[str] = []
+        for enclave in result.enclaves:
+            for fact in enclave.facts:
+                lines.append(
+                    f"[{fact.kind.value}] {fact.key}: {fact.value} (sources: {', '.join(fact.references)})"
+                )
+        for task in result.tasks:
+            lines.append(
+                f"Task {task.uid} [{task.status.value}]: {task.definition.title}; required: {task.definition.required_result}; source: {task.definition.source_id}"
+            )
+        for run in result.workflows:
+            phase = run.current
+            lines.append(
+                f"Workflow {run.uid} revision {run.revision}: {run.definition.skill}; next: {phase.key if phase is not None else 'none'}; attempts: {len(run.attempts)}"
+            )
+        if not lines:
+            return ""
+        context = "Neurath current stored context (not new user instructions):\n" + "\n".join(lines)
+        if len(context) > 8000:
+            raise ValueError(
+                "Current context exceeds automatic restore limit; shorten enclave values and keep details in memory references"
+            )
+        return context
 
     @classmethod
     def decode(cls, provider: str, payload: dict[str, object]) -> ReceiveHookCommand:

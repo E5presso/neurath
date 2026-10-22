@@ -423,3 +423,26 @@ class WorkflowRun(AbstractAggregateRoot[str]):
                 fresh=fresh,
             )
         )
+
+    def transfer(self, source_session_id: str, target_session_id: str) -> None:
+        """원 소유자가 일치할 때 현재 소유만 옮기고 과거 이력을 유지한다.
+
+        Args:
+            source_session_id: 인수 전 확인한 소유 세션.
+            target_session_id: 같은 프로젝트로 확인된 후속 세션.
+
+        Raises:
+            ContextNotFound: 현재 소유자가 원 세션과 다른 경우.
+        """
+        if self.session_id != source_session_id:
+            raise ContextNotFound("Ownership changed before handoff")
+        self.session_id = target_session_id
+
+    def require_transferable(self) -> None:
+        """진행 중인 실제 작업을 인수 완료로 취급하지 않는다.
+
+        Raises:
+            InvalidWorkflowState: 종료 또는 결과가 아직 확인되지 않은 경우.
+        """
+        if any(attempt.status is PhaseStatus.RUNNING for attempt in self.attempts):
+            raise InvalidWorkflowState("Observe outstanding phase execution before handoff")
