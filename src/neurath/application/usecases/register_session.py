@@ -86,7 +86,9 @@ class RegisterSessionUseCase(IAsyncCommandUseCase[RegisterSessionCommand, Regist
             project = Project.create(command.observation)
         project.associate(candidates)
         project = await self.projects.save(project)
-        session = await self.sessions.find(project.id, command.provider, command.host_session_id)
+        session = await self.sessions.find_by_project_id_and_provider_and_host_session_id(
+            project.id, command.provider, command.host_session_id
+        )
         if session is None:
             session = HostSession.create(
                 project_id=project.id,

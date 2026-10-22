@@ -20,7 +20,7 @@ dependencies = [
 ]
 
 [project.scripts]
-neurath = "neurath.bootstrap:main"
+neurath = "neurath.cli:cli"
 
 [dependency-groups]
 dev = [

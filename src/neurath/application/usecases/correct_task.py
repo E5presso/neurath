@@ -87,7 +87,7 @@ class CorrectTaskUseCase(IAsyncCommandUseCase[CorrectTaskCommand, CorrectTaskRes
         task.require_scope(command.project_id, command.session_id)
         task.require_revision(command.expected_revision)
         task.validate_dependencies(
-            (await self.tasks.list(command.project_id)),
+            (await self.tasks.find_by_project_id(command.project_id)),
             command.dependencies,
         )
         task.correct(

@@ -1,8 +1,10 @@
 """실제 패키지 스캔·플러그인·콘솔 입출력과 프레임워크 수명을 검증한다."""
 
 import asyncio
+import atexit
 import io
 import json
+import runpy
 import subprocess
 import sys
 from pathlib import Path
@@ -18,7 +20,6 @@ from sqlalchemy import text
 from typer import Typer
 from typer.testing import CliRunner
 
-from neurath import bootstrap
 from neurath.application.ports.services.directory_observer import IDirectoryObserverService
 from neurath.application.usecases.receive_hook import ReceiveHookUseCase
 from neurath.domain.errors import NeurathError
@@ -110,6 +111,8 @@ async def test_console_entrypoint_default_database_and_main_cleanup(tmp_path, mo
 
     monkeypatch.setattr(AsyncTransaction, "initialize", initialize)
     original_stop = SpakkyApplication.stop
+    cleanup = []
+    monkeypatch.setattr(atexit, "register", lambda callback: cleanup.append(callback))
     original_dispose = AsyncConnectionManager.dispose
 
     def stop(app):
@@ -125,8 +128,12 @@ async def test_console_entrypoint_default_database_and_main_cleanup(tmp_path, mo
     monkeypatch.setattr(AsyncConnectionManager, "dispose", dispose)
     monkeypatch.setattr(sys, "argv", ["neurath", "hook", "handle", "--provider", "codex"])
     monkeypatch.setattr(sys, "stdin", io.StringIO(payload))
+    namespace = runpy.run_module("neurath.cli")
+    assert isinstance(namespace["cli"], Typer)
     with pytest.raises(SystemExit) as exited:
-        await asyncio.to_thread(bootstrap.main)
+        await asyncio.to_thread(namespace["cli"])
+    for callback in cleanup:
+        callback()
     assert exited.value.code == 0
     assert json.loads(capsys.readouterr().out) == {}
     assert len(stopped) == len(disposed) == 1
@@ -159,7 +166,7 @@ async def test_bootstrap_failure_preserves_error_before_engine_use(tmp_path, mon
     monkeypatch.setattr(ApplicationContext, "start", fail)
     monkeypatch.setattr(AsyncConnectionManager, "dispose", dispose)
     with pytest.raises(RuntimeError, match="startup failure"):
-        await asyncio.to_thread(bootstrap.main)
+        await asyncio.to_thread(runpy.run_module, "neurath.cli")
     assert len(disposed) == 0
 
 
@@ -200,3 +207,27 @@ def test_git_workspace_error_is_not_plain_folder(repository, monkeypatch):
         service.workspace(str(repository))
     with pytest.raises(NotImplementedError):
         IDirectoryObserverService.workspace(service, str(repository))
+
+
+async def test_unsupported_event_is_rejected_before_usecase_or_database(tmp_path, monkeypatch):
+    async def unexpected(*args, **kwargs):
+        raise AssertionError("must not execute usecase")
+
+    monkeypatch.setattr(ReceiveHookUseCase, "run", unexpected)
+    missing = tmp_path / "missing"
+    response = await invoke(
+        missing,
+        ["hook", "handle", "--provider", "codex"],
+        json.dumps(
+            {
+                "hook_event_name": "FutureUnsupportedEvent",
+                "session_id": "native",
+                "cwd": str(tmp_path),
+            }
+        ),
+    )
+    assert response.exit_code == 0
+    result = json.loads(response.stdout)
+    assert result["continue"] is False
+    assert "HookEvent" in result["stopReason"]
+    assert not missing.exists()

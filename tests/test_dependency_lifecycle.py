@@ -364,11 +364,14 @@ async def test_unimplemented_aggregate_lookups_fail_explicitly():
             IProjectRepository.find_by_location,
             (None, ProjectLocation(kind=ProjectKind.FOLDER, path="/repo")),
         ),
-        (ISessionRepository.find, (None, "project", "codex", "native")),
-        (IExecutionRepository.find, (None, "session", "agent")),
-        (IWriterRepository.find, (None, "/repo")),
-        (IWorkflowRepository.find_by_task, (None, "task")),
-        (ITaskRepository.list, (None, "project")),
+        (
+            ISessionRepository.find_by_project_id_and_provider_and_host_session_id,
+            (None, "project", "codex", "native"),
+        ),
+        (IExecutionRepository.find_by_session_id_and_agent_id, (None, "session", "agent")),
+        (IWriterRepository.find_by_resource, (None, "/repo")),
+        (IWorkflowRepository.find_by_task_id, (None, "task")),
+        (ITaskRepository.find_by_project_id, (None, "project")),
     )
     for operation, arguments in operations:
         with pytest.raises(NotImplementedError):

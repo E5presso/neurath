@@ -365,3 +365,45 @@ async def test_request_releases_writer_before_following_external_action(database
     first = await register_session(str(repository), "codex", "native", database_path=database)
     following = await request(database, "register", repository, "codex", "external-result")
     assert following["project"]["uid"] == first.project.id
+
+
+async def test_project_locations_are_batch_eager_loaded_without_per_project_queries(database):
+    from sqlalchemy import event
+
+    from neurath.application.ports.repositories.project import IProjectRepository
+
+    projects = []
+    async with spakky_context(database) as scope:
+        for name in ("one", "two", "three"):
+            result = await scope.get(RegisterProjectUseCase).run(
+                RegisterProjectCommand(DirectoryObservation("/" + name))
+            )
+            projects.append(result.project)
+    statements = []
+    async with storage_scope(database, write=False) as scope:
+        manager = scope.get(AsyncSessionManager)
+        connection = await manager.session.connection()
+
+        def record(connection, cursor, statement, parameters, context, executemany):
+            if statement.lstrip().upper().startswith("SELECT"):
+                statements.append(statement)
+
+        event.listen(connection.sync_connection, "before_cursor_execute", record)
+        try:
+            restored = await scope.get(IProjectRepository).range(
+                [project.uid for project in projects]
+            )
+            assert len(restored) == 3
+            assert all(project.locations for project in restored)
+            assert len(statements) == 2
+            assert "core_projects" in statements[0]
+            assert "core_project_locations" in statements[1]
+            assert " IN " in statements[1]
+        finally:
+            event.remove(connection.sync_connection, "before_cursor_execute", record)
+    assert {location.path for project in restored for location in project.locations} == {
+        "/one",
+        "/two",
+        "/three",
+    }
+    assert len(statements) == 2

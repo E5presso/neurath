@@ -17,7 +17,7 @@ class SQLAlchemyTaskRepository(AbstractAsyncGenericRepository[Task, str], ITaskR
     """요구 개정·실행 시도·외부 대기를 소유하는 태스크를 표준 SQLAlchemy 매핑·CRUD·낙관적 잠금으로 저장한다."""
 
     @override
-    async def list(self, project_id: str) -> Sequence[Task]:
+    async def find_by_project_id(self, project_id: str) -> Sequence[Task]:
         """의존 관계와 실행 가능성을 검증할 프로젝트의 태스크들을 읽는다.
 
         Args:

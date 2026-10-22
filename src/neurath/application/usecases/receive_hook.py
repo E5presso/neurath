@@ -22,7 +22,7 @@ from neurath.domain.aggregates.session import HostSession
 from neurath.domain.aggregates.task import Task
 from neurath.domain.aggregates.writer import Writer
 from neurath.domain.errors import InvalidExecutionState
-from neurath.domain.runtime_records import ExecutionStatus, HookAction, Liveness
+from neurath.domain.runtime_records import ExecutionStatus, HookAction, HookEvent, Liveness
 
 
 @dataclass(frozen=True)
@@ -48,7 +48,7 @@ class ReceiveHookCommand(AbstractCommand):
     provider: str
     host_session_id: str
     working_directory: str
-    event: str
+    event: HookEvent
     start_source: str = ""
     turn_id: str = ""
     agent_id: str = ""
@@ -134,7 +134,9 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
             project = Project.create(observation)
         project.associate(candidates)
         project = await self.projects.save(project)
-        session = await self.sessions.find(project.uid, command.provider, command.host_session_id)
+        session = await self.sessions.find_by_project_id_and_provider_and_host_session_id(
+            project.uid, command.provider, command.host_session_id
+        )
         if session is None:
             session = await self.sessions.save(
                 HostSession.create(
@@ -144,12 +146,14 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
                     observation.working_directory,
                 )
             )
-        execution = await self.executions.find(session.uid, command.agent_id)
+        execution = await self.executions.find_by_session_id_and_agent_id(
+            session.uid, command.agent_id
+        )
         if execution is None:
             execution = await self.executions.save(Execution.create(session.uid, command.agent_id))
         tasks = tuple(
             t
-            for t in await self.tasks.list(project.uid)
+            for t in await self.tasks.find_by_project_id(project.uid)
             if t.owner_session_id == session.uid and not command.agent_id
         )
         todo = "\n".join(f"{t.uid}: {t.status.value} — {t.definition.title}" for t in tasks)
@@ -167,7 +171,7 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
         tasks: Sequence[Task],
         resource: str,
     ) -> tuple[HookAction, int | None]:
-        """수명 사건과 도구 사건을 해당 도메인 규칙에 전달한다.
+        """수명 사건과 도구 사건을 전달하며 현재 상태에서 거절된 도메인 예외를 전파한다.
 
         Args:
             command: 처리할 호스트 사건.
@@ -178,51 +182,47 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
         Returns:
             tuple[HookAction, int | None]: 호스트 제어와 선택적인 작성 세대.
 
-        Raises:
-            InvalidExecutionState: 지원하지 않는 사건인 경우.
         """
-        if command.event in ("SessionStart", "SubagentStart"):
+        if command.event in (HookEvent.SESSION_START, HookEvent.SUBAGENT_START):
             execution.observe_start(command.start_source)
             return HookAction.ALLOW, None
-        if command.event == "UserPromptSubmit":
+        if command.event == HookEvent.USER_PROMPT_SUBMIT:
             execution.begin_turn(command.turn_id)
             return HookAction.ALLOW, None
-        if command.event == "SessionEnd":
+        if command.event == HookEvent.SESSION_END:
             execution.end(command.reason)
             return HookAction.ALLOW, None
         if not execution.turn_id and command.turn_id:
             execution.begin_turn(command.turn_id)
-        if command.event == "PreToolUse" and not resource:
+        if command.event == HookEvent.PRE_TOOL_USE and not resource:
             return HookAction.ALLOW, None
         execution.require_turn(command.turn_id)
-        if command.event == "Interrupt":
+        if command.event == HookEvent.INTERRUPT:
             execution.cancel(command.turn_id, command.reason or "Host interrupted execution")
             return HookAction.PAUSE, None
-        if command.event == "StopFailure":
+        if command.event == HookEvent.STOP_FAILURE:
             execution.pause(command.reason or "Host execution failed")
             return HookAction.PAUSE, None
-        if command.event in ("Stop", "SubagentStop"):
+        if command.event in (HookEvent.STOP, HookEvent.SUBAGENT_STOP):
             progress = []
             for task in tasks:
-                workflow = await self.workflows.find_by_task(task.uid)
+                workflow = await self.workflows.find_by_task_id(task.uid)
                 if workflow is not None:
                     progress.append((workflow.uid, workflow.revision))
             return execution.decide_stop(tasks, repeated=command.repeated, progress=progress), None
-        if command.event == "PreToolUse":
+        if command.event == HookEvent.PRE_TOOL_USE:
             if execution.status is not ExecutionStatus.RUNNING:
                 return HookAction.PAUSE, None
-            writer = await self.writers.find(resource)
+            writer = await self.writers.find_by_resource(resource)
             if writer is None:
                 writer = Writer.create(resource)
             generation = writer.acquire(execution.uid, command.turn_id, command.tool_use_id)
             (await self.writers.save(writer))
             return HookAction.ALLOW, generation
-        if command.event in ("PostToolUse", "PostToolUseFailure"):
-            (await self._finish_write(command, execution, resource))
-            if command.interrupted:
-                execution.cancel(command.turn_id, command.reason or "Host interrupted execution")
-            return HookAction.ALLOW, None
-        raise InvalidExecutionState("Unsupported host event")
+        await self._finish_write(command, execution, resource)
+        if command.interrupted:
+            execution.cancel(command.turn_id, command.reason or "Host interrupted execution")
+        return HookAction.ALLOW, None
 
     async def _finish_write(
         self, command: ReceiveHookCommand, execution: Execution, resource: str
@@ -236,7 +236,7 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
         """
         if not resource or not command.finished:
             return
-        writer = await self.writers.find(resource)
+        writer = await self.writers.find_by_resource(resource)
         if writer is None:
             return
         if (writer.execution_id, writer.turn_id, writer.tool_use_id) != (

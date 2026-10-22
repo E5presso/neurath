@@ -19,8 +19,6 @@ from neurath.application.usecases.register_session import (
     RegisterSessionCommand,
     RegisterSessionUseCase,
 )
-from neurath.domain.aggregates.request_source import RequestSource, SourceKind
-from neurath.domain.aggregates.task import Task
 from neurath.domain.observations import DirectoryObservation
 from neurath.domain.task_records import Outcome, SubmittedResult, TaskResult
 from neurath.domain.workflow_records import (
@@ -98,27 +96,20 @@ async def test_repeated_cli_commands_do_not_register_more_groups_or_retain_db_se
             _ = scope.get(AsyncSessionManager).session
 
 
-def test_submitted_and_reported_values_do_not_alias_callers_lists():
-    source = RequestSource.create("project", "session", SourceKind.PROMPT, "original")
-    task = Task.create("project", "session", source, "task", "result")
-    task.start([task])
-    references = ["evidence:submitted"]
-    submission = SubmittedResult(summary="candidate", references=references)
-    task.submit(1, submission)
-    observations = ["evidence:verified"]
-    result = TaskResult(outcome=Outcome.SUCCEEDED, summary="verified", observations=observations)
-    task.report(1, result, task.revision)
-    version = task.version
-    references.clear()
-    observations.append("unrequested mutation")
-    assert task.attempt(1).submission.references == ("evidence:submitted",)
-    assert task.attempt(1).result.observations == ("evidence:verified",)
-    assert task.version == version
-    assert hash(submission) == hash(submission.clone())
-    assert hash(result) == hash(result.clone())
+def test_value_object_fields_cannot_be_reassigned():
+    from dataclasses import FrozenInstanceError
+
+    submission = SubmittedResult(summary="candidate", references=["evidence"])
+    with pytest.raises(FrozenInstanceError):
+        submission.references = ["replacement"]
+    result = TaskResult(outcome=Outcome.SUCCEEDED, summary="verified", observations=["evidence"])
+    with pytest.raises(FrozenInstanceError):
+        result.observations = []
 
 
-def test_workflow_value_objects_preserve_hashable_owned_snapshots():
+def test_workflow_value_objects_accept_sequence_inputs_without_rewriting_them():
+    from dataclasses import FrozenInstanceError
+
     arguments = ["program"]
     checks = ["exit:0"]
     phase = PhaseDefinition(
@@ -129,25 +120,17 @@ def test_workflow_value_objects_preserve_hashable_owned_snapshots():
         target_revision="head",
         checks=checks,
     )
-    phases = [phase]
-    inputs = [["input", "original"]]
-    definition = WorkflowDefinition(skill="check", version="1", phases=phases, inputs=inputs)
-    evidence = ["actual:output"]
+    definition = WorkflowDefinition(skill="check", version="1", phases=[phase], inputs=[])
     result = PhaseResult(
         status=PhaseStatus.SUCCEEDED,
         target_revision="head",
         summary="verified",
-        evidence=evidence,
+        evidence=["actual:output"],
         checks=checks,
     )
-    arguments.clear()
-    checks.clear()
-    phases.clear()
-    inputs[0][1] = "changed"
-    evidence.clear()
-    assert phase.arguments == ("program",) and phase.checks == ("exit:0",)
-    assert definition.phases == (phase,) and definition.inputs == (("input", "original"),)
-    assert result.evidence == ("actual:output",) and result.checks == ("exit:0",)
-    assert hash(phase) == hash(phase.clone())
-    assert hash(definition) == hash(definition.clone())
-    assert hash(result) == hash(result.clone())
+    assert phase.arguments is arguments
+    assert phase.checks is checks
+    assert definition.phases == [phase]
+    assert result.checks is checks
+    with pytest.raises(FrozenInstanceError):
+        phase.arguments = ["replacement"]

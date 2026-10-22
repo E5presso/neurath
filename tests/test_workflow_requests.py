@@ -668,7 +668,7 @@ async def test_incomplete_workflow_lookup_rolls_back_start(database, work, monke
     async def incomplete(self, workflow_id):
         raise NotImplementedError("storage unavailable")
 
-    monkeypatch.setattr(SQLAlchemyWorkflowRepository, "find_by_task", incomplete)
+    monkeypatch.setattr(SQLAlchemyWorkflowRepository, "find_by_task_id", incomplete)
     before = snapshot(database)
     with pytest.raises(NotImplementedError):
         (

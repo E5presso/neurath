@@ -50,3 +50,5 @@ Database and hook failures return `continue:false` with recovery guidance. Expli
 Regression tests exercise actual SQLite concurrency, restart, late outcomes, cancellation, explicit resume, child reads, phase progress, external waiting, database failures and bypass. Real processes verify targeted interruption and liveness. Passing these tests does not prove installation or activation in the user's host.
 
 The default SQLite URL uses `sqlite+aiosqlite`. Explicit connections use Spakky’s `SPAKKY_SQLALCHEMY__CONNECTION_STRING`; Spakky’s default asynchronous support remains enabled. Help and `--bypass` open no database transaction. Wiring this command into installed user hooks has not been performed.
+
+The CLI entry point is `neurath.cli:cli`, following the official Typer guide. The module exposes the container-provided Typer object and registers application cleanup at process exit. The async engine is disposed in the command event loop. Transport converts native event strings to `HookEvent`; unsupported events are rejected before database work.

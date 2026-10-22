@@ -108,3 +108,5 @@ Git/worktree/clone 구분과 명시적·동시 초기화를 검증합니다. 이
 [태스크 원장](task-ledger.md)은 #140에서 추가한 원문·정정·시도·TODO의 구현 범위입니다.
 
 `core_0005`는 [호스트 실행과 작성 임대](host-runtime.md)를 추가합니다.
+
+추가 Aggregate 조회명은 `find_by_<조건>`으로 조건을 드러냅니다. 프로젝트 소유 위치의 `lazy="selectin"`은 지연 로딩이 아닌 select-in eager loading입니다. 현재 회귀 시험은 프로젝트 3개와 위치를 부모 SELECT 1회·자식 IN SELECT 1회로 적재하고 추가 접근 시 SQL이 발생하지 않음을 확인합니다. 컬렉션 joined loading에는 `Result.unique()`가 필요하지만 Spakky 8.2.0 기본 저장소의 get/range는 이를 적용하지 않습니다. 기본 CRUD를 재구현하지 않고 select-in 방식을 유지합니다.

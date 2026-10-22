@@ -84,7 +84,7 @@ class StartWorkflowUseCase(IAsyncCommandUseCase[StartWorkflowCommand, StartWorkf
         """
         task = await self.tasks.get(command.task_id)
         task.require_scope(command.project_id, command.session_id)
-        existing = await self.workflows.find_by_task(task.uid)
+        existing = await self.workflows.find_by_task_id(task.uid)
         if existing is not None and (
             existing.definition != command.definition
             or existing.revisions[-1].task_definition_number != task.definition.number
@@ -94,7 +94,7 @@ class StartWorkflowUseCase(IAsyncCommandUseCase[StartWorkflowCommand, StartWorkf
             return StartWorkflowResult(run=existing)
         task.require_revision(command.expected_task_revision)
         if task.status is not TaskStatus.ACTIVE:
-            task.start(await self.tasks.list(command.project_id))
+            task.start(await self.tasks.find_by_project_id(command.project_id))
             (await self.tasks.save(task))
         run = WorkflowRun.create(
             command.project_id,

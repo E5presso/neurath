@@ -18,7 +18,9 @@ class SQLAlchemyExecutionRepository(
     """실제 턴·중단 상태·Stop 관찰을 가진 실행를 표준 SQLAlchemy 매핑·CRUD·낙관적 잠금으로 저장한다."""
 
     @override
-    async def find(self, session_id: str, agent_id: str) -> Execution | None:
+    async def find_by_session_id_and_agent_id(
+        self, session_id: str, agent_id: str
+    ) -> Execution | None:
         """현재 세션과 자식 식별자에 연결된 실행 aggregate를 찾는다.
 
         Args:

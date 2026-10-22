@@ -120,3 +120,5 @@ foundation candidate. Source changes do not alter user databases or installed di
 [Task ledger](task-ledger.md) documents the source/correction/attempt/TODO implementation added by #140.
 
 `core_0005` adds [host execution and writer leases](host-runtime.md).
+
+Additional aggregate lookups use `find_by_<criteria>` names. The owned project locations use select-in eager loading (`lazy="selectin"`), not deferred loading. A regression test loads three projects and their locations with one parent SELECT and one child IN SELECT, with no additional SQL on access. Collection joined loading requires `Result.unique()`, which the Spakky 8.2.0 generic get/range methods do not apply. Select-in loading preserves reuse of the framework CRUD implementation.

@@ -54,7 +54,11 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 - SQLite 접근은 aiosqlite와 Spakky IAsyncGenericRepository·AbstractAsyncGenericRepository·AsyncSessionManager·AsyncTransaction을 사용한다. DB 유스케이스와 Typer 훅 명령은 async def로 선언하고 호출을 await한다. Alembic은 async connection.run_sync로 실행한다. 관계 매핑은 비동기 조회 안에서 selectin으로 적재하여 암묵적 lazy SQL을 만들지 않는다. CLI 입출력은 transport, 외부 기술 구현은 infrastructure, 의존성 조립은 구성 루트가 담당한다. 실제 컨테이너에서 직접 호출한 유스케이스의 커밋·롤백, 동일 앱의 반복 CLI와 요청 격리, 실행·정리 이벤트 루프, scan 발견과 await 누락을 회귀 시험으로 확인한다.
 
 - Spakky 사용법은 https://framework.spakky.com/ 의 해당 매뉴얼을 직접 읽고 설치한 버전의 실제 API와 함께 확인한다. Domain Event는 aggregate.add_event → Repository.save → @transactional 커밋 → @EventHandler/@on_event 경로로 후속 작업을 연결한다. 후속 유스케이스는 새 트랜잭션으로 실행하며 중첩 트랜잭션이나 자체 이벤트 디스패처를 도입하지 않는다. 원자적으로 끝나야 하는 한 작업은 하나의 유스케이스가 담당한다. 이벤트 핸들러 실패가 로그로 격리되는 동작을 고려하여 예약 응답을 후속 작업 완료로 해석하지 않고 DB의 실제 결과를 확인한다.
-- @immutable 값 객체의 Sequence 입력은 소유 경계에서 불변 snapshot으로 보존한다. 호출자가 원래 목록을 변경해도 저장할 이력과 aggregate 변경 토큰을 우회해 바뀌지 않아야 한다. 타입 이름이나 frozen 선언만으로 내부 값까지 불변이라고 판단하지 않는다.
+- @immutable은 값 객체의 필드 재할당을 막고 Sequence는 읽기 전용 목록 계약을 표현한다. 깊은 불변성을 별도 요구로 확대하지 않으며, 모든 입력의 tuple 변환이나 object.__setattr__를 이용한 강제 할당을 추가하지 않는다. 기존에 저장·정렬을 위해 필요한 tuple 사용과는 구분한다.
 
 - EventHandler는 transport의 인바운드 어댑터다. 이벤트를 Command/Query로 변환해 주입받은 유스케이스를 호출한다. 실행·관찰·복구·예외 처리·알림 로직과 그 서비스 의존성은 담당 유스케이스에 둔다. 외부 작업만 수행하는 유스케이스에는 DB 트랜잭션을 열지 않으며, 관찰 결과는 표준 이벤트 발행자로 후속 저장 유스케이스에 전달한다. DB 결과 저장이 실패하면 그 결과에 대한 알림 사건도 발행하지 않는다.
 - 공통 구조 검사는 CommandUseCase의 ORM 직접 참조와 이벤트 어댑터의 작업 서비스 주입을 실제 계약·별칭·상속으로 검사한다. QueryUseCase의 SQLAlchemy 조회는 허용한다. 임의의 클래스 이름이나 모든 함수·예외 문법의 금지로 책임 규칙을 확장하지 않는다.
+
+- 저장소의 추가 조회 계약은 find_by_project_id·find_by_resource처럼 조회 조건을 드러내는 find_by_<조건> 이름을 사용한다. 복합 조건은 _and_로 연결하며 포트·구현·호출자가 같은 이름을 쓴다. 프레임워크에서 상속하는 CRUD 메서드는 그대로 재사용한다.
+- 지원 훅 사건은 HookEvent로 표현하고 네이티브 문자열은 transport에서 Enum으로 변환한다. 외부 입력의 임의 문자열까지 모두 Enum으로 만들지 않는다.
+- Typer 실행 진입점은 공식 가이드처럼 스캔·시작한 애플리케이션에서 가져온 모듈 전역 cli 객체를 노출한다. 설치된 console script는 해당 객체를 호출하며 비동기 연결 정리는 명령의 이벤트 루프에서 수행한다.

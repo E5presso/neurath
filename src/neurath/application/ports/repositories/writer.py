@@ -11,7 +11,7 @@ class IWriterRepository(IAsyncGenericRepository[Writer, str], ABC):
     """작성 소유자·턴·도구 호출·세대를 가진 임대의 식별자 조회와 저장을 프레임워크 기본 계약으로 제공한다."""
 
     @abstractmethod
-    async def find(self, resource: str) -> Writer | None:
+    async def find_by_resource(self, resource: str) -> Writer | None:
         """정규 작업 폴더에 연결된 작성 임대 aggregate를 찾는다.
 
         Args:

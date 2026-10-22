@@ -69,5 +69,5 @@ class StartTaskUseCase(IAsyncCommandUseCase[StartTaskCommand, StartTaskResult]):
         task = await self.tasks.get(command.task_id)
         task.require_scope(command.project_id, command.session_id)
         task.require_revision(command.expected_revision)
-        task.start(await self.tasks.list(command.project_id))
+        task.start(await self.tasks.find_by_project_id(command.project_id))
         return StartTaskResult(task=(await self.tasks.save(task)))

@@ -432,6 +432,25 @@ class ArchitectureChecker:
             errors.append(f"{location} CLI_BOUNDARY: CLI controllers belong to transport")
         errors.extend(self._check_execution_boundary(module, node, ancestors, decorators))
         errors.extend(self._check_port(module, node, ancestors))
+        if ancestors.intersection(repository_bases):
+            for method in node.body:
+                if isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef)) and method.name in {
+                    "find",
+                    "list",
+                }:
+                    errors.append(
+                        f"{module}:{method.lineno} REPOSITORY_LOOKUP_NAME: name the lookup criteria"
+                    )
+        if "spakky.core.common.mutability.immutable" in decorators:
+            for call in ast.walk(node):
+                if isinstance(call, ast.Call) and self._name(module, call.func) in {
+                    f"{module}.object.__setattr__",
+                    "builtins.object.__setattr__",
+                }:
+                    errors.append(
+                        f"{module}:{call.lineno} IMMUTABLE_ASSIGNMENT: do not bypass immutable field assignment"
+                    )
+
         errors.extend(self._check_role_name(module, node, ancestors, decorators))
         has_port = any(
             parent in self.classes

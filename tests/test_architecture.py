@@ -1042,3 +1042,67 @@ class Handler:
         self.label = label
 """
     assert ArchitectureChecker({"neurath.transport.events.settings": source}).check() == []
+
+
+@pytest.mark.parametrize("method", ["find", "list"])
+def test_repository_lookups_name_their_criteria(method):
+    source = f"""from abc import ABC, abstractmethod
+from spakky.data.persistency.repository import IAsyncGenericRepository
+class ITaskRepository(IAsyncGenericRepository, ABC):
+    @abstractmethod
+    async def {method}(self, project_id: str):
+        raise NotImplementedError
+"""
+    key = "neurath.application.ports.repositories.task"
+    assert any("REPOSITORY_LOOKUP_NAME" in e for e in ArchitectureChecker({key: source}).check())
+    assert (
+        ArchitectureChecker(
+            {key: source.replace(f"def {method}", "def find_by_project_id")}
+        ).check()
+        == []
+    )
+
+
+def test_immutable_assignment_bypass_is_rejected_without_requiring_tuple_inputs():
+    source = """from spakky.core.common.mutability import immutable
+from collections.abc import Sequence
+@immutable
+class Value:
+    items: Sequence[str]
+    def __post_init__(self):
+        object.__setattr__(self, "items", tuple(self.items))
+"""
+    key = "neurath.domain.example"
+    assert any("IMMUTABLE_ASSIGNMENT" in e for e in ArchitectureChecker({key: source}).check())
+    assert ArchitectureChecker({key: source[: source.index("    def __post_init__")]}).check() == []
+
+
+def test_pyrefly_checks_hook_enum_and_read_only_sequence(tmp_path):
+    fixture = tmp_path / "contracts.py"
+    fixture.write_text("""from neurath.application.usecases.receive_hook import ReceiveHookCommand
+from neurath.domain.runtime_records import HookEvent
+from neurath.domain.task_records import SubmittedResult
+ReceiveHookCommand(provider="codex", host_session_id="id", working_directory="/tmp", event="Stop")
+value = SubmittedResult(summary="candidate", references=["evidence"])
+value.references.append("unexpected")
+""")
+    arguments = [
+        sys.executable,
+        "-m",
+        "pyrefly",
+        "check",
+        "--config",
+        str(Path(__file__).resolve().parents[1] / "pyproject.toml"),
+        str(fixture),
+    ]
+    result = subprocess.run(arguments, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "bad-argument-type" in result.stdout
+    assert "append" in result.stdout
+    fixture.write_text(
+        fixture.read_text()
+        .replace('event="Stop"', "event=HookEvent.STOP")
+        .replace('value.references.append("unexpected")', "tuple(value.references)")
+    )
+    result = subprocess.run(arguments, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr

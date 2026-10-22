@@ -89,7 +89,7 @@ class ReportResultUseCase(IAsyncCommandUseCase[ReportResultCommand, ReportResult
             and attempt.definition_number == task.definition.number
             and attempt.result is None
         ):
-            workflow = await self.workflows.find_by_task(task.uid)
+            workflow = await self.workflows.find_by_task_id(task.uid)
         if workflow is not None:
             workflow.require_complete(task.definition.number)
         task.report(command.attempt_number, command.result, command.expected_revision)

@@ -5,10 +5,8 @@ import os
 from spakky.core.application.application import SpakkyApplication
 from spakky.core.application.application_context import ApplicationContext
 from spakky.plugins.sqlalchemy.common.constants import SPAKKY_SQLALCHEMY_CONFIG_ENV_PREFIX
-from spakky.plugins.sqlalchemy.persistency.connection_manager import AsyncConnectionManager
-from typer import Typer
 
-from neurath.infrastructure.database import configure_sqlite_engine, sqlite_url, user_database_path
+from neurath.infrastructure.database import sqlite_url, user_database_path
 
 
 def create_application() -> SpakkyApplication:
@@ -30,16 +28,8 @@ def create_application() -> SpakkyApplication:
     return (
         SpakkyApplication(ApplicationContext())
         .load_plugins()
-        .scan("neurath", exclude={"neurath.infrastructure.migrations", "neurath.bootstrap"})
+        .scan(
+            "neurath",
+            exclude={"neurath.infrastructure.migrations", "neurath.bootstrap", "neurath.cli"},
+        )
     )
-
-
-def main() -> None:
-    """애플리케이션 하나로 CLI를 실행하고 종료·실패 시 프레임워크 자원을 정리한다."""
-    application = create_application().start()
-    try:
-        manager = application.container.get(AsyncConnectionManager)
-        configure_sqlite_engine(manager.connection.sync_engine, write=True, check_schema=True)
-        application.container.get(Typer)()
-    finally:
-        application.stop()

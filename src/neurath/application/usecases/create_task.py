@@ -96,7 +96,7 @@ class CreateTaskUseCase(IAsyncCommandUseCase[CreateTaskCommand, CreateTaskResult
             command.dependencies,
             command.follow_up_of,
         )
-        task.validate_dependencies(await self.tasks.list(command.project_id))
+        task.validate_dependencies(await self.tasks.find_by_project_id(command.project_id))
         if command.follow_up_of is not None:
             parent = await self.tasks.get(command.follow_up_of)
             parent.require_project(command.project_id)

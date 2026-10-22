@@ -16,7 +16,7 @@ class SQLAlchemyWriterRepository(AbstractAsyncGenericRepository[Writer, str], IW
     """작성 소유자·턴·도구 호출·세대를 가진 임대를 표준 SQLAlchemy 매핑·CRUD·낙관적 잠금으로 저장한다."""
 
     @override
-    async def find(self, resource: str) -> Writer | None:
+    async def find_by_resource(self, resource: str) -> Writer | None:
         """정규 작업 폴더에 연결된 작성 임대 aggregate를 찾는다.
 
         Args:

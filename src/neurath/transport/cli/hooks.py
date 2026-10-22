@@ -10,7 +10,7 @@ from spakky.plugins.typer.stereotypes.cli_controller import CliController, comma
 from typer import Option, echo
 
 from neurath.application.usecases.receive_hook import ReceiveHookCommand, ReceiveHookUseCase
-from neurath.domain.runtime_records import HookAction
+from neurath.domain.runtime_records import HookAction, HookEvent
 
 
 class HookProvider(StrEnum):
@@ -121,7 +121,7 @@ class HookCliController:
         Raises:
             ValueError: 필수 식별자나 부울 필드의 형식이 잘못된 경우.
         """
-        event = cls._text(payload, "hook_event_name", required=True)
+        event = HookEvent(cls._text(payload, "hook_event_name", required=True))
         session = cls._text(payload, "session_id", required=True)
         directory = cls._text(payload, "cwd", required=True)
         turn = cls._text(payload, "turn_id" if provider == "codex" else "prompt_id")
@@ -136,7 +136,11 @@ class HookCliController:
         if not isinstance(repeated, bool) or not isinstance(interrupted, bool):
             raise ValueError("Hook flags must be booleans")
         writes = False
-        if event in ("PreToolUse", "PostToolUse", "PostToolUseFailure"):
+        if event in (
+            HookEvent.PRE_TOOL_USE,
+            HookEvent.POST_TOOL_USE,
+            HookEvent.POST_TOOL_USE_FAILURE,
+        ):
             if not tool or not call:
                 raise ValueError("Tool event requires a tool name and call ID")
             writes = tool in {"Edit", "Write", "Bash", "apply_patch", "exec_command"}
@@ -157,7 +161,7 @@ class HookCliController:
         )
 
     @staticmethod
-    def _finished(provider: str, payload: dict[str, object], event: str, tool: str) -> bool:
+    def _finished(provider: str, payload: dict[str, object], event: HookEvent, tool: str) -> bool:
         """동기 도구 결과와 종료 코드가 확인된 셸 결과만 작성 종료로 판정한다.
 
         Args:
@@ -169,9 +173,9 @@ class HookCliController:
         Returns:
             bool: 백그라운드·유실·알 수 없는 도구는 False이며 임대를 보존함.
         """
-        if event == "PostToolUseFailure":
+        if event == HookEvent.POST_TOOL_USE_FAILURE:
             return tool in ("Edit", "Write", "apply_patch")
-        if event != "PostToolUse":
+        if event != HookEvent.POST_TOOL_USE:
             return False
         if tool in ("Edit", "Write", "apply_patch"):
             return True
