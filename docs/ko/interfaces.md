@@ -20,7 +20,7 @@ CLI는 에이전트가 직접 전달해야 하는 의도 또는 직접 조회할
 
 설치된 rules를 Neurath의 기본 진입점으로 사용합니다. 사용자가 매 작업마다 별도 모드나 진입 명령을 켤 필요는 없습니다. Rules는 스킬의 목적·적용 조건·제외 조건과 CLI를 통한 시작 방법을 안내하고, 에이전트가 사용자 요청의 의미에 맞는 스킬을 선택합니다. 사용자가 스킬을 직접 지정하면 그 지정을 따릅니다. 단순 질문·설명·상태 확인에는 스킬 실행을 강제하지 않습니다.
 
-스킬 선택은 에이전트의 판단이며, 선택된 스킬의 실행 정의·phase·시도·결과·완료 조건은 기존 phase runner가 관리합니다. 스킬을 읽거나 이름을 언급한 것만으로 run이 시작된 것으로 기록하지 않습니다. 선택한 스킬은 기존 `neurath start-workflow` 경로로 시작하고 실제 실행 상태를 조회합니다. 스킬 선택은 사용자 요청의 범위를 확대하거나 추가 권한을 부여하지 않습니다.
+스킬 선택은 에이전트의 판단이며, 선택된 스킬의 실행 정의·phase·시도·결과·완료 조건은 기존 phase runner가 관리합니다. 스킬을 읽거나 이름을 언급한 것만으로 run이 시작된 것으로 기록하지 않습니다. 선택한 스킬은 기존 `start-workflow` 경로로 시작하고 실제 실행 상태를 조회합니다. 스킬 선택은 사용자 요청의 범위를 확대하거나 추가 권한을 부여하지 않습니다.
 
 | 스킬 | 사용할 요청 | 절차 | 제외 |
 | --- | --- | --- | --- |
@@ -55,30 +55,32 @@ CLI는 에이전트가 직접 전달해야 하는 의도 또는 직접 조회할
 
 **기술 스택은 Python + spakky-typer (Typer)입니다.** `neurath` 진입점과 업무·관리 명령을 Typer 애플리케이션으로 정의합니다. Python 타입 힌트와 Typer의 명령·인자·옵션·도움말 정의를 사용하고, 실제 도메인 동작은 기존 Application 유스케이스에 위임합니다. Typer 의존성은 CLI 전송 계층에 두며 Domain에 넣지 않습니다. [공식 Typer 문서](https://typer.tiangolo.com/).
 
-업무 명령 이름은 **동사-목적어** 형식의 kebab-case입니다. 스킬은 동작 이름에 kebab-case를 사용하며 `autopilot`, `qa`는 확립된 절차 이름을 유지합니다.
+CLI Controller는 기능별 그룹을 명시하고 업무 명령은 그 그룹 아래에 둡니다. 그룹이 대상을 나타내면 하위 명령은 `list/read/publish`처럼 동사를 사용하며, 대상 구분이 더 필요한 이름은 동사-목적어 형식의 kebab-case로 작성합니다. 스킬은 동작 이름에 kebab-case를 사용하며 `autopilot`, `qa`는 확립된 절차 이름을 유지합니다.
+
+아래 표의 미구현 동작명은 업무 식별자이며 루트 등록 지시가 아닙니다. 해당 기능을 구현할 때 책임에 맞는 명시적 그룹과 최종 실행 경로를 함께 확정합니다. 이미 구현한 명령은 표에 그룹 경로를 표시합니다.
 
 | 도구 | 입력·결과와 효과 경계 | 효과 |
 | --- | --- | --- |
-| `neurath get-context` | 지정 세션/작업의 현재 원문·TODO·배정·runner·사실·피어/모델·감시/진단 요약. sections/filter/cursor로 필요한 부분만 읽음 | read |
-| `neurath create-task` | 원 요청에 연결한 결과 조건·의존 관계로 작업 생성 | write |
-| `neurath update-task` | 해당 작업의 범위/진행/대기/수락/취소 수정. 성공·검사·인간 동의를 직접 설정하지 않음 | write |
-| `neurath report-result` | 작업·시도·대상의 수행/검토 결과와 근거 보고. 담당자의 적용 가능한 결과로만 task/phase 전이; 수신자 보고는 상위 완료가 아님 | write |
-| `neurath start-workflow` | 선택한 스킬 정의/입력을 고정해 runner 시작 | write |
-| `neurath revise-workflow` | 정당한 절차 변경·재시도·분기 반영; 원문과 필수 결과 유지 | write |
-| `neurath delegate-task` | 기존 작업을 피어 또는 provider에 배정·실행 연결. 필요 모델/정책은 명시; 같은 배정 재전달로 중복 실행 없음 | write |
-| `neurath send-message` | 수신자/구독 대상에 전달; 답장은 원 메시지 참조 | write |
-| `neurath read-message` | 선택 본문을 읽고 확인된 전체 전달만 읽음 기록; 이해/수락을 뜻하지 않음 | read+receipt |
+| `get-context` | 지정 세션/작업의 현재 원문·TODO·배정·runner·사실·피어/모델·감시/진단 요약. sections/filter/cursor로 필요한 부분만 읽음 | read |
+| `create-task` | 원 요청에 연결한 결과 조건·의존 관계로 작업 생성 | write |
+| `update-task` | 해당 작업의 범위/진행/대기/수락/취소 수정. 성공·검사·인간 동의를 직접 설정하지 않음 | write |
+| `report-result` | 작업·시도·대상의 수행/검토 결과와 근거 보고. 담당자의 적용 가능한 결과로만 task/phase 전이; 수신자 보고는 상위 완료가 아님 | write |
+| `start-workflow` | 선택한 스킬 정의/입력을 고정해 runner 시작 | write |
+| `revise-workflow` | 정당한 절차 변경·재시도·분기 반영; 원문과 필수 결과 유지 | write |
+| `delegate-task` | 기존 작업을 피어 또는 provider에 배정·실행 연결. 필요 모델/정책은 명시; 같은 배정 재전달로 중복 실행 없음 | write |
+| `send-message` | 수신자/구독 대상에 전달; 답장은 원 메시지 참조 | write |
+| `read-message` | 선택 본문을 읽고 확인된 전체 전달만 읽음 기록; 이해/수락을 뜻하지 않음 | read+receipt |
 | `neurath memory search` | 관련 기억·학습·체크포인트·인계 후보 검색 | read |
 | `neurath memory read` | 선택한 과거 기억 기록과 근거 조회 | read |
 | `neurath session preview` | 원 세션의 원문·현재 작업·runner·enclave를 인수 전에 조회; 소유권 불변 | read |
 | `neurath memory checkpoint` | 현재 결과·판단·남은 일과 참조를 인계 보고로 저장 | write |
 | `neurath session resume` | 확인한 이전 작업과 runner/맥락을 재개 또는 인수; 이전 작성과 중복 방지 | write |
 | `neurath memory update` | 같은 사실 저장소의 예상 개정에 set/remove 변경 목록 적용; 원문/작업은 삭제하지 않음 | write |
-| `neurath list-articles` | 뉴스룸의 관련 제목·개정 검색/목록 | read |
-| `neurath read-article` | 선택 개정의 본문/댓글 조회; 전체 전달만 해당 개정 읽음 기록 | read+receipt |
-| `neurath publish-article` | 제목·본문·근거로 기사 게시; 활성 피어에게 제목 알림 | write |
-| `neurath revise-article` | 예상 개정과 정정 이유로 기사 수정; 이력 보존 | write |
-| `neurath comment-on-article` | 선택 기사 개정에 댓글 | write |
+| `neurath newsroom list` | 뉴스룸의 관련 제목·개정 검색/목록 | read |
+| `neurath newsroom read` | 선택 개정의 본문/댓글 조회; 전체 전달만 해당 개정 읽음 기록 | read+receipt |
+| `neurath newsroom publish` | 제목·본문·근거로 기사 게시; 활성 피어에게 제목 알림 | write |
+| `neurath newsroom revise` | 예상 개정과 정정 이유로 기사 수정; 이력 보존 | write |
+| `neurath newsroom comment` | 선택 기사 개정에 댓글 | write |
 
 CLI는 같은 애플리케이션 유스케이스를 직접 호출합니다. MCP 서버 등록·도구 발견·재연결을 전제로 하지 않습니다. 호스트의 셸 실행 도구로 호출하고, 스킬은 설치된 가이드에 따라 명령을 선택합니다. 결과는 에이전트가 읽기 쉬운 구조화된 JSON으로 제공하고 로그/진단과 구분합니다. 종료 코드는 명령 처리의 성공/실패를 나타내며 작업 목표 달성 여부는 실제 결과로 구분합니다. 잘못된 인자는 변경 전에 검증하고 필요한 사용법을 함께 반환합니다. 복잡한 본문은 파일 또는 표준입력으로 전달할 수 있게 하며 오류 난 변경을 추측으로 재시도하지 않습니다. 정확한 옵션 이름·형식은 실제 CLI 정의와 함께 확정합니다.
 

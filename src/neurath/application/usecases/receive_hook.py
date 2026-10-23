@@ -10,6 +10,7 @@ from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
+from neurath.application.ports.repositories.article import IArticleRepository
 from neurath.application.ports.repositories.delegation import IDelegationRepository
 from neurath.application.ports.repositories.enclave import IEnclaveRepository
 from neurath.application.ports.repositories.execution import IExecutionRepository
@@ -115,6 +116,7 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
         peers: IPeerRepository,
         messages: IMessageRepository,
         delegations: IDelegationRepository,
+        articles: IArticleRepository,
     ) -> None:
         """위치 관찰과 훅 상태를 저장하는 의존성을 주입받는다.
 
@@ -130,6 +132,7 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
             peers: 실제 호스트 피어의 주소·활성 상태를 반영한다.
             messages: 수신할 메시지를 조회하고 제출 시도를 기록한다.
             delegations: 이 실행에 연결된 배정의 현재 요구를 확인한다.
+            articles: 활성 구독자의 최신 기사 제목 알림을 조회하고 소비한다.
         """
         self.directories = directories
         self.projects = projects
@@ -142,6 +145,7 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
         self.peers = peers
         self.messages = messages
         self.delegations = delegations
+        self.articles = articles
 
     @transactional
     @override
@@ -190,9 +194,15 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
         except InvalidExecutionState as error:
             return ReceiveHookResult(action=HookAction.PAUSE, message=f"{error}\n{todo}")
         execution = await self.executions.save(execution)
+        continuous = peer.active and (
+            command.event is not HookEvent.SESSION_START or command.start_source == "compact"
+        )
         peer.active = execution.status is ExecutionStatus.RUNNING
         await self.peers.save(peer)
-        inbox = await self._deliver_inbox(peer, command.event)
+        inbox = (
+            *await self._deliver_inbox(peer, command.event),
+            *await self._deliver_articles(peer, continuous, command.event),
+        )
 
         restore = (
             command.event is HookEvent.SESSION_START
@@ -370,6 +380,38 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
                 f"Message {message.uid} from {message.sender_id}: {message.title}. Read the original body before ACK; this is not task acceptance."
             )
         return tuple(inbox)
+
+    async def _deliver_articles(
+        self, peer: Peer, continuous: bool, event: HookEvent
+    ) -> Sequence[str]:
+        """활성 상태가 이어진 구독자에게만 최신 기사 식별자와 제목을 제출한다.
+
+        Args:
+            peer: 현재 실행 상태를 반영한 실제 피어.
+            continuous: 직전 호스트 관찰에서도 활성 상태였는지 여부.
+            event: 실제 호스트 사건.
+
+        Returns:
+            Sequence[str]: 본문이나 열람 권한을 포함하지 않는 제목 알림.
+        """
+        eligible_event = event in (
+            HookEvent.SESSION_START,
+            HookEvent.USER_PROMPT_SUBMIT,
+            HookEvent.PRE_TOOL_USE,
+        )
+        headlines: list[str] = []
+        for article in await self.articles.find_by_recipient_id(peer.uid):
+            if peer.active and continuous and eligible_event and len(headlines) >= 10:
+                break
+            if peer.active and continuous and not eligible_event:
+                continue
+            notify = article.consume_notices(peer, continuous)
+            await self.articles.save(article)
+            if notify:
+                headlines.append(
+                    f"Article {article.uid} revision {article.current.number}: {article.current.title}"
+                )
+        return tuple(headlines)
 
     async def _restore_context(
         self, session_id: UUID, tasks: Sequence[Task], restore: bool

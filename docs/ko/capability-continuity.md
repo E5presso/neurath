@@ -77,11 +77,11 @@
 | `collaboration_publish` | send-message | CLI | 수신자/구독자/답장 참조만 다른 동일 전달 동작 | B16 |
 | `delivery_status` | get-context | CLI | 메시지·대화·실제 전달 상태 통합 조회 | B14 |
 | `delivery_redrive` | message transport and receipt | internal | 읽기/전송 결과가 수신 기록 생성; 유한한 실제 실패 복구를 어댑터가 수행 | B14 |
-| `newsroom_headlines` | list-articles | CLI | 제목/개정 목록 조회 | B17 |
-| `newsroom_read` | read-article | CLI | 본문/댓글 조회 | B17 |
-| `newsroom_publish` | publish-article | CLI | 기사 게시 | B17 |
-| `newsroom_revise` | revise-article | CLI | 개정 확인 후 수정 | B17 |
-| `newsroom_comment` | comment-on-article | CLI | 기사 개정에 댓글 | B17 |
+| `newsroom_headlines` | newsroom list | CLI | 제목/개정 목록 조회 | B17 |
+| `newsroom_read` | newsroom read | CLI | 본문/댓글 조회 | B17 |
+| `newsroom_publish` | newsroom publish | CLI | 기사 게시 | B17 |
+| `newsroom_revise` | newsroom revise | CLI | 개정 확인 후 수정 | B17 |
+| `newsroom_comment` | newsroom comment | CLI | 기사 개정에 댓글 | B17 |
 | `newsroom_peers` | get-context | CLI | 피어 목록의 중복 제거 | B17 |
 | `newsroom_seen` | article read receipt | internal | 실제 전체 읽기 결과로 기록; 에이전트 자기 신고 제거 | B17 |
 | `artifact_put` | host artifact tools + internal reference ingestion | host+internal | 파일 저장을 중복 구현하지 않고 결과 보고/체크포인트에 참조 보존 | B18 |

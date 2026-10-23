@@ -1106,3 +1106,47 @@ value.references.append("unexpected")
     )
     result = subprocess.run(arguments, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "@CLI()",
+        "@CLI",
+        '@CLI("")',
+        '@CLI("  ")',
+        "@CLI(None)",
+        "@CLI(group_name=None)",
+        '@CLI(group_name="")',
+    ],
+)
+def test_cli_controller_requires_explicit_nonempty_group_with_alias_resolution(declaration):
+    source = f"""from spakky.plugins.typer.stereotypes.cli_controller import CliController as CLI
+{declaration}
+class NewsroomCliController:
+    pass
+"""
+    errors = ArchitectureChecker({"neurath.transport.cli.newsroom": source}).check()
+    assert any("CLI_GROUP" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    "group", ['"newsroom"', 'group_name="newsroom"', "group_name=NEWSROOM_GROUP"]
+)
+def test_explicit_cli_group_and_named_group_constant_are_allowed(group):
+    source = f"""from spakky.plugins.typer.stereotypes.cli_controller import CliController
+NEWSROOM_GROUP = "newsroom"
+@CliController({group})
+class NewsroomCliController:
+    pass
+"""
+    assert ArchitectureChecker({"neurath.transport.cli.newsroom": source}).check() == []
+
+
+def test_cli_group_rule_does_not_ban_unrelated_decorators_or_empty_values():
+    source = """from other_library import CliController
+@CliController("")
+class ForeignController:
+    value = ""
+"""
+    assert ArchitectureChecker({"neurath.transport.cli.foreign": source}).check() == []

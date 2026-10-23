@@ -430,6 +430,34 @@ class ArchitectureChecker:
             and not module.startswith("neurath.transport.")
         ):
             errors.append(f"{location} CLI_BOUNDARY: CLI controllers belong to transport")
+        for decorator in node.decorator_list:
+            target = decorator.func if isinstance(decorator, ast.Call) else decorator
+            if (
+                self._name(module, target)
+                != "spakky.plugins.typer.stereotypes.cli_controller.CliController"
+            ):
+                continue
+            group = None
+            if isinstance(decorator, ast.Call):
+                group = (
+                    decorator.args[0]
+                    if decorator.args
+                    else next(
+                        (
+                            keyword.value
+                            for keyword in decorator.keywords
+                            if keyword.arg == "group_name"
+                        ),
+                        None,
+                    )
+                )
+            if group is None or (
+                isinstance(group, ast.Constant)
+                and (not isinstance(group.value, str) or not group.value.strip())
+            ):
+                errors.append(
+                    f"{location} CLI_GROUP: specify an explicit, nonempty controller group"
+                )
         errors.extend(self._check_execution_boundary(module, node, ancestors, decorators))
         errors.extend(self._check_port(module, node, ancestors))
         if ancestors.intersection(repository_bases):
