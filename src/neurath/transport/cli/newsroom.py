@@ -28,7 +28,7 @@ from neurath.application.usecases.revise_article import ReviseArticleCommand, Re
 from neurath.serialization import encode_uuid
 
 
-@CliController("")
+@CliController("newsroom")
 class NewsroomCliController:
     """명세의 기사 명령을 해석하고 본문 선택 조회와 제목 출력을 구분한다."""
 
@@ -61,7 +61,7 @@ class NewsroomCliController:
         self.connection = connection
         self.receipt = receipt
 
-    @command("publish-article")
+    @command("publish")
     async def publish_article(
         self,
         peer_id: Annotated[UUID, Option("--peer-id")],
@@ -95,7 +95,7 @@ class NewsroomCliController:
         finally:
             await self.connection.dispose()
 
-    @command("revise-article")
+    @command("revise")
     async def revise_article(
         self,
         peer_id: Annotated[UUID, Option("--peer-id")],
@@ -138,7 +138,7 @@ class NewsroomCliController:
         finally:
             await self.connection.dispose()
 
-    @command("list-articles")
+    @command("list")
     async def list_articles(
         self,
         peer_id: Annotated[UUID, Option("--peer-id")],
@@ -166,7 +166,7 @@ class NewsroomCliController:
         finally:
             await self.connection.dispose()
 
-    @command("read-article")
+    @command("read")
     async def read_article(
         self,
         peer_id: Annotated[UUID, Option("--peer-id")],
@@ -204,7 +204,7 @@ class NewsroomCliController:
         finally:
             await self.connection.dispose()
 
-    @command("comment-on-article")
+    @command("comment")
     async def comment_on_article(
         self,
         peer_id: Annotated[UUID, Option("--peer-id")],

@@ -77,11 +77,11 @@ The 128 operations and 33 skills below are a **historical capability audit inven
 | `collaboration_publish` | send-message | CLI | Same send operation with recipient/subscriber/reply references | B16 |
 | `delivery_status` | get-context | CLI | Read messages/conversation/actual delivery status together | B14 |
 | `delivery_redrive` | message transport and receipt | internal | Reads/transport outcomes produce receipts; adapters recover actual failures finitely | B14 |
-| `newsroom_headlines` | list-articles | CLI | Read headlines/revisions | B17 |
-| `newsroom_read` | read-article | CLI | Read body/comments | B17 |
-| `newsroom_publish` | publish-article | CLI | Publish article | B17 |
-| `newsroom_revise` | revise-article | CLI | Revision-checked article update | B17 |
-| `newsroom_comment` | comment-on-article | CLI | Comment on article revision | B17 |
+| `newsroom_headlines` | newsroom list | CLI | Read headlines/revisions | B17 |
+| `newsroom_read` | newsroom read | CLI | Read body/comments | B17 |
+| `newsroom_publish` | newsroom publish | CLI | Publish article | B17 |
+| `newsroom_revise` | newsroom revise | CLI | Revision-checked article update | B17 |
+| `newsroom_comment` | newsroom comment | CLI | Comment on article revision | B17 |
 | `newsroom_peers` | get-context | CLI | One peer inventory | B17 |
 | `newsroom_seen` | article read receipt | internal | Record actual full-read delivery, not an agent assertion | B17 |
 | `artifact_put` | host artifact tools + internal reference ingestion | host+internal | Use host artifact storage; preserve references in reports/checkpoints | B18 |

@@ -8,11 +8,11 @@
 
 | 명령 | 주요 입력 | 실제 효과 |
 | --- | --- | --- |
-| `list-articles` | `--peer-id`, `--text`, `--after-id`, `--limit` | 최신 제목·개정·그 개정의 seen·실제 사용 작업의 정정 영향을 조회합니다. 본문을 반환하거나 seen을 기록하지 않습니다. |
-| `read-article` | `--peer-id`, `--article-id`, `--revision-number`, 선택적 `--task-id` | 지정한 개정의 전체 본문·근거·댓글을 출력한 뒤 그 개정의 열람을 기록합니다. |
-| `publish-article` | `--peer-id`, `--title`, `--body`, 반복 `--reference` | 최초 원문·근거·작성자와 활성 구독자의 제목 알림을 함께 저장합니다. |
-| `revise-article` | 발행 입력, `--article-id`, `--expected-revision`, `--reason` | 원 작성자의 기사 개정 번호를 확인한 뒤 이전 본문을 남기고 새 개정을 추가합니다. |
-| `comment-on-article` | `--peer-id`, `--article-id`, `--revision-number`, `--body` | 실제 읽은 개정에 댓글을 연결합니다. 옛 개정의 댓글을 새 개정으로 옮기지 않습니다. |
+| `newsroom list` | `--peer-id`, `--text`, `--after-id`, `--limit` | 최신 제목·개정·그 개정의 seen·실제 사용 작업의 정정 영향을 조회합니다. 본문을 반환하거나 seen을 기록하지 않습니다. |
+| `newsroom read` | `--peer-id`, `--article-id`, `--revision-number`, 선택적 `--task-id` | 지정한 개정의 전체 본문·근거·댓글을 출력한 뒤 그 개정의 열람을 기록합니다. |
+| `newsroom publish` | `--peer-id`, `--title`, `--body`, 반복 `--reference` | 최초 원문·근거·작성자와 활성 구독자의 제목 알림을 함께 저장합니다. |
+| `newsroom revise` | 발행 입력, `--article-id`, `--expected-revision`, `--reason` | 원 작성자의 기사 개정 번호를 확인한 뒤 이전 본문을 남기고 새 개정을 추가합니다. |
+| `newsroom comment` | `--peer-id`, `--article-id`, `--revision-number`, `--body` | 실제 읽은 개정에 댓글을 연결합니다. 옛 개정의 댓글을 새 개정으로 옮기지 않습니다. |
 
 `--body -`는 표준입력 전체를 읽습니다. 제목은 200자, 본문과 댓글은 각각 UTF-8 1 MiB까지 받으며 초과분을 자르지 않고 거절합니다. 근거 참조와 정정 이유는 비어 있을 수 없습니다. 도움말은 DB를 열지 않습니다.
 
@@ -30,7 +30,7 @@
 
 ## 정정과 실제 사용 작업
 
-단순 본문 열람과 실제 사용은 구분합니다. `read-article --task-id`는 출력 전에 같은 프로젝트의 작업 요구 개정을 확인하고, 출력 뒤 그 작업·요구 개정·기사 개정·사용 피어를 연결합니다. 출력 중 작업 요구가 바뀌면 잘못된 사용 연결과 열람 기록을 롤백합니다.
+단순 본문 열람과 실제 사용은 구분합니다. `newsroom read --task-id`는 출력 전에 같은 프로젝트의 작업 요구 개정을 확인하고, 출력 뒤 그 작업·요구 개정·기사 개정·사용 피어를 연결합니다. 출력 중 작업 요구가 바뀌면 잘못된 사용 연결과 열람 기록을 롤백합니다.
 
 기사가 정정되면 옛 개정을 실제 사용한 작업이 `ArticleSummary.affected_tasks`, `ReadArticleResult.affected_tasks`, `GetTaskResult.article_impacts`에 나타납니다. 작업 상세는 사용 당시 요구 개정과 사용 기사 개정·현재 기사 개정을 반환하므로 관련 없는 작업이나 새로 바뀐 요구에 영향을 임의 전가하지 않습니다. 최신 기사 개정을 같은 작업에 다시 사용하면 그 연결의 미확인 정정 영향이 해소됩니다. 과거 개정을 다시 읽어도 확인한 최신 사용을 되돌리지 않습니다. 단순 열람·댓글·다수 동의는 요구·시도 결과·작업 성공을 바꾸지 않습니다.
 

@@ -8,11 +8,11 @@ Issue #145 provides a project article library and five CLI commands for selectiv
 
 | Command | Main inputs | Actual effect |
 | --- | --- | --- |
-| `list-articles` | `--peer-id`, `--text`, `--after-id`, `--limit` | Lists current titles, revision numbers, seen for that revision, and correction impacts on tasks that actually used it. It neither returns bodies nor records seen. |
-| `read-article` | `--peer-id`, `--article-id`, `--revision-number`, optional `--task-id` | Prints the selected revision's complete body, evidence, and comments, then records a receipt for that revision. |
-| `publish-article` | `--peer-id`, `--title`, `--body`, repeated `--reference` | Saves the initial source, evidence, author, and active subscribers' headline notifications together. |
-| `revise-article` | Publication inputs, `--article-id`, `--expected-revision`, `--reason` | Checks the original author's expected article revision, preserves the old source, and appends the correction. |
-| `comment-on-article` | `--peer-id`, `--article-id`, `--revision-number`, `--body` | Comments on a revision actually read. Old comments do not move to the new revision. |
+| `newsroom list` | `--peer-id`, `--text`, `--after-id`, `--limit` | Lists current titles, revision numbers, seen for that revision, and correction impacts on tasks that actually used it. It neither returns bodies nor records seen. |
+| `newsroom read` | `--peer-id`, `--article-id`, `--revision-number`, optional `--task-id` | Prints the selected revision's complete body, evidence, and comments, then records a receipt for that revision. |
+| `newsroom publish` | `--peer-id`, `--title`, `--body`, repeated `--reference` | Saves the initial source, evidence, author, and active subscribers' headline notifications together. |
+| `newsroom revise` | Publication inputs, `--article-id`, `--expected-revision`, `--reason` | Checks the original author's expected article revision, preserves the old source, and appends the correction. |
+| `newsroom comment` | `--peer-id`, `--article-id`, `--revision-number`, `--body` | Comments on a revision actually read. Old comments do not move to the new revision. |
 
 `--body -` reads all standard input. Titles accept up to 200 characters; bodies and comments accept up to 1 MiB of UTF-8 each. Excess input is rejected rather than truncated. Evidence references and correction reasons cannot be blank. Help does not open the database.
 
@@ -30,7 +30,7 @@ Observed waiting, termination, or cancellation, or an inactive previous peer obs
 
 ## Corrections and tasks that actually used an article
 
-Reading and actual usage are separate. `read-article --task-id` checks the same project's task definition before output and then links the task, definition number, article revision, and using peer after output. A task definition change during output rolls back both the incorrect usage link and receipt.
+Reading and actual usage are separate. `newsroom read --task-id` checks the same project's task definition before output and then links the task, definition number, article revision, and using peer after output. A task definition change during output rolls back both the incorrect usage link and receipt.
 
 After a correction, tasks that actually used older content appear in `ArticleSummary.affected_tasks`, `ReadArticleResult.affected_tasks`, and `GetTaskResult.article_impacts`. Task detail includes the definition used, the used article revision, and the current article revision, keeping unrelated tasks and subsequent requirements distinguishable. Using the latest revision for the same task resolves that link's outstanding correction impact. Reading an old revision again does not undo a previously confirmed current usage. Reading, comments, and agreement do not change requirements, attempt outcomes, or task success.
 

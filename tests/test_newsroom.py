@@ -356,7 +356,8 @@ async def test_stdout_failure_and_stdin_failure_leave_no_false_receipt_or_public
     response = await invoke(
         database,
         [
-            "read-article",
+            "newsroom",
+            "read",
             "--peer-id",
             str(recipient.uid),
             "--article-id",
@@ -393,7 +394,8 @@ async def test_cli_five_commands_print_whole_body_then_record_exact_revision(
     pub = await invoke(
         database,
         [
-            "publish-article",
+            "newsroom",
+            "publish",
             "--peer-id",
             str(sender.uid),
             "--title",
@@ -408,15 +410,18 @@ async def test_cli_five_commands_print_whole_body_then_record_exact_revision(
     assert pub.exit_code == 0, pub.exception
     article_id = json.loads(pub.stdout)["id"]
     common = ["--peer-id", str(recipient.uid), "--article-id", article_id, "--revision-number", "1"]
-    read_response = await invoke(database, ["read-article", *common, "--task-id", str(task.uid)])
+    read_response = await invoke(
+        database, ["newsroom", "read", *common, "--task-id", str(task.uid)]
+    )
     assert read_response.exit_code == 0, read_response.exception
     assert json.loads(read_response.stdout)["content"]["body"] == "본문 첫째 줄\n둘째 줄"
-    comment = await invoke(database, ["comment-on-article", *common, "--body", "-"], "댓글 전체")
+    comment = await invoke(database, ["newsroom", "comment", *common, "--body", "-"], "댓글 전체")
     assert comment.exit_code == 0 and json.loads(comment.stdout)["body"] == "댓글 전체"
     rev = await invoke(
         database,
         [
-            "revise-article",
+            "newsroom",
+            "revise",
             "--peer-id",
             str(sender.uid),
             "--article-id",
@@ -435,12 +440,12 @@ async def test_cli_five_commands_print_whole_body_then_record_exact_revision(
         "정정 본문",
     )
     assert rev.exit_code == 0 and json.loads(rev.stdout)["revision_number"] == 2
-    listing = await invoke(database, ["list-articles", "--peer-id", str(recipient.uid)])
+    listing = await invoke(database, ["newsroom", "list", "--peer-id", str(recipient.uid)])
     assert listing.exit_code == 0
     summary = json.loads(listing.stdout)[0]
     assert summary["seen"] is False and "body" not in summary
     assert summary["revision_number"] == 2
-    read_again = await invoke(database, ["read-article", *common])
+    read_again = await invoke(database, ["newsroom", "read", *common])
     assert read_again.exit_code == 0 and len(json.loads(read_again.stdout)["comments"]) == 1
 
 
@@ -647,9 +652,10 @@ async def test_article_save_conflict_and_commit_failure_preserve_complete_histor
     assert snapshot(database) == before
 
 
-async def test_scanned_newsroom_commands_have_no_manual_seen_or_accidental_group(
+async def test_scanned_newsroom_commands_belong_to_explicit_group_without_manual_seen(
     database, tmp_path
 ):
+    from spakky.plugins.typer.stereotypes.cli_controller import CliController
     from typer import Typer
     from typer.main import get_command
 
@@ -657,27 +663,27 @@ async def test_scanned_newsroom_commands_have_no_manual_seen_or_accidental_group
     from neurath.transport.cli.newsroom import NewsroomCliController
     from tests.support.application import scanned_application
 
+    names = {"list", "read", "publish", "revise", "comment"}
     async with scanned_application(sqlite_url(database, "rw")) as app:
-        commands = get_command(app.container.get(Typer)).commands
-        assert {
-            "list-articles",
-            "read-article",
-            "publish-article",
-            "revise-article",
-            "comment-on-article",
-        } <= commands.keys()
-        assert {"newsroom-cli-controller", "seen", "record-article-read"}.isdisjoint(commands)
+        root = get_command(app.container.get(Typer))
+        assert CliController.get(NewsroomCliController).group_name == "newsroom"
+        assert names == root.commands["newsroom"].commands.keys()
+        assert names.isdisjoint(root.commands)
+        assert {"newsroom-cli-controller", "seen", "record-article-read"}.isdisjoint(root.commands)
         controller = app.container.get(NewsroomCliController)
         from neurath.application.usecases.read_article import ReadArticleUseCase
 
         assert controller.read is app.container.get(ReadArticleUseCase)
     missing = tmp_path / "missing.sqlite3"
-    for name in (
+    for name in names:
+        assert (await invoke(missing, ["newsroom", name, "--help"])).exit_code == 0
+        assert (await invoke(missing, [name, "--help"])).exit_code == 2
+    for old_name in (
         "list-articles",
         "read-article",
         "publish-article",
         "revise-article",
         "comment-on-article",
     ):
-        assert (await invoke(missing, [name, "--help"])).exit_code == 0
+        assert (await invoke(missing, [old_name, "--help"])).exit_code == 2
     assert not missing.exists()

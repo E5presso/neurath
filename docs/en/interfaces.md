@@ -20,7 +20,7 @@ Expose CLI only for intentional agent commands or directly needed Neurath inform
 
 Installed rules are Neurath's default entry point. Users need not enable a separate mode or entry command for each task. Rules explain skill purposes, applicability, exclusions and CLI startup; the agent selects a skill according to the meaning of the user request. Follow an explicitly named skill when the user specifies one. Do not force skill execution for simple questions, explanations or status checks.
 
-Skill selection is an agent judgment; the existing phase runner manages the selected definition, phases, attempts, results and completion conditions. Reading or mentioning a skill does not establish a started run. Start the selected skill through the existing `neurath start-workflow` path and inspect actual execution state. Selecting a skill neither expands the user request nor grants additional authority.
+Skill selection is an agent judgment; the existing phase runner manages the selected definition, phases, attempts, results and completion conditions. Reading or mentioning a skill does not establish a started run. Start the selected skill through the existing `start-workflow` path and inspect actual execution state. Selecting a skill neither expands the user request nor grants additional authority.
 
 | Skill | Trigger | Procedure | Exclusions |
 | --- | --- | --- | --- |
@@ -55,30 +55,32 @@ The skill completing a body of work runs the [outcome-evaluation phase](architec
 
 **The CLI stack is Python + spakky-typer (Typer).** Define the `neurath` entrypoint and business/maintenance commands as a Typer application. Use Python type hints and Typer command/argument/option/help definitions; delegate domain behavior to Application use cases. Keep Typer dependencies in the CLI transport layer, outside Domain. [Official Typer documentation](https://typer.tiangolo.com/).
 
-Business command names use **verb-object** kebab-case. Action-named skills use kebab-case; established workflow names `autopilot` and `qa` remain.
+CLI Controllers declare an explicit functional group, and business commands belong beneath that group. When the group identifies the object, subcommands use verbs such as `list/read/publish`; use verb-object kebab-case when a further object distinction is needed. Action-named skills use kebab-case; established workflow names `autopilot` and `qa` remain.
+
+Unimplemented action names below identify capabilities rather than instruct root registration. Define their explicit functional groups and final invocation paths when implementing them. Implemented commands show their group paths.
 
 | Tool | Inputs/outcomes and effect boundary | Effect |
 | --- | --- | --- |
-| `neurath get-context` | Read scoped session/task originals, TODO, assignments, runner, facts, peers/models, monitor/diagnostic summary; bound output with sections/filter/cursor | read |
-| `neurath create-task` | Create work with original-backed outcomes and dependencies | write |
-| `neurath update-task` | Revise scoped work/progress/wait/accept/cancel; cannot directly set success, passing checks or human consent | write |
-| `neurath report-result` | Report scoped task/attempt/target results and evidence; only applicable responsible-actor outcomes drive task/phase transitions; delegate reports do not complete parents | write |
-| `neurath start-workflow` | Start runner with pinned selected skill definition/inputs | write |
-| `neurath revise-workflow` | Apply justified procedure revisions/retry/branch while preserving originals and required outcomes | write |
-| `neurath delegate-task` | Assign/connect existing work to peer or provider with explicit necessary model/policy; redelivery cannot duplicate execution | write |
-| `neurath send-message` | Send to recipients/subscribers; replies reference original message | write |
-| `neurath read-message` | Read selected body; only confirmed full delivery produces read receipt, not understanding/acceptance | read+receipt |
+| `get-context` | Read scoped session/task originals, TODO, assignments, runner, facts, peers/models, monitor/diagnostic summary; bound output with sections/filter/cursor | read |
+| `create-task` | Create work with original-backed outcomes and dependencies | write |
+| `update-task` | Revise scoped work/progress/wait/accept/cancel; cannot directly set success, passing checks or human consent | write |
+| `report-result` | Report scoped task/attempt/target results and evidence; only applicable responsible-actor outcomes drive task/phase transitions; delegate reports do not complete parents | write |
+| `start-workflow` | Start runner with pinned selected skill definition/inputs | write |
+| `revise-workflow` | Apply justified procedure revisions/retry/branch while preserving originals and required outcomes | write |
+| `delegate-task` | Assign/connect existing work to peer or provider with explicit necessary model/policy; redelivery cannot duplicate execution | write |
+| `send-message` | Send to recipients/subscribers; replies reference original message | write |
+| `read-message` | Read selected body; only confirmed full delivery produces read receipt, not understanding/acceptance | read+receipt |
 | `neurath memory search` | Search related memory/lessons/checkpoints/handoff candidates | read |
 | `neurath memory read` | Read a selected historical memory and its evidence | read |
 | `neurath session preview` | Preview a source session, originals, current tasks, runner and enclave without changing ownership | read |
 | `neurath memory checkpoint` | Save current outcomes/decisions/remaining work/references as a handoff report | write |
 | `neurath session resume` | Resume/adopt verified prior work, runner and context while preventing duplicate writers | write |
 | `neurath memory update` | Apply revision-checked set/remove changes to current facts; never delete originals/tasks | write |
-| `neurath list-articles` | List/search relevant newsroom headlines/revisions | read |
-| `neurath read-article` | Read selected revision/body/comments; mark that revision read only after full delivery | read+receipt |
-| `neurath publish-article` | Publish title/body/evidence and notify active peers with headlines | write |
-| `neurath revise-article` | Revise an article with expected revision/reason, retaining history | write |
-| `neurath comment-on-article` | Comment on selected article revision | write |
+| `neurath newsroom list` | List/search relevant newsroom headlines/revisions | read |
+| `neurath newsroom read` | Read selected revision/body/comments; mark that revision read only after full delivery | read+receipt |
+| `neurath newsroom publish` | Publish title/body/evidence and notify active peers with headlines | write |
+| `neurath newsroom revise` | Revise an article with expected revision/reason, retaining history | write |
+| `neurath newsroom comment` | Comment on selected article revision | write |
 
 CLI commands call the same application use cases directly, without MCP registration/discovery/reconnection. Agents invoke them through host shell tools using the installed guide. Return structured JSON separately from logs/diagnostics. Exit status represents command handling, while results distinguish actual goal completion. Validate bad arguments before mutation and return actionable usage. Support file or stdin for complex bodies rather than guessing mutation retries. Define exact flags and formats with the real CLI definitions.
 

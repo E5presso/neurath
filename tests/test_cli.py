@@ -261,3 +261,33 @@ async def test_cli_groups_and_injected_usecases_match_memory_and_session_respons
     assert memory_dependencies.isdisjoint({IGraphService, UpdateCheckpointGraphUseCase})
     assert session_operations <= session_dependencies
     assert not missing.exists()
+
+
+async def test_all_scanned_cli_controllers_have_explicit_groups_in_actual_command_tree(tmp_path):
+    import inspect
+    import pkgutil
+    from importlib import import_module
+
+    from typer import Typer
+    from typer.core import TyperGroup
+    from typer.main import get_command
+
+    import neurath.transport.cli
+    from neurath.infrastructure.database import sqlite_url
+    from tests.support.application import scanned_application
+
+    async with scanned_application(sqlite_url(tmp_path / "missing.sqlite3", "rw")) as app:
+        root = get_command(app.container.get(Typer))
+        groups = set()
+        for entry in pkgutil.iter_modules(
+            neurath.transport.cli.__path__, neurath.transport.cli.__name__ + "."
+        ):
+            for _, controller in inspect.getmembers(import_module(entry.name), inspect.isclass):
+                if controller.__module__ != entry.name or not CliController.exists(controller):
+                    continue
+                group = CliController.get(controller).group_name
+                assert isinstance(group, str) and group.strip(), controller
+                groups.add(group)
+                assert isinstance(root.commands[group], TyperGroup)
+                assert app.container.get(controller) is not None
+        assert groups <= root.commands.keys()
