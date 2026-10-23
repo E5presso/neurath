@@ -12,13 +12,14 @@ Enclave는 프로젝트·세션·선택한 작업 범위의 사실(`fact`), 가�
 
 ## CLI
 
-기존 명시적 DB 초기화가 끝난 후보 환경에서 사용합니다. 다음 명령은 spakky-typer의 `memory` 그룹 아래에 있습니다.
+기존 명시적 DB 초기화가 끝난 후보 환경에서 사용합니다. 기억 조작은 spakky-typer의 `memory`, 세션 미리보기·재개는 `session` 컨트롤러에 속합니다.
 
 - `neurath memory update --project-id ID --session-id ID --expected-revision N --changes JSON`: set/remove 배열을 원자 적용합니다. `--task-id`로 작업 범위를 선택하며 `--changes -`는 표준입력 JSON을 읽습니다. set 항목은 key/value/kind/references와 선택적 details를 받습니다.
 - `neurath memory checkpoint --project-id ID --session-id ID --content TEXT --reference REF`: 결과·판단·남은 일·다음 행동을 보고로 저장합니다. reference는 반복 지정하며 `--content -`는 표준입력을 읽습니다. 작업 완료를 변경하지 않습니다.
 - `neurath memory search --project-id ID --text TEXT`: 최근 기억 ID를 검색합니다. session-id/task-id와 결과 수 limit으로 범위를 좁힙니다. SQL 와일드카드도 일반 문자로 검색합니다.
-- `neurath memory read --project-id ID --memory-id ID`: 선택한 과거 본문과 출처를 읽습니다. memory-id 대신 `--session-id ID`를 주면 원문·현재 태스크·runner·enclave·기억 ID를 인수 미리보기로 읽습니다. 체크포인트가 없어도 동작하며 소유권을 변경하지 않습니다.
-- `neurath memory resume --project-id ID --source-session-id ID --target-session-id ID --expected-revision N --turn-id ID`: 현재 관찰한 후속 턴에 원 작업을 연결합니다. 같은 세션이면 명시적 실행 재개입니다.
+- `neurath memory read --project-id ID --memory-id ID`: 선택한 과거 본문과 출처를 읽습니다.
+- `neurath session preview --project-id ID --session-id ID`: 원문·현재 태스크·runner·enclave·기억 ID를 인수 미리보기로 읽습니다. 체크포인트가 없어도 동작하며 소유권을 변경하지 않습니다.
+- `neurath session resume --project-id ID --source-session-id ID --target-session-id ID --expected-revision N --turn-id ID`: 현재 관찰한 후속 턴에 원 작업을 연결합니다. 같은 세션이면 명시적 실행 재개입니다.
 
 ## 인수와 자동 복원
 

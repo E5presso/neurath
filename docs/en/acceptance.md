@@ -67,15 +67,15 @@ These are full-product validation criteria. The [core foundation](core-foundatio
 | A61 | DB and notification delivery fail together | Expose unfinished work through available host/recovery surfaces; impossible delivery remains unconfirmed; no inference loop |
 | A62 | Managed execution passes but actual user connection remains untested | Do not report full rollout until actual hook/CLI/delegation outcomes are verified on that connection |
 | A63 | Commit/worktree creation/simple code explanation | Use host tools without unnecessary skills/runners |
-| A64 | Inspect core CLI and default skill lists | Match 19 core commands/14 skills; no MCP server/adapter or reexposed internal aliases |
+| A64 | Inspect core CLI and default skill lists | Match 20 core commands/14 skills; no MCP server/adapter or reexposed internal aliases |
 | A65 | Leases/ACK/finalization and truncated body | Derive internally from actual events; no fabricated identity/consent/success; truncated body is not confirmed read |
 | A66 | Run selected default and project specialist skills | Complete their procedure/outcomes; default removal is not capability deletion or human handwork |
 | A67 | Public interface changes during an old skill run | Retain pinned definition/original work; direct cached calls to replacement; preserve project skills without failure loops |
 | A68 | Specify behavior/execution plan and implement including UI | define-spec includes requirements/behavior/execution order/validation; implement-spec performs UI checks without separate plan/implement-ui calls |
 | A69 | Context/result/review/delegation for the same work | Bounded context, attributed role/evidence, no duplicate delegation or arbitrary dispatcher |
-| A70 | Inspect public command names and help | 19 core neurath verb-object commands; actual help and installed guide agree |
+| A70 | Inspect public command names and help | 20 core neurath command paths; actual help and installed guide agree |
 | A71 | Validate/apply improvement during a user-requested retrospective | Start from ordinary conversational instruction; controls/effect/retraction; no user-facing harness skill or consent certificate |
-| A72 | Context loss or explicit session resume/adoption | Automatic restoration or memory resume retains originals/unfinished work/runner without a recover-session skill |
+| A72 | Context loss or explicit session resume/adoption | Automatic restoration or session resume retains originals/unfinished work/runner without a recover-session skill |
 | A73 | Peer conveys work within existing instructions | Perform normally; nonhuman authorship alone triggers no rejection, repeated human input, hash or signature |
 | A74 | Session-end retrospective offer when issues surfaced | Ask once normally; no retrospective evaluation/persistent improvement before acceptance; original work may finish |
 | A75 | No request, declined/unanswered offer, or no session issues | No retrospective, repeat prompting, automatic retry, outstanding obligation or completion block |

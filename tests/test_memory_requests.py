@@ -265,7 +265,7 @@ async def test_memory_group_commands_use_real_registered_usecases(database, memo
     assert help_.exit_code == 0 and "memory" in help_.stdout
     group_help = await cli(database, ["memory", "--help"])
     assert group_help.exit_code == 0
-    for name in ("read", "update", "search", "checkpoint", "resume"):
+    for name in ("read", "update", "search", "checkpoint"):
         assert name in group_help.stdout
     result = await cli(
         database,
@@ -292,8 +292,12 @@ async def test_memory_group_commands_use_real_registered_usecases(database, memo
         database, ["memory", "read", "--project-id", actor.project.uid, "--memory-id", memory_id]
     )
     assert json.loads(read.stdout)["content"] == "remaining"
-    preview_ = await cli(database, ["memory", "read", *args])
+    before_preview = snapshot(database)
+    preview_ = await cli(database, ["session", "preview", *args])
     assert json.loads(preview_.stdout)["session_id"] == actor.session.uid
+    assert snapshot(database) == before_preview
+    assert (await cli(database, ["memory", "read", *args])).exit_code == 2
+    assert (await cli(database, ["memory", "resume", "--help"])).exit_code == 2
     search = await cli(database, ["memory", "search", *args, "--text", "remaining"])
     assert memory_id in json.loads(search.stdout)["memory_ids"]
     assert (
@@ -303,7 +307,7 @@ async def test_memory_group_commands_use_real_registered_usecases(database, memo
     result = await cli(
         database,
         [
-            "memory",
+            "session",
             "resume",
             "--project-id",
             actor.project.uid,

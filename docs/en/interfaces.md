@@ -6,11 +6,13 @@ This is a design specification. Public CLI and default-skill distribution remain
 
 The [specification](specification.md) defines the core and its three surfaces; [architecture](architecture.md) defines execution, hooks and transitions. This page specifies skill selection and the public CLI contract.
 
+CLI controllers follow the responsibility of each operation. `memory` handles memory reads, searches, reports and current-context updates; `session` handles handoff preview and resume. Moving the session option of memory read to session preview yields 20 public command paths.
+
 ## 1. Selection criteria
 
 A skill is a **reusable procedure with decisions, ordering and verification**, not only Neurath administration. Provide useful specification/implementation/debugging/review/QA/UI/documentation workflows. Dependency audits/updates belong to selected project/specialist capabilities rather than default Neurath skills. Commits/worktree or PR creation/simple edits are host operations, not separate skills. One test command differs from QA across user scenarios.
 
-Expose CLI only for intentional agent commands or directly needed Neurath information, not CRUD per table. Consolidate current-work context queries and result reporting through the same task/attempt path. Do not hide unrelated effects behind `execute(action=...)`. The selected lists contain 14 skills and 19 core business CLI commands. Help/version and existing maintenance commands are separate; no MCP server or optional MCP adapter is provided.
+Expose CLI only for intentional agent commands or directly needed Neurath information, not CRUD per table. Consolidate current-work context queries and result reporting through the same task/attempt path. Do not hide unrelated effects behind `execute(action=...)`. The selected lists contain 14 skills and 20 core business CLI commands. Help/version and existing maintenance commands are separate; no MCP server or optional MCP adapter is provided.
 
 ## 2. Skills
 
@@ -43,7 +45,7 @@ Merge `implement-ui` into `implement-spec`; apply UI-specific visual/state/inter
 
 Exclude `audit-deps`/`update-deps` from first-party defaults. Agents still perform needed dependency work through project tools or selected specialist skills; preserve existing user/project skills.
 
-Do not ship `recover-session`. Existing **`memory resume` CLI** handles explicit resume/adoption, runtime handles automatic context restoration, and diagnostic/recovery commands remain usable when the operational store fails. No separate recovery skill is required.
+Do not ship `recover-session`. Existing **`session resume` CLI** handles explicit resume/adoption, runtime handles automatic context restoration, and diagnostic/recovery commands remain usable when the operational store fails. No separate recovery skill is required.
 
 `test-harness`/`optimize-harness` are not user-distributed skills. Retain their validation/improvement capabilities for Neurath development and the user-requested self-improvement process below. Merge `review-pr` into code review by target and audience-specific `dev-docs`/`user-docs` into `sync-docs`; reuse specialist Graphify capabilities.
 
@@ -67,9 +69,10 @@ Business command names use **verb-object** kebab-case. Action-named skills use k
 | `neurath send-message` | Send to recipients/subscribers; replies reference original message | write |
 | `neurath read-message` | Read selected body; only confirmed full delivery produces read receipt, not understanding/acceptance | read+receipt |
 | `neurath memory search` | Search related memory/lessons/checkpoints/handoff candidates | read |
-| `neurath memory read` | Read selected record/evidence/handoff preview without changing ownership | read |
+| `neurath memory read` | Read a selected historical memory and its evidence | read |
+| `neurath session preview` | Preview a source session, originals, current tasks, runner and enclave without changing ownership | read |
 | `neurath memory checkpoint` | Save current outcomes/decisions/remaining work/references as a handoff report | write |
-| `neurath memory resume` | Resume/adopt verified prior work, runner and context while preventing duplicate writers | write |
+| `neurath session resume` | Resume/adopt verified prior work, runner and context while preventing duplicate writers | write |
 | `neurath memory update` | Apply revision-checked set/remove changes to current facts; never delete originals/tasks | write |
 | `neurath list-articles` | List/search relevant newsroom headlines/revisions | read |
 | `neurath read-article` | Read selected revision/body/comments; mark that revision read only after full delivery | read+receipt |

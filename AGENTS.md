@@ -66,4 +66,5 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 - #143의 enclave는 현재 맥락이며 Memory의 과거 기록·체크포인트와 구분한다. 기대 개정은 저장소의 낙관적 revision으로, 여러 변경의 이력은 aggregate 안의 순번으로 관리한다. 삭제 기록과 원문은 남기되 복원은 최신 현재 항목만 사용한다. 미리보기는 소유권을 바꾸지 않으며 실제 인수는 원 실행 종료·작성 해제·후속 턴을 확인한다. 인수된 원 세션은 다시 쓰기를 시작하지 못한다.
 - 압축 후 복원은 실제 SessionStart/compact 입력과 additionalContext 계약을 사용한다. CLI stdout 생성, 호스트 훅 호출, 다음 모델 입력·응답에서의 실제 전달을 구분해 검증한다. 호스트 한도를 넘는 맥락을 조용히 잘라 성공으로 보고하지 않는다. Graphify는 기존 CLI를 사용하고 문서 의미 관계가 유실된 갱신을 거절하여 원 그래프를 복원한다.
 
-- 기억·현재 맥락·인수 CLI는 `memory` 그룹 아래의 `read`, `update`, `search`, `checkpoint`, `resume`로 제공한다. 실제 컨테이너의 그룹 등록·도움말·호출 경로를 회귀 시험으로 확인하고 문서도 같은 경로를 사용한다.
+- CLI 컨트롤러는 실제 작업 책임에 따라 나눈다. 기억 조회·검색·보고 저장·현재 맥락 갱신은 MemoryCliController의 `memory read/search/checkpoint/update`, 세션 인수 미리보기·실행 재개는 SessionCliController의 `session preview/resume`에 둔다. 기억에 연결된 정보라는 이유로 세션 작업까지 memory 컨트롤러에 넣거나 옵션으로 우회 노출하지 않는다. 기존 다른 컨트롤러의 역할까지 일괄 금지 규칙으로 확대하지 않는다.
+- `tests/test_cli.py`에서 실제 스캔·DI로 등록된 memory/session 명령의 소속과 해당 유스케이스 주입 경계를 함께 검사한다. 루트에 펼쳐진 명령이나 memory의 세션 작업 노출은 실패해야 한다. 이 시험은 공통 tools/quality.py를 통해 pre-commit·CI에서 실행하며, 새로운 명령의 의미적 책임은 코드 리뷰에서도 확인한다.

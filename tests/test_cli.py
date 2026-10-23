@@ -231,3 +231,30 @@ async def test_unsupported_event_is_rejected_before_usecase_or_database(tmp_path
     assert result["continue"] is False
     assert "HookEvent" in result["stopReason"]
     assert not missing.exists()
+
+
+async def test_cli_groups_and_injected_usecases_match_memory_and_session_responsibilities(tmp_path):
+    from typing import get_type_hints
+
+    from typer.main import get_command
+
+    from neurath.application.usecases.preview_session import PreviewSessionUseCase
+    from neurath.application.usecases.resume_session import ResumeSessionUseCase
+    from neurath.infrastructure.database import sqlite_url
+    from neurath.transport.cli.memory import MemoryCliController
+    from neurath.transport.cli.session import SessionCliController
+
+    missing = tmp_path / "uninitialized.sqlite3"
+    async with scanned_application(sqlite_url(missing, "rw")) as app:
+        root = get_command(app.container.get(Typer))
+        assert set(root.commands["memory"].commands) == {"read", "update", "search", "checkpoint"}
+        assert set(root.commands["session"].commands) == {"preview", "resume"}
+        assert {"read", "update", "search", "checkpoint", "preview", "resume"}.isdisjoint(
+            root.commands
+        )
+    memory_dependencies = set(get_type_hints(MemoryCliController.__init__).values())
+    session_dependencies = set(get_type_hints(SessionCliController.__init__).values())
+    session_operations = {PreviewSessionUseCase, ResumeSessionUseCase}
+    assert memory_dependencies.isdisjoint(session_operations)
+    assert session_operations <= session_dependencies
+    assert not missing.exists()

@@ -10,7 +10,7 @@ This checkout is an internal Python library implementing the #137 project/sessio
 | --- | --- |
 | [Requirements](specification.md) | Purpose, core and three surfaces, storage/project boundaries, capability requirements |
 | [Execution architecture](architecture.md) | Runner, hook enforcement/completion, enclave restoration, collaboration and installation cutover |
-| [Public skills/CLI](interfaces.md) | Triggers and input/output contracts for the planned 14 default skills and 19 business commands |
+| [Public skills/CLI](interfaces.md) | Triggers and input/output contracts for the planned 14 default skills and 20 business commands |
 | [User workflows](workflows.md) | Planned experience from requests through evaluation, resumption and retrospective |
 | [Migration/recovery](recovery.md) | Current support boundary and preservation requirements for subsequent migration/recovery |
 | [Acceptance](acceptance.md) | 84 behavioral cases and implementation validation criteria |

@@ -12,13 +12,14 @@ Current values are limited to 16 KiB of UTF-8 per enclave. A set operation may s
 
 ## CLI
 
-These commands belong to the spakky-typer `memory` group in a candidate environment whose DB has been explicitly initialized.
+In a candidate environment whose DB has been explicitly initialized, memory operations belong to the spakky-typer `memory` controller; session preview and resume belong to the `session` controller.
 
 - `neurath memory update --project-id ID --session-id ID --expected-revision N --changes JSON`: atomically applies a set/remove array. Optional task-id selects task scope; `--changes -` reads JSON from stdin. A set contains key/value/kind/references and optional details.
 - `neurath memory checkpoint --project-id ID --session-id ID --content TEXT --reference REF`: stores outcomes, decisions, remaining work and next actions as a report. Repeat reference as needed; `--content -` reads stdin. It does not complete tasks.
 - `neurath memory search --project-id ID --text TEXT`: searches recent memory IDs, optionally limited by session-id/task-id and limit. SQL wildcard characters are treated literally.
-- `neurath memory read --project-id ID --memory-id ID`: reads a selected historical body and its sources. Use session-id instead of memory-id to preview sources, current tasks, runners, enclaves and memory IDs. A checkpoint is not required; preview never changes ownership.
-- `neurath memory resume --project-id ID --source-session-id ID --target-session-id ID --expected-revision N --turn-id ID`: connects existing work to the observed target turn. Equal source and target IDs explicitly resume the same execution.
+- `neurath memory read --project-id ID --memory-id ID`: reads a selected historical body and its sources.
+- `neurath session preview --project-id ID --session-id ID`: previews sources, current tasks, runners, enclaves and memory IDs. A checkpoint is not required; preview never changes ownership.
+- `neurath session resume --project-id ID --source-session-id ID --target-session-id ID --expected-revision N --turn-id ID`: connects existing work to the observed target turn. Equal source and target IDs explicitly resume the same execution.
 
 ## Handoff and automatic restoration
 

@@ -148,7 +148,7 @@ These groups are not deployment service counts. Implement the core as stateless 
 
 Persist requests/tasks, runs/phase attempts, host events/executions, current facts/memory, assignments/messages/articles, reviews/learning, and installation/recovery by responsibility. Keep large originals retrievable through references. Do not hold DB write locks during external execution. Use filtered/paginated reads and read transactions, and atomic revision-checked mutations with their related records.
 
-Connect public operations to these use cases without arbitrary per-call token or approval-object assembly. Adapters supply actual identity and authority. Return results/current state/actionable faults; accepted work is not a successful goal. The [public list](interfaces.md) selects 14 skills/19 CLI commands; the [disposition map](capability-continuity.md) connects historical capabilities to public/internal/host paths.
+Connect public operations to these use cases without arbitrary per-call token or approval-object assembly. Adapters supply actual identity and authority. Return results/current state/actionable faults; accepted work is not a successful goal. The [public list](interfaces.md) selects 14 skills/20 CLI commands; the [disposition map](capability-continuity.md) connects historical capabilities to public/internal/host paths.
 
 ## 9. Installation, upgrade, recovery, and finish-session
 

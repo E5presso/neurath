@@ -2,7 +2,7 @@
 
 [공개 목록](interfaces.md) · [명세](specification.md) · [요구사항 검증](acceptance.md) · [English](../en/capability-continuity.md)
 
-이 표의 128개 작업과 33개 스킬은 **과거 기능의 감사 목록**입니다. 새 공개 목록은 스킬 14개·CLI 명령 19개입니다. 기능의 목적과 B 결과 계약은 유지하되 옛 이름·개수·노출 방식은 유지하지 않습니다. 기준은 Git `e4bcc85`의 기능 문서, 이후 이름, 현재 사용자 정정입니다. 기존 코드의 복제 지침이 아닙니다.
+이 표의 128개 작업과 33개 스킬은 **과거 기능의 감사 목록**입니다. 새 공개 목록은 스킬 14개·CLI 명령 20개입니다. 기능의 목적과 B 결과 계약은 유지하되 옛 이름·개수·노출 방식은 유지하지 않습니다. 기준은 Git `e4bcc85`의 기능 문서, 이후 이름, 현재 사용자 정정입니다. 기존 코드의 복제 지침이 아닙니다.
 
 ## 1. 과거 작업 128개의 목적지
 
@@ -56,7 +56,7 @@
 | `provider_run` | delegate-task | CLI | 지원 제공자의 실제 실행에 필요한 진입점 | B12 |
 | `provider_status` | get-context | CLI | 고정 계획과 실제 실행 상태를 함께 조회 | B12 |
 | `provider_cancel` | update-task | CLI | 대상 실행의 실제 중단 제어 | B12 |
-| `provider_recover` | provider recovery | internal | 재연결 시 원 run 대조; 명시적 수리는 memory resume | B12 |
+| `provider_recover` | provider recovery | internal | 재연결 시 원 run 대조; 명시적 수리는 session resume | B12 |
 | `collaboration_register` | peer connection lifecycle | internal | 실제 연결의 주소/신원으로 등록·갱신 | B13 |
 | `collaboration_discover` | get-context | CLI | 피어 목록의 중복 제거 | B13 |
 | `collaboration_inbox` | get-context | CLI | 메시지·대화·실제 전달 상태 통합 조회 | B13 |
@@ -88,7 +88,7 @@
 | `artifact_read` | memory read / host artifact tools | CLI+host | Neurath 기록 참조는 memory read, 원 파일은 호스트 읽기 | B18 |
 | `memory_recall` | memory search / memory read | CLI | 관련 이력/교훈을 유형·상태로 검색 후 상세 조회 | B18 |
 | `memory_checkpoint` | memory checkpoint | CLI | 보고 저장 하나에 스킬 불필요 | B18 |
-| `memory_pull` | memory search / memory read / memory resume | CLI | 발견·미리보기와 실제 인수의 효과 분리 | B18 |
+| `memory_pull` | memory search / memory read / session preview / session resume | CLI | 발견·미리보기와 실제 인수의 효과 분리 | B18 |
 | `enclave_read` | get-context | CLI | 현재 사실의 명확한 읽기/수정/삭제 | B19 |
 | `enclave_set` | memory update | CLI | 현재 사실의 명확한 읽기/수정/삭제 | B19 |
 | `enclave_delete` | memory update | CLI | 현재 사실의 명확한 읽기/수정/삭제 | B19 |
@@ -116,18 +116,18 @@
 | `monitor_ack` | monitor lifecycle | internal | 사건 소비·대기·재개/인계는 실제 작업/호스트 사건에서 처리 | B24 |
 | `monitor_external_wait` | monitor lifecycle | internal | 사건 소비·대기·재개/인계는 실제 작업/호스트 사건에서 처리 | B24 |
 | `monitor_handoff` | monitor lifecycle | internal | 사건 소비·대기·재개/인계는 실제 작업/호스트 사건에서 처리 | B24 |
-| `installation_plan` | maintenance CLI + update-neurath / memory resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B25 |
-| `installation_apply` | maintenance CLI + update-neurath / memory resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B25 |
-| `installation_recover` | maintenance CLI + update-neurath / memory resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B25 |
-| `releases_status` | maintenance CLI + update-neurath / memory resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
-| `releases_check` | maintenance CLI + update-neurath / memory resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
-| `releases_notice` | maintenance CLI + update-neurath / memory resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
-| `releases_prepare` | maintenance CLI + update-neurath / memory resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
-| `releases_choose` | maintenance CLI + update-neurath / memory resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
-| `releases_apply` | maintenance CLI + update-neurath / memory resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
-| `releases_recover` | maintenance CLI + update-neurath / memory resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
-| `maintenance_choice_read` | maintenance CLI + update-neurath / memory resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
-| `maintenance_choice_prepare` | maintenance CLI + update-neurath / memory resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
+| `installation_plan` | maintenance CLI + update-neurath / session resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B25 |
+| `installation_apply` | maintenance CLI + update-neurath / session resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B25 |
+| `installation_recover` | maintenance CLI + update-neurath / session resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B25 |
+| `releases_status` | maintenance CLI + update-neurath / session resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
+| `releases_check` | maintenance CLI + update-neurath / session resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
+| `releases_notice` | maintenance CLI + update-neurath / session resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
+| `releases_prepare` | maintenance CLI + update-neurath / session resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
+| `releases_choose` | maintenance CLI + update-neurath / session resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
+| `releases_apply` | maintenance CLI + update-neurath / session resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
+| `releases_recover` | maintenance CLI + update-neurath / session resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
+| `maintenance_choice_read` | maintenance CLI + update-neurath / session resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
+| `maintenance_choice_prepare` | maintenance CLI + update-neurath / session resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
 | `reporting_status` | host artifact / GitHub tools | host | 일반 초안/외부 제출은 기존 도구와 실제 사용자 권한 사용; Neurath 전용 게시/승인 원장 불필요 | B27 |
 | `reporting_list` | host artifact / GitHub tools | host | 일반 초안/외부 제출은 기존 도구와 실제 사용자 권한 사용; Neurath 전용 게시/승인 원장 불필요 | B27 |
 | `reporting_read` | host artifact / GitHub tools | host | 일반 초안/외부 제출은 기존 도구와 실제 사용자 권한 사용; Neurath 전용 게시/승인 원장 불필요 | B27 |
@@ -173,7 +173,7 @@
 | `update-deps` | external/project | project dependency tooling / selected specialist skill | 프로젝트/전문 도구의 역할이며 Neurath 기본 제공에서 제외 | 요청 범위 manifest/lock 갱신과 호환 검사·회귀 결과를 확인한다. |
 | `update-status` | host/project | host tools / selected project skill | 일반 에이전트 작업 또는 프로젝트별 전문 절차; Neurath 기본 스킬로 설치하지 않음 | 실제 근거의 진행/미완료를 상태 문서에 반영하며 완료를 부풀리지 않는다. |
 | `update-neurath` | skill | update-neurath | 판단·검증을 포함하는 재사용 가능한 절차 | 요청 배포본과 설치·DB 보존·실제 새 연결의 동작을 확인하고 이전 실패를 감추지 않는다. |
-| `reconnect-host` | CLI/internal | memory resume / runtime recovery; maintenance CLI when CLI is unavailable | 기존 resume_session과 런타임 복구; CLI/런타임 장애 시 관리 CLI | 공식 경로로 실제 연결을 복구하고 원 작업을 이어가며 다른 프로세스 실행을 기존 연결이라고 하지 않는다. |
+| `reconnect-host` | CLI/internal | session resume / runtime recovery; maintenance CLI when CLI is unavailable | 기존 resume_session과 런타임 복구; CLI/런타임 장애 시 관리 CLI | 공식 경로로 실제 연결을 복구하고 원 작업을 이어가며 다른 프로세스 실행을 기존 연결이라고 하지 않는다. |
 
 ## 3. 기능별로 실제 관찰할 결과
 

@@ -125,7 +125,7 @@ Retain release/update/public-reporting/finish-session capabilities. Execute with
 
 Installed rules are the default entry point; agents select skills appropriate to user requests. Follow explicitly named skills and do not force execution for simple conversation. The existing runner manages phases and results after startup. See the [skill entry specification](interfaces.md).
 
-Retain capabilities without wrapping ordinary work in skills or exposing every internal transition through CLI. Use the [selected list](interfaces.md) of **14 skills and 19 CLI commands**. Commits/worktrees/issue and PR creation use host tools; checkpoint saving uses CLI; leases/ACK/Stop are internal. Selected project specialist skills remain usable. The historical 128 operations/33 skills are an omission-audit inventory, not installation counts.
+Retain capabilities without wrapping ordinary work in skills or exposing every internal transition through CLI. Use the [selected list](interfaces.md) of **14 skills and 20 CLI commands**. Commits/worktrees/issue and PR creation use host tools; checkpoint saving uses CLI; leases/ACK/Stop are internal. Selected project specialist skills remain usable. The historical 128 operations/33 skills are an omission-audit inventory, not installation counts.
 
 Provide specification definition (including execution planning), implementation, review and QA as reusable skills; use define-spec, implement-spec and review-spec consistently. Excluding single host actions such as commits/worktree creation does not remove those procedures. Public CLI command names consistently use verb-object.
 

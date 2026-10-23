@@ -1,4 +1,4 @@
-"""기억·현재 맥락·인수 유스케이스를 공식 Typer 명령으로 노출한다."""
+"""기억 조회·검색·저장과 현재 맥락 갱신을 공식 Typer 명령으로 노출한다."""
 
 import json
 import sys
@@ -9,10 +9,8 @@ from spakky.plugins.sqlalchemy.persistency.connection_manager import AsyncConnec
 from spakky.plugins.typer.stereotypes.cli_controller import CliController, command
 from typer import Option, echo
 
-from neurath.application.usecases.preview_session import PreviewSessionQuery, PreviewSessionUseCase
 from neurath.application.usecases.query_graph import QueryGraphQuery, QueryGraphUseCase
 from neurath.application.usecases.read_memory import ReadMemoryQuery, ReadMemoryUseCase
-from neurath.application.usecases.resume_session import ResumeSessionCommand, ResumeSessionUseCase
 from neurath.application.usecases.save_checkpoint import (
     SaveCheckpointCommand,
     SaveCheckpointUseCase,
@@ -38,21 +36,17 @@ class MemoryCliController:
         checkpoint: SaveCheckpointUseCase,
         read: ReadMemoryUseCase,
         search: SearchMemoryUseCase,
-        preview: PreviewSessionUseCase,
-        resume: ResumeSessionUseCase,
         connection: AsyncConnectionManager,
         query_graph: QueryGraphUseCase,
         update_graph: UpdateGraphUseCase,
     ) -> None:
-        """현재 맥락·과거 기억·미리보기·인수의 작업 단위를 주입받는다.
+        """현재 맥락과 과거 기억을 조회·저장하는 작업 단위를 주입받는다.
 
         Args:
             update: 현재 맥락 변경.
             checkpoint: 보고 저장.
             read: 선택 기록 조회.
             search: 관련 기록 검색.
-            preview: 현재 세션의 인수 미리보기.
-            resume: 실제 작업 인수 또는 재개.
             connection: 같은 명령 루프에서 정리할 비동기 엔진.
             query_graph: 기존 Graphify 관계 조회.
             update_graph: 문서 관계 보존을 확인하는 갱신.
@@ -61,8 +55,6 @@ class MemoryCliController:
         self.checkpoint = checkpoint
         self.read = read
         self.search = search
-        self.preview = preview
-        self.resume = resume
         self.connection = connection
         self.query_graph = query_graph
         self.update_graph = update_graph
@@ -223,106 +215,28 @@ class MemoryCliController:
     async def read_memory(
         self,
         project_id: Annotated[str, Option("--project-id")],
-        memory_id: str | None = None,
-        session_id: str | None = None,
+        memory_id: Annotated[str, Option("--memory-id")],
     ) -> None:
-        """선택 기록을 읽거나 원 세션의 현재 상태를 인수 전에 미리 본다.
+        """선택한 기억 기록의 원문과 출처를 읽는다.
 
         Args:
-            project_id: 프로젝트 ID.
-            memory_id: 선택할 과거 기록 ID.
-            session_id: 미리 볼 세션 ID. memory_id와 둘 중 하나를 지정한다.
-
-        Raises:
-            ValueError: 기록과 세션 중 정확히 하나를 지정하지 않은 경우.
+            project_id: 기억이 속한 프로젝트 ID.
+            memory_id: 검색 또는 참조에서 선택한 과거 기록 ID.
         """
         try:
-            if (memory_id is None) == (session_id is None):
-                raise ValueError("Specify exactly one of memory-id or session-id")
-            if memory_id is not None:
-                result = await self.read.run(ReadMemoryQuery(project_id, memory_id))
-                echo(
-                    json.dumps(
-                        {
-                            "id": result.uid,
-                            "kind": result.kind.value,
-                            "content": result.content,
-                            "references": result.references,
-                            "session_id": result.session_id,
-                            "task_id": result.task_id,
-                        },
-                        ensure_ascii=False,
-                    )
-                )
-                return
-            result = await self.preview.run(PreviewSessionQuery(project_id, str(session_id)))
+            result = await self.read.run(ReadMemoryQuery(project_id, memory_id))
             echo(
                 json.dumps(
                     {
-                        "session_id": result.session.uid,
-                        "revision": result.session.revision,
-                        "successor_id": result.session.successor_id,
-                        "sources": [
-                            {"id": source.uid, "text": source.body} for source in result.sources
-                        ],
-                        "tasks": [
-                            {
-                                "id": task.uid,
-                                "status": task.status.value,
-                                "definition": asdict(task.definition),
-                            }
-                            for task in result.tasks
-                        ],
-                        "workflows": [
-                            {
-                                "id": run.uid,
-                                "revision": run.revision,
-                                "definition": asdict(run.definition),
-                                "attempts": [asdict(item) for item in run.attempts],
-                            }
-                            for run in result.workflows
-                        ],
-                        "enclaves": [
-                            {
-                                "id": item.uid,
-                                "task_id": item.task_id,
-                                "revision": item.revision,
-                                "facts": [asdict(fact) for fact in item.facts],
-                            }
-                            for item in result.enclaves
-                        ],
-                        "memory_ids": result.memory_ids,
+                        "id": result.uid,
+                        "kind": result.kind.value,
+                        "content": result.content,
+                        "references": result.references,
+                        "session_id": result.session_id,
+                        "task_id": result.task_id,
                     },
                     ensure_ascii=False,
                 )
             )
-        finally:
-            await self.connection.dispose()
-
-    @command("resume")
-    async def resume_session(
-        self,
-        project_id: Annotated[str, Option("--project-id")],
-        source_session_id: Annotated[str, Option("--source-session-id")],
-        target_session_id: Annotated[str, Option("--target-session-id")],
-        expected_revision: Annotated[int, Option("--expected-revision")],
-        turn_id: Annotated[str, Option("--turn-id")],
-    ) -> None:
-        """종료·작성 해제 확인 뒤 미완료 작업과 현재 맥락을 이어받는다.
-
-        Args:
-            project_id: 같은 프로젝트 범위.
-            source_session_id: 원 작업 세션.
-            target_session_id: 실제 후속 세션.
-            expected_revision: 미리보기의 원 세션 개정.
-            turn_id: 후속 호스트의 현재 턴.
-        """
-        try:
-            result = await self.resume.run(
-                ResumeSessionCommand(
-                    project_id, source_session_id, target_session_id, expected_revision, turn_id
-                )
-            )
-            echo(json.dumps({"session_id": result.uid, "resumed": True}))
         finally:
             await self.connection.dispose()
