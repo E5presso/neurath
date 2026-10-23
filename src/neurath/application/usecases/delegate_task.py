@@ -1,8 +1,8 @@
 """사용자의 기존 작업을 실제 피어 또는 검증된 독립 provider에 배정한다."""
 
-from dataclasses import dataclass
 from typing import override
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
@@ -23,7 +23,7 @@ from neurath.application.usecases.start_provider import StartProviderCommand, St
 from neurath.domain.aggregates.delegation import Delegation
 
 
-@dataclass(frozen=True)
+@immutable
 class DelegateTaskCommand(AbstractCommand):
     """기존 작업과 명시한 수신 경로를 실제 배정할 요청이다.
 
@@ -76,7 +76,9 @@ class DelegateTaskUseCase(IAsyncCommandUseCase[DelegateTaskCommand, Delegation])
         """
         assignment = command.assignment
         if assignment.plan is not None:
-            capabilities = await self.discover.run(DiscoverProviderQuery(assignment.plan.provider))
+            capabilities = await self.discover.run(
+                DiscoverProviderQuery(provider=assignment.plan.provider)
+            )
             if (
                 assignment.plan.model not in capabilities.models
                 or assignment.plan.policy not in capabilities.policies
@@ -84,7 +86,15 @@ class DelegateTaskUseCase(IAsyncCommandUseCase[DelegateTaskCommand, Delegation])
                 raise ValueError("The installed provider does not support this model or policy")
         delegation = await self.prepare.run(assignment)
         if assignment.plan is None:
-            await self.dispatch.run(DispatchDelegationCommand(delegation.uid, assignment.sender_id))
+            await self.dispatch.run(
+                DispatchDelegationCommand(
+                    delegation_id=delegation.uid, sender_id=assignment.sender_id
+                )
+            )
         else:
-            await self.start.run(StartProviderCommand(delegation.uid, assignment.sender_id))
-        return await self.read.run(GetDelegationQuery(delegation.uid, assignment.sender_id))
+            await self.start.run(
+                StartProviderCommand(delegation_id=delegation.uid, sender_id=assignment.sender_id)
+            )
+        return await self.read.run(
+            GetDelegationQuery(delegation_id=delegation.uid, peer_id=assignment.sender_id)
+        )

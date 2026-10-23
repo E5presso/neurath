@@ -27,6 +27,8 @@ from neurath.domain.delegation_records import (
     DelegationStatus,
     ProviderPlan,
 )
+from neurath.domain.provider import ProviderKind, ProviderStatus
+from neurath.infrastructure.uuid_type import UUIDText
 
 
 @Table(Delegation)
@@ -81,29 +83,29 @@ class DelegationModel(AbstractMappableTable[Delegation]):
             sqlite_where=text("parent_id IS NULL"),
         ),
     )
-    id: Mapped[str] = mapped_column(String, primary_key=True)
+    id: Mapped[UUID] = mapped_column(UUIDText, primary_key=True)
     version: Mapped[UUID] = mapped_column(Uuid(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
-    task_id: Mapped[str] = mapped_column(String, ForeignKey("core_tasks.id"), nullable=False)
+    task_id: Mapped[UUID] = mapped_column(UUIDText, ForeignKey("core_tasks.id"), nullable=False)
     definition_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    source_id: Mapped[str] = mapped_column(
-        String, ForeignKey("core_request_sources.id"), nullable=False
+    source_id: Mapped[UUID] = mapped_column(
+        UUIDText, ForeignKey("core_request_sources.id"), nullable=False
     )
-    parent_id: Mapped[str | None] = mapped_column(
-        String, ForeignKey("core_delegations.id"), nullable=True
+    parent_id: Mapped[UUID | None] = mapped_column(
+        UUIDText, ForeignKey("core_delegations.id"), nullable=True
     )
-    sender_id: Mapped[str] = mapped_column(String, ForeignKey("core_peers.id"), nullable=False)
-    recipient_id: Mapped[str | None] = mapped_column(
-        String, ForeignKey("core_peers.id"), nullable=True
+    sender_id: Mapped[UUID] = mapped_column(UUIDText, ForeignKey("core_peers.id"), nullable=False)
+    recipient_id: Mapped[UUID | None] = mapped_column(
+        UUIDText, ForeignKey("core_peers.id"), nullable=True
     )
     role: Mapped[str] = mapped_column(String, nullable=False)
     scope: Mapped[str] = mapped_column(String, nullable=False)
     route: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False)
-    message_id: Mapped[str | None] = mapped_column(
-        String, ForeignKey("core_messages.id"), nullable=True
+    message_id: Mapped[UUID | None] = mapped_column(
+        UUIDText, ForeignKey("core_messages.id"), nullable=True
     )
     execution_reference: Mapped[str | None] = mapped_column(String, nullable=True)
     progress: Mapped[list[str]] = mapped_column(JSON, nullable=False)
@@ -113,7 +115,7 @@ class DelegationModel(AbstractMappableTable[Delegation]):
     plan_model: Mapped[str | None] = mapped_column(String, nullable=True)
     plan_policy: Mapped[str | None] = mapped_column(String, nullable=True)
     plan_directory: Mapped[str | None] = mapped_column(String, nullable=True)
-    plan_parent_session_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    plan_parent_session_id: Mapped[UUID | None] = mapped_column(UUIDText, nullable=True)
     provider_requested: Mapped[bool] = mapped_column(Boolean, nullable=False)
     provider_status: Mapped[str | None] = mapped_column(String, nullable=True)
     provider_output: Mapped[str] = mapped_column(String, nullable=False)
@@ -200,19 +202,13 @@ class DelegationModel(AbstractMappableTable[Delegation]):
             stop_reason=self.stop_reason,
             stop_evidence=self.stop_evidence,
             provider_requested=self.provider_requested,
-            provider_status=self.provider_status,
+            provider_status=None
+            if self.provider_status is None
+            else ProviderStatus(self.provider_status),
             provider_output=self.provider_output,
             provider_error=self.provider_error,
             native_session_id=self.native_session_id,
-            plan=None
-            if self.plan_provider is None
-            else ProviderPlan(
-                provider=self.plan_provider,
-                model=self.plan_model or "",
-                policy=self.plan_policy or "",
-                directory=self.plan_directory or "",
-                parent_session_id=self.plan_parent_session_id or "",
-            ),
+            plan=self._provider_plan(),
             report=None
             if self.report_summary is None
             else DelegationReport(
@@ -220,4 +216,25 @@ class DelegationModel(AbstractMappableTable[Delegation]):
                 references=self.report_references,
                 remaining_work=self.report_remaining_work,
             ),
+        )
+
+    def _provider_plan(self) -> ProviderPlan | None:
+        """계획이 있으면 필수 부모 참조를 확인하고 원 설정으로 복원한다.
+
+        Returns:
+            ProviderPlan | None: 보존한 실행 계획이며 피어 배정이면 None.
+
+        Raises:
+            ValueError: 저장된 계획에 필수 부모 세션이 빠져 있는 경우.
+        """
+        if self.plan_provider is None:
+            return None
+        if self.plan_parent_session_id is None:
+            raise ValueError("Stored provider plan has no parent session")
+        return ProviderPlan(
+            provider=ProviderKind(self.plan_provider),
+            model=self.plan_model or "",
+            policy=self.plan_policy or "",
+            directory=self.plan_directory or "",
+            parent_session_id=self.plan_parent_session_id,
         )

@@ -8,7 +8,7 @@
 
 ## 프레임워크 사용과 책임
 
-- `Project`, `HostSession`은 `@mutable`과 `AbstractAggregateRoot[str]`로 식별자·동일성·변경 추적을 상속합니다. `ProjectLocation`은 Project가 소유하는 `AbstractValueObject`입니다.
+- `Project`, `HostSession`은 `@mutable`과 `AbstractAggregateRoot[UUID]`로 식별자·동일성·변경 추적을 상속합니다. `ProjectLocation`은 Project가 소유하는 `AbstractValueObject`입니다.
 - 기존 `id` 참조는 `uid`를 읽는 호환 속성으로 유지합니다. 프로젝트 식별·폴더 승격·위치 충돌과 세션 범위·이동 규칙은 도메인에 있습니다.
 - 저장 포트는 `IAsyncGenericRepository`의 기본 Aggregate CRUD 계약을 사용합니다. Command가 위치·네이티브 ID로 작업 대상 Aggregate를 읽는 계약은 저장소가 구현합니다. CommandUseCase에는 SQLAlchemy 세션·쿼리·ORM 모델을 주입하지 않습니다.
 - `SQLAlchemyProjectRepository`, `SQLAlchemySessionRepository`는 `AbstractAsyncGenericRepository`를 상속합니다. `get`, `get_or_none`, `contains`, `range`, `save`, `save_all`, `delete`, `delete_all`과 생성자는 재구현하지 않습니다.
@@ -110,3 +110,9 @@ Git/worktree/clone 구분과 명시적·동시 초기화를 검증합니다. 이
 `core_0005`는 [호스트 실행과 작성 임대](host-runtime.md)를 추가합니다.
 
 추가 Aggregate 조회명은 `find_by_<조건>`으로 조건을 드러냅니다. 프로젝트 소유 위치의 `lazy="selectin"`은 지연 로딩이 아닌 select-in eager loading입니다. 현재 회귀 시험은 프로젝트 3개와 위치를 부모 SELECT 1회·자식 IN SELECT 1회로 적재하고 추가 접근 시 SQL이 발생하지 않음을 확인합니다. 컬렉션 joined loading에는 `Result.unique()`가 필요하지만 Spakky 8.2.0 기본 저장소의 get/range는 이를 적용하지 않습니다. 기본 CRUD를 재구현하지 않고 select-in 방식을 유지합니다.
+
+## 식별자와 불변 입력 계약
+
+내부 aggregate ID와 관련 Command·Query·저장소 참조는 `UUID`로 전달하고 새 ID는 시간 순서로 정렬되는 `uuid7()`로 생성합니다. 이미 저장한 UUID4는 값과 참조를 그대로 유지합니다. SQLite의 기존 문자열 키를 다시 발급하거나 일괄 변환하지 않도록 `UUIDText`가 Python UUID와 정규 문자열 사이를 매핑합니다. 외부 호스트 ID와 원문·산출물 참조는 문자열 계약을 유지하며, JSON·CLI 경계에서 내부 UUID를 문자열로 표현합니다.
+
+불변 입력·결과·관찰 계약은 Spakky `@immutable`과 키워드 인자를 사용합니다. 필드 재할당을 막는 계약이며 내부 목록까지 깊게 동결하는 계약은 아닙니다. 도메인 값 객체의 동등성은 해당 프레임워크 계약을 유지합니다.

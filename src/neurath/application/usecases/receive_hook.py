@@ -2,9 +2,10 @@
 
 import asyncio
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -31,11 +32,12 @@ from neurath.domain.aggregates.task import Task
 from neurath.domain.aggregates.workflow import WorkflowRun
 from neurath.domain.aggregates.writer import Writer
 from neurath.domain.errors import InvalidExecutionState, InvalidTaskState
+from neurath.domain.observations import DirectoryObservation
 from neurath.domain.runtime_records import ExecutionStatus, HookAction, HookEvent, Liveness
 from neurath.domain.task_records import TaskStatus
 
 
-@dataclass(frozen=True)
+@immutable
 class ReceiveHookCommand(AbstractCommand):
     """CLI가 해석한 호스트 사건이며 내부 프로젝트·세션 ID는 유스케이스가 확인한다.
 
@@ -69,10 +71,10 @@ class ReceiveHookCommand(AbstractCommand):
     interrupted: bool = False
     repeated: bool = False
     reason: str = ""
-    delegation_id: str | None = None
+    delegation_id: UUID | None = None
 
 
-@dataclass(frozen=True)
+@immutable
 class ReceiveHookResult:
     """CLI가 호스트 응답으로 표현할 제어와 안내만 반환한다.
 
@@ -153,11 +155,73 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
             ReceiveHookResult: 미완료 작업과 현재 상태에 따른 호스트 제어 응답.
         """
         observation = await asyncio.to_thread(self.directories.observe, command.working_directory)
-        resource = ""
-        if command.writes:
-            resource = await asyncio.to_thread(
-                self.directories.workspace, command.working_directory
+        resource = (
+            await asyncio.to_thread(self.directories.workspace, command.working_directory)
+            if command.writes
+            else ""
+        )
+        session = await self._register_host(command, observation)
+        if session.successor_id is not None:
+            return ReceiveHookResult(
+                action=HookAction.PAUSE,
+                message=f"Work was handed off to session {session.successor_id}",
             )
+
+        execution = await self._load_execution(session.uid, command.agent_id)
+        peer = await self._load_peer(session.uid, command.agent_id)
+        peer, assignment, assignment_task = await self._assignment_for_hook(command, session, peer)
+        if (
+            assignment is not None
+            and assignment_task is not None
+            and command.event is HookEvent.PRE_TOOL_USE
+            and command.writes
+        ):
+            try:
+                assignment.require_current(assignment_task)
+            except InvalidTaskState as error:
+                return ReceiveHookResult(action=HookAction.PAUSE, message=str(error))
+
+        tasks = await self._execution_tasks(session, command.agent_id, assignment, assignment_task)
+        todo = "\n".join(
+            f"{task.uid}: {task.status.value} — {task.definition.title}" for task in tasks
+        )
+        try:
+            action, _ = await self._apply(command, execution, tasks, resource)
+        except InvalidExecutionState as error:
+            return ReceiveHookResult(action=HookAction.PAUSE, message=f"{error}\n{todo}")
+        execution = await self.executions.save(execution)
+        peer.active = execution.status is ExecutionStatus.RUNNING
+        await self.peers.save(peer)
+        inbox = await self._deliver_inbox(peer, command.event)
+
+        restore = (
+            command.event is HookEvent.SESSION_START
+            and command.start_source in ("compact", "resume", "startup")
+            and not command.agent_id
+        )
+        enclaves, tasks, workflows = await self._restore_context(session.uid, tasks, restore)
+        return ReceiveHookResult(
+            action=action,
+            message=f"{execution.reason}\n{todo}".strip(),
+            restore=restore,
+            enclaves=enclaves,
+            tasks=tasks,
+            workflows=workflows,
+            inbox=inbox,
+        )
+
+    async def _register_host(
+        self, command: ReceiveHookCommand, observation: DirectoryObservation
+    ) -> HostSession:
+        """관찰한 Git·폴더 위치에 실제 호스트 세션을 연결한다.
+
+        Args:
+            command: 호스트가 전달한 공급자와 세션 식별자.
+            observation: DB 접근 전에 얻은 정규 위치.
+
+        Returns:
+            HostSession: 기존 식별자를 유지한 세션 또는 처음 관찰한 세션.
+        """
         candidates = Project.identify(observation)
         owners = []
         for location in candidates:
@@ -181,115 +245,164 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
                     observation.working_directory,
                 )
             )
-        if session.successor_id is not None:
-            return ReceiveHookResult(
-                HookAction.PAUSE, f"Work was handed off to session {session.successor_id}"
-            )
-        execution = await self.executions.find_by_session_id_and_agent_id(
-            session.uid, command.agent_id
+        return session
+
+    async def _load_execution(self, session_id: UUID, agent_id: str) -> Execution:
+        """동일 호스트 실행의 상태를 읽고 첫 사건에서만 실행을 등록한다.
+
+        Args:
+            session_id: 등록된 내부 세션.
+            agent_id: 실제 네이티브 자식 ID 또는 루트의 빈 문자열.
+
+        Returns:
+            Execution: 기존 중단 상태를 유지하는 실행.
+        """
+        execution = await self.executions.find_by_session_id_and_agent_id(session_id, agent_id)
+        if execution is not None:
+            return execution
+        return await self.executions.save(Execution.create(session_id, agent_id))
+
+    async def _load_peer(self, session_id: UUID, agent_id: str) -> Peer:
+        """현재 호스트 주소의 피어를 재사용하고 처음 연결할 때만 등록한다.
+
+        Args:
+            session_id: 관찰한 내부 세션.
+            agent_id: 네이티브 자식 ID 또는 빈 문자열.
+
+        Returns:
+            Peer: 동일 주소로 연결된 수신 피어.
+        """
+        peer = await self.peers.find_by_session_id_and_agent_id(session_id, agent_id)
+        if peer is not None:
+            return peer
+        return await self.peers.save(
+            Peer(uid=Peer.next_id(), session_id=session_id, agent_id=agent_id)
         )
-        if execution is None:
-            execution = await self.executions.save(Execution.create(session.uid, command.agent_id))
-        peer = await self.peers.find_by_session_id_and_agent_id(session.uid, command.agent_id)
-        if peer is None:
-            peer = await self.peers.save(
-                Peer(uid=Peer.next_id(), session_id=session.uid, agent_id=command.agent_id)
-            )
-        assignment: Delegation | None = None
-        assignment_task: Task | None = None
+
+    async def _assignment_for_hook(
+        self, command: ReceiveHookCommand, session: HostSession, peer: Peer
+    ) -> tuple[Peer, Delegation | None, Task | None]:
+        """수락한 배정을 읽고 provider의 첫 실제 훅이면 원 배정에 수신자를 연결한다.
+
+        Args:
+            command: 실제 호스트 사건과 선택적인 배정 ID.
+            session: 관찰한 세션.
+            peer: 현재 주소의 피어.
+
+        Returns:
+            tuple[Peer, Delegation | None, Task | None]: 최신 저장 개정의 피어·배정·원 태스크.
+        """
         assignment_id = (
             command.delegation_id
             if command.delegation_id is not None
             else peer.current_delegation_id
         )
-        if assignment_id is not None:
-            assignment = await self.delegations.get(assignment_id)
-            assignment_task = await self.tasks.get(assignment.task_id)
-            if (
-                command.delegation_id is not None
-                and assignment.plan is not None
-                and not command.agent_id
-            ):
-                assignment_task.require_project(project.uid)
-                assignment.bind_provider_peer(command.provider, command.host_session_id, peer.uid)
-                await self.delegations.save(assignment)
-                peer.accept_assignment(assignment.uid)
-                peer = await self.peers.save(peer)
-            assignment.require_recipient(peer.uid)
-            if command.event is HookEvent.PRE_TOOL_USE and command.writes:
-                try:
-                    assignment.require_current(assignment_task)
-                except InvalidTaskState as error:
-                    return ReceiveHookResult(HookAction.PAUSE, str(error))
-        tasks = tuple(
-            t
-            for t in await self.tasks.find_by_project_id(project.uid)
-            if t.owner_session_id == session.uid and not command.agent_id
-        )
+        if assignment_id is None:
+            return peer, None, None
+        assignment = await self.delegations.get(assignment_id)
+        task = await self.tasks.get(assignment.task_id)
+        if (
+            command.delegation_id is not None
+            and assignment.plan is not None
+            and not command.agent_id
+        ):
+            task.require_project(session.project_id)
+            assignment.bind_provider_peer(command.provider, command.host_session_id, peer.uid)
+            await self.delegations.save(assignment)
+            peer.accept_assignment(assignment.uid)
+            peer = await self.peers.save(peer)
+        assignment.require_recipient(peer.uid)
+        return peer, assignment, task
+
+    async def _execution_tasks(
+        self,
+        session: HostSession,
+        agent_id: str,
+        assignment: Delegation | None,
+        assignment_task: Task | None,
+    ) -> Sequence[Task]:
+        """루트의 소유 작업과 해당 수신자가 맡은 미보고 작업만 모은다.
+
+        Args:
+            session: 현재 세션.
+            agent_id: 네이티브 자식이면 루트의 전체 TODO를 자동 전가하지 않는다.
+            assignment: 실제 수신자가 일치하는 배정.
+            assignment_task: 그 배정의 원 작업.
+
+        Returns:
+            Sequence[Task]: 종료 판단에 필요한 중복 없는 현재 작업 목록.
+        """
+        tasks = {
+            task.uid: task
+            for task in await self.tasks.find_by_project_id(session.project_id)
+            if task.owner_session_id == session.uid and not agent_id
+        }
         if assignment is not None and assignment_task is not None and assignment.report is None:
-            tasks = (
-                (*tasks, assignment_task)
-                if all(t.uid != assignment_task.uid for t in tasks)
-                else tasks
-            )
-        todo = "\n".join(f"{t.uid}: {t.status.value} — {t.definition.title}" for t in tasks)
-        try:
-            action, _ = await self._apply(command, execution, tasks, resource)
-        except InvalidExecutionState as error:
-            return ReceiveHookResult(HookAction.PAUSE, f"{error}\n{todo}")
-        execution = await self.executions.save(execution)
-        peer.active = execution.status is ExecutionStatus.RUNNING
-        await self.peers.save(peer)
-        inbox: list[str] = []
-        if peer.active and command.event in (
+            tasks[assignment_task.uid] = assignment_task
+        return tuple(tasks.values())
+
+    async def _deliver_inbox(self, peer: Peer, event: HookEvent) -> Sequence[str]:
+        """수신 가능한 훅에 아직 시도하지 않은 메시지 제목만 제한해서 전달한다.
+
+        Args:
+            peer: 현재 실행 상태를 반영한 수신 피어.
+            event: 실제 호스트 사건.
+
+        Returns:
+            Sequence[str]: 이번 응답에 넣을 원 메시지 ID·제목. 읽음이나 ACK는 아니다.
+        """
+        if not peer.active or event not in (
             HookEvent.SESSION_START,
             HookEvent.USER_PROMPT_SUBMIT,
             HookEvent.PRE_TOOL_USE,
         ):
-            pending = [
-                message
-                for message in await self.messages.find_by_recipient_id(peer.uid)
-                if message.status is DeliveryStatus.PENDING
-            ][:20]
-            for message in pending:
-                message.begin_delivery()
-                await self.messages.save(message)
-                inbox.append(
-                    f"Message {message.uid} from {message.sender_id}: {message.title}. Read the original body before ACK; this is not task acceptance."
-                )
-        restore = (
-            command.event is HookEvent.SESSION_START
-            and command.start_source in ("compact", "resume", "startup")
-            and not command.agent_id
-        )
-        enclaves: Sequence[Enclave] = ()
-        workflows: list[WorkflowRun] = []
-        if restore:
-            active = tuple(
-                task
-                for task in tasks
-                if task.status not in (TaskStatus.SUCCEEDED, TaskStatus.INVALIDATED)
+            return ()
+        pending = [
+            message
+            for message in await self.messages.find_by_recipient_id(peer.uid)
+            if message.status is DeliveryStatus.PENDING
+        ][:20]
+        inbox = []
+        for message in pending:
+            message.begin_delivery()
+            await self.messages.save(message)
+            inbox.append(
+                f"Message {message.uid} from {message.sender_id}: {message.title}. Read the original body before ACK; this is not task acceptance."
             )
-            task_ids = {task.uid for task in active}
-            enclaves = tuple(
-                item
-                for item in await self.enclaves.find_by_session_id(session.uid)
-                if item.task_id is None or item.task_id in task_ids
-            )
-            for task in active:
-                workflow = await self.workflows.find_by_task_id(task.uid)
-                if workflow is not None:
-                    workflows.append(workflow)
-            tasks = active
-        return ReceiveHookResult(
-            action,
-            f"{execution.reason}\n{todo}".strip(),
-            restore,
-            enclaves,
-            tasks,
-            workflows,
-            inbox,
+        return tuple(inbox)
+
+    async def _restore_context(
+        self, session_id: UUID, tasks: Sequence[Task], restore: bool
+    ) -> tuple[Sequence[Enclave], Sequence[Task], Sequence[WorkflowRun]]:
+        """압축·재개 사건에서 현재 사실과 미완료 작업의 절차만 선택한다.
+
+        Args:
+            session_id: 복원할 현재 세션.
+            tasks: 이 실행이 담당하는 작업.
+            restore: 호스트 사건이 현재 맥락 복원을 요구하는지 여부.
+
+        Returns:
+            tuple[Sequence[Enclave], Sequence[Task], Sequence[WorkflowRun]]: 최신 enclave·현재 작업·관련 runner.
+        """
+        if not restore:
+            return (), tasks, ()
+        active = tuple(
+            task
+            for task in tasks
+            if task.status not in (TaskStatus.SUCCEEDED, TaskStatus.INVALIDATED)
         )
+        task_ids = {task.uid for task in active}
+        enclaves = tuple(
+            item
+            for item in await self.enclaves.find_by_session_id(session_id)
+            if item.task_id is None or item.task_id in task_ids
+        )
+        workflows = []
+        for task in active:
+            workflow = await self.workflows.find_by_task_id(task.uid)
+            if workflow is not None:
+                workflows.append(workflow)
+        return enclaves, active, tuple(workflows)
 
     async def _apply(
         self,

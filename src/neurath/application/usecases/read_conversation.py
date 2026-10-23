@@ -1,8 +1,9 @@
 """원 대화의 참가자와 종료 여부를 기록 변경 없이 조회한다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
@@ -11,7 +12,7 @@ from neurath.application.ports.repositories.conversation import IConversationRep
 from neurath.domain.aggregates.conversation import Conversation
 
 
-@dataclass(frozen=True)
+@immutable
 class ReadConversationQuery(AbstractQuery):
     """원 대화의 참가자와 종료 여부를 기록 변경 없이 조회한다.
 
@@ -20,8 +21,8 @@ class ReadConversationQuery(AbstractQuery):
         peer_id: 호출한 등록 피어.
     """
 
-    conversation_id: str
-    peer_id: str
+    conversation_id: UUID
+    peer_id: UUID
 
 
 @UseCase()

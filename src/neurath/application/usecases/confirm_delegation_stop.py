@@ -1,8 +1,9 @@
 """실제 중단 관찰을 원 배정에 기록하며 취소 요청만으로 종료를 추정하지 않는다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -12,7 +13,7 @@ from neurath.application.ports.repositories.peer import IPeerRepository
 from neurath.domain.aggregates.delegation import Delegation
 
 
-@dataclass(frozen=True)
+@immutable
 class ConfirmDelegationStopCommand(AbstractCommand):
     """실제 중단 관찰을 원 배정에 기록하며 취소 요청만으로 종료를 추정하지 않는다.
 
@@ -22,8 +23,8 @@ class ConfirmDelegationStopCommand(AbstractCommand):
         evidence: 수신 경계에서 확인한 실제 중단의 근거.
     """
 
-    delegation_id: str
-    peer_id: str
+    delegation_id: UUID
+    peer_id: UUID
     evidence: str
 
 

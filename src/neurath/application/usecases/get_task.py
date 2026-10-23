@@ -1,9 +1,10 @@
 """지정한 소유 세션의 태스크 한 건과 보존된 이력을 조회한다."""
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
@@ -14,7 +15,7 @@ from neurath.domain.aggregates.delegation import Delegation
 from neurath.domain.aggregates.task import Task
 
 
-@dataclass(frozen=True)
+@immutable
 class GetTaskQuery(AbstractQuery):
     """소유 프로젝트·세션 안에서 상세 조회할 태스크를 지정한다.
 
@@ -24,12 +25,12 @@ class GetTaskQuery(AbstractQuery):
         task_id: 현재 상태와 전체 이력을 조회할 태스크 ID.
     """
 
-    project_id: str
-    session_id: str
-    task_id: str
+    project_id: UUID
+    session_id: UUID
+    task_id: UUID
 
 
-@dataclass(frozen=True)
+@immutable
 class GetTaskResult:
     """조회한 태스크의 현재 상태와 전체 요구·시도·대기 이력을 반환한다.
 

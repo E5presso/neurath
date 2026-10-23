@@ -49,7 +49,7 @@ def test_self_factories_preserve_subclasses_and_results_keep_their_explicit_payl
     class SpecializedResult(GetSessionContextResult):
         pass
 
-    project = SpecializedProject.create(DirectoryObservation("/repo"))
+    project = SpecializedProject.create(DirectoryObservation(working_directory="/repo"))
     session = SpecializedSession.create(project.id, "codex", "native", "/repo")
     context = SpecializedResult(project=project, session=session)
     assert type(project) is SpecializedProject
@@ -73,7 +73,11 @@ async def test_mutating_returned_entities_does_not_write_outside_the_request(dat
 
 
 def test_mixed_location_conflict_never_partially_adds_folder_alias():
-    project = Project.create(DirectoryObservation("/repo", "/repo/.git", "/repo"))
+    project = Project.create(
+        DirectoryObservation(
+            working_directory="/repo", git_common_directory="/repo/.git", primary_worktree="/repo"
+        )
+    )
     before = project.locations
     with pytest.raises(ProjectIdentityConflict):
         project.associate(
@@ -154,8 +158,12 @@ async def test_stale_move_rolls_back_folder_to_git_alias_promotion(database, tmp
 
 
 async def test_aggregate_child_removal_does_not_remove_other_project_locations(database):
-    first = Project.create(DirectoryObservation("/one", "/one/.git", "/one"))
-    second = Project.create(DirectoryObservation("/two"))
+    first = Project.create(
+        DirectoryObservation(
+            working_directory="/one", git_common_directory="/one/.git", primary_worktree="/one"
+        )
+    )
+    second = Project.create(DirectoryObservation(working_directory="/two"))
     async with storage_scope(database) as scope:
         repository = scope.get(IProjectRepository)
         first = await repository.save(first)
@@ -291,7 +299,7 @@ async def test_file_path_and_unknown_project_lookup_are_rejected_without_writes(
 
 
 def test_entity_identity_comparison_rejects_unrelated_objects():
-    project = Project.create(DirectoryObservation("/repo"))
+    project = Project.create(DirectoryObservation(working_directory="/repo"))
     session = HostSession.create(project.id, "codex", "native", "/repo")
     assert project != object()
     assert session != object()

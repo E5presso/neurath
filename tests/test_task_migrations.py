@@ -2,6 +2,7 @@
 
 import sqlite3
 from contextlib import closing
+from uuid import UUID
 
 import pytest
 from alembic import command
@@ -41,20 +42,22 @@ async def previous_store(path):
             )
             (
                 await connection.execute(
-                    text("INSERT INTO core_projects (id,root_path) VALUES ('old-project','/old')")
-                )
-            )
-            (
-                await connection.execute(
                     text(
-                        "INSERT INTO core_project_locations VALUES ('folder','/old','old-project')"
+                        "INSERT INTO core_projects (id,root_path) VALUES ('451f9ebe-36ec-4ce3-b6eb-cf2d7a763d1e','/old')"
                     )
                 )
             )
             (
                 await connection.execute(
                     text(
-                        "INSERT INTO core_sessions (id,project_id,provider,host_session_id,working_directory,revision) VALUES ('old-session','old-project','codex','native','/old',7)"
+                        "INSERT INTO core_project_locations VALUES ('folder','/old','451f9ebe-36ec-4ce3-b6eb-cf2d7a763d1e')"
+                    )
+                )
+            )
+            (
+                await connection.execute(
+                    text(
+                        "INSERT INTO core_sessions (id,project_id,provider,host_session_id,working_directory,revision) VALUES ('4d803d31-c081-4bbc-af1a-9ed3da7d7a91','451f9ebe-36ec-4ce3-b6eb-cf2d7a763d1e','codex','native','/old',7)"
                     )
                 )
             )
@@ -68,7 +71,7 @@ async def previous_store(path):
             (
                 await connection.execute(
                     text(
-                        "INSERT INTO legacy_task VALUES ('old-project','unfinished original requirement','waiting')"
+                        "INSERT INTO legacy_task VALUES ('451f9ebe-36ec-4ce3-b6eb-cf2d7a763d1e','unfinished original requirement','waiting')"
                     )
                 )
             )
@@ -84,7 +87,12 @@ async def test_core0002_upgrade_keeps_every_old_row_foreign_key_and_unfinished_o
     with pytest.raises(StorageNotReady):
         (
             await run(
-                GetTasksUseCase, GetTasksQuery("old-project", "old-session"), database_path=path
+                GetTasksUseCase,
+                GetTasksQuery(
+                    project_id=UUID("451f9ebe-36ec-4ce3-b6eb-cf2d7a763d1e"),
+                    session_id=UUID("4d803d31-c081-4bbc-af1a-9ed3da7d7a91"),
+                ),
+                database_path=path,
             )
         )
     assert path.read_bytes() == original_bytes
@@ -95,10 +103,19 @@ async def test_core0002_upgrade_keeps_every_old_row_foreign_key_and_unfinished_o
             assert after[table] == [(*row, None) for row in records]
         elif table != "core_schema_revision":
             assert after[table] == records
-    assert after["legacy_task"] == [("old-project", "unfinished original requirement", "waiting")]
+    assert after["legacy_task"] == [
+        ("451f9ebe-36ec-4ce3-b6eb-cf2d7a763d1e", "unfinished original requirement", "waiting")
+    ]
     assert after["core_tasks"] == after["core_request_sources"] == []
     assert (
-        await run(GetTasksUseCase, GetTasksQuery("old-project", "old-session"), database_path=path)
+        await run(
+            GetTasksUseCase,
+            GetTasksQuery(
+                project_id=UUID("451f9ebe-36ec-4ce3-b6eb-cf2d7a763d1e"),
+                session_id=UUID("4d803d31-c081-4bbc-af1a-9ed3da7d7a91"),
+            ),
+            database_path=path,
+        )
     ).tasks == ()
     with closing(sqlite3.connect(path)) as connection:
         assert (connection.execute("PRAGMA foreign_key_check")).fetchall() == []

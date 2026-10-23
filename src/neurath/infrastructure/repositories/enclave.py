@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 from typing import override
+from uuid import UUID
 
 from spakky.data.stereotype.repository import Repository
 from spakky.plugins.sqlalchemy.persistency.repository import AbstractAsyncGenericRepository
@@ -13,11 +14,13 @@ from neurath.infrastructure.models.enclave import EnclaveModel
 
 
 @Repository()
-class SQLAlchemyEnclaveRepository(AbstractAsyncGenericRepository[Enclave, str], IEnclaveRepository):
+class SQLAlchemyEnclaveRepository(
+    AbstractAsyncGenericRepository[Enclave, UUID], IEnclaveRepository
+):
     """Enclave aggregate를 기본 저장 계약으로 읽고 쓴다."""
 
     @override
-    async def find_by_session_id(self, session_id: str) -> Sequence[Enclave]:
+    async def find_by_session_id(self, session_id: UUID) -> Sequence[Enclave]:
         """현재 세션의 공통·작업별 enclave를 이력과 함께 조회한다.
 
         Args:

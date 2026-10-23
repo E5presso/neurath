@@ -1,8 +1,9 @@
 """세션의 프로젝트 소속을 확인하고 프로젝트·세션을 함께 조회한다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
@@ -13,7 +14,7 @@ from neurath.domain.aggregates.project import Project
 from neurath.domain.aggregates.session import HostSession
 
 
-@dataclass(frozen=True)
+@immutable
 class GetSessionContextQuery(AbstractQuery):
     """현재 작업 경로와 프로젝트를 조회할 세션을 지정한다.
 
@@ -22,11 +23,11 @@ class GetSessionContextQuery(AbstractQuery):
         session_id: 지정한 프로젝트 안에 있는 세션의 식별자.
     """
 
-    project_id: str
-    session_id: str
+    project_id: UUID
+    session_id: UUID
 
 
-@dataclass(frozen=True)
+@immutable
 class GetSessionContextResult:
     """조회한 프로젝트와 해당 프로젝트에 속한 호스트 세션을 반환한다.
 

@@ -1,17 +1,18 @@
 """모델을 실행하지 않고 설치된 provider의 실제 모델·정책을 조회한다."""
 
 import asyncio
-from dataclasses import dataclass
 from typing import override
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
 
 from neurath.application.ports.services.provider import IProviderService
 from neurath.application.provider_records import ProviderCapabilities
+from neurath.domain.provider import ProviderKind
 
 
-@dataclass(frozen=True)
+@immutable
 class DiscoverProviderQuery(AbstractQuery):
     """지원 정보를 확인할 호스트를 지정한다.
 
@@ -19,7 +20,7 @@ class DiscoverProviderQuery(AbstractQuery):
         provider: 설치된 공급자 이름.
     """
 
-    provider: str
+    provider: ProviderKind
 
 
 @UseCase()

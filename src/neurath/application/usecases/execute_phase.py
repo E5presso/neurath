@@ -1,8 +1,9 @@
 """워크플로우의 실행 시도를 예약하고 커밋 후 처리할 이벤트를 기록한다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -13,7 +14,7 @@ from neurath.domain.aggregates.workflow import WorkflowRun
 from neurath.domain.workflow_records import PhaseStatus
 
 
-@dataclass(frozen=True)
+@immutable
 class ExecutePhaseCommand(AbstractCommand):
     """실행하거나 기존 미확정 시도를 조정할 run을 지정한다.
 
@@ -24,13 +25,13 @@ class ExecutePhaseCommand(AbstractCommand):
         expected_revision: 새 시도를 시작할 때 대조할 run 저장 버전.
     """
 
-    project_id: str
-    session_id: str
-    run_id: str
+    project_id: UUID
+    session_id: UUID
+    run_id: UUID
     expected_revision: int
 
 
-@dataclass(frozen=True)
+@immutable
 class ExecutePhaseResult:
     """실행 요청이 커밋될 때의 워크플로우와 시도 식별자를 반환한다.
 

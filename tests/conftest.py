@@ -1,14 +1,19 @@
 """후보 구현을 위한 격리된 파일 시스템·데이터베이스·Git fixture를 제공한다."""
 
 import os
+import sqlite3
 import subprocess
 from contextlib import asynccontextmanager
+from uuid import UUID
 
 import pytest
 from spakky.plugins.sqlalchemy.persistency.transaction import AsyncTransaction
 
 from neurath.infrastructure.database import initialize_database
 from tests.support.application import spakky_context
+
+# 원시 SQL 검증에서도 실제 저장 표현인 정규 UUID 문자열을 사용한다.
+sqlite3.register_adapter(UUID, str)
 
 
 def git(directory, *arguments):

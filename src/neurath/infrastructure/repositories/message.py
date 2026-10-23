@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 from typing import override
+from uuid import UUID
 
 from spakky.data.stereotype.repository import Repository
 from spakky.plugins.sqlalchemy.persistency.repository import AbstractAsyncGenericRepository
@@ -13,12 +14,14 @@ from neurath.infrastructure.models.message import MessageModel
 
 
 @Repository()
-class SQLAlchemyMessageRepository(AbstractAsyncGenericRepository[Message, str], IMessageRepository):
+class SQLAlchemyMessageRepository(
+    AbstractAsyncGenericRepository[Message, UUID], IMessageRepository
+):
     """Message의 조회·매핑을 담당하며 상태 판단은 도메인에 맡긴다."""
 
     @override
     async def find_by_sender_id_and_recipient_id_and_key(
-        self, sender_id: str, recipient_id: str, key: str
+        self, sender_id: UUID, recipient_id: UUID, key: str
     ) -> Message | None:
         """조건에 해당하는 aggregate를 조회한다.
 
@@ -42,7 +45,7 @@ class SQLAlchemyMessageRepository(AbstractAsyncGenericRepository[Message, str], 
         return rows.to_domain()
 
     @override
-    async def find_by_recipient_id(self, recipient_id: str) -> Sequence[Message]:
+    async def find_by_recipient_id(self, recipient_id: UUID) -> Sequence[Message]:
         """조건에 해당하는 aggregate를 조회한다.
 
         Args:
@@ -57,7 +60,7 @@ class SQLAlchemyMessageRepository(AbstractAsyncGenericRepository[Message, str], 
         return tuple(row.to_domain() for row in rows)
 
     @override
-    async def find_by_sender_id_and_key(self, sender_id: str, key: str) -> Sequence[Message]:
+    async def find_by_sender_id_and_key(self, sender_id: UUID, key: str) -> Sequence[Message]:
         """이미 확정한 발행 수신자를 재조회한다.
 
         Args:

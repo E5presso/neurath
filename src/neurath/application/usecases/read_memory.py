@@ -1,8 +1,9 @@
 """선택한 과거 기억을 현재 사실로 승격하지 않고 원문 그대로 조회한다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
@@ -12,7 +13,7 @@ from neurath.domain.aggregates.memory import Memory
 from neurath.domain.errors import ContextNotFound
 
 
-@dataclass(frozen=True)
+@immutable
 class ReadMemoryQuery(AbstractQuery):
     """선택 조회할 기록과 프로젝트를 지정한다.
 
@@ -21,8 +22,8 @@ class ReadMemoryQuery(AbstractQuery):
         memory_id: 검색 또는 참조에서 선택한 기억 ID.
     """
 
-    project_id: str
-    memory_id: str
+    project_id: UUID
+    memory_id: UUID
 
 
 @UseCase()

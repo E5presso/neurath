@@ -4,6 +4,7 @@ import io
 import json
 import sqlite3
 from unittest.mock import patch
+from uuid import UUID
 
 import pytest
 from alembic import command as migration
@@ -109,7 +110,14 @@ async def test_invalid_checkpoint_never_changes_graph_or_ledger(
     with pytest.raises(expected_error):
         await run(
             SaveCheckpointUseCase,
-            SaveCheckpointCommand(project_id, session_id, content, references, task_id, directory),
+            SaveCheckpointCommand(
+                project_id=project_id,
+                session_id=session_id,
+                content=content,
+                references=references,
+                task_id=task_id,
+                graph_directory=directory,
+            ),
             database_path=database,
         )
     marker, calls = graph_write
@@ -174,7 +182,11 @@ async def test_checkpoint_commit_failure_never_starts_graph_update(
         await run(
             SaveCheckpointUseCase,
             SaveCheckpointCommand(
-                actor.project.uid, actor.session.uid, "report", ["source"], graph_directory="/graph"
+                project_id=actor.project.uid,
+                session_id=actor.session.uid,
+                content="report",
+                references=["source"],
+                graph_directory="/graph",
             ),
             database_path=database,
         )
@@ -204,14 +216,20 @@ async def test_graph_runs_after_commit_without_db_lock_then_records_reference(
     reserved = await run(
         SaveCheckpointUseCase,
         SaveCheckpointCommand(
-            actor.project.uid, actor.session.uid, "report", ["source"], graph_directory="/graph"
+            project_id=actor.project.uid,
+            session_id=actor.session.uid,
+            content="report",
+            references=["source"],
+            graph_directory="/graph",
         ),
         database_path=database,
     )
     assert observed == ["/graph"]
     assert reserved.graph_status is GraphUpdateStatus.PENDING
     stored = await run(
-        ReadMemoryUseCase, ReadMemoryQuery(actor.project.uid, reserved.uid), database_path=database
+        ReadMemoryUseCase,
+        ReadMemoryQuery(project_id=actor.project.uid, memory_id=reserved.uid),
+        database_path=database,
     )
     assert stored.graph_status is GraphUpdateStatus.SUCCEEDED
     assert stored.content == "report"
@@ -266,11 +284,13 @@ async def test_cli_reports_failed_or_unrecorded_graph_outcome_without_false_succ
     assert output["graph_status"] == expected and output["graph_reference"] is None
     assert bool(output["graph_error"]) == (outcome != "record_failure")
     ids = await run(
-        SearchMemoryUseCase, SearchMemoryQuery(actor.project.uid), database_path=database
+        SearchMemoryUseCase, SearchMemoryQuery(project_id=actor.project.uid), database_path=database
     )
-    assert tuple(ids) == (output["id"],)
+    assert tuple(ids) == (UUID(output["id"]),)
     stored = await run(
-        ReadMemoryUseCase, ReadMemoryQuery(actor.project.uid, output["id"]), database_path=database
+        ReadMemoryUseCase,
+        ReadMemoryQuery(project_id=actor.project.uid, memory_id=output["id"]),
+        database_path=database,
     )
     assert stored.content == "report" and tuple(stored.references) == ("source",)
     assert marker.exists() == (outcome == "record_failure")
@@ -308,7 +328,10 @@ async def test_graph_migration_preserves_old_report_and_rejects_outcome_loss(
     await run(
         SaveCheckpointUseCase,
         SaveCheckpointCommand(
-            actor.project.uid, actor.session.uid, "original report", ["original source"]
+            project_id=actor.project.uid,
+            session_id=actor.session.uid,
+            content="original report",
+            references=["original source"],
         ),
         database_path=database,
     )
@@ -327,10 +350,10 @@ async def test_graph_migration_preserves_old_report_and_rejects_outcome_loss(
         await run(
             SaveCheckpointUseCase,
             SaveCheckpointCommand(
-                actor.project.uid,
-                actor.session.uid,
-                "graph report",
-                ["source"],
+                project_id=actor.project.uid,
+                session_id=actor.session.uid,
+                content="graph report",
+                references=["source"],
                 graph_directory="/graph",
             ),
             database_path=database,

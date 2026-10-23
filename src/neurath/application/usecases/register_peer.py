@@ -1,8 +1,9 @@
 """관찰된 호스트 실행의 주소를 등록하고 재연결 때 같은 피어를 재사용한다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -15,7 +16,7 @@ from neurath.domain.errors import ContextNotFound
 from neurath.domain.runtime_records import ExecutionStatus
 
 
-@dataclass(frozen=True)
+@immutable
 class RegisterPeerCommand(AbstractCommand):
     """관찰된 호스트 실행의 주소를 등록하고 재연결 때 같은 피어를 재사용한다.
 
@@ -24,7 +25,7 @@ class RegisterPeerCommand(AbstractCommand):
         agent_id: 실제 네이티브 자식 ID이며 루트면 빈 문자열.
     """
 
-    session_id: str
+    session_id: UUID
     agent_id: str = ""
 
 

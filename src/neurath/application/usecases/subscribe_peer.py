@@ -1,9 +1,10 @@
 """피어의 구독만 갱신하며 과거 전달 대상과 메시지는 변경하지 않는다."""
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -12,7 +13,7 @@ from neurath.application.ports.repositories.peer import IPeerRepository
 from neurath.domain.aggregates.peer import Peer
 
 
-@dataclass(frozen=True)
+@immutable
 class SubscribePeerCommand(AbstractCommand):
     """피어의 구독만 갱신하며 과거 전달 대상과 메시지는 변경하지 않는다.
 
@@ -21,7 +22,7 @@ class SubscribePeerCommand(AbstractCommand):
         topics: 앞으로 수신할 주제.
     """
 
-    peer_id: str
+    peer_id: UUID
     topics: Sequence[str]
 
 

@@ -1,6 +1,7 @@
 """프로젝트와 소유 위치의 기본 Aggregate 저장 계약을 제공한다."""
 
 from typing import override
+from uuid import UUID
 
 from spakky.data.stereotype.repository import Repository
 from spakky.plugins.sqlalchemy.persistency.repository import AbstractAsyncGenericRepository
@@ -12,7 +13,9 @@ from neurath.infrastructure.models.project import ProjectLocationModel, ProjectM
 
 
 @Repository()
-class SQLAlchemyProjectRepository(AbstractAsyncGenericRepository[Project, str], IProjectRepository):
+class SQLAlchemyProjectRepository(
+    AbstractAsyncGenericRepository[Project, UUID], IProjectRepository
+):
     """프로젝트의 위치 값들을 포함한 aggregate를 표준 SQLAlchemy 매핑·CRUD·낙관적 잠금으로 저장한다."""
 
     @override

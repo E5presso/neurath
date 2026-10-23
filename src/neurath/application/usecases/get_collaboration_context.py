@@ -1,9 +1,10 @@
 """피어·인박스·배정 상태를 제한된 범위로 조회하며 발신하거나 실행하지 않는다."""
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
@@ -17,22 +18,22 @@ from neurath.infrastructure.models.peer import PeerModel
 from neurath.infrastructure.models.session import SessionModel
 
 
-@dataclass(frozen=True)
+@immutable
 class GetCollaborationContextQuery(AbstractQuery):
     """등록 피어가 볼 인박스와 관련 배정의 페이지를 지정한다.
 
     Attributes:
         peer_id: 현재 등록 피어.
-        after_id: 이전 페이지 마지막 메시지 ID이며 처음이면 빈 문자열.
+        after_id: 이전 페이지 마지막 메시지 ID이며 처음이면 None.
         limit: 영역별 최대 결과 수. 1부터 100까지.
     """
 
-    peer_id: str
-    after_id: str = ""
+    peer_id: UUID
+    after_id: UUID | None = None
     limit: int = 20
 
 
-@dataclass(frozen=True)
+@immutable
 class MessageSummary:
     """전체 본문을 자동 주입하지 않는 인박스 항목이다.
 
@@ -46,16 +47,16 @@ class MessageSummary:
         acknowledged: 해당 메시지 ACK 여부.
     """
 
-    id: str
-    conversation_id: str
-    sender_id: str
+    id: UUID
+    conversation_id: UUID
+    sender_id: UUID
     title: str
     delivery_status: str
     read: bool
     acknowledged: bool
 
 
-@dataclass(frozen=True)
+@immutable
 class PeerAddress:
     """프로젝트 안에서 관찰된 실제 호스트 주소다.
 
@@ -68,7 +69,7 @@ class PeerAddress:
         subscriptions: 명시한 주제 구독.
     """
 
-    id: str
+    id: UUID
     provider: str
     host_session_id: str
     agent_id: str
@@ -76,7 +77,7 @@ class PeerAddress:
     subscriptions: Sequence[str]
 
 
-@dataclass(frozen=True)
+@immutable
 class DelegationSummary:
     """보고 원문을 자동 주입하지 않는 현재 배정 요약이다.
 
@@ -91,8 +92,8 @@ class DelegationSummary:
         stop_unconfirmed: 중단 요청은 있으나 실제 중단 관찰이 없는지 여부.
     """
 
-    id: str
-    task_id: str
+    id: UUID
+    task_id: UUID
     definition_number: int
     role: str
     status: str
@@ -101,7 +102,7 @@ class DelegationSummary:
     stop_unconfirmed: bool
 
 
-@dataclass(frozen=True)
+@immutable
 class CollaborationContext:
     """현재 피어와 직접 관련된 메시지·배정 및 같은 프로젝트의 주소 목록이다.
 
@@ -115,7 +116,7 @@ class CollaborationContext:
     peers: Sequence[PeerAddress]
     inbox: Sequence[MessageSummary]
     delegations: Sequence[DelegationSummary]
-    next_after_id: str | None
+    next_after_id: UUID | None
 
 
 @UseCase()
@@ -165,21 +166,32 @@ class GetCollaborationContextUseCase(
             .limit(query.limit)
         )
         peers = tuple(
-            PeerAddress(p.id, s.provider, s.host_session_id, p.agent_id, p.active, p.subscriptions)
+            PeerAddress(
+                id=p.id,
+                provider=s.provider,
+                host_session_id=s.host_session_id,
+                agent_id=p.agent_id,
+                active=p.active,
+                subscriptions=p.subscriptions,
+            )
             for p, s in addresses
         )
+        inbox_query = select(MessageModel).where(MessageModel.recipient_id == query.peer_id)
+        if query.after_id is not None:
+            inbox_query = inbox_query.where(MessageModel.id > query.after_id)
         messages = list(
-            await session.scalars(
-                select(MessageModel)
-                .where(MessageModel.recipient_id == query.peer_id, MessageModel.id > query.after_id)
-                .order_by(MessageModel.id)
-                .limit(query.limit + 1)
-            )
+            await session.scalars(inbox_query.order_by(MessageModel.id).limit(query.limit + 1))
         )
         page = messages[: query.limit]
         inbox = tuple(
             MessageSummary(
-                m.id, m.conversation_id, m.sender_id, m.title, m.status, m.read, m.acknowledged
+                id=m.id,
+                conversation_id=m.conversation_id,
+                sender_id=m.sender_id,
+                title=m.title,
+                delivery_status=m.status,
+                read=m.read,
+                acknowledged=m.acknowledged,
             )
             for m in page
         )
@@ -195,20 +207,20 @@ class GetCollaborationContextUseCase(
             .limit(query.limit)
         )
         return CollaborationContext(
-            peers,
-            inbox,
-            tuple(
+            peers=peers,
+            inbox=inbox,
+            delegations=tuple(
                 DelegationSummary(
-                    d.id,
-                    d.task_id,
-                    d.definition_number,
-                    d.role,
-                    d.status,
-                    d.provider_status,
-                    d.report_summary is not None,
-                    d.stop_reason is not None and d.stop_evidence is None,
+                    id=d.id,
+                    task_id=d.task_id,
+                    definition_number=d.definition_number,
+                    role=d.role,
+                    status=d.status,
+                    provider_status=d.provider_status,
+                    has_report=d.report_summary is not None,
+                    stop_unconfirmed=d.stop_reason is not None and d.stop_evidence is None,
                 )
                 for d in assignments
             ),
-            page[-1].id if len(messages) > query.limit else None,
+            next_after_id=page[-1].id if len(messages) > query.limit else None,
         )

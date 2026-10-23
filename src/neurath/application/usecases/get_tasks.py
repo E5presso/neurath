@@ -1,9 +1,10 @@
 """세션의 모든 태스크를 조회하고 같은 프로젝트의 선행 작업으로 시작 가능 여부를 계산한다."""
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
@@ -17,7 +18,7 @@ from neurath.domain.task_records import TaskStatus
 from neurath.infrastructure.models.task import TaskModel
 
 
-@dataclass(frozen=True)
+@immutable
 class GetTasksQuery(AbstractQuery):
     """전체 TODO와 실행 가능 여부를 조회할 소유 세션을 지정한다.
 
@@ -26,11 +27,11 @@ class GetTasksQuery(AbstractQuery):
         session_id: 조회할 태스크의 소유 세션 ID.
     """
 
-    project_id: str
-    session_id: str
+    project_id: UUID
+    session_id: UUID
 
 
-@dataclass(frozen=True)
+@immutable
 class GetTasksResult:
     """세션의 전체 태스크와 시작 가능한 작업·종료·성공 여부를 반환한다.
 
@@ -42,7 +43,7 @@ class GetTasksResult:
     """
 
     tasks: Sequence[Task]
-    ready_task_ids: Sequence[str]
+    ready_task_ids: Sequence[UUID]
     all_terminal: bool
     all_succeeded: bool
 

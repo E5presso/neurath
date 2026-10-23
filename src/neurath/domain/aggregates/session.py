@@ -1,7 +1,7 @@
 """특정 프로젝트 안에서 가변 호스트 세션의 동일성과 버전 규칙을 관리한다."""
 
 from typing import Self, override
-from uuid import uuid4
+from uuid import UUID, uuid7
 
 from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
@@ -10,7 +10,7 @@ from neurath.domain.errors import ContextNotFound, InvalidExecutionState, Revisi
 
 
 @mutable
-class HostSession(AbstractAggregateRoot[str]):
+class HostSession(AbstractAggregateRoot[UUID]):
     """프로젝트·공급자·네이티브 ID로 구분되는 세션과 현재 작업 경로를 보존한다.
 
     Attributes:
@@ -22,35 +22,35 @@ class HostSession(AbstractAggregateRoot[str]):
         successor_id: 인수가 확정된 후속 세션이며 아직 없으면 None.
     """
 
-    project_id: str
+    project_id: UUID
     provider: str
     host_session_id: str
     working_directory: str
     revision: int
-    successor_id: str | None = None
+    successor_id: UUID | None = None
 
     @property
-    def id(self) -> str:
+    def id(self) -> UUID:
         """기존 세션 참조와의 호환을 위해 uid를 id로 읽는다.
 
         Returns:
-            str: 이 세션의 uid와 같은 식별자.
+            UUID: 이 세션의 uid와 같은 식별자.
         """
         return self.uid
 
     @classmethod
     @override
-    def next_id(cls) -> str:
-        """호스트의 네이티브 ID와 별개인 세션 UUID 문자열을 생성한다.
+    def next_id(cls) -> UUID:
+        """호스트의 네이티브 ID와 별개인 세션 UUID 값을 생성한다.
 
         Returns:
-            str: Neurath 세션의 uid로 사용할 UUID 문자열.
+            UUID: Neurath 세션의 uid로 사용할 UUID 값.
         """
-        return str(uuid4())
+        return uuid7()
 
     @classmethod
     def create(
-        cls, project_id: str, provider: str, host_session_id: str, working_directory: str
+        cls, project_id: UUID, provider: str, host_session_id: str, working_directory: str
     ) -> Self:
         """공급자·네이티브 ID의 빈 값을 검사하고 revision 1의 세션 객체를 만든다.
 
@@ -77,7 +77,7 @@ class HostSession(AbstractAggregateRoot[str]):
             revision=1,
         )
 
-    def require_project(self, project_id: str) -> None:
+    def require_project(self, project_id: UUID) -> None:
         """이 세션이 요청한 프로젝트 범위에 속하는지 검사한다.
 
         Args:

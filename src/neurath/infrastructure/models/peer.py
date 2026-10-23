@@ -9,6 +9,7 @@ from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Uni
 from sqlalchemy.orm import Mapped, mapped_column
 
 from neurath.domain.aggregates.peer import Peer
+from neurath.infrastructure.uuid_type import UUIDText
 
 
 @Table(Peer)
@@ -30,16 +31,18 @@ class PeerModel(AbstractMappableTable[Peer]):
 
     __tablename__ = "core_peers"
     __table_args__ = (UniqueConstraint("session_id", "agent_id"),)
-    id: Mapped[str] = mapped_column(String, primary_key=True)
+    id: Mapped[UUID] = mapped_column(UUIDText, primary_key=True)
     version: Mapped[UUID] = mapped_column(Uuid(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
-    session_id: Mapped[str] = mapped_column(String, ForeignKey("core_sessions.id"), nullable=False)
+    session_id: Mapped[UUID] = mapped_column(
+        UUIDText, ForeignKey("core_sessions.id"), nullable=False
+    )
     agent_id: Mapped[str] = mapped_column(String, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False)
     subscriptions: Mapped[list[str]] = mapped_column(JSON, nullable=False)
-    current_delegation_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    current_delegation_id: Mapped[UUID | None] = mapped_column(UUIDText, nullable=True)
     __mapper_args__ = {"version_id_col": revision}
 
     @classmethod

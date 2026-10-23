@@ -43,7 +43,7 @@ class CollaborationEventHandler:
         Args:
             event: 실제 요구 변경 사건.
         """
-        await self.reconcile.run(ReconcileDelegationsCommand(event.task_id))
+        await self.reconcile.run(ReconcileDelegationsCommand(task_id=event.task_id))
 
 
 @EventHandler()
@@ -74,7 +74,9 @@ class ProviderEventHandler:
         Args:
             event: 저장이 끝난 실행 요청.
         """
-        await self.run.run(RunProviderCommand(event.delegation_id, event.prompt))
+        await self.run.run(
+            RunProviderCommand(delegation_id=event.delegation_id, prompt=event.prompt)
+        )
 
     @on_event(ProviderExecutionObserved)
     async def record_provider(self, event: ProviderExecutionObserved) -> None:
@@ -85,13 +87,13 @@ class ProviderEventHandler:
         """
         await self.record.run(
             RecordProviderCommand(
-                event.delegation_id,
-                ProviderObservation(
-                    event.reference,
-                    event.status,
-                    event.native_session_id,
-                    event.output,
-                    event.error,
+                delegation_id=event.delegation_id,
+                observation=ProviderObservation(
+                    reference=event.reference,
+                    status=event.status,
+                    native_session_id=event.native_session_id,
+                    output=event.output,
+                    error=event.error,
                 ),
             )
         )
@@ -103,4 +105,6 @@ class ProviderEventHandler:
         Args:
             event: 원 요청 변경에 영향받은 배정.
         """
-        await self.recover.run(RecoverProviderCommand(event.delegation_id, event.sender_id))
+        await self.recover.run(
+            RecoverProviderCommand(delegation_id=event.delegation_id, peer_id=event.sender_id)
+        )

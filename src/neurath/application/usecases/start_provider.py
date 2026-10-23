@@ -1,8 +1,9 @@
 """기존 배정의 최신 요구를 검증·커밋한 뒤 독립 실행을 요청한다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -16,7 +17,7 @@ from neurath.domain.aggregates.delegation import Delegation
 from neurath.domain.errors import ContextNotFound
 
 
-@dataclass(frozen=True)
+@immutable
 class StartProviderCommand(AbstractCommand):
     """기존 배정의 최신 요구를 검증·커밋한 뒤 독립 실행을 요청한다.
 
@@ -25,8 +26,8 @@ class StartProviderCommand(AbstractCommand):
         sender_id: 배정 책임이 있는 발신 피어.
     """
 
-    delegation_id: str
-    sender_id: str
+    delegation_id: UUID
+    sender_id: UUID
 
 
 @UseCase()

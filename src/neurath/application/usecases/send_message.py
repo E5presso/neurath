@@ -1,8 +1,9 @@
 """검증한 원 메시지를 인박스에 저장하고 동일 발신 키의 재시도는 원문을 반환한다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -14,7 +15,7 @@ from neurath.domain.aggregates.message import Message
 from neurath.domain.errors import ContextNotFound, InvalidTaskState
 
 
-@dataclass(frozen=True)
+@immutable
 class SendMessageCommand(AbstractCommand):
     """검증한 원 메시지를 인박스에 저장하고 동일 발신 키의 재시도는 원문을 반환한다.
 
@@ -28,13 +29,13 @@ class SendMessageCommand(AbstractCommand):
         reply_to: 답장 대상인 원 메시지.
     """
 
-    conversation_id: str
-    sender_id: str
-    recipient_id: str
+    conversation_id: UUID
+    sender_id: UUID
+    recipient_id: UUID
     key: str
     title: str
     body: str
-    reply_to: str | None = None
+    reply_to: UUID | None = None
 
 
 @UseCase()

@@ -1,8 +1,9 @@
 """외부 시작 직전에 커밋된 배정이 현재 요구에 여전히 유효한지 확인한다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
@@ -13,7 +14,7 @@ from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.domain.aggregates.delegation import Delegation
 
 
-@dataclass(frozen=True)
+@immutable
 class CheckProviderStartQuery(AbstractQuery):
     """외부 시작 직전에 커밋된 배정이 현재 요구에 여전히 유효한지 확인한다.
 
@@ -21,7 +22,7 @@ class CheckProviderStartQuery(AbstractQuery):
         delegation_id: 수락·보고할 원 배정 ID.
     """
 
-    delegation_id: str
+    delegation_id: UUID
 
 
 @UseCase()

@@ -1,16 +1,16 @@
 """기존 Graphify의 관계 조회를 DB 잠금 없이 실행한다."""
 
 import asyncio
-from dataclasses import dataclass
 from typing import override
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
 
 from neurath.application.ports.services.graph import IGraphService
 
 
-@dataclass(frozen=True)
+@immutable
 class QueryGraphQuery(AbstractQuery):
     """Graphify 작업의 프로젝트 경로와 조회 질문을 지정한다.
 

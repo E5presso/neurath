@@ -1,8 +1,9 @@
 """원 수신자에게 전체 본문을 반환하면서 해당 메시지의 읽음만 기록한다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -11,7 +12,7 @@ from neurath.application.ports.repositories.message import IMessageRepository
 from neurath.domain.aggregates.message import Message
 
 
-@dataclass(frozen=True)
+@immutable
 class ReadMessageCommand(AbstractCommand):
     """원 수신자에게 전체 본문을 반환하면서 해당 메시지의 읽음만 기록한다.
 
@@ -20,8 +21,8 @@ class ReadMessageCommand(AbstractCommand):
         peer_id: 호출한 등록 피어.
     """
 
-    message_id: str
-    peer_id: str
+    message_id: UUID
+    peer_id: UUID
 
 
 @UseCase()

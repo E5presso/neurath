@@ -43,7 +43,10 @@ async def test_memory_or_handoff_history_prevents_destructive_downgrade(database
         await run(
             SaveCheckpointUseCase,
             SaveCheckpointCommand(
-                actor.project.uid, actor.session.uid, "unfinished report", ["source"]
+                project_id=actor.project.uid,
+                session_id=actor.session.uid,
+                content="unfinished report",
+                references=["source"],
             ),
             database_path=database,
         )

@@ -1,8 +1,9 @@
 """정정·취소된 태스크의 배정에 중단 요청을 전파하고 실제 중단은 미확인으로 남긴다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -13,7 +14,7 @@ from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.domain.aggregates.message import Message
 
 
-@dataclass(frozen=True)
+@immutable
 class ReconcileDelegationsCommand(AbstractCommand):
     """정정·취소된 태스크의 배정에 중단 요청을 전파하고 실제 중단은 미확인으로 남긴다.
 
@@ -21,7 +22,7 @@ class ReconcileDelegationsCommand(AbstractCommand):
         task_id: 기존 요청에 연결된 작업.
     """
 
-    task_id: str
+    task_id: UUID
 
 
 @UseCase()

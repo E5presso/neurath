@@ -1,9 +1,10 @@
 """저장된 단계 시도를 외부 실행기에서 처리하고 관찰 결과를 발행한다."""
 
 import asyncio
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 from spakky.event.event_publisher import IAsyncEventPublisher
@@ -13,7 +14,7 @@ from neurath.domain.workflow_events import PhaseExecutionObserved
 from neurath.domain.workflow_records import PhaseAttempt, PhaseDefinition, PhaseResult, PhaseStatus
 
 
-@dataclass(frozen=True)
+@immutable
 class RunPhaseCommand(AbstractCommand):
     """이미 커밋한 시도의 외부 실행 또는 복구를 요청한다.
 
@@ -26,9 +27,9 @@ class RunPhaseCommand(AbstractCommand):
         fresh: 새 시도이면 실행하고 기존 시도이면 결과를 먼저 조회한다.
     """
 
-    project_id: str
-    session_id: str
-    run_id: str
+    project_id: UUID
+    session_id: UUID
+    run_id: UUID
     phase: PhaseDefinition
     attempt: PhaseAttempt
     fresh: bool

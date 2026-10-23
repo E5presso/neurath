@@ -45,12 +45,12 @@ class WorkflowEventHandler:
         """
         await self.execution.run(
             RunPhaseCommand(
-                event.project_id,
-                event.session_id,
-                event.run_id,
-                event.phase,
-                event.attempt,
-                event.fresh,
+                project_id=event.project_id,
+                session_id=event.session_id,
+                run_id=event.run_id,
+                phase=event.phase,
+                attempt=event.attempt,
+                fresh=event.fresh,
             )
         )
 
@@ -63,11 +63,11 @@ class WorkflowEventHandler:
         """
         await self.report.run(
             ReportPhaseCommand(
-                event.project_id,
-                event.session_id,
-                event.run_id,
-                event.attempt_number,
-                event.result,
+                project_id=event.project_id,
+                session_id=event.session_id,
+                run_id=event.run_id,
+                attempt_number=event.attempt_number,
+                result=event.result,
                 notify_waiting=True,
             )
         )
@@ -79,4 +79,6 @@ class WorkflowEventHandler:
         Args:
             event: 저장된 대기 원인과 시도 식별자.
         """
-        await self.notification.run(NotifyPhaseWaitCommand(event.request_id, event.reason))
+        await self.notification.run(
+            NotifyPhaseWaitCommand(request_id=event.request_id, reason=event.reason)
+        )

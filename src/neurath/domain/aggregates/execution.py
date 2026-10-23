@@ -2,7 +2,7 @@
 
 from collections.abc import Sequence
 from typing import Self, override
-from uuid import uuid4
+from uuid import UUID, uuid7
 
 from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
@@ -15,7 +15,7 @@ from neurath.domain.task_records import TaskStatus
 
 
 @mutable
-class Execution(AbstractAggregateRoot[str]):
+class Execution(AbstractAggregateRoot[UUID]):
     """한 호스트 세션의 루트 또는 네이티브 자식의 현재 실행을 관리한다.
 
     Attributes:
@@ -29,7 +29,7 @@ class Execution(AbstractAggregateRoot[str]):
         revision: 저장소가 비교하는 낙관적 버전.
     """
 
-    session_id: str
+    session_id: UUID
     agent_id: str
     start_source: str
     turn_id: str
@@ -40,16 +40,16 @@ class Execution(AbstractAggregateRoot[str]):
 
     @classmethod
     @override
-    def next_id(cls) -> str:
+    def next_id(cls) -> UUID:
         """네이티브 식별자와 구분되는 내부 실행 ID를 만든다.
 
         Returns:
-            str: 새 UUID 문자열.
+            UUID: 새 UUID 값.
         """
-        return str(uuid4())
+        return uuid7()
 
     @classmethod
-    def create(cls, session_id: str, agent_id: str = "") -> Self:
+    def create(cls, session_id: UUID, agent_id: str = "") -> Self:
         """아직 턴을 관찰하지 않은 실행 연결을 만든다.
 
         Args:
@@ -150,7 +150,7 @@ class Execution(AbstractAggregateRoot[str]):
         self.reason = reason
 
     def decide_stop(
-        self, tasks: Sequence[Task], *, repeated: bool, progress: Sequence[tuple[str, int]] = ()
+        self, tasks: Sequence[Task], *, repeated: bool, progress: Sequence[tuple[UUID, int]] = ()
     ) -> HookAction:
         """최신 태스크를 대조하고 진전 없는 같은 종료 거절에서는 실제로 양보한다.
 

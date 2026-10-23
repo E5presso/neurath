@@ -2,7 +2,7 @@
 
 from collections.abc import Sequence
 from typing import override
-from uuid import uuid4
+from uuid import UUID, uuid7
 
 from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
@@ -11,7 +11,7 @@ from neurath.domain.errors import ContextNotFound, InvalidTaskState
 
 
 @mutable
-class Conversation(AbstractAggregateRoot[str]):
+class Conversation(AbstractAggregateRoot[UUID]):
     """명시적으로 연결한 피어 사이의 대화다. 종료해도 메시지는 보존한다.
 
     Attributes:
@@ -20,19 +20,19 @@ class Conversation(AbstractAggregateRoot[str]):
         revision: 저장소 낙관적 버전.
     """
 
-    participants: Sequence[str]
+    participants: Sequence[UUID]
     closed: bool = False
     revision: int = 1
 
     @classmethod
     @override
-    def next_id(cls) -> str:
+    def next_id(cls) -> UUID:
         """답장에서 재사용할 대화 ID를 생성한다.
 
         Returns:
-            str: 새 대화 식별자.
+            UUID: 새 대화 식별자.
         """
-        return str(uuid4())
+        return uuid7()
 
     @override
     def validate(self) -> None:
@@ -44,7 +44,7 @@ class Conversation(AbstractAggregateRoot[str]):
         if len(set(self.participants)) != len(self.participants) or len(self.participants) < 2:
             raise ValueError("Conversation requires distinct participants")
 
-    def require_participant(self, peer_id: str) -> None:
+    def require_participant(self, peer_id: UUID) -> None:
         """대화 밖 피어의 본문 조회와 변경을 거부한다.
 
         Args:
@@ -65,7 +65,7 @@ class Conversation(AbstractAggregateRoot[str]):
         if self.closed:
             raise InvalidTaskState("Conversation is closed")
 
-    def close(self, peer_id: str) -> None:
+    def close(self, peer_id: UUID) -> None:
         """참가자의 대화를 닫되 미완료 태스크와 메시지는 변경하지 않는다.
 
         Args:

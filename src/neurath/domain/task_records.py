@@ -3,6 +3,7 @@
 from collections.abc import Sequence
 from enum import StrEnum
 from typing import override
+from uuid import UUID
 
 from spakky.core.common.mutability import immutable
 from spakky.domain.models.value_object import AbstractValueObject
@@ -57,10 +58,10 @@ class TaskDefinition(AbstractValueObject):
     """
 
     number: int
-    source_id: str
+    source_id: UUID
     title: str
     required_result: str
-    dependencies: Sequence[str] = ()
+    dependencies: Sequence[UUID] = ()
 
     @override
     def validate(self) -> None:
@@ -166,7 +167,7 @@ class TaskAttempt(AbstractValueObject):
 
     number: int
     definition_number: int
-    session_id: str
+    session_id: UUID
     submission: SubmittedResult | None = None
     result: TaskResult | None = None
 

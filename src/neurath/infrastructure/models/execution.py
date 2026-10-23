@@ -11,6 +11,7 @@ from sqlalchemy.types import DateTime
 
 from neurath.domain.aggregates.execution import Execution
 from neurath.domain.runtime_records import ExecutionStatus
+from neurath.infrastructure.uuid_type import UUIDText
 
 
 @Table(Execution)
@@ -34,7 +35,7 @@ class ExecutionModel(AbstractMappableTable[Execution]):
 
     __tablename__ = "core_executions"
     __table_args__ = (UniqueConstraint("session_id", "agent_id"),)
-    id: Mapped[str] = mapped_column(String, primary_key=True)
+    id: Mapped[UUID] = mapped_column(UUIDText, primary_key=True)
     version: Mapped[UUID] = mapped_column(
         Uuid(), nullable=False, server_default="00000000000000000000000000000000"
     )
@@ -45,7 +46,9 @@ class ExecutionModel(AbstractMappableTable[Execution]):
         DateTime(timezone=True), nullable=False, server_default="1970-01-01 00:00:00"
     )
 
-    session_id: Mapped[str] = mapped_column(String, ForeignKey("core_sessions.id"), nullable=False)
+    session_id: Mapped[UUID] = mapped_column(
+        UUIDText, ForeignKey("core_sessions.id"), nullable=False
+    )
     agent_id: Mapped[str] = mapped_column(String, nullable=False)
     start_source: Mapped[str] = mapped_column(String, nullable=False)
     turn_id: Mapped[str] = mapped_column(String, nullable=False)

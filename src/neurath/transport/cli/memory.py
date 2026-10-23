@@ -4,6 +4,7 @@ import json
 import sys
 from dataclasses import asdict
 from typing import Annotated
+from uuid import UUID
 
 from spakky.plugins.sqlalchemy.persistency.connection_manager import AsyncConnectionManager
 from spakky.plugins.typer.stereotypes.cli_controller import CliController, command
@@ -24,6 +25,7 @@ from neurath.application.usecases.update_enclave import (
 )
 from neurath.domain.aggregates.memory import GraphUpdateStatus
 from neurath.domain.enclave_records import EnclaveFact, EnclaveKind
+from neurath.serialization import encode_uuid
 
 
 @CliController("memory")
@@ -59,11 +61,11 @@ class MemoryCliController:
     @command("update")
     async def update_enclave(
         self,
-        project_id: Annotated[str, Option("--project-id")],
-        session_id: Annotated[str, Option("--session-id")],
+        project_id: Annotated[UUID, Option("--project-id")],
+        session_id: Annotated[UUID, Option("--session-id")],
         expected_revision: Annotated[int, Option("--expected-revision")],
         changes: Annotated[str, Option("--changes")],
-        task_id: str | None = None,
+        task_id: UUID | None = None,
     ) -> None:
         """JSON 변경 목록을 같은 개정의 현재 맥락에 원자적으로 적용한다.
 
@@ -77,7 +79,11 @@ class MemoryCliController:
         try:
             result = await self.update.run(
                 UpdateEnclaveCommand(
-                    project_id, session_id, task_id, expected_revision, self._changes(changes)
+                    project_id=project_id,
+                    session_id=session_id,
+                    task_id=task_id,
+                    expected_revision=expected_revision,
+                    changes=self._changes(changes),
                 )
             )
             echo(
@@ -87,6 +93,7 @@ class MemoryCliController:
                         "revision": result.revision,
                         "facts": [asdict(fact) for fact in result.facts],
                     },
+                    default=encode_uuid,
                     ensure_ascii=False,
                 )
             )
@@ -114,7 +121,7 @@ class MemoryCliController:
             if not isinstance(item, dict) or not isinstance(item.get("key"), str):
                 raise ValueError("Each change requires a string key")
             if item.get("op") == "remove":
-                changes.append(RemoveEnclaveFact(item["key"]))
+                changes.append(RemoveEnclaveFact(key=item["key"]))
                 continue
             references = item.get("references")
             if (
@@ -130,13 +137,13 @@ class MemoryCliController:
                 raise ValueError("details must be a string")
             changes.append(
                 SetEnclaveFact(
-                    EnclaveFact(
+                    fact=EnclaveFact(
                         key=item["key"],
                         value=item["value"],
                         kind=EnclaveKind(item["kind"]),
                         references=references,
                     ),
-                    details,
+                    details=details,
                 )
             )
         return changes
@@ -144,11 +151,11 @@ class MemoryCliController:
     @command("checkpoint")
     async def save_checkpoint(
         self,
-        project_id: Annotated[str, Option("--project-id")],
-        session_id: Annotated[str, Option("--session-id")],
+        project_id: Annotated[UUID, Option("--project-id")],
+        session_id: Annotated[UUID, Option("--session-id")],
         content: Annotated[str, Option("--content")],
         reference: Annotated[list[str], Option("--reference")],
-        task_id: str | None = None,
+        task_id: UUID | None = None,
         graph_directory: str | None = None,
     ) -> None:
         """원문 참조와 결과·남은 일·다음 행동의 보고를 저장한다.
@@ -168,11 +175,18 @@ class MemoryCliController:
             content = sys.stdin.read() if content == "-" else content
             result = await self.checkpoint.run(
                 SaveCheckpointCommand(
-                    project_id, session_id, content, reference, task_id, graph_directory
+                    project_id=project_id,
+                    session_id=session_id,
+                    content=content,
+                    references=reference,
+                    task_id=task_id,
+                    graph_directory=graph_directory,
                 )
             )
             if graph_directory is not None:
-                result = await self.read.run(ReadMemoryQuery(project_id, result.uid))
+                result = await self.read.run(
+                    ReadMemoryQuery(project_id=project_id, memory_id=result.uid)
+                )
             echo(
                 json.dumps(
                     {
@@ -182,6 +196,7 @@ class MemoryCliController:
                         "graph_reference": result.graph_reference,
                         "graph_error": result.graph_error,
                     },
+                    default=encode_uuid,
                     ensure_ascii=False,
                 )
             )
@@ -193,10 +208,10 @@ class MemoryCliController:
     @command("search")
     async def search_memory(
         self,
-        project_id: Annotated[str, Option("--project-id")],
+        project_id: Annotated[UUID, Option("--project-id")],
         text: str = "",
-        session_id: str | None = None,
-        task_id: str | None = None,
+        session_id: UUID | None = None,
+        task_id: UUID | None = None,
         limit: int = 20,
         graph_directory: str | None = None,
     ) -> None:
@@ -212,22 +227,36 @@ class MemoryCliController:
         """
         try:
             result = await self.search.run(
-                SearchMemoryQuery(project_id, text, session_id, task_id, limit)
+                SearchMemoryQuery(
+                    project_id=project_id,
+                    text=text,
+                    session_id=session_id,
+                    task_id=task_id,
+                    limit=limit,
+                )
             )
             graph_result = (
                 None
                 if graph_directory is None
-                else await self.query_graph.run(QueryGraphQuery(graph_directory, text))
+                else await self.query_graph.run(
+                    QueryGraphQuery(directory=graph_directory, question=text)
+                )
             )
-            echo(json.dumps({"memory_ids": result, "graph": graph_result}, ensure_ascii=False))
+            echo(
+                json.dumps(
+                    {"memory_ids": result, "graph": graph_result},
+                    default=encode_uuid,
+                    ensure_ascii=False,
+                )
+            )
         finally:
             await self.connection.dispose()
 
     @command("read")
     async def read_memory(
         self,
-        project_id: Annotated[str, Option("--project-id")],
-        memory_id: Annotated[str, Option("--memory-id")],
+        project_id: Annotated[UUID, Option("--project-id")],
+        memory_id: Annotated[UUID, Option("--memory-id")],
     ) -> None:
         """선택한 기억 기록의 원문과 출처를 읽는다.
 
@@ -236,7 +265,9 @@ class MemoryCliController:
             memory_id: 검색 또는 참조에서 선택한 과거 기록 ID.
         """
         try:
-            result = await self.read.run(ReadMemoryQuery(project_id, memory_id))
+            result = await self.read.run(
+                ReadMemoryQuery(project_id=project_id, memory_id=memory_id)
+            )
             echo(
                 json.dumps(
                     {
@@ -250,6 +281,7 @@ class MemoryCliController:
                         "graph_reference": result.graph_reference,
                         "graph_error": result.graph_error,
                     },
+                    default=encode_uuid,
                     ensure_ascii=False,
                 )
             )

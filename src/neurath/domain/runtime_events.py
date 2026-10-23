@@ -1,5 +1,7 @@
 """커밋된 중단·작성 회수 요청을 호스트 관찰에 전달한다."""
 
+from uuid import UUID
+
 from spakky.core.common.mutability import immutable
 from spakky.domain.models.event import AbstractDomainEvent
 
@@ -15,7 +17,7 @@ class ExecutionCancellationRequested(AbstractDomainEvent):
         turn_id: 중단 요청을 받은 정확한 호스트 턴.
     """
 
-    execution_id: str
+    execution_id: UUID
     turn_id: str
 
 
@@ -31,8 +33,8 @@ class WriterRecoveryRequested(AbstractDomainEvent):
         generation: 관찰 뒤 다시 대조할 임대 세대.
     """
 
-    writer_id: str
-    execution_id: str
+    writer_id: UUID
+    execution_id: UUID
     turn_id: str
     tool_use_id: str
     generation: int
@@ -48,7 +50,7 @@ class ExecutionInterruptionObserved(AbstractDomainEvent):
         liveness: 실제 관찰 결과이며 UNKNOWN은 종료 확인이 아니다.
     """
 
-    execution_id: str
+    execution_id: UUID
     turn_id: str
     liveness: Liveness
 
@@ -64,7 +66,7 @@ class WriterLivenessObserved(AbstractDomainEvent):
         liveness: 실제 작성 호출의 관찰 결과.
     """
 
-    writer_id: str
-    execution_id: str
+    writer_id: UUID
+    execution_id: UUID
     generation: int
     liveness: Liveness

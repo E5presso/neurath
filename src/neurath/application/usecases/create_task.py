@@ -1,9 +1,10 @@
 """같은 프로젝트의 원문을 재사용하여 소유 세션의 새 태스크를 등록한다."""
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -14,7 +15,7 @@ from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.domain.aggregates.task import Task
 
 
-@dataclass(frozen=True)
+@immutable
 class CreateTaskCommand(AbstractCommand):
     """보존한 원문에 연결할 새 작업의 목표·선행 작업·소유 세션을 지정한다.
 
@@ -28,16 +29,16 @@ class CreateTaskCommand(AbstractCommand):
         follow_up_of: 미달 요구를 이어받는 원래 태스크 ID. 독립 작업이면 None.
     """
 
-    project_id: str
-    session_id: str
-    source_id: str
+    project_id: UUID
+    session_id: UUID
+    source_id: UUID
     title: str
     required_result: str
-    dependencies: Sequence[str] = ()
-    follow_up_of: str | None = None
+    dependencies: Sequence[UUID] = ()
+    follow_up_of: UUID | None = None
 
 
-@dataclass(frozen=True)
+@immutable
 class CreateTaskResult:
     """최초 요구 개정이 연결된 새 pending 태스크를 반환한다.
 

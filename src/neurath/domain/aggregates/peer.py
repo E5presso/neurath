@@ -1,17 +1,18 @@
 """실제 호스트 세션 주소와 피어의 수신 구독을 보존한다."""
 
 from collections.abc import Sequence
-from typing import override
-from uuid import uuid4
+from typing import Self, override
+from uuid import UUID, uuid7
 
 from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 
+from neurath.domain.delegation_records import DelegationRoute
 from neurath.domain.errors import InvalidTaskState
 
 
 @mutable
-class Peer(AbstractAggregateRoot[str]):
+class Peer(AbstractAggregateRoot[UUID]):
     """등록된 세션과 선택적 네이티브 자식 주소를 가진 수신자다.
 
     Attributes:
@@ -23,22 +24,22 @@ class Peer(AbstractAggregateRoot[str]):
         revision: 저장소 낙관적 버전.
     """
 
-    session_id: str
+    session_id: UUID
     agent_id: str = ""
     active: bool = True
     subscriptions: Sequence[str] = ()
-    current_delegation_id: str | None = None
+    current_delegation_id: UUID | None = None
     revision: int = 1
 
     @classmethod
     @override
-    def next_id(cls) -> str:
+    def next_id(cls) -> UUID:
         """재연결 때 재사용할 피어 식별자를 생성한다.
 
         Returns:
-            str: 새로운 피어 ID.
+            UUID: 새로운 피어 ID.
         """
-        return str(uuid4())
+        return uuid7()
 
     def subscribe(self, topics: Sequence[str]) -> None:
         """구독 목록만 교체하며 이미 전달한 메시지에는 영향을 주지 않는다.
@@ -62,7 +63,7 @@ class Peer(AbstractAggregateRoot[str]):
         if not self.active:
             raise InvalidTaskState("Peer is not active")
 
-    def accept_assignment(self, delegation_id: str) -> None:
+    def accept_assignment(self, delegation_id: UUID) -> None:
         """수신자가 수락한 한 배정을 현재 실행 범위로 연결한다.
 
         Args:
@@ -75,7 +76,7 @@ class Peer(AbstractAggregateRoot[str]):
             raise InvalidTaskState("Finish or stop the current assignment before accepting another")
         self.current_delegation_id = delegation_id
 
-    def finish_assignment(self, delegation_id: str) -> None:
+    def finish_assignment(self, delegation_id: UUID) -> None:
         """같은 배정의 보고·중단 후에만 현재 실행 연결을 해제한다.
 
         Args:
@@ -83,3 +84,22 @@ class Peer(AbstractAggregateRoot[str]):
         """
         if self.current_delegation_id == delegation_id:
             self.current_delegation_id = None
+
+    def require_recipient_route(self, sender: Self, route: DelegationRoute) -> None:
+        """수신자가 발신자와 다르며 네이티브 자식 경로의 실제 부모 관계가 맞는지 확인한다.
+
+        Args:
+            sender: 배정을 보내는 피어.
+            route: 요청한 수신 경로.
+
+        Raises:
+            InvalidTaskState: 자기 배정이거나 관찰한 부모·자식 관계가 다른 경우.
+        """
+        if self.uid == sender.uid:
+            raise InvalidTaskState("Delegate to a distinct peer")
+        if route is not DelegationRoute.CHILD:
+            return
+        if self.session_id != sender.session_id or not self.agent_id:
+            raise InvalidTaskState(
+                "Native child route requires an observed child of this host session"
+            )

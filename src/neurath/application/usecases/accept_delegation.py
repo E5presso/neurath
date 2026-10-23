@@ -1,8 +1,9 @@
 """수신자가 기존 사용자 지시에 연결된 최신 배정을 추가 승인 없이 수락한다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -13,7 +14,7 @@ from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.domain.aggregates.delegation import Delegation
 
 
-@dataclass(frozen=True)
+@immutable
 class AcceptDelegationCommand(AbstractCommand):
     """수신자가 기존 사용자 지시에 연결된 최신 배정을 추가 승인 없이 수락한다.
 
@@ -22,8 +23,8 @@ class AcceptDelegationCommand(AbstractCommand):
         peer_id: 호출한 등록 피어.
     """
 
-    delegation_id: str
-    peer_id: str
+    delegation_id: UUID
+    peer_id: UUID
 
 
 @UseCase()

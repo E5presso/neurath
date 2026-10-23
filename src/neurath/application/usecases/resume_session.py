@@ -1,8 +1,9 @@
 """실제 원 실행 종료를 확인한 뒤 현재 작업과 맥락의 소유 연결을 옮긴다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -19,7 +20,7 @@ from neurath.domain.aggregates.session import HostSession
 from neurath.domain.errors import InvalidExecutionState, RevisionConflict
 
 
-@dataclass(frozen=True)
+@immutable
 class ResumeSessionCommand(AbstractCommand):
     """원 세션의 미리보기 개정과 실제 후속 세션을 지정한다.
 
@@ -31,9 +32,9 @@ class ResumeSessionCommand(AbstractCommand):
         turn_id: 후속 실행에서 관찰한 현재 턴.
     """
 
-    project_id: str
-    source_session_id: str
-    target_session_id: str
+    project_id: UUID
+    source_session_id: UUID
+    target_session_id: UUID
     expected_revision: int
     turn_id: str
 

@@ -43,6 +43,7 @@ from tests.support.session_requests import (
 PROCESS = """
 import asyncio, json, sys
 from pathlib import Path
+from uuid import UUID
 from tests.support.session_requests import register_session, get_session_context, move_session, session_state
 from neurath.domain.errors import RevisionConflict
 path = Path(sys.argv[1])
@@ -52,9 +53,9 @@ async def main():
         if mode == "register":
             result = await register_session(sys.argv[3], sys.argv[4], sys.argv[5], database_path=path)
         elif mode == "read":
-            result = await get_session_context(sys.argv[3], sys.argv[4], database_path=path)
+            result = await get_session_context(UUID(sys.argv[3]), UUID(sys.argv[4]), database_path=path)
         elif mode == "move":
-            result = await move_session(sys.argv[3], sys.argv[4], sys.argv[5], int(sys.argv[6]), database_path=path)
+            result = await move_session(UUID(sys.argv[3]), UUID(sys.argv[4]), sys.argv[5], int(sys.argv[6]), database_path=path)
         else:
             raise ValueError(mode)
         print(json.dumps(session_state(result)))
@@ -161,20 +162,20 @@ async def test_folder_to_git_promotion_preserves_foreign_keys_from_first_linked_
         (
             connection.execute(
                 "INSERT INTO dependent_fixture VALUES (?, ?)",
-                (before.project.id, "unfinished original source"),
+                (str(before.project.id), "unfinished original source"),
             )
         )
     initialize_git(plain)
     linked = tmp_path / "linked"
     git(plain, "worktree", "add", "-b", "branch", str(linked))
     after = await request(database, "register", linked, "codex", "another")
-    assert after["project"]["uid"] == before.project.id
+    assert after["project"]["uid"] == str(before.project.id)
     assert (await request(database, "read", before.project.id, before.session.id)) == session_state(
         before
     )
     with closing(sqlite3.connect(database)) as connection, connection:
         assert (connection.execute("SELECT * FROM dependent_fixture")).fetchall() == [
-            (before.project.id, "unfinished original source")
+            (str(before.project.id), "unfinished original source")
         ]
         assert (connection.execute("PRAGMA foreign_key_check")).fetchall() == []
 
@@ -298,14 +299,28 @@ async def test_identity_conflict_does_not_merge_or_modify_existing_aliases(datab
     async with spakky_context(database) as scope:
         projects = scope.get(RegisterProjectUseCase)
         first = await projects.run(
-            RegisterProjectCommand(DirectoryObservation("/one", "/one/.git", "/one"))
+            RegisterProjectCommand(
+                observation=DirectoryObservation(
+                    working_directory="/one",
+                    git_common_directory="/one/.git",
+                    primary_worktree="/one",
+                )
+            )
         )
-        second = await projects.run(RegisterProjectCommand(DirectoryObservation("/two")))
+        second = await projects.run(
+            RegisterProjectCommand(observation=DirectoryObservation(working_directory="/two"))
+        )
     with pytest.raises(ProjectIdentityConflict):
         async with spakky_context(database) as scope:
             (
                 await scope.get(RegisterProjectUseCase).run(
-                    RegisterProjectCommand(DirectoryObservation("/two", "/one/.git", "/two"))
+                    RegisterProjectCommand(
+                        observation=DirectoryObservation(
+                            working_directory="/two",
+                            git_common_directory="/one/.git",
+                            primary_worktree="/two",
+                        )
+                    )
                 )
             )
     async with storage_scope(database, write=False) as scope:
@@ -319,7 +334,13 @@ async def test_identity_conflict_does_not_merge_or_modify_existing_aliases(datab
         async with spakky_context(database) as scope:
             (
                 await scope.get(RegisterProjectUseCase).run(
-                    RegisterProjectCommand(DirectoryObservation("/one", "/different/.git", "/one"))
+                    RegisterProjectCommand(
+                        observation=DirectoryObservation(
+                            working_directory="/one",
+                            git_common_directory="/different/.git",
+                            primary_worktree="/one",
+                        )
+                    )
                 )
             )
 
@@ -364,7 +385,7 @@ async def test_git_environment_is_ignored_and_errors_are_not_folder_fallback(
 async def test_request_releases_writer_before_following_external_action(database, repository):
     first = await register_session(str(repository), "codex", "native", database_path=database)
     following = await request(database, "register", repository, "codex", "external-result")
-    assert following["project"]["uid"] == first.project.id
+    assert following["project"]["uid"] == str(first.project.id)
 
 
 async def test_project_locations_are_batch_eager_loaded_without_per_project_queries(database):
@@ -376,7 +397,9 @@ async def test_project_locations_are_batch_eager_loaded_without_per_project_quer
     async with spakky_context(database) as scope:
         for name in ("one", "two", "three"):
             result = await scope.get(RegisterProjectUseCase).run(
-                RegisterProjectCommand(DirectoryObservation("/" + name))
+                RegisterProjectCommand(
+                    observation=DirectoryObservation(working_directory="/" + name)
+                )
             )
             projects.append(result.project)
     statements = []

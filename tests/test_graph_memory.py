@@ -54,7 +54,7 @@ async def test_existing_graphify_is_called_and_semantic_records_survive(graph, m
     service = SubprocessGraphService()
     assert (
         await QueryGraphUseCase(service).run(
-            QueryGraphQuery(str(graph.parent.parent), "requirement")
+            QueryGraphQuery(directory=str(graph.parent.parent), question="requirement")
         )
         == "related doc and code"
     )

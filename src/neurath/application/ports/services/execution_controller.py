@@ -1,6 +1,7 @@
 """실제 실행 중단과 확인을 제공하는 호스트 제어 계약이다."""
 
 from abc import ABC, abstractmethod
+from uuid import UUID
 
 from neurath.domain.runtime_records import Liveness
 
@@ -9,7 +10,7 @@ class IExecutionControllerService(ABC):
     """현재 실행과 정확한 턴만 중단하고 확인된 결과를 반환한다."""
 
     @abstractmethod
-    def interrupt(self, execution_id: str, turn_id: str) -> Liveness:
+    def interrupt(self, execution_id: UUID, turn_id: str) -> Liveness:
         """실제 실행기에 중단을 요청하고 해당 실행의 종료를 확인한다.
 
         Args:

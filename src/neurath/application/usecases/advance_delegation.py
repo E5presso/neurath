@@ -1,8 +1,9 @@
 """수락된 최신 배정의 실제 진행을 기록하고 정정·취소 후 실행을 거부한다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -12,7 +13,7 @@ from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.domain.aggregates.delegation import Delegation
 
 
-@dataclass(frozen=True)
+@immutable
 class AdvanceDelegationCommand(AbstractCommand):
     """수락된 최신 배정의 실제 진행을 기록하고 정정·취소 후 실행을 거부한다.
 
@@ -22,8 +23,8 @@ class AdvanceDelegationCommand(AbstractCommand):
         observation: 실제 시작·진행·검사의 관찰 근거.
     """
 
-    delegation_id: str
-    peer_id: str
+    delegation_id: UUID
+    peer_id: UUID
     observation: str
 
 

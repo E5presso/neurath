@@ -1,9 +1,10 @@
 """관련 범위의 과거 기록을 검색해 선택 조회할 식별자만 반환한다."""
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
@@ -13,7 +14,7 @@ from sqlalchemy import select
 from neurath.infrastructure.models.memory import MemoryModel
 
 
-@dataclass(frozen=True)
+@immutable
 class SearchMemoryQuery(AbstractQuery):
     """기억 검색 범위와 본문 검색어를 지정한다.
 
@@ -25,15 +26,15 @@ class SearchMemoryQuery(AbstractQuery):
         limit: 한 번에 조회할 1~100개 결과 수.
     """
 
-    project_id: str
+    project_id: UUID
     text: str = ""
-    session_id: str | None = None
-    task_id: str | None = None
+    session_id: UUID | None = None
+    task_id: UUID | None = None
     limit: int = 20
 
 
 @UseCase()
-class SearchMemoryUseCase(IAsyncQueryUseCase[SearchMemoryQuery, Sequence[str]]):
+class SearchMemoryUseCase(IAsyncQueryUseCase[SearchMemoryQuery, Sequence[UUID]]):
     """명시한 프로젝트와 선택 범위의 기억 ID를 최신순으로 반환한다."""
 
     def __init__(self, session_manager: AsyncSessionManager) -> None:
@@ -46,14 +47,14 @@ class SearchMemoryUseCase(IAsyncQueryUseCase[SearchMemoryQuery, Sequence[str]]):
 
     @transactional
     @override
-    async def run(self, query: SearchMemoryQuery) -> Sequence[str]:
+    async def run(self, query: SearchMemoryQuery) -> Sequence[UUID]:
         """과거 기록의 본문을 검색하되 현재 enclave에는 적용하지 않는다.
 
         Args:
             query: 검색 문자열·범위·개수.
 
         Returns:
-            Sequence[str]: 선택 읽기에 사용할 기억 ID.
+            Sequence[UUID]: 선택 읽기에 사용할 기억 ID.
 
         Raises:
             ValueError: 결과 개수가 1~100 범위 밖인 경우.

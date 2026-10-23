@@ -9,6 +9,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueCon
 from sqlalchemy.orm import Mapped, mapped_column
 
 from neurath.domain.aggregates.message import DeliveryStatus, Message
+from neurath.infrastructure.uuid_type import UUIDText
 
 
 @Table(Message)
@@ -38,21 +39,23 @@ class MessageModel(AbstractMappableTable[Message]):
 
     __tablename__ = "core_messages"
     __table_args__ = (UniqueConstraint("sender_id", "recipient_id", "key"),)
-    id: Mapped[str] = mapped_column(String, primary_key=True)
+    id: Mapped[UUID] = mapped_column(UUIDText, primary_key=True)
     version: Mapped[UUID] = mapped_column(Uuid(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
-    conversation_id: Mapped[str] = mapped_column(
-        String, ForeignKey("core_conversations.id"), nullable=False
+    conversation_id: Mapped[UUID] = mapped_column(
+        UUIDText, ForeignKey("core_conversations.id"), nullable=False
     )
-    sender_id: Mapped[str] = mapped_column(String, ForeignKey("core_peers.id"), nullable=False)
-    recipient_id: Mapped[str] = mapped_column(String, ForeignKey("core_peers.id"), nullable=False)
+    sender_id: Mapped[UUID] = mapped_column(UUIDText, ForeignKey("core_peers.id"), nullable=False)
+    recipient_id: Mapped[UUID] = mapped_column(
+        UUIDText, ForeignKey("core_peers.id"), nullable=False
+    )
     key: Mapped[str] = mapped_column(String, nullable=False)
     title: Mapped[str] = mapped_column(String, nullable=False)
     body: Mapped[str] = mapped_column(String, nullable=False)
-    reply_to: Mapped[str | None] = mapped_column(
-        String, ForeignKey("core_messages.id"), nullable=True
+    reply_to: Mapped[UUID | None] = mapped_column(
+        UUIDText, ForeignKey("core_messages.id"), nullable=True
     )
     topic: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False)

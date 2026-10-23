@@ -2,6 +2,8 @@
 
 import asyncio
 import json
+from dataclasses import asdict
+from uuid import UUID
 
 import pytest
 from typer import Typer
@@ -53,11 +55,11 @@ async def update(database, actor, revision=0, changes=None, task_id=None):
     return await run(
         UpdateEnclaveUseCase,
         UpdateEnclaveCommand(
-            actor.project.uid,
-            actor.session.uid,
-            task_id,
-            revision,
-            [SetEnclaveFact(fact())] if changes is None else changes,
+            project_id=actor.project.uid,
+            session_id=actor.session.uid,
+            task_id=task_id,
+            expected_revision=revision,
+            changes=[SetEnclaveFact(fact=fact())] if changes is None else changes,
         ),
         database_path=database,
     )
@@ -66,7 +68,7 @@ async def update(database, actor, revision=0, changes=None, task_id=None):
 async def preview(database, actor):
     return await run(
         PreviewSessionUseCase,
-        PreviewSessionQuery(actor.project.uid, actor.session.uid),
+        PreviewSessionQuery(project_id=actor.project.uid, session_id=actor.session.uid),
         database_path=database,
     )
 
@@ -87,7 +89,10 @@ async def native(database, actor, event, **extra):
 async def cli(database, args, payload=None):
     async with scanned_application(sqlite_url(database, "rw")) as app:
         return await asyncio.to_thread(
-            CliRunner().invoke, app.container.get(Typer), args, input=payload
+            CliRunner().invoke,
+            app.container.get(Typer),
+            [str(value) for value in args],
+            input=payload,
         )
 
 
@@ -95,29 +100,45 @@ async def test_update_memory_roundtrip_atomicity_and_scoped_search(database, mem
     actor = memory_actor
     task = await create(database, actor)
     enclave = await update(
-        database, actor, changes=[SetEnclaveFact(fact(), "long details %_")], task_id=task.uid
+        database,
+        actor,
+        changes=[SetEnclaveFact(fact=fact(), details="long details %_")],
+        task_id=task.uid,
     )
     assert enclave.revision == 1
-    memory_id = enclave.facts[0].references[-1].removeprefix("memory:")
+    memory_id = UUID(enclave.facts[0].references[-1].removeprefix("memory:"))
     memory = await run(
-        ReadMemoryUseCase, ReadMemoryQuery(actor.project.uid, memory_id), database_path=database
+        ReadMemoryUseCase,
+        ReadMemoryQuery(project_id=actor.project.uid, memory_id=memory_id),
+        database_path=database,
     )
     assert memory.content == "long details %_" and memory.kind is MemoryKind.ARTIFACT
     assert list(
         await run(
             SearchMemoryUseCase,
-            SearchMemoryQuery(actor.project.uid, "%_", actor.session.uid, task.uid),
+            SearchMemoryQuery(
+                project_id=actor.project.uid,
+                text="%_",
+                session_id=actor.session.uid,
+                task_id=task.uid,
+            ),
             database_path=database,
         )
     ) == [memory_id]
-    assert not await run(SearchMemoryUseCase, SearchMemoryQuery("other"), database_path=database)
+    assert not await run(
+        SearchMemoryUseCase, SearchMemoryQuery(project_id="other"), database_path=database
+    )
     with pytest.raises(ContextNotFound):
-        await run(ReadMemoryUseCase, ReadMemoryQuery("other", memory_id), database_path=database)
+        await run(
+            ReadMemoryUseCase,
+            ReadMemoryQuery(project_id="other", memory_id=memory_id),
+            database_path=database,
+        )
     for limit in (0, 101):
         with pytest.raises(ValueError):
             await run(
                 SearchMemoryUseCase,
-                SearchMemoryQuery(actor.project.uid, limit=limit),
+                SearchMemoryQuery(project_id=actor.project.uid, limit=limit),
                 database_path=database,
             )
     before = snapshot(database)
@@ -128,15 +149,18 @@ async def test_update_memory_roundtrip_atomicity_and_scoped_search(database, mem
             database,
             actor,
             1,
-            [SetEnclaveFact(fact("changed"), "must rollback"), RemoveEnclaveFact("missing")],
+            [
+                SetEnclaveFact(fact=fact("changed"), details="must rollback"),
+                RemoveEnclaveFact(key="missing"),
+            ],
             task.uid,
         )
     assert snapshot(database) == before
     with pytest.raises(ValueError):
         await update(database, actor, 1, [], task.uid)
-    corrected = await update(database, actor, 1, [SetEnclaveFact(fact("corrected"))], task.uid)
+    corrected = await update(database, actor, 1, [SetEnclaveFact(fact=fact("corrected"))], task.uid)
     cleared = await update(
-        database, actor, corrected.revision, [RemoveEnclaveFact("rule")], task.uid
+        database, actor, corrected.revision, [RemoveEnclaveFact(key="rule")], task.uid
     )
     assert cleared.facts == () and len(cleared.history) == 3
     assert (await preview(database, actor)).enclaves[0].history == cleared.history
@@ -150,11 +174,11 @@ async def test_checkpoint_is_report_and_preview_never_changes_ownership(database
     report = await run(
         SaveCheckpointUseCase,
         SaveCheckpointCommand(
-            actor.project.uid,
-            actor.session.uid,
-            "remaining work",
-            [task.definition.source_id],
-            task.uid,
+            project_id=actor.project.uid,
+            session_id=actor.session.uid,
+            content="remaining work",
+            references=[str(task.definition.source_id)],
+            task_id=task.uid,
         ),
         database_path=database,
     )
@@ -164,7 +188,12 @@ async def test_checkpoint_is_report_and_preview_never_changes_ownership(database
     assert snapshot(database) == current
     await run(
         SaveCheckpointUseCase,
-        SaveCheckpointCommand(actor.project.uid, actor.session.uid, "general report", ["source"]),
+        SaveCheckpointCommand(
+            project_id=actor.project.uid,
+            session_id=actor.session.uid,
+            content="general report",
+            references=["source"],
+        ),
         database_path=database,
     )
     peer = await register_session(
@@ -174,7 +203,11 @@ async def test_checkpoint_is_report_and_preview_never_changes_ownership(database
         await run(
             SaveCheckpointUseCase,
             SaveCheckpointCommand(
-                actor.project.uid, peer.session.uid, "wrong scope", ["source"], task.uid
+                project_id=actor.project.uid,
+                session_id=peer.session.uid,
+                content="wrong scope",
+                references=["source"],
+                task_id=task.uid,
             ),
             database_path=database,
         )
@@ -192,17 +225,22 @@ async def test_compact_restore_uses_latest_scope_and_never_revives_deleted_facts
         database,
         actor,
         changes=[
-            SetEnclaveFact(fact("old")),
-            SetEnclaveFact(fact("assumption", "guess", EnclaveKind.ASSUMPTION)),
+            SetEnclaveFact(fact=fact("old")),
+            SetEnclaveFact(fact=fact("assumption", "guess", EnclaveKind.ASSUMPTION)),
         ],
     )
     current = await update(
-        database, actor, current.revision, [SetEnclaveFact(fact("new")), RemoveEnclaveFact("guess")]
+        database,
+        actor,
+        current.revision,
+        [SetEnclaveFact(fact=fact("new")), RemoveEnclaveFact(key="guess")],
     )
     peer = await register_session(str(tmp_path), provider, "other", database_path=database)
-    await update(database, peer, changes=[SetEnclaveFact(fact("UNRELATED"))])
+    await update(database, peer, changes=[SetEnclaveFact(fact=fact("UNRELATED"))])
     task = await create(database, actor)
-    await update(database, actor, task_id=task.uid, changes=[SetEnclaveFact(fact("task detail"))])
+    await update(
+        database, actor, task_id=task.uid, changes=[SetEnclaveFact(fact=fact("task detail"))]
+    )
     async with storage_scope(database) as scope:
         run_ = WorkflowRun.create(
             actor.project.uid,
@@ -229,9 +267,9 @@ async def test_compact_restore_uses_latest_scope_and_never_revives_deleted_facts
     text = output["hookSpecificOutput"]["additionalContext"]
     assert output["hookSpecificOutput"]["hookEventName"] == "SessionStart"
     assert "new" in text and "old" not in text and "guess" not in text and "UNRELATED" not in text
-    assert "task detail" in text and "Workflow" in text and task.definition.source_id in text
+    assert "task detail" in text and "Workflow" in text and str(task.definition.source_id) in text
     assert await native(database, actor, "SessionStart", source="fork") == {}
-    await update(database, actor, current.revision, [RemoveEnclaveFact("rule")])
+    await update(database, actor, current.revision, [RemoveEnclaveFact(key="rule")])
     assert (
         "[fact] rule: new"
         not in (await native(database, actor, "SessionStart", source="resume"))[
@@ -244,7 +282,7 @@ async def test_restore_failure_does_not_claim_delivery_or_request_retry(
     database, memory_actor, monkeypatch
 ):
     actor = memory_actor
-    await update(database, actor, changes=[SetEnclaveFact(fact("x" * 9000))])
+    await update(database, actor, changes=[SetEnclaveFact(fact=fact("x" * 9000))])
     result = await native(database, actor, "SessionStart", source="compact")
     assert result["continue"] is False and "hookSpecificOutput" not in result
     assert "limit" in result["stopReason"]
@@ -294,12 +332,12 @@ async def test_memory_group_commands_use_real_registered_usecases(database, memo
     assert json.loads(read.stdout)["content"] == "remaining"
     before_preview = snapshot(database)
     preview_ = await cli(database, ["session", "preview", *args])
-    assert json.loads(preview_.stdout)["session_id"] == actor.session.uid
+    assert json.loads(preview_.stdout)["session_id"] == str(actor.session.uid)
     assert snapshot(database) == before_preview
     assert (await cli(database, ["memory", "read", *args])).exit_code == 2
     assert (await cli(database, ["memory", "resume", "--help"])).exit_code == 2
     search = await cli(database, ["memory", "search", *args, "--text", "remaining"])
-    assert memory_id in json.loads(search.stdout)["memory_ids"]
+    assert str(memory_id) in json.loads(search.stdout)["memory_ids"]
     assert (
         await cli(database, ["memory", "read", "--project-id", actor.project.uid])
     ).exit_code != 0
@@ -342,7 +380,9 @@ def test_cli_change_decoder_rejects_malformed_input(value):
 
 
 def test_explicit_remove_is_not_a_null_value():
-    assert MemoryCliController._changes('[{"op":"remove","key":"k"}]') == [RemoveEnclaveFact("k")]
+    assert [
+        asdict(change) for change in MemoryCliController._changes('[{"op":"remove","key":"k"}]')
+    ] == [{"key": "k"}]
 
 
 @pytest.mark.parametrize(
@@ -419,7 +459,11 @@ async def test_handoff_without_checkpoint_preserves_work_and_fences_original_ses
             )
         )
     command = ResumeSessionCommand(
-        source.project.uid, source.session.uid, target.session.uid, 1, "turn"
+        project_id=source.project.uid,
+        source_session_id=source.session.uid,
+        target_session_id=target.session.uid,
+        expected_revision=1,
+        turn_id="turn",
     )
     before = snapshot(database)
     with pytest.raises(InvalidExecutionState):
@@ -455,7 +499,7 @@ async def test_handoff_without_checkpoint_preserves_work_and_fences_original_ses
     with pytest.raises(InvalidExecutionState):
         await run(
             ResumeExecutionUseCase,
-            ResumeExecutionCommand(execution.uid, "turn"),
+            ResumeExecutionCommand(execution_id=execution.uid, turn_id="turn"),
             database_path=database,
         )
     assert (
@@ -472,7 +516,12 @@ async def test_handoff_without_checkpoint_preserves_work_and_fences_original_ses
     current_task = next(item for item in after.tasks if item.uid == task.uid)
     await run(
         StartTaskUseCase,
-        StartTaskCommand(source.project.uid, target.session.uid, task.uid, current_task.revision),
+        StartTaskCommand(
+            project_id=source.project.uid,
+            session_id=target.session.uid,
+            task_id=task.uid,
+            expected_revision=current_task.revision,
+        ),
         database_path=database,
     )
     assert (
@@ -482,7 +531,10 @@ async def test_handoff_without_checkpoint_preserves_work_and_fences_original_ses
     await run(
         ExecutePhaseUseCase,
         ExecutePhaseCommand(
-            source.project.uid, target.session.uid, workflow.uid, after.workflows[0].revision
+            project_id=source.project.uid,
+            session_id=target.session.uid,
+            run_id=workflow.uid,
+            expected_revision=after.workflows[0].revision,
         ),
         database_path=database,
     )
@@ -518,7 +570,11 @@ async def test_handoff_refuses_missing_native_execution_active_writer_and_target
         source.session.working_directory, "claude", "target", database_path=database
     )
     command = ResumeSessionCommand(
-        source.project.uid, source.session.uid, target.session.uid, 1, "turn"
+        project_id=source.project.uid,
+        source_session_id=source.session.uid,
+        target_session_id=target.session.uid,
+        expected_revision=1,
+        turn_id="turn",
     )
     with pytest.raises(InvalidExecutionState, match="Target native"):
         await run(ResumeSessionUseCase, command, database_path=database)
@@ -645,7 +701,7 @@ async def test_cli_graph_paths_use_existing_tool_and_record_validated_reference(
     assert result.exit_code == 0, result.output
     memory = await run(
         ReadMemoryUseCase,
-        ReadMemoryQuery(actor.project.uid, json.loads(result.stdout)["id"]),
+        ReadMemoryQuery(project_id=actor.project.uid, memory_id=json.loads(result.stdout)["id"]),
         database_path=database,
     )
     assert memory.references[-1] == "file:///graph.json#sha256=observed"
@@ -699,7 +755,7 @@ async def test_stdin_reports_and_updates_and_stale_same_session_resume(
     )
 
     monkeypatch.setattr(sys, "stdin", io.StringIO('[{"op":"remove","key":"k"}]'))
-    assert MemoryCliController._changes("-") == [RemoveEnclaveFact("k")]
+    assert [asdict(change) for change in MemoryCliController._changes("-")] == [{"key": "k"}]
     actor = memory_actor
     args = ["--project-id", actor.project.uid, "--session-id", actor.session.uid]
     result = await cli(
@@ -710,7 +766,7 @@ async def test_stdin_reports_and_updates_and_stale_same_session_resume(
     assert result.exit_code == 0, result.output
     memory = await run(
         ReadMemoryUseCase,
-        ReadMemoryQuery(actor.project.uid, json.loads(result.stdout)["id"]),
+        ReadMemoryQuery(project_id=actor.project.uid, memory_id=json.loads(result.stdout)["id"]),
         database_path=database,
     )
     assert memory.content == "full stdin report"
@@ -719,7 +775,11 @@ async def test_stdin_reports_and_updates_and_stale_same_session_resume(
         await run(
             ResumeSessionUseCase,
             ResumeSessionCommand(
-                actor.project.uid, actor.session.uid, actor.session.uid, 0, "turn"
+                project_id=actor.project.uid,
+                source_session_id=actor.session.uid,
+                target_session_id=actor.session.uid,
+                expected_revision=0,
+                turn_id="turn",
             ),
             database_path=database,
         )
@@ -729,8 +789,8 @@ async def test_concurrent_enclave_edits_accept_only_one_observed_revision(databa
     actor = memory_actor
     initial = await update(database, actor)
     results = await asyncio.gather(
-        update(database, actor, initial.revision, [SetEnclaveFact(fact("first"))]),
-        update(database, actor, initial.revision, [SetEnclaveFact(fact("second"))]),
+        update(database, actor, initial.revision, [SetEnclaveFact(fact=fact("first"))]),
+        update(database, actor, initial.revision, [SetEnclaveFact(fact=fact("second"))]),
         return_exceptions=True,
     )
     assert sum(isinstance(result, Enclave) for result in results) == 1

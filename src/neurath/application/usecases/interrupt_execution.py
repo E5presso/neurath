@@ -1,9 +1,10 @@
 """실제 실행의 중단을 요청하고 호스트 관찰 결과를 발행한다."""
 
 import asyncio
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 from spakky.event.event_publisher import IAsyncEventPublisher
@@ -12,7 +13,7 @@ from neurath.application.ports.services.execution_controller import IExecutionCo
 from neurath.domain.runtime_events import ExecutionInterruptionObserved
 
 
-@dataclass(frozen=True)
+@immutable
 class InterruptExecutionCommand(AbstractCommand):
     """이미 커밋된 요청의 실제 호스트 대상을 지정한다.
 
@@ -21,7 +22,7 @@ class InterruptExecutionCommand(AbstractCommand):
         turn_id: 중단할 정확한 호스트 턴.
     """
 
-    execution_id: str
+    execution_id: UUID
     turn_id: str
 
 

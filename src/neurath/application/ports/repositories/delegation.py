@@ -2,17 +2,18 @@
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from uuid import UUID
 
 from spakky.data.persistency.repository import IAsyncGenericRepository
 
 from neurath.domain.aggregates.delegation import Delegation
 
 
-class IDelegationRepository(IAsyncGenericRepository[Delegation, str], ABC):
+class IDelegationRepository(IAsyncGenericRepository[Delegation, UUID], ABC):
     """Delegation의 기본 CRUD와 배정 범위 조회를 제공한다."""
 
     @abstractmethod
-    async def find_by_task_id(self, task_id: str) -> Sequence[Delegation]:
+    async def find_by_task_id(self, task_id: UUID) -> Sequence[Delegation]:
         """조건에 해당하는 aggregate를 조회한다.
 
         Args:

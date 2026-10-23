@@ -26,6 +26,7 @@ from neurath.domain.workflow_records import (
     WorkflowDefinition,
     WorkflowRevision,
 )
+from neurath.infrastructure.uuid_type import UUIDText
 
 
 @Table(WorkflowRun)
@@ -52,15 +53,19 @@ class WorkflowModel(AbstractMappableTable[WorkflowRun]):
             ["project_id", "session_id"], ["core_sessions.project_id", "core_sessions.id"]
         ),
     )
-    id: Mapped[str] = mapped_column(String, primary_key=True)
+    id: Mapped[UUID] = mapped_column(UUIDText, primary_key=True)
     version: Mapped[UUID] = mapped_column(Uuid(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
-    project_id: Mapped[str] = mapped_column(String, ForeignKey("core_projects.id"), nullable=False)
-    session_id: Mapped[str] = mapped_column(String, ForeignKey("core_sessions.id"), nullable=False)
-    task_id: Mapped[str] = mapped_column(
-        String, ForeignKey("core_tasks.id"), unique=True, nullable=False
+    project_id: Mapped[UUID] = mapped_column(
+        UUIDText, ForeignKey("core_projects.id"), nullable=False
+    )
+    session_id: Mapped[UUID] = mapped_column(
+        UUIDText, ForeignKey("core_sessions.id"), nullable=False
+    )
+    task_id: Mapped[UUID] = mapped_column(
+        UUIDText, ForeignKey("core_tasks.id"), unique=True, nullable=False
     )
 
     __mapper_args__ = {"version_id_col": revision}
@@ -135,7 +140,9 @@ class WorkflowRevisionModel(AbstractTable):
     """
 
     __tablename__ = "core_workflow_revisions"
-    run_id: Mapped[str] = mapped_column(String, ForeignKey("core_workflows.id"), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(
+        UUIDText, ForeignKey("core_workflows.id"), primary_key=True
+    )
     number: Mapped[int] = mapped_column(Integer, primary_key=True)
     skill: Mapped[str] = mapped_column(String, nullable=False)
     definition_version: Mapped[str] = mapped_column(String, nullable=False)
@@ -148,7 +155,7 @@ class WorkflowRevisionModel(AbstractTable):
     )
 
     @classmethod
-    def from_value(cls, value: WorkflowRevision, run_id: str, number: int) -> Self:
+    def from_value(cls, value: WorkflowRevision, run_id: UUID, number: int) -> Self:
         """선택한 스킬 정의와 단계들을 한 개정의 자식 관계로 복사한다.
 
         Args:
@@ -218,7 +225,7 @@ class PhaseDefinitionModel(AbstractTable):
             ["core_workflow_revisions.run_id", "core_workflow_revisions.number"],
         ),
     )
-    run_id: Mapped[str] = mapped_column(String, primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(UUIDText, primary_key=True)
     definition_number: Mapped[int] = mapped_column(Integer, primary_key=True)
     position: Mapped[int] = mapped_column(Integer, primary_key=True)
     key: Mapped[str] = mapped_column(String, nullable=False)
@@ -234,7 +241,7 @@ class PhaseDefinitionModel(AbstractTable):
 
     @classmethod
     def from_value(
-        cls, value: PhaseDefinition, run_id: str, definition_number: int, position: int
+        cls, value: PhaseDefinition, run_id: UUID, definition_number: int, position: int
     ) -> Self:
         """단계의 명령·조건·한도를 지정한 정의 개정의 위치에 매핑한다.
 
@@ -309,7 +316,9 @@ class PhaseAttemptModel(AbstractTable):
             ["core_workflow_revisions.run_id", "core_workflow_revisions.number"],
         ),
     )
-    run_id: Mapped[str] = mapped_column(String, ForeignKey("core_workflows.id"), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(
+        UUIDText, ForeignKey("core_workflows.id"), primary_key=True
+    )
     number: Mapped[int] = mapped_column(Integer, primary_key=True)
     definition_number: Mapped[int] = mapped_column(Integer, nullable=False)
     phase_key: Mapped[str] = mapped_column(String, nullable=False)
@@ -323,7 +332,7 @@ class PhaseAttemptModel(AbstractTable):
     exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     @classmethod
-    def from_value(cls, value: PhaseAttempt, run_id: str) -> Self:
+    def from_value(cls, value: PhaseAttempt, run_id: UUID) -> Self:
         """예약·생략과 실제 관찰 결과의 유무를 구분하여 시도를 매핑한다.
 
         Args:

@@ -2,7 +2,7 @@
 
 from enum import StrEnum
 from typing import override
-from uuid import uuid4
+from uuid import UUID, uuid7
 
 from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
@@ -27,7 +27,7 @@ class DeliveryStatus(StrEnum):
 
 
 @mutable
-class Message(AbstractAggregateRoot[str]):
+class Message(AbstractAggregateRoot[UUID]):
     """한 수신자에게 보낸 원문과 읽음·전달 상태를 독립적으로 보존한다.
 
     Attributes:
@@ -47,13 +47,13 @@ class Message(AbstractAggregateRoot[str]):
         revision: 저장소 낙관적 버전.
     """
 
-    conversation_id: str
-    sender_id: str
-    recipient_id: str
+    conversation_id: UUID
+    sender_id: UUID
+    recipient_id: UUID
     key: str
     title: str
     body: str
-    reply_to: str | None = None
+    reply_to: UUID | None = None
     topic: str | None = None
     status: DeliveryStatus = DeliveryStatus.PENDING
     delivery_attempt: int = 0
@@ -64,13 +64,13 @@ class Message(AbstractAggregateRoot[str]):
 
     @classmethod
     @override
-    def next_id(cls) -> str:
+    def next_id(cls) -> UUID:
         """재전송에도 바뀌지 않을 원 메시지 ID를 생성한다.
 
         Returns:
-            str: 새 메시지 ID.
+            UUID: 새 메시지 ID.
         """
-        return str(uuid4())
+        return uuid7()
 
     @override
     def validate(self) -> None:
@@ -86,7 +86,7 @@ class Message(AbstractAggregateRoot[str]):
         if self.sender_id == self.recipient_id or len(self.body.encode()) > 1048576:
             raise ValueError("Message recipient or size is invalid")
 
-    def require_recipient(self, peer_id: str) -> None:
+    def require_recipient(self, peer_id: UUID) -> None:
         """원래 수신자가 아닌 피어의 읽음·ACK 변경을 거부한다.
 
         Args:
@@ -131,7 +131,7 @@ class Message(AbstractAggregateRoot[str]):
         self.status = status
         self.delivery_evidence = evidence
 
-    def mark_read(self, peer_id: str) -> None:
+    def mark_read(self, peer_id: UUID) -> None:
         """본문을 반환하는 수신자 조회에서만 읽음을 기록한다.
 
         Args:
@@ -141,7 +141,7 @@ class Message(AbstractAggregateRoot[str]):
         self.read = True
         self.status = DeliveryStatus.DELIVERED
 
-    def acknowledge(self, peer_id: str) -> None:
+    def acknowledge(self, peer_id: UUID) -> None:
         """읽은 메시지만 ACK하며 배정 수락·태스크 완료는 변경하지 않는다.
 
         Args:

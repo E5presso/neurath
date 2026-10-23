@@ -1,8 +1,9 @@
 """pending 또는 failed 태스크에 현재 요구를 기준으로 새 시도를 만든다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -11,7 +12,7 @@ from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.domain.aggregates.task import Task
 
 
-@dataclass(frozen=True)
+@immutable
 class StartTaskCommand(AbstractCommand):
     """새 실행 시도를 시작할 태스크와 읽은 저장 revision을 지정한다.
 
@@ -22,13 +23,13 @@ class StartTaskCommand(AbstractCommand):
         expected_revision: 수정 전에 읽은 Task.revision. 요구 개정 번호와는 별개다.
     """
 
-    project_id: str
-    session_id: str
-    task_id: str
+    project_id: UUID
+    session_id: UUID
+    task_id: UUID
     expected_revision: int
 
 
-@dataclass(frozen=True)
+@immutable
 class StartTaskResult:
     """현재 요구 개정에 새 실행 시도가 연결된 활성 태스크를 반환한다.
 

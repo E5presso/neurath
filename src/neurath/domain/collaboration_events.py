@@ -1,9 +1,12 @@
 """현재 요구 변경을 해당 배정의 정정·중단 전파에 연결한다."""
 
+from uuid import UUID
+
 from spakky.core.common.mutability import immutable
 from spakky.domain.models.event import AbstractDomainEvent
 
 from neurath.domain.delegation_records import ProviderPlan
+from neurath.domain.provider import ProviderStatus
 
 
 @immutable
@@ -14,7 +17,7 @@ class TaskDefinitionChanged(AbstractDomainEvent):
         task_id: 실제로 정정·무효화된 원 태스크.
     """
 
-    task_id: str
+    task_id: UUID
 
 
 @immutable
@@ -27,7 +30,7 @@ class ProviderExecutionRequested(AbstractDomainEvent):
         prompt: 원 지시·요구·범위가 담긴 입력.
     """
 
-    delegation_id: str
+    delegation_id: UUID
     plan: ProviderPlan
     prompt: str
 
@@ -45,9 +48,9 @@ class ProviderExecutionObserved(AbstractDomainEvent):
         error: 실패 또는 불확실성의 설명.
     """
 
-    delegation_id: str
+    delegation_id: UUID
     reference: str
-    status: str
+    status: ProviderStatus
     native_session_id: str | None
     output: str
     error: str | None
@@ -62,5 +65,5 @@ class ProviderStopRequested(AbstractDomainEvent):
         sender_id: 원 배정의 책임 피어.
     """
 
-    delegation_id: str
-    sender_id: str
+    delegation_id: UUID
+    sender_id: UUID

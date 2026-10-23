@@ -1,8 +1,9 @@
 """원 발신자의 최초 전달 또는 확인된 실패의 재전송만 예약한다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -12,7 +13,7 @@ from neurath.domain.aggregates.message import Message
 from neurath.domain.errors import ContextNotFound
 
 
-@dataclass(frozen=True)
+@immutable
 class BeginDeliveryCommand(AbstractCommand):
     """원 발신자의 최초 전달 또는 확인된 실패의 재전송만 예약한다.
 
@@ -21,8 +22,8 @@ class BeginDeliveryCommand(AbstractCommand):
         sender_id: 배정 책임이 있는 발신 피어.
     """
 
-    message_id: str
-    sender_id: str
+    message_id: UUID
+    sender_id: UUID
 
 
 @UseCase()

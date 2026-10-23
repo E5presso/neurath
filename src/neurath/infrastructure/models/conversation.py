@@ -5,10 +5,11 @@ from typing import Self, override
 from uuid import UUID
 
 from spakky.plugins.sqlalchemy.orm.table import AbstractMappableTable, Table
-from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Uuid
+from sqlalchemy import JSON, Boolean, DateTime, Integer, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from neurath.domain.aggregates.conversation import Conversation
+from neurath.infrastructure.uuid_type import UUIDText
 
 
 @Table(Conversation)
@@ -26,7 +27,7 @@ class ConversationModel(AbstractMappableTable[Conversation]):
     """
 
     __tablename__ = "core_conversations"
-    id: Mapped[str] = mapped_column(String, primary_key=True)
+    id: Mapped[UUID] = mapped_column(UUIDText, primary_key=True)
     version: Mapped[UUID] = mapped_column(Uuid(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -52,7 +53,7 @@ class ConversationModel(AbstractMappableTable[Conversation]):
             created_at=domain.created_at.astimezone(UTC).replace(tzinfo=None),
             updated_at=domain.updated_at.astimezone(UTC).replace(tzinfo=None),
             revision=domain.revision,
-            participants=list(domain.participants),
+            participants=[str(uid) for uid in domain.participants],
             closed=domain.closed,
         )
 
@@ -69,6 +70,6 @@ class ConversationModel(AbstractMappableTable[Conversation]):
             created_at=self.created_at.replace(tzinfo=UTC),
             updated_at=self.updated_at.replace(tzinfo=UTC),
             revision=self.revision,
-            participants=self.participants,
+            participants=[UUID(uid) for uid in self.participants],
             closed=self.closed,
         )

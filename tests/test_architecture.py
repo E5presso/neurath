@@ -151,8 +151,8 @@ def request_scope() -> Iterator[Session]:
         yield session
 ''',
         "neurath.domain.observations": '''"""구조 계약을 검증하는 테스트 대상이다."""
-from dataclasses import dataclass
-@dataclass(frozen=True)
+from spakky.core.common.mutability import immutable
+@immutable
 class Observation:
     """구조 계약을 검증하는 테스트 대상이다."""
     working_directory: str
@@ -213,8 +213,8 @@ def example(value: str) -> str:
 def test_owned_values_relationships_and_domain_creation_are_valid():
     sources = {
         "neurath.domain.aggregates.project": '''"""프로젝트와 소유 위치 값을 정의한다."""
-from dataclasses import dataclass
-@dataclass(frozen=True)
+from spakky.core.common.mutability import immutable
+@immutable
 class ProjectLocation:
     """프로젝트가 소유하는 불변 위치 값이다."""
     kind: str
@@ -353,13 +353,13 @@ class Values:
 def test_local_input_result_and_handler_are_valid_together():
     source = '''"""같은 모듈에 입출력 계약을 정의한다."""
 from collections.abc import Sequence
-from dataclasses import dataclass
+from spakky.core.common.mutability import immutable
 from spakky.domain import AbstractQuery, IQueryUseCase
-@dataclass(frozen=True)
+@immutable
 class GetNamesQuery(AbstractQuery):
     """조회할 프로젝트를 지정한다."""
     project_id: str
-@dataclass(frozen=True)
+@immutable
 class GetNamesResult:
     """조회한 이름을 전달한다."""
     names: Sequence[str]
@@ -375,14 +375,14 @@ class GetNamesUseCase(IQueryUseCase[GetNamesQuery, GetNamesResult]):
 @pytest.mark.parametrize("alias", ["ContextNotFound", "MissingScope"])
 def test_usecase_can_propagate_or_raise_domain_errors_without_a_syntax_ban(alias):
     source = f'''"""유스케이스의 예외 사용을 문법만으로 금지하지 않는다."""
-from dataclasses import dataclass
+from spakky.core.common.mutability import immutable
 from spakky.domain import AbstractQuery, IQueryUseCase
 from neurath.domain.errors import ContextNotFound as {alias}
-@dataclass(frozen=True)
+@immutable
 class GetTaskQuery(AbstractQuery):
     """조회할 작업을 지정한다."""
     task_id: str
-@dataclass(frozen=True)
+@immutable
 class GetTaskResult:
     """조회 결과를 전달한다."""
     task_id: str
@@ -476,7 +476,7 @@ def test_confirmed_contracts_fail_at_their_actual_boundary(module, source, rule)
         ("neurath.infrastructure.database", 'diagnostic_revision = "core_0001"'),
         (
             "neurath.domain.values",
-            "from dataclasses import dataclass\n@dataclass(frozen=True)\nclass Reference:\n id: str",
+            "from spakky.core.common.mutability import immutable\n@immutable\nclass Reference:\n id: str",
         ),
         (
             "neurath.domain.values",

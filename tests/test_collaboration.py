@@ -23,6 +23,7 @@ from neurath.domain.delegation_records import (
     ProviderPlan,
 )
 from neurath.domain.errors import ContextNotFound, InvalidTaskState
+from neurath.domain.provider import ProviderKind
 from neurath.domain.runtime_records import HookAction, HookEvent
 from neurath.domain.task_records import TaskStatus
 from tests.conftest import storage_scope
@@ -33,9 +34,14 @@ from tests.test_task_requests import create, record
 
 async def call(database, module, name, *args, query=False, **kwargs):
     loaded = importlib.import_module("neurath.application.usecases." + module)
+    contract = getattr(loaded, name + ("Query" if query else "Command"))
+    from dataclasses import fields
+
+    arguments = dict(zip((field.name for field in fields(contract)), args, strict=False))
+    arguments.update(kwargs)
     return await run(
         getattr(loaded, name + "UseCase"),
-        getattr(loaded, name + ("Query" if query else "Command"))(*args, **kwargs),
+        contract(**arguments),
         database_path=database,
     )
 
@@ -48,7 +54,11 @@ async def collaboration(database, tmp_path):
         await run(
             ReceiveHookUseCase,
             ReceiveHookCommand(
-                provider, native, str(tmp_path), HookEvent.SESSION_START, start_source="startup"
+                provider=provider,
+                host_session_id=native,
+                working_directory=str(tmp_path),
+                event=HookEvent.SESSION_START,
+                start_source="startup",
             ),
             database_path=database,
         )
@@ -195,7 +205,7 @@ async def test_delegation_accept_progress_report_preserves_original_scope_and_ro
             database, "dispatch_delegation", "DispatchDelegation", delegation.uid, recipient.uid
         )
     read = await call(database, "read_message", "ReadMessage", delegation.message_id, recipient.uid)
-    assert task.definition.source_id in read.body and "original requirement text" in read.body
+    assert str(task.definition.source_id) in read.body and "original requirement text" in read.body
     await call(database, "acknowledge_message", "AcknowledgeMessage", read.uid, recipient.uid)
     assert (
         await call(
@@ -318,10 +328,13 @@ async def test_hook_delivers_summary_once_without_ack_or_task_acceptance(databas
     _, sender, receiver, recipient, _ = collaboration
     delegation = await assignment(database, collaboration)
     command = ReceiveHookCommand(
-        "claude", "receiver", receiver.session.working_directory, HookEvent.PRE_TOOL_USE
+        provider="claude",
+        host_session_id="receiver",
+        working_directory=receiver.session.working_directory,
+        event=HookEvent.PRE_TOOL_USE,
     )
     first = await run(ReceiveHookUseCase, command, database_path=database)
-    assert len(first.inbox) == 1 and delegation.message_id in first.inbox[0]
+    assert len(first.inbox) == 1 and str(delegation.message_id) in first.inbox[0]
     assert not (await run(ReceiveHookUseCase, command, database_path=database)).inbox
     async with storage_scope(database) as scope:
         message = await scope.get(IMessageRepository).get(delegation.message_id)
@@ -578,7 +591,11 @@ async def test_assignment_domain_invalid_transitions(database, collaboration):
 def test_provider_plan_never_silently_inherits_permissions(policy):
     with pytest.raises(ValueError):
         ProviderPlan(
-            provider="codex", model="model", policy=policy, directory="/tmp", parent_session_id="s"
+            provider=ProviderKind.CODEX,
+            model="model",
+            policy=policy,
+            directory="/tmp",
+            parent_session_id="s",
         )
 
 
@@ -715,10 +732,10 @@ async def test_native_child_can_accept_inspect_and_report_without_parent_writer(
     await run(
         ReceiveHookUseCase,
         ReceiveHookCommand(
-            "codex",
-            "sender",
-            actor.session.working_directory,
-            HookEvent.SUBAGENT_START,
+            provider="codex",
+            host_session_id="sender",
+            working_directory=actor.session.working_directory,
+            event=HookEvent.SUBAGENT_START,
             agent_id="native-child",
         ),
         database_path=database,
@@ -731,22 +748,22 @@ async def test_native_child_can_accept_inspect_and_report_without_parent_writer(
         "delegate_task",
         "DelegateTask",
         PrepareDelegationCommand(
-            task.uid,
-            sender.uid,
-            DelegationRole.REVIEWER,
-            "Review artifact",
-            DelegationRoute.CHILD,
-            child.uid,
+            task_id=task.uid,
+            sender_id=sender.uid,
+            role=DelegationRole.REVIEWER,
+            scope="Review artifact",
+            route=DelegationRoute.CHILD,
+            recipient_id=child.uid,
         ),
     )
     await call(database, "accept_delegation", "AcceptDelegation", delegation.uid, child.uid)
     await run(
         ReceiveHookUseCase,
         ReceiveHookCommand(
-            "codex",
-            "sender",
-            actor.session.working_directory,
-            HookEvent.USER_PROMPT_SUBMIT,
+            provider="codex",
+            host_session_id="sender",
+            working_directory=actor.session.working_directory,
+            event=HookEvent.USER_PROMPT_SUBMIT,
             agent_id="native-child",
             turn_id="child-turn",
         ),
@@ -755,10 +772,10 @@ async def test_native_child_can_accept_inspect_and_report_without_parent_writer(
     read = await run(
         ReceiveHookUseCase,
         ReceiveHookCommand(
-            "codex",
-            "sender",
-            actor.session.working_directory,
-            HookEvent.PRE_TOOL_USE,
+            provider="codex",
+            host_session_id="sender",
+            working_directory=actor.session.working_directory,
+            event=HookEvent.PRE_TOOL_USE,
             agent_id="native-child",
             turn_id="child-turn",
             writes=False,
@@ -767,10 +784,10 @@ async def test_native_child_can_accept_inspect_and_report_without_parent_writer(
     )
     assert read.action is HookAction.ALLOW
     stop = ReceiveHookCommand(
-        "codex",
-        "sender",
-        actor.session.working_directory,
-        HookEvent.SUBAGENT_STOP,
+        provider="codex",
+        host_session_id="sender",
+        working_directory=actor.session.working_directory,
+        event=HookEvent.SUBAGENT_STOP,
         agent_id="native-child",
         turn_id="child-turn",
     )
@@ -814,10 +831,10 @@ async def test_cancelled_assignment_blocks_only_its_receiver_writes_and_preserve
         "cancel",
     )
     command = ReceiveHookCommand(
-        "claude",
-        "receiver",
-        receiver.session.working_directory,
-        HookEvent.PRE_TOOL_USE,
+        provider="claude",
+        host_session_id="receiver",
+        working_directory=receiver.session.working_directory,
+        event=HookEvent.PRE_TOOL_USE,
         turn_id="turn",
         tool_use_id="write",
         writes=True,
@@ -847,7 +864,7 @@ async def test_invalid_routes_and_unobserved_peer_do_not_assign(database, collab
     with pytest.raises(InvalidTaskState):
         await prepare(database, collaboration, recipient_id=sender.uid)
     plan = ProviderPlan(
-        provider="codex",
+        provider=ProviderKind.CODEX,
         model="model",
         policy="read-only",
         directory=str(tmp_path),
@@ -890,12 +907,12 @@ async def test_redelegation_keeps_parent_scope_and_cancellation_fence(database, 
     from neurath.application.usecases.prepare_delegation import PrepareDelegationCommand
 
     command = PrepareDelegationCommand(
-        task.uid,
-        recipient.uid,
-        DelegationRole.REVIEWER,
-        "Review assigned artifact",
-        DelegationRoute.PEER,
-        sender.uid,
+        task_id=task.uid,
+        sender_id=recipient.uid,
+        role=DelegationRole.REVIEWER,
+        scope="Review assigned artifact",
+        route=DelegationRoute.PEER,
+        recipient_id=sender.uid,
         parent_id=parent.uid,
     )
     with pytest.raises(InvalidTaskState):
@@ -1021,14 +1038,14 @@ async def test_direct_inactive_recipient_is_queued_without_wakeup_and_receives_o
     connected = await run(
         ReceiveHookUseCase,
         ReceiveHookCommand(
-            "claude",
-            "receiver",
-            receiver.session.working_directory,
-            HookEvent.SESSION_START,
+            provider="claude",
+            host_session_id="receiver",
+            working_directory=receiver.session.working_directory,
+            event=HookEvent.SESSION_START,
             start_source="resume",
         ),
         database_path=database,
     )
     assert len(connected.inbox) == 2
-    assert any(direct.uid in message for message in connected.inbox)
-    assert any(delegated.message_id in message for message in connected.inbox)
+    assert any(str(direct.uid) in message for message in connected.inbox)
+    assert any(str(delegated.message_id) in message for message in connected.inbox)

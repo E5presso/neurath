@@ -1,8 +1,9 @@
 """원 배정의 계획·현재 상태·결과를 조회하며 다시 전달하거나 실행하지 않는다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
@@ -12,7 +13,7 @@ from neurath.domain.aggregates.delegation import Delegation
 from neurath.domain.errors import ContextNotFound
 
 
-@dataclass(frozen=True)
+@immutable
 class GetDelegationQuery(AbstractQuery):
     """원 배정의 계획·현재 상태·결과를 조회하며 다시 전달하거나 실행하지 않는다.
 
@@ -21,8 +22,8 @@ class GetDelegationQuery(AbstractQuery):
         peer_id: 호출한 등록 피어.
     """
 
-    delegation_id: str
-    peer_id: str
+    delegation_id: UUID
+    peer_id: UUID
 
 
 @UseCase()

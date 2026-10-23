@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from copy import deepcopy
 from dataclasses import replace
 from typing import Self, override
-from uuid import uuid4
+from uuid import UUID, uuid7
 
 from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
@@ -24,7 +24,7 @@ from neurath.domain.workflow_records import (
 
 
 @mutable
-class WorkflowRun(AbstractAggregateRoot[str]):
+class WorkflowRun(AbstractAggregateRoot[UUID]):
     """한 태스크의 선택 절차와 그 정의 개정·실행 결과를 보존한다.
 
     Attributes:
@@ -36,29 +36,29 @@ class WorkflowRun(AbstractAggregateRoot[str]):
         revision: 저장소가 갱신하는 낙관적 잠금 버전.
     """
 
-    project_id: str
-    session_id: str
-    task_id: str
+    project_id: UUID
+    session_id: UUID
+    task_id: UUID
     revisions: Sequence[WorkflowRevision]
     attempts: Sequence[PhaseAttempt] = ()
     revision: int = 1
 
     @classmethod
     @override
-    def next_id(cls) -> str:
+    def next_id(cls) -> UUID:
         """외부 실행의 중복 식별에도 사용할 run UUID를 생성한다.
 
         Returns:
-            str: 새 run의 독립적인 식별자.
+            UUID: 새 run의 독립적인 식별자.
         """
-        return str(uuid4())
+        return uuid7()
 
     @classmethod
     def create(
         cls,
-        project_id: str,
-        session_id: str,
-        task_id: str,
+        project_id: UUID,
+        session_id: UUID,
+        task_id: UUID,
         definition_number: int,
         definition: WorkflowDefinition,
     ) -> Self:
@@ -107,7 +107,7 @@ class WorkflowRun(AbstractAggregateRoot[str]):
         """
         return self.revisions[-1].definition
 
-    def require_scope(self, project_id: str, session_id: str) -> None:
+    def require_scope(self, project_id: UUID, session_id: UUID) -> None:
         """요청 프로젝트와 소유 세션이 이 run에 일치하는지 확인한다.
 
         Args:
@@ -424,7 +424,7 @@ class WorkflowRun(AbstractAggregateRoot[str]):
             )
         )
 
-    def transfer(self, source_session_id: str, target_session_id: str) -> None:
+    def transfer(self, source_session_id: UUID, target_session_id: UUID) -> None:
         """원 소유자가 일치할 때 현재 소유만 옮기고 과거 이력을 유지한다.
 
         Args:

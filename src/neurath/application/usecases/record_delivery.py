@@ -1,8 +1,9 @@
 """기존 제출의 관찰만 저장하며 조회·늦은 응답으로 메시지를 다시 보내지 않는다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -11,7 +12,7 @@ from neurath.application.ports.repositories.message import IMessageRepository
 from neurath.domain.aggregates.message import DeliveryStatus, Message
 
 
-@dataclass(frozen=True)
+@immutable
 class RecordDeliveryCommand(AbstractCommand):
     """기존 제출의 관찰만 저장하며 조회·늦은 응답으로 메시지를 다시 보내지 않는다.
 
@@ -22,7 +23,7 @@ class RecordDeliveryCommand(AbstractCommand):
         evidence: 호스트 전달 결과 또는 미전달 실패의 근거.
     """
 
-    message_id: str
+    message_id: UUID
     attempt: int
     status: DeliveryStatus
     evidence: str

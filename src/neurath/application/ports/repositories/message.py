@@ -2,18 +2,19 @@
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from uuid import UUID
 
 from spakky.data.persistency.repository import IAsyncGenericRepository
 
 from neurath.domain.aggregates.message import Message
 
 
-class IMessageRepository(IAsyncGenericRepository[Message, str], ABC):
+class IMessageRepository(IAsyncGenericRepository[Message, UUID], ABC):
     """Message의 기본 CRUD와 배정 범위 조회를 제공한다."""
 
     @abstractmethod
     async def find_by_sender_id_and_recipient_id_and_key(
-        self, sender_id: str, recipient_id: str, key: str
+        self, sender_id: UUID, recipient_id: UUID, key: str
     ) -> Message | None:
         """조건에 해당하는 aggregate를 조회한다.
 
@@ -31,7 +32,7 @@ class IMessageRepository(IAsyncGenericRepository[Message, str], ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def find_by_recipient_id(self, recipient_id: str) -> Sequence[Message]:
+    async def find_by_recipient_id(self, recipient_id: UUID) -> Sequence[Message]:
         """조건에 해당하는 aggregate를 조회한다.
 
         Args:
@@ -46,7 +47,7 @@ class IMessageRepository(IAsyncGenericRepository[Message, str], ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def find_by_sender_id_and_key(self, sender_id: str, key: str) -> Sequence[Message]:
+    async def find_by_sender_id_and_key(self, sender_id: UUID, key: str) -> Sequence[Message]:
         """같은 발행의 원 수신 목록을 조회한다.
 
         Args:

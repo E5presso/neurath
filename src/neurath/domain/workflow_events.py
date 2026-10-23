@@ -1,5 +1,7 @@
 """단계 실행 요청·관찰 결과·커밋된 대기 상태를 전달한다."""
 
+from uuid import UUID
+
 from spakky.core.common.mutability import immutable
 from spakky.domain.models.event import AbstractDomainEvent
 
@@ -19,9 +21,9 @@ class PhaseExecutionRequested(AbstractDomainEvent):
         fresh: 이번 트랜잭션에서 처음 예약한 시도인지 여부.
     """
 
-    project_id: str
-    session_id: str
-    run_id: str
+    project_id: UUID
+    session_id: UUID
+    run_id: UUID
     phase: PhaseDefinition
     attempt: PhaseAttempt
     fresh: bool
@@ -39,9 +41,9 @@ class PhaseExecutionObserved(AbstractDomainEvent):
         result: 실행·조회에서 확인한 성공·실패·결과 불명.
     """
 
-    project_id: str
-    session_id: str
-    run_id: str
+    project_id: UUID
+    session_id: UUID
+    run_id: UUID
     attempt_number: int
     result: PhaseResult
 

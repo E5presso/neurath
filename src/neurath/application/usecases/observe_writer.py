@@ -1,9 +1,10 @@
 """실제 작성 호출의 생존을 관찰하고 원래 임대 세대와 함께 발행한다."""
 
 import asyncio
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 from spakky.event.event_publisher import IAsyncEventPublisher
@@ -12,7 +13,7 @@ from neurath.application.ports.services.writer_observer import IWriterObserverSe
 from neurath.domain.runtime_events import WriterLivenessObserved
 
 
-@dataclass(frozen=True)
+@immutable
 class ObserveWriterCommand(AbstractCommand):
     """이미 커밋된 요청의 실제 호스트 대상을 지정한다.
 
@@ -24,8 +25,8 @@ class ObserveWriterCommand(AbstractCommand):
         generation: 결과 저장 시 대조할 세대.
     """
 
-    writer_id: str
-    execution_id: str
+    writer_id: UUID
+    execution_id: UUID
     turn_id: str
     tool_use_id: str
     generation: int

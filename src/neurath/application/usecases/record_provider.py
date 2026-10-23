@@ -1,8 +1,9 @@
 """실제 provider 출력에서만 수신 세션을 연결하고 원 실행 결과를 저장한다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -17,7 +18,7 @@ from neurath.domain.aggregates.peer import Peer
 from neurath.domain.aggregates.session import HostSession
 
 
-@dataclass(frozen=True)
+@immutable
 class RecordProviderCommand(AbstractCommand):
     """실제 provider 출력에서만 수신 세션을 연결하고 원 실행 결과를 저장한다.
 
@@ -26,7 +27,7 @@ class RecordProviderCommand(AbstractCommand):
         observation: 실제 원 실행에서 읽은 관찰.
     """
 
-    delegation_id: str
+    delegation_id: UUID
     observation: ProviderObservation
 
 

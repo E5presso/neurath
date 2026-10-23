@@ -1,13 +1,14 @@
 """프로젝트와 소유 위치의 기본 Aggregate 저장 계약을 제공한다."""
 
 from abc import ABC, abstractmethod
+from uuid import UUID
 
 from spakky.data.persistency.repository import IAsyncGenericRepository
 
 from neurath.domain.aggregates.project import Project, ProjectLocation
 
 
-class IProjectRepository(IAsyncGenericRepository[Project, str], ABC):
+class IProjectRepository(IAsyncGenericRepository[Project, UUID], ABC):
     """프로젝트의 위치 값들을 포함한 aggregate의 식별자 조회와 저장을 프레임워크 기본 계약으로 제공한다."""
 
     @abstractmethod

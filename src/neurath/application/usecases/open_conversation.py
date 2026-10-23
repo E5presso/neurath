@@ -1,9 +1,10 @@
 """명시된 실제 피어만 연결한 대화를 열며 프로젝트 간 자료를 자동 공유하지 않는다."""
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -13,7 +14,7 @@ from neurath.application.ports.repositories.peer import IPeerRepository
 from neurath.domain.aggregates.conversation import Conversation
 
 
-@dataclass(frozen=True)
+@immutable
 class OpenConversationCommand(AbstractCommand):
     """명시된 실제 피어만 연결한 대화를 열며 프로젝트 간 자료를 자동 공유하지 않는다.
 
@@ -21,7 +22,7 @@ class OpenConversationCommand(AbstractCommand):
         participants: 명시적으로 연결할 피어 목록.
     """
 
-    participants: Sequence[str]
+    participants: Sequence[UUID]
 
 
 @UseCase()

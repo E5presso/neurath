@@ -1,8 +1,9 @@
 """세션의 프로젝트를 유지한 채 관찰된 작업 디렉터리로 이동한다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -14,7 +15,7 @@ from neurath.domain.aggregates.session import HostSession
 from neurath.domain.observations import DirectoryObservation
 
 
-@dataclass(frozen=True)
+@immutable
 class MoveSessionCommand(AbstractCommand):
     """세션을 이동할 디렉터리 관찰과 현재 프로젝트·저장 revision을 지정한다.
 
@@ -25,13 +26,13 @@ class MoveSessionCommand(AbstractCommand):
         expected_revision: 이동 요청 전에 관찰한 세션 버전.
     """
 
-    project_id: str
-    session_id: str
+    project_id: UUID
+    session_id: UUID
     observation: DirectoryObservation
     expected_revision: int
 
 
-@dataclass(frozen=True)
+@immutable
 class MoveSessionResult:
     """동일 프로젝트와 이동 후 작업 경로를 가진 세션을 반환한다.
 

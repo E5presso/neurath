@@ -1,8 +1,9 @@
 """현재 태스크 요구에 맞춘 절차를 추가하고 영향 없는 단계 결과를 유지한다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -13,7 +14,7 @@ from neurath.domain.aggregates.workflow import WorkflowRun
 from neurath.domain.workflow_records import WorkflowDefinition
 
 
-@dataclass(frozen=True)
+@immutable
 class ReviseWorkflowCommand(AbstractCommand):
     """절차를 수정할 정의·입력·대상과 그 이유를 지정한다.
 
@@ -26,15 +27,15 @@ class ReviseWorkflowCommand(AbstractCommand):
         reason: 방법 변경 또는 요구 정정의 이유.
     """
 
-    project_id: str
-    session_id: str
-    run_id: str
+    project_id: UUID
+    session_id: UUID
+    run_id: UUID
     expected_revision: int
     definition: WorkflowDefinition
     reason: str
 
 
-@dataclass(frozen=True)
+@immutable
 class ReviseWorkflowResult:
     """이전 정의·실패 이력을 보존한 run. 같은 단계 정의의 유효 결과는 재사용한다.
 

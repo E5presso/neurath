@@ -552,6 +552,20 @@ class ArchitectureChecker:
                     continue
                 if not isinstance(node, ast.ClassDef):
                     continue
+                for decorator in node.decorator_list:
+                    if not isinstance(decorator, ast.Call):
+                        continue
+                    if self._name(module, decorator.func) != "dataclasses.dataclass":
+                        continue
+                    if any(
+                        keyword.arg == "frozen"
+                        and isinstance(keyword.value, ast.Constant)
+                        and keyword.value.value is True
+                        for keyword in decorator.keywords
+                    ):
+                        errors.append(
+                            f"{location} IMMUTABLE_CONTRACT: use Spakky @immutable for immutable data contracts"
+                        )
                 errors.extend(self._check_class(module, node))
         return sorted(set(errors))
 

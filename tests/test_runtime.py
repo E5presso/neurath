@@ -75,7 +75,7 @@ async def test_stop_feedback_once_preserves_tasks_and_cancelled_turn(database, n
     task = await create(database, actor)
     feedback = await send(native, "Stop", stop_hook_active=False)
     assert feedback["decision"] == "block"
-    assert task.uid in feedback["reason"]
+    assert str(task.uid) in feedback["reason"]
     paused = await send(native, "Stop", stop_hook_active=True)
     assert paused["continue"] is False
     assert "No progress" in paused["stopReason"]
@@ -355,8 +355,14 @@ async def test_real_process_liveness_recovery_and_generation_recheck(database, n
             scope.get(ObserveWriterUseCase).observer = observer
             recovery = scope.get(RecoverWriterUseCase)
             with pytest.raises(InvalidExecutionState):
-                (await recovery.run(RecoverWriterCommand(lease.uid, lease.generation + 1)))
-            await recovery.run(RecoverWriterCommand(lease.uid, lease.generation))
+                (
+                    await recovery.run(
+                        RecoverWriterCommand(writer_id=lease.uid, generation=lease.generation + 1)
+                    )
+                )
+            await recovery.run(
+                RecoverWriterCommand(writer_id=lease.uid, generation=lease.generation)
+            )
             assert (await writer(database, native)).execution_id == lease.execution_id
             process.terminate()
             process.wait(timeout=5)
@@ -364,10 +370,16 @@ async def test_real_process_liveness_recovery_and_generation_recheck(database, n
                 observer.observe(lease.execution_id, lease.turn_id, lease.tool_use_id)
                 is Liveness.STOPPED
             )
-            await recovery.run(RecoverWriterCommand(lease.uid, lease.generation))
+            await recovery.run(
+                RecoverWriterCommand(writer_id=lease.uid, generation=lease.generation)
+            )
             assert (await writer(database, native)).execution_id is None
             with pytest.raises(InvalidExecutionState):
-                (await recovery.run(RecoverWriterCommand(lease.uid, lease.generation)))
+                (
+                    await recovery.run(
+                        RecoverWriterCommand(writer_id=lease.uid, generation=lease.generation)
+                    )
+                )
     finally:
         if process.poll() is None:
             process.kill()
@@ -387,7 +399,7 @@ async def test_recovery_cannot_release_new_generation_during_external_observatio
     async with spakky_context(database, write=True) as scope:
         scope.get(ObserveWriterUseCase).observer = RacingObserver()
         recovery = scope.get(RecoverWriterUseCase)
-        await recovery.run(RecoverWriterCommand(lease.uid, lease.generation))
+        await recovery.run(RecoverWriterCommand(writer_id=lease.uid, generation=lease.generation))
     assert (await writer(database, native)).generation == 2
     assert (await writer(database, native)).execution_id == lease.execution_id
 
@@ -459,7 +471,12 @@ async def test_waiting_only_yields_but_independent_work_continues(database, nati
     active = (
         await run(
             StartTaskUseCase,
-            StartTaskCommand(native[0].project.uid, native[0].session.uid, task.uid, task.revision),
+            StartTaskCommand(
+                project_id=native[0].project.uid,
+                session_id=native[0].session.uid,
+                task_id=task.uid,
+                expected_revision=task.revision,
+            ),
             database_path=database,
         )
     ).task
@@ -473,7 +490,11 @@ async def test_waiting_only_yields_but_independent_work_continues(database, nati
         await run(
             WaitTaskUseCase,
             WaitTaskCommand(
-                native[0].project.uid, native[0].session.uid, active.uid, active.revision, condition
+                project_id=native[0].project.uid,
+                session_id=native[0].session.uid,
+                task_id=active.uid,
+                expected_revision=active.revision,
+                condition=condition,
             ),
             database_path=database,
         )
@@ -490,14 +511,14 @@ async def test_waiting_only_yields_but_independent_work_continues(database, nati
     (
         await run(
             ResumeExecutionUseCase,
-            ResumeExecutionCommand(current.uid, "turn-2"),
+            ResumeExecutionCommand(execution_id=current.uid, turn_id="turn-2"),
             database_path=database,
         )
     )
     other = await create(database, native[0], title="independent")
     result = await send(native, "Stop", turn_id="turn-2")
     assert result["decision"] == "block"
-    assert other.uid in result["reason"]
+    assert str(other.uid) in result["reason"]
 
 
 async def test_finished_event_without_writer_and_fresh_child_without_start(database, native):
@@ -520,7 +541,7 @@ async def test_read_only_query_stays_available_when_other_execution_writes(datab
     assert (await send(native, "PreToolUse", tool_name="Write", tool_use_id="writing")) == {}
     context = await run(
         GetSessionContextUseCase,
-        GetSessionContextQuery(native[0].project.uid, native[0].session.uid),
+        GetSessionContextQuery(project_id=native[0].project.uid, session_id=native[0].session.uid),
         database_path=database,
     )
     assert context.session.uid == native[0].session.uid
@@ -565,7 +586,9 @@ async def test_real_targeted_cancellation_preserves_other_process_and_writes(dat
         async with spakky_context(database, write=True) as scope:
             scope.get(InterruptExecutionUseCase).controller = controller
             cancel = scope.get(CancelExecutionUseCase)
-            result = await cancel.run(CancelExecutionCommand(current.uid, current.turn_id))
+            result = await cancel.run(
+                CancelExecutionCommand(execution_id=current.uid, turn_id=current.turn_id)
+            )
             assert result.status is ExecutionStatus.PAUSED
             assert (await execution(database, native[0])).status is ExecutionStatus.CANCELLED
         assert process.poll() is not None
@@ -595,7 +618,9 @@ async def test_unknown_cancellation_and_late_response_cannot_cancel_new_turn(dat
         scope.get(InterruptExecutionUseCase).controller = PosixWriterObserverService({})
         cancel = scope.get(CancelExecutionUseCase)
         assert (
-            await cancel.run(CancelExecutionCommand(current.uid, current.turn_id))
+            await cancel.run(
+                CancelExecutionCommand(execution_id=current.uid, turn_id=current.turn_id)
+            )
         ).status is ExecutionStatus.PAUSED
 
     class LateController(IExecutionControllerService):
@@ -606,7 +631,7 @@ async def test_unknown_cancellation_and_late_response_cannot_cancel_new_turn(dat
     async with spakky_context(database, write=True) as scope:
         scope.get(InterruptExecutionUseCase).controller = LateController()
         cancel = scope.get(CancelExecutionUseCase)
-        await cancel.run(CancelExecutionCommand(current.uid, current.turn_id))
+        await cancel.run(CancelExecutionCommand(execution_id=current.uid, turn_id=current.turn_id))
     assert (await execution(database, native[0])).turn_id == "new-turn"
     assert (await execution(database, native[0])).status is ExecutionStatus.PAUSED
     with pytest.raises(NotImplementedError):
@@ -760,7 +785,7 @@ async def test_resume_keeps_cancelled_work_paused_until_explicit_request(databas
     )["continue"] is False
     resumed = await run(
         ResumeExecutionUseCase,
-        ResumeExecutionCommand(current.uid, current.turn_id),
+        ResumeExecutionCommand(execution_id=current.uid, turn_id=current.turn_id),
         database_path=database,
     )
     assert resumed.status is ExecutionStatus.RUNNING
@@ -797,11 +822,13 @@ async def test_stop_recognizes_actual_phase_progress_without_task_revision_chang
         await run(
             StartWorkflowUseCase,
             StartWorkflowCommand(
-                actor.project.uid,
-                actor.session.uid,
-                task.uid,
-                task.revision,
-                WorkflowDefinition(skill="implement-spec", version="1", phases=(phase,), inputs=()),
+                project_id=actor.project.uid,
+                session_id=actor.session.uid,
+                task_id=task.uid,
+                expected_task_revision=task.revision,
+                definition=WorkflowDefinition(
+                    skill="implement-spec", version="1", phases=(phase,), inputs=()
+                ),
             ),
             database_path=database,
         )
@@ -819,7 +846,10 @@ async def test_stop_recognizes_actual_phase_progress_without_task_revision_chang
         await run(
             PreparePhaseUseCase,
             PreparePhaseCommand(
-                actor.project.uid, actor.session.uid, workflow.uid, workflow.revision
+                project_id=actor.project.uid,
+                session_id=actor.session.uid,
+                run_id=workflow.uid,
+                expected_revision=workflow.revision,
             ),
             database_path=database,
         )

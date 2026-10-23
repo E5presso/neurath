@@ -6,6 +6,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 from alembic.autogenerate import compare_metadata
@@ -76,29 +77,39 @@ async def test_original_schema_records_are_readable_and_updatable_without_data_c
         connection.executescript(fixture.read_text())
         (
             connection.execute(
-                "INSERT INTO core_projects (id, root_path) VALUES ('original-project', ?)",
+                "INSERT INTO core_projects (id, root_path) VALUES ('a4fd2728-8009-4f60-b834-eed0596691aa', ?)",
                 (str(folder),),
             )
         )
         (
             connection.execute(
-                "INSERT INTO core_project_locations VALUES ('folder', ?, 'original-project')",
+                "INSERT INTO core_project_locations VALUES ('folder', ?, 'a4fd2728-8009-4f60-b834-eed0596691aa')",
                 (str(folder),),
             )
         )
         (
             connection.execute(
-                "INSERT INTO core_sessions (id, project_id, provider, host_session_id, working_directory, revision) VALUES ('original-session', 'original-project', 'codex', 'native', ?, 7)",
+                "INSERT INTO core_sessions (id, project_id, provider, host_session_id, working_directory, revision) VALUES ('bb29ee78-e417-47a1-bd4d-fb6b82208926', 'a4fd2728-8009-4f60-b834-eed0596691aa', 'codex', 'native', ?, 7)",
                 (str(folder),),
             )
         )
     database = path
     before = path.read_bytes()
     with pytest.raises(StorageNotReady):
-        (await get_session_context("original-project", "original-session", database_path=path))
+        (
+            await get_session_context(
+                "a4fd2728-8009-4f60-b834-eed0596691aa",
+                "bb29ee78-e417-47a1-bd4d-fb6b82208926",
+                database_path=path,
+            )
+        )
     assert path.read_bytes() == before
     (await initialize_database(database))
-    original = await get_session_context("original-project", "original-session", database_path=path)
+    original = await get_session_context(
+        UUID("a4fd2728-8009-4f60-b834-eed0596691aa"),
+        UUID("bb29ee78-e417-47a1-bd4d-fb6b82208926"),
+        database_path=path,
+    )
     assert original.session.revision == 7
     initialize_git(folder)
     child = folder / "child"
@@ -109,7 +120,7 @@ async def test_original_schema_records_are_readable_and_updatable_without_data_c
     changed = await move_session(
         original.project.id, original.session.id, str(child), 7, database_path=path
     )
-    assert changed.session.id == "original-session"
+    assert changed.session.id == UUID("bb29ee78-e417-47a1-bd4d-fb6b82208926")
     assert changed.session.revision == 8
     engine = create_database_engine(database, write=False)
     try:
@@ -173,17 +184,17 @@ async def test_framework_migration_preserves_legacy_values_and_marks_unknown_met
         connection.executescript(fixture.read_text())
         (
             connection.execute(
-                "INSERT INTO core_projects (id, root_path) VALUES ('retained', '/legacy')"
+                "INSERT INTO core_projects (id, root_path) VALUES ('17dc3986-8d19-45d0-bef0-ee8180dcb078', '/legacy')"
             )
         )
         (
             connection.execute(
-                "INSERT INTO core_project_locations VALUES ('folder', '/legacy', 'retained')"
+                "INSERT INTO core_project_locations VALUES ('folder', '/legacy', '17dc3986-8d19-45d0-bef0-ee8180dcb078')"
             )
         )
         (
             connection.execute(
-                "INSERT INTO core_sessions (id, project_id, provider, host_session_id, working_directory, revision) VALUES ('native', 'retained', 'codex', 'original', '/legacy/sub', 17)"
+                "INSERT INTO core_sessions (id, project_id, provider, host_session_id, working_directory, revision) VALUES ('3f8a2a41-912d-4082-90d7-efb6d68184b9', '17dc3986-8d19-45d0-bef0-ee8180dcb078', 'codex', 'original', '/legacy/sub', 17)"
             )
         )
         (
@@ -193,16 +204,26 @@ async def test_framework_migration_preserves_legacy_values_and_marks_unknown_met
         )
         (
             connection.execute(
-                "INSERT INTO dependent_fixture VALUES ('retained', 'unfinished original source')"
+                "INSERT INTO dependent_fixture VALUES ('17dc3986-8d19-45d0-bef0-ee8180dcb078', 'unfinished original source')"
             )
         )
     (await initialize_database(path))
     async with storage_scope(path, write=False) as scope:
-        project = await scope.get(IProjectRepository).get("retained")
-        session = await scope.get(ISessionRepository).get("native")
-        assert project.uid == "retained" and project.root_path == "/legacy"
+        project = await scope.get(IProjectRepository).get(
+            UUID("17dc3986-8d19-45d0-bef0-ee8180dcb078")
+        )
+        session = await scope.get(ISessionRepository).get(
+            UUID("3f8a2a41-912d-4082-90d7-efb6d68184b9")
+        )
+        assert (
+            project.uid == UUID("17dc3986-8d19-45d0-bef0-ee8180dcb078")
+            and project.root_path == "/legacy"
+        )
         assert project.locations[0].path == "/legacy"
-        assert session.project_id == "retained" and session.revision == 17
+        assert (
+            session.project_id == UUID("17dc3986-8d19-45d0-bef0-ee8180dcb078")
+            and session.revision == 17
+        )
         assert session.working_directory == "/legacy/sub"
         for entity in (project, session):
             assert entity.version == UUID(int=0)
@@ -213,7 +234,7 @@ async def test_framework_migration_preserves_legacy_values_and_marks_unknown_met
     assert path.read_bytes() == before
     with closing(sqlite3.connect(path)) as connection:
         assert (connection.execute("SELECT * FROM dependent_fixture")).fetchall() == [
-            ("retained", "unfinished original source")
+            ("17dc3986-8d19-45d0-bef0-ee8180dcb078", "unfinished original source")
         ]
         assert (connection.execute("PRAGMA foreign_key_check")).fetchall() == []
 
@@ -279,7 +300,7 @@ async def test_metadata_downgrade_preserves_original_records_and_can_upgrade(dat
         (
             connection.execute(
                 "INSERT INTO dependent_fixture VALUES (?, 'unfinished original source')",
-                (original.project.id,),
+                (str(original.project.id),),
             )
         )
     engine = create_database_engine(database, write=True)
@@ -313,9 +334,9 @@ async def test_metadata_downgrade_preserves_original_records_and_can_upgrade(dat
                 await connection.execute(
                     text("SELECT id, project_id, host_session_id, revision FROM core_sessions")
                 )
-            ).one() == (original.session.id, original.project.id, "retained", 1)
+            ).one() == (str(original.session.id), str(original.project.id), "retained", 1)
             assert (await connection.execute(text("SELECT * FROM dependent_fixture"))).one() == (
-                original.project.id,
+                str(original.project.id),
                 "unfinished original source",
             )
             assert (await connection.exec_driver_sql("PRAGMA foreign_key_check")).all() == []

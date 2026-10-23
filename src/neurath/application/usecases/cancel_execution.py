@@ -1,8 +1,9 @@
 """대상 턴을 먼저 정지시키고 실제 실행기의 중단 확인을 같은 턴에만 적용한다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -11,7 +12,7 @@ from neurath.application.ports.repositories.execution import IExecutionRepositor
 from neurath.domain.aggregates.execution import Execution
 
 
-@dataclass(frozen=True)
+@immutable
 class CancelExecutionCommand(AbstractCommand):
     """사용자가 중단을 요청한 실행과 턴을 지정한다.
 
@@ -20,7 +21,7 @@ class CancelExecutionCommand(AbstractCommand):
         turn_id: 현재 호스트에서 확인한 중단 대상 턴.
     """
 
-    execution_id: str
+    execution_id: UUID
     turn_id: str
 
 

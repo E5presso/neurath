@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from dataclasses import replace
 from typing import Self, override
-from uuid import uuid4
+from uuid import UUID, uuid7
 
 from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
@@ -23,7 +23,7 @@ from neurath.domain.task_records import (
 
 
 @mutable
-class Task(AbstractAggregateRoot[str]):
+class Task(AbstractAggregateRoot[UUID]):
     """사용자 요구와 현재 상태 및 이전 시도의 결과를 보존하는 aggregate다.
 
     Attributes:
@@ -39,37 +39,37 @@ class Task(AbstractAggregateRoot[str]):
         revision: 저장소의 정수 낙관적 버전.
     """
 
-    project_id: str
-    owner_session_id: str
+    project_id: UUID
+    owner_session_id: UUID
     definitions: Sequence[TaskDefinition]
     status: TaskStatus = TaskStatus.PENDING
     attempts: Sequence[TaskAttempt] = ()
     waits: Sequence[ExternalWait] = ()
     current_attempt_number: int | None = None
-    follow_up_of: str | None = None
+    follow_up_of: UUID | None = None
     invalidated_reason: str | None = None
     revision: int = 1
 
     @classmethod
     @override
-    def next_id(cls) -> str:
+    def next_id(cls) -> UUID:
         """새 태스크 식별자를 생성한다.
 
         Returns:
-            str: 새 작업의 안정적인 식별자.
+            UUID: 새 작업의 안정적인 식별자.
         """
-        return str(uuid4())
+        return uuid7()
 
     @classmethod
     def create(
         cls,
-        project_id: str,
-        session_id: str,
+        project_id: UUID,
+        session_id: UUID,
         source: RequestSource,
         title: str,
         required_result: str,
-        dependencies: Sequence[str] = (),
-        follow_up_of: str | None = None,
+        dependencies: Sequence[UUID] = (),
+        follow_up_of: UUID | None = None,
     ) -> Self:
         """기존 출처를 재사용하면서 최초 요구를 정의한다.
 
@@ -121,7 +121,7 @@ class Task(AbstractAggregateRoot[str]):
         """
         return self.definitions[-1]
 
-    def require_project(self, project_id: str) -> None:
+    def require_project(self, project_id: UUID) -> None:
         """태스크가 요청한 프로젝트에 속하는지 검사한다.
 
         Args:
@@ -133,7 +133,7 @@ class Task(AbstractAggregateRoot[str]):
         if self.project_id != project_id:
             raise ContextNotFound("Task does not belong to this project")
 
-    def require_scope(self, project_id: str, session_id: str) -> None:
+    def require_scope(self, project_id: UUID, session_id: UUID) -> None:
         """소유권을 이전하지 않고 현재 프로젝트·세션 범위를 검사한다.
 
         Args:
@@ -275,7 +275,7 @@ class Task(AbstractAggregateRoot[str]):
         source: RequestSource,
         title: str | None = None,
         required_result: str | None = None,
-        dependencies: Sequence[str] | None = None,
+        dependencies: Sequence[UUID] | None = None,
     ) -> None:
         """변경된 필드로 새 요구 개정을 추가하고 다음 시도를 준비한다.
 
@@ -376,7 +376,7 @@ class Task(AbstractAggregateRoot[str]):
         self.add_event(TaskDefinitionChanged(task_id=self.uid))
 
     def validate_dependencies(
-        self, tasks: Sequence[Self], dependencies: Sequence[str] | None = None
+        self, tasks: Sequence[Self], dependencies: Sequence[UUID] | None = None
     ) -> None:
         """현재 또는 제안한 의존을 프로젝트 그래프에 대조하여 중복·순환을 거부한다.
 
@@ -398,7 +398,7 @@ class Task(AbstractAggregateRoot[str]):
         if any(uid not in graph for uid in dependencies):
             raise ContextNotFound("Dependency does not belong to this project")
         pending = list(dependencies)
-        visited: set[str] = set()
+        visited: set[UUID] = set()
         while pending:
             uid = pending.pop()
             if uid == self.uid:
@@ -407,7 +407,7 @@ class Task(AbstractAggregateRoot[str]):
                 visited.add(uid)
                 pending.extend(graph[uid])
 
-    def transfer(self, source_session_id: str, target_session_id: str) -> None:
+    def transfer(self, source_session_id: UUID, target_session_id: UUID) -> None:
         """원 소유자가 일치할 때 현재 소유만 옮기고 과거 이력을 유지한다.
 
         Args:
@@ -420,3 +420,12 @@ class Task(AbstractAggregateRoot[str]):
         if self.owner_session_id != source_session_id:
             raise ContextNotFound("Ownership changed before handoff")
         self.owner_session_id = target_session_id
+
+    def require_delegatable(self) -> None:
+        """종료한 요구를 새로운 수행 배정으로 다시 시작하지 못하게 한다.
+
+        Raises:
+            InvalidTaskState: 무효화됐거나 이미 성공한 작업인 경우.
+        """
+        if self.status in (TaskStatus.INVALIDATED, TaskStatus.SUCCEEDED):
+            raise InvalidTaskState("Only unfinished current work can be delegated")

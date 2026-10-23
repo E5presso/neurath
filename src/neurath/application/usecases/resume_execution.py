@@ -1,8 +1,9 @@
 """사용자가 요청한 실행 재개를 현재 호스트 턴에만 적용한다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -12,7 +13,7 @@ from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.domain.aggregates.execution import Execution
 
 
-@dataclass(frozen=True)
+@immutable
 class ResumeExecutionCommand(AbstractCommand):
     """실제 재개 요청에 해당하는 실행과 현재 턴을 지정한다.
 
@@ -21,7 +22,7 @@ class ResumeExecutionCommand(AbstractCommand):
         turn_id: 호스트에서 확인한 현재 턴.
     """
 
-    execution_id: str
+    execution_id: UUID
     turn_id: str
 
 

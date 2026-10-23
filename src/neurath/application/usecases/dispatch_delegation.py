@@ -1,8 +1,9 @@
 """배정과 원 지시를 같은 트랜잭션의 메시지로 연결하며 수락·실행 완료와 구분한다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -20,7 +21,7 @@ from neurath.domain.aggregates.message import Message
 from neurath.domain.errors import ContextNotFound, InvalidTaskState
 
 
-@dataclass(frozen=True)
+@immutable
 class DispatchDelegationCommand(AbstractCommand):
     """배정과 원 지시를 같은 트랜잭션의 메시지로 연결하며 수락·실행 완료와 구분한다.
 
@@ -29,8 +30,8 @@ class DispatchDelegationCommand(AbstractCommand):
         sender_id: 배정 책임이 있는 발신 피어.
     """
 
-    delegation_id: str
-    sender_id: str
+    delegation_id: UUID
+    sender_id: UUID
 
 
 @UseCase()
@@ -108,7 +109,7 @@ class DispatchDelegationUseCase(IAsyncCommandUseCase[DispatchDelegationCommand, 
             conversation_id=conversation.uid,
             sender_id=delegation.sender_id,
             recipient_id=delegation.recipient_id,
-            key=delegation.uid,
+            key=str(delegation.uid),
             title=task.definition.title,
             body=body,
         )

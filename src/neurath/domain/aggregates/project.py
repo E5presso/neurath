@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from enum import StrEnum
 from typing import Self, override
-from uuid import uuid4
+from uuid import UUID, uuid7
 
 from spakky.core.common.mutability import immutable, mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
@@ -39,7 +39,7 @@ class ProjectLocation(AbstractValueObject):
 
 
 @mutable
-class Project(AbstractAggregateRoot[str]):
+class Project(AbstractAggregateRoot[UUID]):
     """소유한 위치와 Git 승격 전후의 안정적인 동일성을 관리한다.
 
     Attributes:
@@ -53,23 +53,23 @@ class Project(AbstractAggregateRoot[str]):
     revision: int = 1
 
     @property
-    def id(self) -> str:
+    def id(self) -> UUID:
         """기존 프로젝트 참조와의 호환을 위해 uid를 id로 읽는다.
 
         Returns:
-            str: 이 프로젝트의 uid와 같은 식별자.
+            UUID: 이 프로젝트의 uid와 같은 식별자.
         """
         return self.uid
 
     @classmethod
     @override
-    def next_id(cls) -> str:
-        """프로젝트 경로와 독립적인 UUID 문자열을 생성한다.
+    def next_id(cls) -> UUID:
+        """프로젝트 경로와 독립적인 UUID 값을 생성한다.
 
         Returns:
-            str: 새 프로젝트의 uid로 사용할 UUID 문자열.
+            UUID: 새 프로젝트의 uid로 사용할 UUID 값.
         """
-        return str(uuid4())
+        return uuid7()
 
     @staticmethod
     def root_for(observation: DirectoryObservation) -> str:

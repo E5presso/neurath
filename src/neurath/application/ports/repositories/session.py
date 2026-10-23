@@ -1,18 +1,19 @@
 """호스트 세션의 기본 Aggregate 저장 계약을 제공한다."""
 
 from abc import ABC, abstractmethod
+from uuid import UUID
 
 from spakky.data.persistency.repository import IAsyncGenericRepository
 
 from neurath.domain.aggregates.session import HostSession
 
 
-class ISessionRepository(IAsyncGenericRepository[HostSession, str], ABC):
+class ISessionRepository(IAsyncGenericRepository[HostSession, UUID], ABC):
     """프로젝트 소속과 작업 경로를 가진 세션의 식별자 조회와 저장을 프레임워크 기본 계약으로 제공한다."""
 
     @abstractmethod
     async def find_by_project_id_and_provider_and_host_session_id(
-        self, project_id: str, provider: str, host_session_id: str
+        self, project_id: UUID, provider: str, host_session_id: str
     ) -> HostSession | None:
         """프로젝트 안에서 실제 네이티브 식별자에 대응하는 세션을 찾는다.
 

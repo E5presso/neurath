@@ -1,8 +1,9 @@
 """배정의 역할·요구 개정에 결과를 보존하며 옛 보고로 현재 태스크를 완료하지 않는다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -14,7 +15,7 @@ from neurath.domain.aggregates.delegation import Delegation
 from neurath.domain.delegation_records import DelegationReport
 
 
-@dataclass(frozen=True)
+@immutable
 class ReportDelegationCommand(AbstractCommand):
     """배정의 역할·요구 개정에 결과를 보존하며 옛 보고로 현재 태스크를 완료하지 않는다.
 
@@ -24,8 +25,8 @@ class ReportDelegationCommand(AbstractCommand):
         report: 수행·검토 결과와 관찰 근거·남은 일.
     """
 
-    delegation_id: str
-    peer_id: str
+    delegation_id: UUID
+    peer_id: UUID
     report: DelegationReport
 
 

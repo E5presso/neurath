@@ -1,7 +1,7 @@
 """공유 작업 폴더의 실제 작성 구간만 소유자와 세대로 배타 관리한다."""
 
 from typing import Self, override
-from uuid import uuid4
+from uuid import UUID, uuid7
 
 from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
@@ -12,7 +12,7 @@ from neurath.domain.runtime_records import Liveness
 
 
 @mutable
-class Writer(AbstractAggregateRoot[str]):
+class Writer(AbstractAggregateRoot[UUID]):
     """읽기를 막지 않는 작업 폴더별 작성 임대다.
 
     Attributes:
@@ -25,7 +25,7 @@ class Writer(AbstractAggregateRoot[str]):
     """
 
     resource: str
-    execution_id: str | None
+    execution_id: UUID | None
     turn_id: str
     tool_use_id: str
     generation: int
@@ -33,13 +33,13 @@ class Writer(AbstractAggregateRoot[str]):
 
     @classmethod
     @override
-    def next_id(cls) -> str:
+    def next_id(cls) -> UUID:
         """작업 폴더 경로와 구분되는 내부 임대 레코드 ID를 만든다.
 
         Returns:
-            str: 새 UUID 문자열.
+            UUID: 새 UUID 값.
         """
-        return str(uuid4())
+        return uuid7()
 
     @classmethod
     def create(cls, resource: str) -> Self:
@@ -61,7 +61,7 @@ class Writer(AbstractAggregateRoot[str]):
             revision=1,
         )
 
-    def acquire(self, execution_id: str, turn_id: str, tool_use_id: str) -> int:
+    def acquire(self, execution_id: UUID, turn_id: str, tool_use_id: str) -> int:
         """다른 실제 작성이 없을 때 취득하고 같은 호출 재전달은 같은 세대로 돌려준다.
 
         Args:
@@ -91,7 +91,7 @@ class Writer(AbstractAggregateRoot[str]):
         self.generation += 1
         return self.generation
 
-    def release(self, execution_id: str, generation: int, liveness: Liveness) -> None:
+    def release(self, execution_id: UUID, generation: int, liveness: Liveness) -> None:
         """일치하는 소유자·세대의 실제 작성 종료가 확인돼야 임대를 해제한다.
 
         Args:

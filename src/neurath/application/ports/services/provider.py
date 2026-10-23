@@ -1,16 +1,18 @@
 """실제 provider의 모델 조회·실행·관찰·중단을 위한 외부 경계다."""
 
 from abc import ABC, abstractmethod
+from uuid import UUID
 
 from neurath.application.provider_records import ProviderCapabilities, ProviderObservation
 from neurath.domain.delegation_records import ProviderPlan
+from neurath.domain.provider import ProviderKind
 
 
 class IProviderService(ABC):
     """계획 확인과 실제 실행을 구분하고 원 실행 ID로만 복구한다."""
 
     @abstractmethod
-    def discover(self, provider: str) -> ProviderCapabilities:
+    def discover(self, provider: ProviderKind) -> ProviderCapabilities:
         """모델을 실행하지 않고 현재 호스트의 지원 정보를 조회한다.
 
         Args:
@@ -25,7 +27,7 @@ class IProviderService(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def start(self, delegation_id: str, plan: ProviderPlan, prompt: str) -> ProviderObservation:
+    def start(self, delegation_id: UUID, plan: ProviderPlan, prompt: str) -> ProviderObservation:
         """같은 배정의 실행을 한 번 시작하고 재호출은 기존 기록을 반환한다.
 
         Args:
@@ -42,7 +44,7 @@ class IProviderService(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def observe(self, delegation_id: str) -> ProviderObservation:
+    def observe(self, delegation_id: UUID) -> ProviderObservation:
         """기존 실행만 관찰하며 프로세스나 모델 턴을 새로 만들지 않는다.
 
         Args:
@@ -57,7 +59,7 @@ class IProviderService(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def cancel(self, delegation_id: str) -> ProviderObservation:
+    def cancel(self, delegation_id: UUID) -> ProviderObservation:
         """이 어댑터가 만든 실행만 중단하고 실제 종료는 별도 관찰한다.
 
         Args:

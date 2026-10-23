@@ -1,8 +1,8 @@
 """프로젝트를 식별하고 공급자·네이티브 ID가 같은 세션을 재사용하거나 등록한다."""
 
-from dataclasses import dataclass
 from typing import override
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -14,7 +14,7 @@ from neurath.domain.aggregates.session import HostSession
 from neurath.domain.observations import DirectoryObservation
 
 
-@dataclass(frozen=True)
+@immutable
 class RegisterSessionCommand(AbstractCommand):
     """관찰한 프로젝트 위치와 등록할 호스트의 네이티브 세션 식별자를 지정한다.
 
@@ -29,7 +29,7 @@ class RegisterSessionCommand(AbstractCommand):
     host_session_id: str
 
 
-@dataclass(frozen=True)
+@immutable
 class RegisterSessionResult:
     """등록 위치의 프로젝트와 기존 또는 새 호스트 세션을 반환한다.
 

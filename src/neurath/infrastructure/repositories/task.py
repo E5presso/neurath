@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 from typing import override
+from uuid import UUID
 
 from spakky.data.stereotype.repository import Repository
 from spakky.plugins.sqlalchemy.persistency.repository import AbstractAsyncGenericRepository
@@ -13,11 +14,11 @@ from neurath.infrastructure.models.task import TaskModel
 
 
 @Repository()
-class SQLAlchemyTaskRepository(AbstractAsyncGenericRepository[Task, str], ITaskRepository):
+class SQLAlchemyTaskRepository(AbstractAsyncGenericRepository[Task, UUID], ITaskRepository):
     """요구 개정·실행 시도·외부 대기를 소유하는 태스크를 표준 SQLAlchemy 매핑·CRUD·낙관적 잠금으로 저장한다."""
 
     @override
-    async def find_by_project_id(self, project_id: str) -> Sequence[Task]:
+    async def find_by_project_id(self, project_id: UUID) -> Sequence[Task]:
         """의존 관계와 실행 가능성을 검증할 프로젝트의 태스크들을 읽는다.
 
         Args:

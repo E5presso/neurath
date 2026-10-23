@@ -3,9 +3,13 @@
 from collections.abc import Sequence
 from enum import StrEnum
 from typing import override
+from uuid import UUID
 
 from spakky.core.common.mutability import immutable
 from spakky.domain.models.value_object import AbstractValueObject
+
+from neurath.domain.errors import InvalidTaskState
+from neurath.domain.provider import ProviderKind
 
 
 class DelegationRoute(StrEnum):
@@ -68,11 +72,11 @@ class ProviderPlan(AbstractValueObject):
         parent_session_id: 배정한 Neurath 세션. 네이티브 부모 관계를 뜻하지 않는다.
     """
 
-    provider: str
+    provider: ProviderKind
     model: str
     policy: str
     directory: str
-    parent_session_id: str
+    parent_session_id: UUID
 
     @override
     def validate(self) -> None:
@@ -89,12 +93,23 @@ class ProviderPlan(AbstractValueObject):
                     self.model,
                     self.policy,
                     self.directory,
-                    self.parent_session_id,
                 )
             )
             or self.policy == "inherit"
         ):
             raise ValueError("Provider plan requires an explicit model and supported policy")
+
+    def require_parent(self, session_id: UUID) -> None:
+        """저장한 실행 계획이 실제 배정 세션의 계획인지 확인한다.
+
+        Args:
+            session_id: 현재 배정하는 세션.
+
+        Raises:
+            InvalidTaskState: 계획의 부모 세션이 다른 경우.
+        """
+        if self.parent_session_id != session_id:
+            raise InvalidTaskState("Provider plan belongs to a different parent session")
 
 
 @immutable

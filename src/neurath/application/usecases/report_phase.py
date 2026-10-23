@@ -1,8 +1,9 @@
 """시도에 관찰 결과를 반영하고 충족한 단계만 다음 순서로 진행시킨다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -14,7 +15,7 @@ from neurath.domain.task_records import ExternalWait, TaskStatus
 from neurath.domain.workflow_records import PhaseResult, PhaseStatus
 
 
-@dataclass(frozen=True)
+@immutable
 class ReportPhaseCommand(AbstractCommand):
     """관찰한 단계 결과를 동일한 run·시도에 연결하는 요청이다.
 
@@ -27,15 +28,15 @@ class ReportPhaseCommand(AbstractCommand):
         notify_waiting: 외부 실행 결과가 새 대기 상태이면 커밋 뒤 안내한다.
     """
 
-    project_id: str
-    session_id: str
-    run_id: str
+    project_id: UUID
+    session_id: UUID
+    run_id: UUID
     attempt_number: int
     result: PhaseResult
     notify_waiting: bool = False
 
 
-@dataclass(frozen=True)
+@immutable
 class ReportPhaseResult:
     """결과가 저장된 run. 옛 정의의 결과는 보존하되 현재 단계에 자동 적용하지 않는다.
 

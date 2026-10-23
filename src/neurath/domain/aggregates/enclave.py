@@ -2,7 +2,7 @@
 
 from collections.abc import Sequence
 from typing import Self, override
-from uuid import uuid4
+from uuid import UUID, uuid7
 
 from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
@@ -12,7 +12,7 @@ from neurath.domain.errors import ContextNotFound, RevisionConflict
 
 
 @mutable
-class Enclave(AbstractAggregateRoot[str]):
+class Enclave(AbstractAggregateRoot[UUID]):
     """한 프로젝트·세션·작업 범위의 현재 내용만 복원 대상으로 제공한다.
 
     Attributes:
@@ -23,9 +23,9 @@ class Enclave(AbstractAggregateRoot[str]):
         history: 이전 값과 명시적 삭제를 보존하는 변경 이력.
     """
 
-    project_id: str
-    session_id: str
-    task_id: str | None
+    project_id: UUID
+    session_id: UUID
+    task_id: UUID | None
     revision: int
     history: Sequence[EnclaveChange] = ()
 
@@ -47,16 +47,16 @@ class Enclave(AbstractAggregateRoot[str]):
 
     @classmethod
     @override
-    def next_id(cls) -> str:
+    def next_id(cls) -> UUID:
         """세션·태스크 ID와 구분되는 enclave 식별자를 만든다.
 
         Returns:
-            str: 새 UUID 문자열.
+            UUID: 새 UUID 값.
         """
-        return str(uuid4())
+        return uuid7()
 
     @classmethod
-    def create(cls, project_id: str, session_id: str, task_id: str | None = None) -> Self:
+    def create(cls, project_id: UUID, session_id: UUID, task_id: UUID | None = None) -> Self:
         """사실이 없는 정상적인 초기 맥락을 만든다.
 
         Args:
@@ -121,7 +121,7 @@ class Enclave(AbstractAggregateRoot[str]):
             EnclaveChange(number=len(self.history) + 1, key=key, fact=None),
         )
 
-    def transfer(self, source_session_id: str, target_session_id: str) -> None:
+    def transfer(self, source_session_id: UUID, target_session_id: UUID) -> None:
         """원 소유자가 일치할 때 현재 소유만 옮기고 과거 이력을 유지한다.
 
         Args:

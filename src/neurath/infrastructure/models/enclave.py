@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from neurath.domain.aggregates.enclave import Enclave
 from neurath.domain.enclave_records import EnclaveChange, EnclaveFact, EnclaveKind
+from neurath.infrastructure.uuid_type import UUIDText
 
 
 @Table(Enclave)
@@ -44,13 +45,17 @@ class EnclaveModel(AbstractMappableTable[Enclave]):
             sqlite_where=text("task_id IS NULL"),
         ),
     )
-    id: Mapped[str] = mapped_column(String, primary_key=True)
+    id: Mapped[UUID] = mapped_column(UUIDText, primary_key=True)
     version: Mapped[UUID] = mapped_column(Uuid(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    project_id: Mapped[str] = mapped_column(String, ForeignKey("core_projects.id"), nullable=False)
-    session_id: Mapped[str] = mapped_column(String, ForeignKey("core_sessions.id"), nullable=False)
-    task_id: Mapped[str | None] = mapped_column(String, ForeignKey("core_tasks.id"))
+    project_id: Mapped[UUID] = mapped_column(
+        UUIDText, ForeignKey("core_projects.id"), nullable=False
+    )
+    session_id: Mapped[UUID] = mapped_column(
+        UUIDText, ForeignKey("core_sessions.id"), nullable=False
+    )
+    task_id: Mapped[UUID | None] = mapped_column(UUIDText, ForeignKey("core_tasks.id"))
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
     __mapper_args__ = {"version_id_col": revision}
     changes: Mapped[list[EnclaveChangeModel]] = relationship(
@@ -114,8 +119,8 @@ class EnclaveChangeModel(AbstractTable):
     """
 
     __tablename__ = "core_enclave_changes"
-    enclave_id: Mapped[str] = mapped_column(
-        String, ForeignKey("core_enclaves.id"), primary_key=True
+    enclave_id: Mapped[UUID] = mapped_column(
+        UUIDText, ForeignKey("core_enclaves.id"), primary_key=True
     )
     number: Mapped[int] = mapped_column(Integer, primary_key=True)
     key: Mapped[str] = mapped_column(String, nullable=False)
@@ -124,7 +129,7 @@ class EnclaveChangeModel(AbstractTable):
     references: Mapped[list[str]] = mapped_column(JSON, nullable=False)
 
     @classmethod
-    def from_domain(cls, change: EnclaveChange, enclave_id: str) -> Self:
+    def from_domain(cls, change: EnclaveChange, enclave_id: UUID) -> Self:
         """명시적인 삭제와 저장 내용을 서로 다른 값으로 매핑한다.
 
         Args:

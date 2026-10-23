@@ -1,9 +1,10 @@
 """대화 참가자 중 활성 구독자에게만 발행하고 재시도는 원 수신자 목록을 유지한다."""
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -15,7 +16,7 @@ from neurath.domain.aggregates.message import Message
 from neurath.domain.errors import InvalidTaskState
 
 
-@dataclass(frozen=True)
+@immutable
 class PublishMessageCommand(AbstractCommand):
     """대화 참가자 중 활성 구독자에게만 발행하고 재시도는 원 수신자 목록을 유지한다.
 
@@ -28,8 +29,8 @@ class PublishMessageCommand(AbstractCommand):
         body: 원래 전체 본문.
     """
 
-    conversation_id: str
-    sender_id: str
+    conversation_id: UUID
+    sender_id: UUID
     topic: str
     key: str
     title: str

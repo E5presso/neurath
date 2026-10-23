@@ -1,8 +1,9 @@
 """읽은 원 메시지를 ACK하며 작업 수락과 완료는 변경하지 않는다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -11,7 +12,7 @@ from neurath.application.ports.repositories.message import IMessageRepository
 from neurath.domain.aggregates.message import Message
 
 
-@dataclass(frozen=True)
+@immutable
 class AcknowledgeMessageCommand(AbstractCommand):
     """읽은 원 메시지를 ACK하며 작업 수락과 완료는 변경하지 않는다.
 
@@ -20,8 +21,8 @@ class AcknowledgeMessageCommand(AbstractCommand):
         peer_id: 호출한 등록 피어.
     """
 
-    message_id: str
-    peer_id: str
+    message_id: UUID
+    peer_id: UUID
 
 
 @UseCase()

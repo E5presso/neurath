@@ -1,8 +1,8 @@
 """원래 태스크 요구에 연결된 배정과 실제 수신자의 수행 이력을 보존한다."""
 
 from collections.abc import Sequence
-from typing import override
-from uuid import uuid4
+from typing import Self, override
+from uuid import UUID, uuid7
 
 from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
@@ -17,11 +17,12 @@ from neurath.domain.delegation_records import (
     ProviderPlan,
 )
 from neurath.domain.errors import ContextNotFound, InvalidTaskState
+from neurath.domain.provider import ProviderStatus
 from neurath.domain.task_records import TaskStatus
 
 
 @mutable
-class Delegation(AbstractAggregateRoot[str]):
+class Delegation(AbstractAggregateRoot[UUID]):
     """한 요구 개정의 수행·검토 배정이며 정정 전 결과도 역사로 남긴다.
 
     Attributes:
@@ -50,25 +51,25 @@ class Delegation(AbstractAggregateRoot[str]):
         revision: 저장소 낙관적 버전.
     """
 
-    task_id: str
+    task_id: UUID
     definition_number: int
-    source_id: str
-    sender_id: str
-    recipient_id: str | None
+    source_id: UUID
+    sender_id: UUID
+    recipient_id: UUID | None
     role: DelegationRole
     scope: str
     route: DelegationRoute
-    parent_id: str | None = None
+    parent_id: UUID | None = None
     plan: ProviderPlan | None = None
     status: DelegationStatus = DelegationStatus.PREPARED
-    message_id: str | None = None
+    message_id: UUID | None = None
     execution_reference: str | None = None
     progress: Sequence[str] = ()
     report: DelegationReport | None = None
     stop_reason: str | None = None
     stop_evidence: str | None = None
     provider_requested: bool = False
-    provider_status: str | None = None
+    provider_status: ProviderStatus | None = None
     provider_output: str = ""
     provider_error: str | None = None
     native_session_id: str | None = None
@@ -76,13 +77,13 @@ class Delegation(AbstractAggregateRoot[str]):
 
     @classmethod
     @override
-    def next_id(cls) -> str:
+    def next_id(cls) -> UUID:
         """배정의 전달·복구에서 재사용할 ID를 생성한다.
 
         Returns:
-            str: 새 배정 ID.
+            UUID: 새 배정 ID.
         """
-        return str(uuid4())
+        return uuid7()
 
     @override
     def validate(self) -> None:
@@ -115,7 +116,7 @@ class Delegation(AbstractAggregateRoot[str]):
         ):
             raise InvalidTaskState("Delegation no longer matches the current request")
 
-    def require_recipient(self, peer_id: str) -> None:
+    def require_recipient(self, peer_id: UUID) -> None:
         """수신자가 다른 배정에 수락·결과를 기록하지 못하게 한다.
 
         Args:
@@ -127,7 +128,7 @@ class Delegation(AbstractAggregateRoot[str]):
         if peer_id != self.recipient_id:
             raise ContextNotFound("Delegation belongs to another recipient")
 
-    def assign(self, message_id: str) -> None:
+    def assign(self, message_id: UUID) -> None:
         """원 배정 메시지를 연결하며 반복 제출은 같은 ID만 허용한다.
 
         Args:
@@ -143,7 +144,7 @@ class Delegation(AbstractAggregateRoot[str]):
         self.message_id = message_id
         self.status = DelegationStatus.ASSIGNED
 
-    def accept(self, peer_id: str, task: Task) -> None:
+    def accept(self, peer_id: UUID, task: Task) -> None:
         """최신 배정을 원 수신자가 수락한다. 추가 인간 입력을 요구하지 않는다.
 
         Args:
@@ -161,7 +162,7 @@ class Delegation(AbstractAggregateRoot[str]):
             raise InvalidTaskState("Only an assigned task can be accepted")
         self.status = DelegationStatus.ACCEPTED
 
-    def advance(self, peer_id: str, task: Task, observation: str) -> None:
+    def advance(self, peer_id: UUID, task: Task, observation: str) -> None:
         """수락된 최신 배정에 실제 진행 관찰을 추가한다.
 
         Args:
@@ -183,7 +184,7 @@ class Delegation(AbstractAggregateRoot[str]):
             self.progress = (*self.progress, observation)
         self.status = DelegationStatus.RUNNING
 
-    def complete(self, peer_id: str, report: DelegationReport) -> None:
+    def complete(self, peer_id: UUID, report: DelegationReport) -> None:
         """옛 개정의 늦은 보고도 보존하되 취소·정정 상태는 되돌리지 않는다.
 
         Args:
@@ -223,7 +224,8 @@ class Delegation(AbstractAggregateRoot[str]):
         )
         self.status = DelegationStatus.STOP_REQUESTED
         if (
-            self.provider_status in ("completed", "failed", "stopped")
+            self.provider_status
+            in (ProviderStatus.COMPLETED, ProviderStatus.FAILED, ProviderStatus.STOPPED)
             and self.execution_reference is not None
         ):
             self.stop_evidence = self.execution_reference
@@ -232,7 +234,7 @@ class Delegation(AbstractAggregateRoot[str]):
         if self.provider_requested:
             self.add_event(ProviderStopRequested(delegation_id=self.uid, sender_id=self.sender_id))
 
-    def confirm_stop(self, peer_id: str, evidence: str) -> None:
+    def confirm_stop(self, peer_id: UUID, evidence: str) -> None:
         """수신 경계의 중단 관찰이 있을 때만 실제 중단을 표시한다.
 
         Args:
@@ -271,7 +273,7 @@ class Delegation(AbstractAggregateRoot[str]):
     def observe_provider(
         self,
         reference: str,
-        status: str,
+        status: ProviderStatus,
         native_session_id: str | None,
         output: str,
         error: str | None,
@@ -291,11 +293,15 @@ class Delegation(AbstractAggregateRoot[str]):
         if not self.provider_requested:
             raise InvalidTaskState("Provider observation requires a committed execution request")
         if not reference.strip():
-            if status != "unknown" or not error:
+            if status is not ProviderStatus.UNKNOWN or not error:
                 raise InvalidTaskState("An unobserved execution requires a failure diagnostic")
-            if self.provider_status in ("completed", "failed", "stopped"):
+            if self.provider_status in (
+                ProviderStatus.COMPLETED,
+                ProviderStatus.FAILED,
+                ProviderStatus.STOPPED,
+            ):
                 return
-            self.provider_status = "unknown"
+            self.provider_status = ProviderStatus.UNKNOWN
             self.provider_error = error
             return
         if self.execution_reference is not None and self.execution_reference != reference:
@@ -306,7 +312,11 @@ class Delegation(AbstractAggregateRoot[str]):
             and native_session_id != self.native_session_id
         ):
             raise InvalidTaskState("Observed native session changed")
-        if self.provider_status in ("completed", "failed", "stopped"):
+        if self.provider_status in (
+            ProviderStatus.COMPLETED,
+            ProviderStatus.FAILED,
+            ProviderStatus.STOPPED,
+        ):
             return
         self.execution_reference = reference
         self.provider_status = status
@@ -314,15 +324,24 @@ class Delegation(AbstractAggregateRoot[str]):
             self.native_session_id = native_session_id
         self.provider_output = output
         self.provider_error = error
-        if status in ("completed", "failed", "stopped") and self.stop_reason is not None:
+        if (
+            status in (ProviderStatus.COMPLETED, ProviderStatus.FAILED, ProviderStatus.STOPPED)
+            and self.stop_reason is not None
+        ):
             self.stop_evidence = reference
             self.status = DelegationStatus.STOPPED
-        elif self.stop_reason is None and status in ("running", "completed", "failed"):
+        elif self.stop_reason is None and status in (
+            ProviderStatus.RUNNING,
+            ProviderStatus.COMPLETED,
+            ProviderStatus.FAILED,
+        ):
             self.status = (
-                DelegationStatus.RUNNING if status == "running" else DelegationStatus.COMPLETED
+                DelegationStatus.RUNNING
+                if status is ProviderStatus.RUNNING
+                else DelegationStatus.COMPLETED
             )
 
-    def bind_provider_peer(self, provider: str, native_session_id: str, peer_id: str) -> None:
+    def bind_provider_peer(self, provider: str, native_session_id: str, peer_id: UUID) -> None:
         """실제 호스트 관찰의 세션을 원 provider 배정의 수신자로 연결한다.
 
         Args:
@@ -342,3 +361,53 @@ class Delegation(AbstractAggregateRoot[str]):
             raise InvalidTaskState("Provider assignment is already bound to another receiver")
         self.native_session_id = native_session_id
         self.recipient_id = peer_id
+
+    def require_redelegation(self, task: Task, sender_id: UUID) -> None:
+        """수락한 최신 배정의 수신자만 그 범위에서 다시 위임할 수 있게 한다.
+
+        Args:
+            task: 현재 원 태스크.
+            sender_id: 재위임을 요청한 피어.
+
+        Raises:
+            InvalidTaskState: 아직 수락하지 않았거나 이미 끝낸 배정인 경우.
+        """
+        self.require_recipient(sender_id)
+        self.require_current(task)
+        if self.status not in (DelegationStatus.ACCEPTED, DelegationStatus.RUNNING):
+            raise InvalidTaskState("Redelegation requires an accepted current assignment")
+
+    def find_reusable(self, assignments: Sequence[Self]) -> Self | None:
+        """같은 요구·역할의 배정을 재사용하고 다른 원문으로 덮어쓰는 재시도를 거부한다.
+
+        Args:
+            assignments: 같은 태스크에 이미 저장한 배정들.
+
+        Returns:
+            Self | None: 같은 요청의 기존 배정이며 최초 요청이면 None.
+
+        Raises:
+            InvalidTaskState: 루트 배정이 이미 있거나 같은 배정의 범위를 바꾸려 한 경우.
+        """
+        for existing in assignments:
+            if (
+                existing.definition_number != self.definition_number
+                or existing.role is not self.role
+            ):
+                continue
+            if existing.sender_id != self.sender_id:
+                if existing.parent_id is None and self.parent_id is None:
+                    raise InvalidTaskState(
+                        "This task revision already has a root assignment; recover it instead of duplicating execution"
+                    )
+                continue
+            recipient_id = None if existing.plan is not None else existing.recipient_id
+            if (
+                recipient_id != self.recipient_id
+                or existing.scope != self.scope
+                or existing.route is not self.route
+                or existing.plan != self.plan
+            ):
+                raise InvalidTaskState("This definition and role already have an assignment")
+            return existing
+        return None

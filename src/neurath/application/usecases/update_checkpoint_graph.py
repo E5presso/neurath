@@ -1,9 +1,10 @@
 """커밋된 체크포인트의 Graphify 갱신을 DB 잠금 없이 실행한다."""
 
 import asyncio
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 from spakky.event.event_publisher import IAsyncEventPublisher
@@ -12,7 +13,7 @@ from neurath.application.ports.services.graph import IGraphService
 from neurath.domain.memory_events import CheckpointGraphObserved
 
 
-@dataclass(frozen=True)
+@immutable
 class UpdateCheckpointGraphCommand(AbstractCommand):
     """검증·커밋된 보고와 외부 갱신 대상을 전달한다.
 
@@ -21,7 +22,7 @@ class UpdateCheckpointGraphCommand(AbstractCommand):
         directory: 요청에 기록한 Graphify 경로.
     """
 
-    memory_id: str
+    memory_id: UUID
     directory: str
 
 

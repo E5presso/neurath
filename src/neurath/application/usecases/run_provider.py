@@ -1,9 +1,10 @@
 """커밋된 계획을 실제 CLI 실행으로 연결하고 초기 관찰을 후속 저장에 전달한다."""
 
 import asyncio
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 from spakky.event.event_publisher import IAsyncEventPublisher
@@ -16,9 +17,10 @@ from neurath.application.usecases.check_provider_start import (
 )
 from neurath.domain.collaboration_events import ProviderExecutionObserved
 from neurath.domain.errors import InvalidTaskState
+from neurath.domain.provider import ProviderStatus
 
 
-@dataclass(frozen=True)
+@immutable
 class RunProviderCommand(AbstractCommand):
     """커밋된 배정의 실행 입력이다.
 
@@ -27,7 +29,7 @@ class RunProviderCommand(AbstractCommand):
         prompt: 원 지시와 맡긴 범위.
     """
 
-    delegation_id: str
+    delegation_id: UUID
     prompt: str
 
 
@@ -62,7 +64,9 @@ class RunProviderUseCase(IAsyncCommandUseCase[RunProviderCommand, None]):
         Raises:
             InvalidTaskState: 커밋된 실행 계획이나 요청이 없는 경우.
         """
-        delegation = await self.check.run(CheckProviderStartQuery(command.delegation_id))
+        delegation = await self.check.run(
+            CheckProviderStartQuery(delegation_id=command.delegation_id)
+        )
         if delegation.plan is None or not delegation.provider_requested:
             raise InvalidTaskState("Provider execution was not requested")
         try:
@@ -70,7 +74,11 @@ class RunProviderUseCase(IAsyncCommandUseCase[RunProviderCommand, None]):
                 self.provider.start, delegation.uid, delegation.plan, command.prompt
             )
         except Exception as error:
-            result = ProviderObservation("", "unknown", error=f"{type(error).__name__}: {error}")
+            result = ProviderObservation(
+                reference="",
+                status=ProviderStatus.UNKNOWN,
+                error=f"{type(error).__name__}: {error}",
+            )
         await self.publisher.publish(
             ProviderExecutionObserved(
                 delegation_id=delegation.uid,

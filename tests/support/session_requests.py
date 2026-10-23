@@ -102,10 +102,10 @@ async def move_session(
 
 def session_state(result):
     return {
-        "project": {"uid": result.project.uid, "root_path": result.project.root_path},
+        "project": {"uid": str(result.project.uid), "root_path": result.project.root_path},
         "session": {
-            "uid": result.session.uid,
-            "project_id": result.session.project_id,
+            "uid": str(result.session.uid),
+            "project_id": str(result.session.project_id),
             "provider": result.session.provider,
             "host_session_id": result.session.host_session_id,
             "working_directory": result.session.working_directory,

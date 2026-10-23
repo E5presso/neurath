@@ -5,7 +5,7 @@ import os
 import subprocess
 import sys
 import time
-from dataclasses import replace
+from dataclasses import asdict, replace
 from pathlib import Path
 from uuid import uuid4
 
@@ -21,6 +21,7 @@ from neurath.domain.delegation_records import (
     ProviderPlan,
 )
 from neurath.domain.errors import InvalidTaskState
+from neurath.domain.provider import ProviderKind, ProviderStatus
 from neurath.infrastructure.provider import SubprocessProviderService
 from neurath.infrastructure.provider_protocol import discover_models
 from neurath.infrastructure.provider_worker import execute, process_identity
@@ -38,10 +39,12 @@ def provider_environment(tmp_path, monkeypatch):
     monkeypatch.setattr(
         SubprocessProviderService,
         "discover",
-        lambda self, p: ProviderCapabilities(p, ("fixture-model",), ("read-only", "plan")),
+        lambda self, p: ProviderCapabilities(
+            provider=p, models=("fixture-model",), policies=("read-only", "plan")
+        ),
     )
     plan = ProviderPlan(
-        provider="codex",
+        provider=ProviderKind.CODEX,
         model="fixture-model",
         policy="read-only",
         directory=str(tmp_path),
@@ -94,7 +97,7 @@ print(json.dumps({{"type":"turn.completed"}}),flush=True)
     result = finished(service, uid)
     assert result.status == "completed" and result.native_session_id == "actual-fixture-session"
     assert result.output == "original assigned scope"
-    assert service.start(uid, plan, "original assigned scope") == result
+    assert asdict(service.start(uid, plan, "original assigned scope")) == asdict(result)
     assert marker.read_text() == "x"
     assert service.cancel(uid).status == "completed"
     with pytest.raises(ValueError):
@@ -275,7 +278,7 @@ def test_claude_worker_uses_explicit_plan_and_real_session(provider_environment)
     )
     service = SubprocessProviderService()
     uid = str(uuid4())
-    service.start(uid, replace(plan, provider="claude", policy="plan"), "scope")
+    service.start(uid, replace(plan, provider=ProviderKind.CLAUDE, policy="plan"), "scope")
     result = finished(service, uid)
     assert result.status == "completed" and result.native_session_id == uid
 
@@ -352,7 +355,9 @@ async def test_provider_application_commits_before_launch_and_recovers_without_d
     calls = []
 
     def discover(self, provider):
-        return ProviderCapabilities("codex", ("model",), ("read-only",))
+        return ProviderCapabilities(
+            provider=ProviderKind.CODEX, models=("model",), policies=("read-only",)
+        )
 
     def start(self, uid, plan, prompt):
         import sqlite3
@@ -365,12 +370,16 @@ async def test_provider_application_commits_before_launch_and_recovers_without_d
             connection.rollback()
         assert "original requirement text" in prompt and task.definition.required_result in prompt
         calls.append(uid)
-        return ProviderObservation("/run/" + uid, "running", "native-actual")
+        return ProviderObservation(
+            reference="/run/" + str(uid),
+            status=ProviderStatus.RUNNING,
+            native_session_id="native-actual",
+        )
 
     monkeypatch.setattr(SubprocessProviderService, "discover", discover)
     monkeypatch.setattr(SubprocessProviderService, "start", start)
     plan = ProviderPlan(
-        provider="codex",
+        provider=ProviderKind.CODEX,
         model="model",
         policy="read-only",
         directory=actor.session.working_directory,
@@ -379,7 +388,13 @@ async def test_provider_application_commits_before_launch_and_recovers_without_d
     from neurath.application.usecases.prepare_delegation import PrepareDelegationCommand
 
     assignment = PrepareDelegationCommand(
-        task.uid, sender.uid, DelegationRole.EXECUTOR, "scope", DelegationRoute.PROVIDER, None, plan
+        task_id=task.uid,
+        sender_id=sender.uid,
+        role=DelegationRole.EXECUTOR,
+        scope="scope",
+        route=DelegationRoute.PROVIDER,
+        recipient_id=None,
+        plan=plan,
     )
     delegation = await call(database, "delegate_task", "DelegateTask", assignment)
     assert (
@@ -391,7 +406,10 @@ async def test_provider_application_commits_before_launch_and_recovers_without_d
         SubprocessProviderService,
         "observe",
         lambda self, uid: ProviderObservation(
-            "/run/" + uid, "completed", "native-actual", "result"
+            reference="/run/" + str(uid),
+            status=ProviderStatus.COMPLETED,
+            native_session_id="native-actual",
+            output="result",
         ),
     )
     await call(database, "recover_provider", "RecoverProvider", delegation.uid, sender.uid)
@@ -402,7 +420,11 @@ async def test_provider_application_commits_before_launch_and_recovers_without_d
     monkeypatch.setattr(
         SubprocessProviderService,
         "observe",
-        lambda self, uid: ProviderObservation("/run/" + uid, "running", "native-actual"),
+        lambda self, uid: ProviderObservation(
+            reference="/run/" + str(uid),
+            status=ProviderStatus.RUNNING,
+            native_session_id="native-actual",
+        ),
     )
     await call(database, "recover_provider", "RecoverProvider", delegation.uid, sender.uid)
     assert (
@@ -423,26 +445,38 @@ async def test_provider_cancel_propagates_and_unsupported_policy_does_not_create
     monkeypatch.setattr(
         SubprocessProviderService,
         "discover",
-        lambda self, p: ProviderCapabilities("codex", ("model",), ("read-only",)),
+        lambda self, p: ProviderCapabilities(
+            provider=ProviderKind.CODEX, models=("model",), policies=("read-only",)
+        ),
     )
     from neurath.application.usecases.prepare_delegation import PrepareDelegationCommand
 
     plan = ProviderPlan(
-        provider="codex",
+        provider=ProviderKind.CODEX,
         model="model",
         policy="wrong",
         directory=actor.session.working_directory,
         parent_session_id=actor.session.uid,
     )
     request = PrepareDelegationCommand(
-        task.uid, sender.uid, DelegationRole.EXECUTOR, "scope", DelegationRoute.PROVIDER, None, plan
+        task_id=task.uid,
+        sender_id=sender.uid,
+        role=DelegationRole.EXECUTOR,
+        scope="scope",
+        route=DelegationRoute.PROVIDER,
+        recipient_id=None,
+        plan=plan,
     )
     with pytest.raises(ValueError):
         await call(database, "delegate_task", "DelegateTask", request)
     monkeypatch.setattr(
         SubprocessProviderService,
         "start",
-        lambda self, uid, p, prompt: ProviderObservation("/run/" + uid, "running", "native-actual"),
+        lambda self, uid, p, prompt: ProviderObservation(
+            reference="/run/" + str(uid),
+            status=ProviderStatus.RUNNING,
+            native_session_id="native-actual",
+        ),
     )
     delegation = await call(
         database,
@@ -454,7 +488,11 @@ async def test_provider_cancel_propagates_and_unsupported_policy_does_not_create
 
     def cancel(self, uid):
         stops.append(uid)
-        return ProviderObservation("/run/" + uid, "stopped", "native-actual")
+        return ProviderObservation(
+            reference="/run/" + str(uid),
+            status=ProviderStatus.STOPPED,
+            native_session_id="native-actual",
+        )
 
     monkeypatch.setattr(SubprocessProviderService, "cancel", cancel)
     correction = await record(
@@ -486,7 +524,9 @@ async def test_provider_start_failure_is_preserved_as_uncertain_not_success(
     monkeypatch.setattr(
         SubprocessProviderService,
         "discover",
-        lambda self, p: ProviderCapabilities("codex", ("model",), ("read-only",)),
+        lambda self, p: ProviderCapabilities(
+            provider=ProviderKind.CODEX, models=("model",), policies=("read-only",)
+        ),
     )
 
     def fail(*args):
@@ -496,7 +536,7 @@ async def test_provider_start_failure_is_preserved_as_uncertain_not_success(
     from neurath.application.usecases.prepare_delegation import PrepareDelegationCommand
 
     plan = ProviderPlan(
-        provider="codex",
+        provider=ProviderKind.CODEX,
         model="model",
         policy="read-only",
         directory=actor.session.working_directory,
@@ -507,13 +547,13 @@ async def test_provider_start_failure_is_preserved_as_uncertain_not_success(
         "delegate_task",
         "DelegateTask",
         PrepareDelegationCommand(
-            task.uid,
-            sender.uid,
-            DelegationRole.EXECUTOR,
-            "scope",
-            DelegationRoute.PROVIDER,
-            None,
-            plan,
+            task_id=task.uid,
+            sender_id=sender.uid,
+            role=DelegationRole.EXECUTOR,
+            scope="scope",
+            route=DelegationRoute.PROVIDER,
+            recipient_id=None,
+            plan=plan,
         ),
     )
     assert (
@@ -534,7 +574,7 @@ async def test_provider_hook_binds_only_actual_session_and_current_assignment(
 
     actor, sender, _, _, task = collaboration
     plan = ProviderPlan(
-        provider="codex",
+        provider=ProviderKind.CODEX,
         model="model",
         policy="read-only",
         directory=actor.session.working_directory,
@@ -548,10 +588,10 @@ async def test_provider_hook_binds_only_actual_session_and_current_assignment(
         stored.provider_requested = True
         await scope.get(IDelegationRepository).save(stored)
     command = ReceiveHookCommand(
-        "codex",
-        "actual-provider-session",
-        actor.session.working_directory,
-        HookEvent.SESSION_START,
+        provider="codex",
+        host_session_id="actual-provider-session",
+        working_directory=actor.session.working_directory,
+        event=HookEvent.SESSION_START,
         start_source="startup",
         delegation_id=delegation.uid,
     )
@@ -567,7 +607,11 @@ async def test_provider_hook_binds_only_actual_session_and_current_assignment(
         "record_provider",
         "RecordProvider",
         delegation.uid,
-        ProviderObservation("/actual-run", "running", "actual-provider-session"),
+        ProviderObservation(
+            reference="/actual-run",
+            status=ProviderStatus.RUNNING,
+            native_session_id="actual-provider-session",
+        ),
     )
     with pytest.raises(InvalidTaskState):
         await run(
@@ -576,7 +620,11 @@ async def test_provider_hook_binds_only_actual_session_and_current_assignment(
             database_path=database,
         )
     with pytest.raises(InvalidTaskState):
-        await run(ReceiveHookUseCase, replace(command, provider="claude"), database_path=database)
+        await run(
+            ReceiveHookUseCase,
+            replace(command, provider=ProviderKind.CLAUDE),
+            database_path=database,
+        )
 
 
 async def test_provider_cannot_execute_in_a_different_project(database, collaboration, tmp_path):
@@ -587,7 +635,7 @@ async def test_provider_cannot_execute_in_a_different_project(database, collabor
 
     await register_session(str(elsewhere), "codex", "elsewhere", database_path=database)
     plan = ProviderPlan(
-        provider="codex",
+        provider=ProviderKind.CODEX,
         model="model",
         policy="read-only",
         directory=str(elsewhere),
@@ -616,7 +664,9 @@ async def test_run_requires_committed_provider_request(database, collaboration):
     delegation = await prepare(database, collaboration)
     async with spakky_context(database) as scope:
         with pytest.raises(InvalidTaskState):
-            await scope.get(RunProviderUseCase).run(RunProviderCommand(delegation.uid, "scope"))
+            await scope.get(RunProviderUseCase).run(
+                RunProviderCommand(delegation_id=delegation.uid, prompt="scope")
+            )
 
 
 def test_provider_observation_identity_and_late_results_are_fenced():
@@ -626,7 +676,11 @@ def test_provider_observation_identity_and_late_results_are_fenced():
     source = RequestSource.create("p", "s", SourceKind.PROMPT, "original")
     task = Task.create("p", "s", source, "title", "result")
     plan = ProviderPlan(
-        provider="codex", model="model", policy="read-only", directory="/tmp", parent_session_id="s"
+        provider=ProviderKind.CODEX,
+        model="model",
+        policy="read-only",
+        directory="/tmp",
+        parent_session_id="s",
     )
     delegation = Delegation(
         uid=Delegation.next_id(),
@@ -641,16 +695,16 @@ def test_provider_observation_identity_and_late_results_are_fenced():
         plan=plan,
     )
     with pytest.raises(InvalidTaskState):
-        delegation.observe_provider("/run", "running", None, "", None)
+        delegation.observe_provider("/run", ProviderStatus.RUNNING, None, "", None)
     delegation.request_provider(task, "scope")
     with pytest.raises(InvalidTaskState):
-        delegation.observe_provider("", "completed", None, "", None)
-    delegation.observe_provider("/run", "running", "native", "", None)
+        delegation.observe_provider("", ProviderStatus.COMPLETED, None, "", None)
+    delegation.observe_provider("/run", ProviderStatus.RUNNING, "native", "", None)
     with pytest.raises(InvalidTaskState):
-        delegation.observe_provider("/other", "running", "native", "", None)
+        delegation.observe_provider("/other", ProviderStatus.RUNNING, "native", "", None)
     with pytest.raises(InvalidTaskState):
-        delegation.observe_provider("/run", "running", "another", "", None)
-    delegation.observe_provider("/run", "unknown", None, "", "connection lost")
+        delegation.observe_provider("/run", ProviderStatus.RUNNING, "another", "", None)
+    delegation.observe_provider("/run", ProviderStatus.UNKNOWN, None, "", "connection lost")
     assert delegation.native_session_id == "native"
     delegation.bind_provider_peer("codex", "native", "peer")
     with pytest.raises(InvalidTaskState):
@@ -660,7 +714,9 @@ def test_provider_observation_identity_and_late_results_are_fenced():
     )
     task.invalidate(correction, "cancelled")
     delegation.reconcile(task)
-    delegation.observe_provider("/run", "completed", "native", "late actual result", None)
+    delegation.observe_provider(
+        "/run", ProviderStatus.COMPLETED, "native", "late actual result", None
+    )
     assert (
         delegation.status is DelegationStatus.STOPPED
         and delegation.provider_output == "late actual result"
@@ -862,12 +918,12 @@ async def test_corrected_assignment_retains_original_request_in_peer_and_provide
         "delegate_task",
         "DelegateTask",
         PrepareDelegationCommand(
-            task.uid,
-            sender.uid,
-            DelegationRole.EXECUTOR,
-            "Produce corrected output",
-            DelegationRoute.PEER,
-            recipient.uid,
+            task_id=task.uid,
+            sender_id=sender.uid,
+            role=DelegationRole.EXECUTOR,
+            scope="Produce corrected output",
+            route=DelegationRoute.PEER,
+            recipient_id=recipient.uid,
         ),
     )
     message = await call(database, "read_message", "ReadMessage", peer.message_id, recipient.uid)
@@ -879,18 +935,22 @@ async def test_corrected_assignment_retains_original_request_in_peer_and_provide
     monkeypatch.setattr(
         SubprocessProviderService,
         "discover",
-        lambda self, p: ProviderCapabilities("codex", ("model",), ("read-only",)),
+        lambda self, p: ProviderCapabilities(
+            provider=ProviderKind.CODEX, models=("model",), policies=("read-only",)
+        ),
     )
 
     def start(self, uid, plan, prompt):
         prompts.append(prompt)
         return ProviderObservation(
-            "/run/" + uid, "unknown", error="fixture accepted, start unconfirmed"
+            reference="/run/" + str(uid),
+            status=ProviderStatus.UNKNOWN,
+            error="fixture accepted, start unconfirmed",
         )
 
     monkeypatch.setattr(SubprocessProviderService, "start", start)
     plan = ProviderPlan(
-        provider="codex",
+        provider=ProviderKind.CODEX,
         model="model",
         policy="read-only",
         directory=actor.session.working_directory,
@@ -901,13 +961,13 @@ async def test_corrected_assignment_retains_original_request_in_peer_and_provide
         "delegate_task",
         "DelegateTask",
         PrepareDelegationCommand(
-            task.uid,
-            sender.uid,
-            DelegationRole.REVIEWER,
-            "Review corrected output",
-            DelegationRoute.PROVIDER,
-            None,
-            plan,
+            task_id=task.uid,
+            sender_id=sender.uid,
+            role=DelegationRole.REVIEWER,
+            scope="Review corrected output",
+            route=DelegationRoute.PROVIDER,
+            recipient_id=None,
+            plan=plan,
         ),
     )
     assert provider.provider_status == "unknown"
@@ -941,12 +1001,16 @@ def test_assignment_cannot_use_a_different_task_or_fabricated_provider_identity(
         delegation,
         route=DelegationRoute.PROVIDER,
         plan=ProviderPlan(
-            provider="codex", model="m", policy="read-only", directory="/tmp", parent_session_id="s"
+            provider=ProviderKind.CODEX,
+            model="m",
+            policy="read-only",
+            directory="/tmp",
+            parent_session_id="s",
         ),
         provider_requested=True,
     )
-    planned.observe_provider("/run", "completed", "native", "done", None)
-    planned.observe_provider("", "unknown", None, "", "late start failure")
+    planned.observe_provider("/run", ProviderStatus.COMPLETED, "native", "done", None)
+    planned.observe_provider("", ProviderStatus.UNKNOWN, None, "", "late start failure")
     assert planned.provider_status == "completed" and planned.provider_output == "done"
 
 
@@ -961,7 +1025,7 @@ async def test_handoff_reuses_original_assignment_without_old_owner_or_duplicate
 
     actor, sender, receiver, recipient, task = collaboration
     plan = ProviderPlan(
-        provider="codex",
+        provider=ProviderKind.CODEX,
         model="model",
         policy="read-only",
         directory=actor.session.working_directory,
@@ -988,13 +1052,13 @@ async def test_handoff_reuses_original_assignment_without_old_owner_or_duplicate
             "PrepareDelegation",
             **vars(
                 PrepareDelegationCommand(
-                    task.uid,
-                    recipient.uid,
-                    DelegationRole.EXECUTOR,
-                    "scope",
-                    DelegationRoute.PROVIDER,
-                    None,
-                    replace(plan, parent_session_id=receiver.session.uid),
+                    task_id=task.uid,
+                    sender_id=recipient.uid,
+                    role=DelegationRole.EXECUTOR,
+                    scope="scope",
+                    route=DelegationRoute.PROVIDER,
+                    recipient_id=None,
+                    plan=replace(plan, parent_session_id=receiver.session.uid),
                 )
             ),
         )
@@ -1002,7 +1066,11 @@ async def test_handoff_reuses_original_assignment_without_old_owner_or_duplicate
 
     def start(self, uid, plan, prompt):
         launched.append(uid)
-        return ProviderObservation("/run/" + uid, "running", "native-after-handoff")
+        return ProviderObservation(
+            reference="/run/" + str(uid),
+            status=ProviderStatus.RUNNING,
+            native_session_id="native-after-handoff",
+        )
 
     monkeypatch.setattr(SubprocessProviderService, "start", start)
     await call(database, "start_provider", "StartProvider", original.uid, recipient.uid)

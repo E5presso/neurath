@@ -3,8 +3,8 @@
 import json
 import os
 import sys
-from enum import StrEnum
 from typing import Annotated, cast
+from uuid import UUID
 
 from spakky.plugins.sqlalchemy.persistency.connection_manager import AsyncConnectionManager
 from spakky.plugins.typer.stereotypes.cli_controller import CliController, command
@@ -15,19 +15,9 @@ from neurath.application.usecases.receive_hook import (
     ReceiveHookResult,
     ReceiveHookUseCase,
 )
+from neurath.domain.provider import ProviderKind
 from neurath.domain.runtime_records import HookAction, HookEvent
-
-
-class HookProvider(StrEnum):
-    """설치된 훅이 지정하는 네이티브 입력 규격이다.
-
-    Attributes:
-        CODEX: Codex의 turn_id와 도구 사건 규격.
-        CLAUDE: Claude의 prompt_id와 도구 사건 규격.
-    """
-
-    CODEX = "codex"
-    CLAUDE = "claude"
+from neurath.serialization import encode_uuid
 
 
 @CliController("hook")
@@ -51,7 +41,7 @@ class HookCliController:
     @command("handle", help="표준입력의 네이티브 훅 JSON을 처리합니다.")
     async def handle(
         self,
-        provider: Annotated[HookProvider, Option("--provider", help="호스트 입력 규격")],
+        provider: Annotated[ProviderKind, Option("--provider", help="호스트 입력 규격")],
         bypass: Annotated[bool, Option("--bypass", help="원장을 변경하지 않고 훅을 우회")] = False,
     ) -> None:
         """호스트 JSON 하나를 받아 제어 응답 하나를 표준출력에 기록한다.
@@ -64,7 +54,10 @@ class HookCliController:
             if bypass:
                 echo(
                     json.dumps(
-                        {"systemMessage": "Neurath hook bypass is enabled; task state is unchanged"}
+                        {
+                            "systemMessage": "Neurath hook bypass is enabled; task state is unchanged"
+                        },
+                        default=encode_uuid,
                     )
                 )
                 return
@@ -75,7 +68,7 @@ class HookCliController:
                     "continue": False,
                     "stopReason": f"Neurath hook failure: {error}. Use the management recovery/bypass path; unfinished work is preserved.",
                 }
-            echo(json.dumps(result, ensure_ascii=False))
+            echo(json.dumps(result, default=encode_uuid, ensure_ascii=False))
         finally:
             await self.connection.dispose()
 
@@ -196,7 +189,9 @@ class HookCliController:
                 raise ValueError("Tool event requires a tool name and call ID")
             writes = tool in {"Edit", "Write", "Bash", "apply_patch", "exec_command"}
         return ReceiveHookCommand(
-            delegation_id=os.environ.get("NEURATH_DELEGATION_ID"),
+            delegation_id=UUID(value)
+            if (value := os.environ.get("NEURATH_DELEGATION_ID"))
+            else None,
             provider=provider,
             host_session_id=session,
             working_directory=directory,

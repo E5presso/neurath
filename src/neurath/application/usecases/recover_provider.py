@@ -1,9 +1,10 @@
 """재연결 시 원 실행의 실제 자료만 대조해 저장하고 새 실행은 만들지 않는다."""
 
 import asyncio
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 from spakky.event.event_publisher import IAsyncEventPublisher
@@ -15,7 +16,7 @@ from neurath.domain.collaboration_events import ProviderExecutionObserved
 from neurath.domain.errors import InvalidTaskState
 
 
-@dataclass(frozen=True)
+@immutable
 class RecoverProviderCommand(AbstractCommand):
     """원 배정의 실행만 복구 조회할 참가자를 지정한다.
 
@@ -24,8 +25,8 @@ class RecoverProviderCommand(AbstractCommand):
         peer_id: 발신자 또는 실제 수신자.
     """
 
-    delegation_id: str
-    peer_id: str
+    delegation_id: UUID
+    peer_id: UUID
 
 
 @UseCase()
@@ -62,7 +63,9 @@ class RecoverProviderUseCase(IAsyncCommandUseCase[RecoverProviderCommand, Provid
         Raises:
             InvalidTaskState: 실행 요청이 없는 배정인 경우.
         """
-        delegation = await self.read.run(GetDelegationQuery(command.delegation_id, command.peer_id))
+        delegation = await self.read.run(
+            GetDelegationQuery(delegation_id=command.delegation_id, peer_id=command.peer_id)
+        )
         if not delegation.provider_requested:
             raise InvalidTaskState("No provider execution to recover")
         result = await asyncio.to_thread(
