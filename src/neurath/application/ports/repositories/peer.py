@@ -42,3 +42,18 @@ class IPeerRepository(IAsyncGenericRepository[Peer, UUID], ABC):
             NotImplementedError: 저장·실행 어댑터가 이 계약을 구현하지 않은 경우.
         """
         raise NotImplementedError
+
+    @abstractmethod
+    async def find_by_project_id(self, project_id: UUID) -> Sequence[Peer]:
+        """발행에 필요한 같은 프로젝트의 피어 aggregate를 조회한다.
+
+        Args:
+            project_id: 발행할 프로젝트 범위.
+
+        Returns:
+            Sequence[Peer]: 관찰한 해당 프로젝트의 피어.
+
+        Raises:
+            NotImplementedError: 저장 어댑터가 계약을 구현하지 않은 경우.
+        """
+        raise NotImplementedError

@@ -730,24 +730,55 @@ def test_provider_observation_identity_and_late_results_are_fenced():
 
 
 def test_discovery_timeout_and_stubborn_process_are_bounded(tmp_path, monkeypatch):
+    from threading import Event
+
     monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ["PATH"])
+    ready = tmp_path / "termination-handler-ready"
     executable(
         tmp_path,
         "codex",
-        "import sys,time,signal\nsignal.signal(signal.SIGTERM,signal.SIG_IGN)\nsys.stdin.readline()\ntime.sleep(30)\n",
+        f"""import sys, time, signal
+from pathlib import Path
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+Path({str(ready)!r}).touch()
+sys.stdin.readline()
+time.sleep(30)
+""",
     )
     import neurath.infrastructure.provider_protocol as protocol
 
+    real_monotonic = time.monotonic
     clock = iter([0, 0, 31])
     monkeypatch.setattr(protocol.time, "monotonic", lambda: next(clock, 31))
     real_wait = subprocess.Popen.wait
+    real_terminate = subprocess.Popen.terminate
+    real_kill = subprocess.Popen.kill
+    killed = []
 
-    def short_wait(self, timeout=None):
-        return real_wait(self, timeout=0.1 if timeout is not None else None)
+    def terminate_after_ready(process):
+        # 조회의 가상 timeout이 자식의 신호 핸들러 설치보다 빠르더라도 강제 종료 경계를 재현한다.
+        deadline = real_monotonic() + 5
+        while not ready.exists():
+            if real_monotonic() >= deadline:
+                real_kill(process)
+                real_wait(process)
+                pytest.fail("Provider fixture did not install its termination handler")
+            Event().wait(0.005)
+        real_terminate(process)
 
+    def short_wait(process, timeout=None):
+        return real_wait(process, timeout=0.1 if timeout is not None else None)
+
+    def observe_kill(process):
+        killed.append(process)
+        real_kill(process)
+
+    monkeypatch.setattr(subprocess.Popen, "terminate", terminate_after_ready)
     monkeypatch.setattr(subprocess.Popen, "wait", short_wait)
+    monkeypatch.setattr(subprocess.Popen, "kill", observe_kill)
     with pytest.raises(TimeoutError):
         discover_models("codex")
+    assert len(killed) == 1 and killed[0].returncode is not None
 
 
 def test_policy_discovery_does_not_claim_unsupported_cli_modes(tmp_path, monkeypatch):

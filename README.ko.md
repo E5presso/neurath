@@ -5,7 +5,7 @@
 Neurath는 로컬 CLI 전용 에이전트 하네스로 전면 재작성 중입니다.
 [승인된 명세](docs/ko/specification.md)는 태스크, 순서가 있는 실행 단계,
 훅, 기억, 협업, 복구 기능을 유지합니다. 이 체크아웃이 구현한 범위는
-#137의 사용자 단위 프로젝트·세션 기반과 #140의 원문·태스크·TODO 원장, #141의 스킬 단계 실행, #142의 [호스트 런타임](docs/ko/host-runtime.md), #143의 [현재 맥락·기억·인수](docs/ko/memory.md), #144의 [협업·provider 실행](docs/ko/collaboration.md) 라이브러리입니다.
+#137의 사용자 단위 프로젝트·세션 기반과 #140의 원문·태스크·TODO 원장, #141의 스킬 단계 실행, #142의 [호스트 런타임](docs/ko/host-runtime.md), #143의 [현재 맥락·기억·인수](docs/ko/memory.md), #144의 [협업·provider 실행](docs/ko/collaboration.md) 라이브러리와 #145의 [프로젝트 Newsroom](docs/ko/newsroom.md) 라이브러리·기사 CLI입니다.
 
 현재 후보 패키지는 가변 도메인 엔티티와 불변 요청 값, 명시적인 애플리케이션 port와
 use case, Spakky 도메인 기반·기본 SQLAlchemy repository·테이블 매핑과 요청별 트랜잭션을 제공합니다.

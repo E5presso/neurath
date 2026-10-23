@@ -9,6 +9,7 @@ from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
+from neurath.application.ports.repositories.article import IArticleRepository
 from neurath.application.ports.repositories.peer import IPeerRepository
 from neurath.domain.aggregates.peer import Peer
 
@@ -30,13 +31,15 @@ class SubscribePeerCommand(AbstractCommand):
 class SubscribePeerUseCase(IAsyncCommandUseCase[SubscribePeerCommand, Peer]):
     """피어의 구독만 갱신하며 과거 전달 대상과 메시지는 변경하지 않는다."""
 
-    def __init__(self, peers: IPeerRepository) -> None:
+    def __init__(self, peers: IPeerRepository, articles: IArticleRepository) -> None:
         """요청 범위의 조회·저장 계약을 받는다.
 
         Args:
             peers: Peer aggregate의 범위 조회와 저장.
+            articles: 구독 해제 뒤 재전송하면 안 되는 기사 알림의 저장.
         """
         self.peers = peers
+        self.articles = articles
 
     @transactional
     @override
@@ -51,4 +54,8 @@ class SubscribePeerUseCase(IAsyncCommandUseCase[SubscribePeerCommand, Peer]):
         """
         peer = await self.peers.get(command.peer_id)
         peer.subscribe(command.topics)
+        if "newsroom" not in peer.subscriptions:
+            for article in await self.articles.find_by_recipient_id(peer.uid):
+                article.consume_notices(peer, continuous=False)
+                await self.articles.save(article)
         return await self.peers.save(peer)
