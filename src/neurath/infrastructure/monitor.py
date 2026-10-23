@@ -145,5 +145,10 @@ class StderrMonitorNotifierService(IMonitorNotifierService):
         Returns:
             MonitorDelivery: stdout·stderr 경계의 제출이며 실제 전달 확인은 아님.
         """
-        print(f"Monitor {reference}\n{body}", file=sys.stderr, flush=True)
+        print(
+            f"""Monitor {reference}
+{body}""",
+            file=sys.stderr,
+            flush=True,
+        )
         return MonitorDelivery(status=NoticeStatus.SUBMITTED)

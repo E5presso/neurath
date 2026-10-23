@@ -157,7 +157,9 @@ class TickMonitorUseCase(IAsyncCommandUseCase[MonitorCommand, TaskMonitor]):
             result = await asyncio.to_thread(
                 self.notifier.submit,
                 f"{command.task_id}/{command.monitor_number}/{event.number}/{event.attempts}",
-                f"{event.body}\nObserved state: {event.state}\nEvidence: {event.reference}",
+                f"""{event.body}
+Observed state: {event.state}
+Evidence: {event.reference}""",
             )
         except Exception as error:
             result = MonitorDelivery(
