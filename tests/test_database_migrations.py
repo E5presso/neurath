@@ -360,7 +360,7 @@ async def test_destructive_downgrade_is_rejected_and_rolls_back_intermediate_met
     ) == session_state(original)
     with closing(sqlite3.connect(database)) as connection:
         assert (connection.execute("SELECT version_num FROM core_schema_revision")).fetchone() == (
-            "core_0007",
+            "core_0008",
         )
         assert (
             connection.execute("SELECT name FROM sqlite_master WHERE type='trigger'")

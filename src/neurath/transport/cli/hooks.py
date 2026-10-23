@@ -1,6 +1,7 @@
 """네이티브 훅의 JSON 입출력을 spakky-typer 명령으로 제공한다."""
 
 import json
+import os
 import sys
 from enum import StrEnum
 from typing import Annotated, cast
@@ -109,12 +110,12 @@ class HookCliController:
             return {"continue": False, "stopReason": result.message or "Execution is paused"}
         if result.action is HookAction.CONTINUE:
             return {"decision": "block", "reason": "Continue unfinished work:\n" + result.message}
-        if result.restore:
+        if result.restore or result.inbox:
             context = self._context(result)
             if context:
                 return {
                     "hookSpecificOutput": {
-                        "hookEventName": "SessionStart",
+                        "hookEventName": command.event.value,
                         "additionalContext": context,
                     }
                 }
@@ -133,7 +134,7 @@ class HookCliController:
         Raises:
             ValueError: 호스트 한도 안에 현재 맥락 전체를 전달할 수 없는 경우.
         """
-        lines: list[str] = []
+        lines: list[str] = list(result.inbox)
         for enclave in result.enclaves:
             for fact in enclave.facts:
                 lines.append(
@@ -195,6 +196,7 @@ class HookCliController:
                 raise ValueError("Tool event requires a tool name and call ID")
             writes = tool in {"Edit", "Write", "Bash", "apply_patch", "exec_command"}
         return ReceiveHookCommand(
+            delegation_id=os.environ.get("NEURATH_DELEGATION_ID"),
             provider=provider,
             host_session_id=session,
             working_directory=directory,

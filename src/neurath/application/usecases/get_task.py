@@ -1,5 +1,6 @@
 """지정한 소유 세션의 태스크 한 건과 보존된 이력을 조회한다."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import override
 
@@ -7,7 +8,9 @@ from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
 
+from neurath.application.ports.repositories.delegation import IDelegationRepository
 from neurath.application.ports.repositories.task import ITaskRepository
+from neurath.domain.aggregates.delegation import Delegation
 from neurath.domain.aggregates.task import Task
 
 
@@ -32,9 +35,11 @@ class GetTaskResult:
 
     Attributes:
         task: 저장된 현재 요구와 모든 시도·대기 기록을 가진 태스크.
+        delegations: 요구 개정·역할별 배정과 실제 보고. 옛 결과도 역사로 보존한다.
     """
 
     task: Task
+    delegations: Sequence[Delegation] = ()
 
 
 @UseCase()
@@ -45,13 +50,15 @@ class GetTaskUseCase(IAsyncQueryUseCase[GetTaskQuery, GetTaskResult]):
     조회는 작업 상태나 소유권을 변경하지 않는다.
     """
 
-    def __init__(self, tasks: ITaskRepository) -> None:
+    def __init__(self, tasks: ITaskRepository, delegations: IDelegationRepository) -> None:
         """상세 조회할 태스크를 읽는 저장소를 받는다.
 
         Args:
             tasks: 태스크 ID로 현재 상태와 소유 이력을 조회한다.
+            delegations: 태스크에 연결한 배정과 관찰을 조회한다.
         """
         self.tasks = tasks
+        self.delegations = delegations
 
     @transactional
     @override
@@ -66,4 +73,6 @@ class GetTaskUseCase(IAsyncQueryUseCase[GetTaskQuery, GetTaskResult]):
         """
         task = await self.tasks.get(query.task_id)
         task.require_scope(query.project_id, query.session_id)
-        return GetTaskResult(task=task)
+        return GetTaskResult(
+            task=task, delegations=await self.delegations.find_by_task_id(task.uid)
+        )

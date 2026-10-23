@@ -9,6 +9,7 @@ from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 
 from neurath.domain.aggregates.request_source import RequestSource
+from neurath.domain.collaboration_events import TaskDefinitionChanged
 from neurath.domain.errors import ContextNotFound, InvalidTaskState, RevisionConflict
 from neurath.domain.task_records import (
     ExternalWait,
@@ -311,6 +312,7 @@ class Task(AbstractAggregateRoot[str]):
         self.status = TaskStatus.PENDING
         self.current_attempt_number = None
         self.invalidated_reason = None
+        self.add_event(TaskDefinitionChanged(task_id=self.uid))
 
     def wait(self, condition: ExternalWait) -> None:
         """미해소 외부 대기를 이력에 추가하고 active에서 waiting으로 바꾼다.
@@ -371,6 +373,7 @@ class Task(AbstractAggregateRoot[str]):
         self.status = TaskStatus.INVALIDATED
         self.current_attempt_number = None
         self.invalidated_reason = reason
+        self.add_event(TaskDefinitionChanged(task_id=self.uid))
 
     def validate_dependencies(
         self, tasks: Sequence[Self], dependencies: Sequence[str] | None = None

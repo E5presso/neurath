@@ -9,22 +9,28 @@ from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
+from neurath.application.ports.repositories.delegation import IDelegationRepository
 from neurath.application.ports.repositories.enclave import IEnclaveRepository
 from neurath.application.ports.repositories.execution import IExecutionRepository
+from neurath.application.ports.repositories.message import IMessageRepository
+from neurath.application.ports.repositories.peer import IPeerRepository
 from neurath.application.ports.repositories.project import IProjectRepository
 from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.application.ports.repositories.workflow import IWorkflowRepository
 from neurath.application.ports.repositories.writer import IWriterRepository
 from neurath.application.ports.services.directory_observer import IDirectoryObserverService
+from neurath.domain.aggregates.delegation import Delegation
 from neurath.domain.aggregates.enclave import Enclave
 from neurath.domain.aggregates.execution import Execution
+from neurath.domain.aggregates.message import DeliveryStatus
+from neurath.domain.aggregates.peer import Peer
 from neurath.domain.aggregates.project import Project
 from neurath.domain.aggregates.session import HostSession
 from neurath.domain.aggregates.task import Task
 from neurath.domain.aggregates.workflow import WorkflowRun
 from neurath.domain.aggregates.writer import Writer
-from neurath.domain.errors import InvalidExecutionState
+from neurath.domain.errors import InvalidExecutionState, InvalidTaskState
 from neurath.domain.runtime_records import ExecutionStatus, HookAction, HookEvent, Liveness
 from neurath.domain.task_records import TaskStatus
 
@@ -47,6 +53,7 @@ class ReceiveHookCommand(AbstractCommand):
         interrupted: 실제 중단 여부.
         repeated: Stop 계속 수행 플래그.
         reason: 호스트가 전달한 실패·종료 사유.
+        delegation_id: 이 실행이 맡은 배정이며 일반 호스트 작업이면 None.
     """
 
     provider: str
@@ -62,6 +69,7 @@ class ReceiveHookCommand(AbstractCommand):
     interrupted: bool = False
     repeated: bool = False
     reason: str = ""
+    delegation_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -75,6 +83,7 @@ class ReceiveHookResult:
         enclaves: 복원 범위의 최신 현재 맥락.
         tasks: 이 세션의 현재 요구와 원문 참조.
         workflows: 작업에 연결된 현재 절차와 시도.
+        inbox: 이번 훅에 전달을 시도하는 메시지의 ID·제목 요약.
 
     """
 
@@ -84,6 +93,7 @@ class ReceiveHookResult:
     enclaves: Sequence[Enclave] = ()
     tasks: Sequence[Task] = ()
     workflows: Sequence[WorkflowRun] = ()
+    inbox: Sequence[str] = ()
 
 
 @UseCase()
@@ -100,6 +110,9 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
         tasks: ITaskRepository,
         workflows: IWorkflowRepository,
         enclaves: IEnclaveRepository,
+        peers: IPeerRepository,
+        messages: IMessageRepository,
+        delegations: IDelegationRepository,
     ) -> None:
         """위치 관찰과 훅 상태를 저장하는 의존성을 주입받는다.
 
@@ -112,6 +125,9 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
             tasks: 해당 세션의 미완료 원장을 조회한다.
             workflows: 진행 중인 단계의 revision을 조회한다.
             enclaves: 압축·재개 시 현재 사실을 조회한다.
+            peers: 실제 호스트 피어의 주소·활성 상태를 반영한다.
+            messages: 수신할 메시지를 조회하고 제출 시도를 기록한다.
+            delegations: 이 실행에 연결된 배정의 현재 요구를 확인한다.
         """
         self.directories = directories
         self.projects = projects
@@ -121,6 +137,9 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
         self.tasks = tasks
         self.workflows = workflows
         self.enclaves = enclaves
+        self.peers = peers
+        self.messages = messages
+        self.delegations = delegations
 
     @transactional
     @override
@@ -171,17 +190,73 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
         )
         if execution is None:
             execution = await self.executions.save(Execution.create(session.uid, command.agent_id))
+        peer = await self.peers.find_by_session_id_and_agent_id(session.uid, command.agent_id)
+        if peer is None:
+            peer = await self.peers.save(
+                Peer(uid=Peer.next_id(), session_id=session.uid, agent_id=command.agent_id)
+            )
+        assignment: Delegation | None = None
+        assignment_task: Task | None = None
+        assignment_id = (
+            command.delegation_id
+            if command.delegation_id is not None
+            else peer.current_delegation_id
+        )
+        if assignment_id is not None:
+            assignment = await self.delegations.get(assignment_id)
+            assignment_task = await self.tasks.get(assignment.task_id)
+            if (
+                command.delegation_id is not None
+                and assignment.plan is not None
+                and not command.agent_id
+            ):
+                assignment_task.require_project(project.uid)
+                assignment.bind_provider_peer(command.provider, command.host_session_id, peer.uid)
+                await self.delegations.save(assignment)
+                peer.accept_assignment(assignment.uid)
+                peer = await self.peers.save(peer)
+            assignment.require_recipient(peer.uid)
+            if command.event is HookEvent.PRE_TOOL_USE and command.writes:
+                try:
+                    assignment.require_current(assignment_task)
+                except InvalidTaskState as error:
+                    return ReceiveHookResult(HookAction.PAUSE, str(error))
         tasks = tuple(
             t
             for t in await self.tasks.find_by_project_id(project.uid)
             if t.owner_session_id == session.uid and not command.agent_id
         )
+        if assignment is not None and assignment_task is not None and assignment.report is None:
+            tasks = (
+                (*tasks, assignment_task)
+                if all(t.uid != assignment_task.uid for t in tasks)
+                else tasks
+            )
         todo = "\n".join(f"{t.uid}: {t.status.value} — {t.definition.title}" for t in tasks)
         try:
             action, _ = await self._apply(command, execution, tasks, resource)
         except InvalidExecutionState as error:
             return ReceiveHookResult(HookAction.PAUSE, f"{error}\n{todo}")
         execution = await self.executions.save(execution)
+        peer.active = execution.status is ExecutionStatus.RUNNING
+        await self.peers.save(peer)
+        inbox: list[str] = []
+        if peer.active and command.event in (
+            HookEvent.SESSION_START,
+            HookEvent.USER_PROMPT_SUBMIT,
+            HookEvent.PRE_TOOL_USE,
+        ):
+            pending = [
+                message
+                for message in await self.messages.find_by_recipient_id(peer.uid)
+                if message.status is DeliveryStatus.PENDING
+            ][:20]
+            for message in pending:
+                message.begin_delivery()
+                await self.messages.save(message)
+                inbox.append(
+                    f"Message {message.uid} from {message.sender_id}: {message.title}. Read the original body before ACK; this is not task acceptance."
+                )
         restore = (
             command.event is HookEvent.SESSION_START
             and command.start_source in ("compact", "resume", "startup")
@@ -207,7 +282,13 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
                     workflows.append(workflow)
             tasks = active
         return ReceiveHookResult(
-            action, f"{execution.reason}\n{todo}".strip(), restore, enclaves, tasks, workflows
+            action,
+            f"{execution.reason}\n{todo}".strip(),
+            restore,
+            enclaves,
+            tasks,
+            workflows,
+            inbox,
         )
 
     async def _apply(

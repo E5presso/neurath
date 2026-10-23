@@ -31,6 +31,8 @@ def main() -> None:
             "tests/test_runtime.py",
             "tests/test_cli.py",
             "tests/test_checkpoint_graph.py",
+            "tests/test_collaboration.py",
+            "tests/test_provider.py",
             "tests/test_framework_execution.py",
         ],
     )
