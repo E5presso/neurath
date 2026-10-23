@@ -28,9 +28,9 @@ from neurath.application.usecases.update_graph import UpdateGraphCommand, Update
 from neurath.domain.enclave_records import EnclaveFact, EnclaveKind
 
 
-@CliController("")
+@CliController("memory")
 class MemoryCliController:
-    """루트 명령에서 범위·입력을 해석하고 유스케이스의 결과를 JSON으로 반환한다."""
+    """memory 하위 명령에서 입력을 해석하고 유스케이스의 결과를 JSON으로 반환한다."""
 
     def __init__(
         self,
@@ -67,7 +67,7 @@ class MemoryCliController:
         self.query_graph = query_graph
         self.update_graph = update_graph
 
-    @command("update-enclave")
+    @command("update")
     async def update_enclave(
         self,
         project_id: Annotated[str, Option("--project-id")],
@@ -152,7 +152,7 @@ class MemoryCliController:
             )
         return changes
 
-    @command("save-checkpoint")
+    @command("checkpoint")
     async def save_checkpoint(
         self,
         project_id: Annotated[str, Option("--project-id")],
@@ -186,7 +186,7 @@ class MemoryCliController:
         finally:
             await self.connection.dispose()
 
-    @command("search-memory")
+    @command("search")
     async def search_memory(
         self,
         project_id: Annotated[str, Option("--project-id")],
@@ -219,7 +219,7 @@ class MemoryCliController:
         finally:
             await self.connection.dispose()
 
-    @command("read-memory")
+    @command("read")
     async def read_memory(
         self,
         project_id: Annotated[str, Option("--project-id")],
@@ -299,7 +299,7 @@ class MemoryCliController:
         finally:
             await self.connection.dispose()
 
-    @command("resume-session")
+    @command("resume")
     async def resume_session(
         self,
         project_id: Annotated[str, Option("--project-id")],

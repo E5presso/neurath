@@ -75,7 +75,7 @@ These are full-product validation criteria. The [core foundation](core-foundatio
 | A69 | Context/result/review/delegation for the same work | Bounded context, attributed role/evidence, no duplicate delegation or arbitrary dispatcher |
 | A70 | Inspect public command names and help | 19 core neurath verb-object commands; actual help and installed guide agree |
 | A71 | Validate/apply improvement during a user-requested retrospective | Start from ordinary conversational instruction; controls/effect/retraction; no user-facing harness skill or consent certificate |
-| A72 | Context loss or explicit session resume/adoption | Automatic restoration or resume-session retains originals/unfinished work/runner without a recover-session skill |
+| A72 | Context loss or explicit session resume/adoption | Automatic restoration or memory resume retains originals/unfinished work/runner without a recover-session skill |
 | A73 | Peer conveys work within existing instructions | Perform normally; nonhuman authorship alone triggers no rejection, repeated human input, hash or signature |
 | A74 | Session-end retrospective offer when issues surfaced | Ask once normally; no retrospective evaluation/persistent improvement before acceptance; original work may finish |
 | A75 | No request, declined/unanswered offer, or no session issues | No retrospective, repeat prompting, automatic retry, outstanding obligation or completion block |

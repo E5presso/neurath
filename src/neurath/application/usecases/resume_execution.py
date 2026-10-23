@@ -29,7 +29,7 @@ class ResumeExecutionCommand(AbstractCommand):
 class ResumeExecutionUseCase(IAsyncCommandUseCase[ResumeExecutionCommand, Execution]):
     """현재 턴의 실행 정지만 해제하고 이전 작성 임대·태스크 이력은 보존한다.
 
-    일반 UserPromptSubmit에서 자동 호출하지 않는다. resume-session을 담당하는
+    일반 UserPromptSubmit에서 자동 호출하지 않는다. memory resume을 담당하는
     호출자가 실제 재개 지시에 따라 사용한다. 이전 작성이 남아 있으면 다음 쓰기의
     임대 검사가 계속 충돌을 검출하므로 재개가 작성 종료 확인을 대신하지 않는다.
     """

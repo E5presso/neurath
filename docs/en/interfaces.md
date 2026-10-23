@@ -43,7 +43,7 @@ Merge `implement-ui` into `implement-spec`; apply UI-specific visual/state/inter
 
 Exclude `audit-deps`/`update-deps` from first-party defaults. Agents still perform needed dependency work through project tools or selected specialist skills; preserve existing user/project skills.
 
-Do not ship `recover-session`. Existing **`resume-session` CLI** handles explicit resume/adoption, runtime handles automatic context restoration, and diagnostic/recovery commands remain usable when the operational store fails. No separate recovery skill is required.
+Do not ship `recover-session`. Existing **`memory resume` CLI** handles explicit resume/adoption, runtime handles automatic context restoration, and diagnostic/recovery commands remain usable when the operational store fails. No separate recovery skill is required.
 
 `test-harness`/`optimize-harness` are not user-distributed skills. Retain their validation/improvement capabilities for Neurath development and the user-requested self-improvement process below. Merge `review-pr` into code review by target and audience-specific `dev-docs`/`user-docs` into `sync-docs`; reuse specialist Graphify capabilities.
 
@@ -66,11 +66,11 @@ Business command names use **verb-object** kebab-case. Action-named skills use k
 | `neurath delegate-task` | Assign/connect existing work to peer or provider with explicit necessary model/policy; redelivery cannot duplicate execution | write |
 | `neurath send-message` | Send to recipients/subscribers; replies reference original message | write |
 | `neurath read-message` | Read selected body; only confirmed full delivery produces read receipt, not understanding/acceptance | read+receipt |
-| `neurath search-memory` | Search related memory/lessons/checkpoints/handoff candidates | read |
-| `neurath read-memory` | Read selected record/evidence/handoff preview without changing ownership | read |
-| `neurath save-checkpoint` | Save current outcomes/decisions/remaining work/references as a handoff report | write |
-| `neurath resume-session` | Resume/adopt verified prior work, runner and context while preventing duplicate writers | write |
-| `neurath update-enclave` | Apply revision-checked set/remove changes to current facts; never delete originals/tasks | write |
+| `neurath memory search` | Search related memory/lessons/checkpoints/handoff candidates | read |
+| `neurath memory read` | Read selected record/evidence/handoff preview without changing ownership | read |
+| `neurath memory checkpoint` | Save current outcomes/decisions/remaining work/references as a handoff report | write |
+| `neurath memory resume` | Resume/adopt verified prior work, runner and context while preventing duplicate writers | write |
+| `neurath memory update` | Apply revision-checked set/remove changes to current facts; never delete originals/tasks | write |
 | `neurath list-articles` | List/search relevant newsroom headlines/revisions | read |
 | `neurath read-article` | Read selected revision/body/comments; mark that revision read only after full delivery | read+receipt |
 | `neurath publish-article` | Publish title/body/evidence and notify active peers with headlines | write |
@@ -87,7 +87,7 @@ Business invocations run the selected installed version. New invocations use the
 - `report-result` binds outcomes to task/attempt. Recipients report; internal transitions require applicable responsible-actor judgment and actual evidence. Reports are not automatic success or owner acceptance. `update-task` cannot directly set success/evidence/consent.
 - Peer delegation and provider execution are target choices of `delegate-task`. Internal adapters validate model/policy and execute. Observe through `get-context`; cancel the assigned work through `update-task`. Submission differs from actual launch/interruption.
 - External monitoring belongs to a requested task's waiting dependency. `update-task` records the actual requested target/release conditions/allowed follow-up; the internal monitor observes that dependency. A waiting reason alone never authorizes arbitrary monitoring. Cancellation/resumption/handoff follow the same work lifecycle.
-- `update-enclave` combines set/remove on one fact change set. Explicit remove plus expected revision is distinct from a null value.
+- `memory update` combines set/remove on one fact change set. Explicit remove plus expected revision is distinct from a null value.
 - Peer subscriptions/conversation notification closure are project notification settings, read/edited with host file tools and consumed by runtime. They neither cancel assignments nor delete history; no per-turn CLI call is needed.
 - Lesson generation/validation/deferral/retraction run within a user-requested retrospective. Read through memory tools. Explicit correction revises the attributed lesson source for runtime consumption while retaining prior effects/failures; learning cannot invent user instructions.
 - Bypass/deep diagnosis/installation/update/DB repair use a maintenance CLI available outside the failed business-command path. `get-context` exposes healthy-runtime diagnostic summaries. `update-neurath` and runtime recovery use maintenance paths as needed; implementation docs define exact CLI syntax.
@@ -142,4 +142,4 @@ Neurath release automation generates the guide prompt from Typer command/help de
 
 ## 8. Enclave and hook responsibilities
 
-Agents persist current facts, hypotheses, decisions and evidence with `update-enclave` and inspect them with `get-context`. Generated CLI guidance explains what to retain and how to call these commands. The [enclave restoration](architecture.md#5-enclave-memory-graphify-and-pull) hook handles automatic post-compaction loading and failures.
+Agents persist current facts, hypotheses, decisions and evidence with `memory update` and inspect them with `get-context`. Generated CLI guidance explains what to retain and how to call these commands. The [enclave restoration](architecture.md#5-enclave-memory-graphify-and-pull) hook handles automatic post-compaction loading and failures.

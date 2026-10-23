@@ -12,13 +12,13 @@ Current values are limited to 16 KiB of UTF-8 per enclave. A set operation may s
 
 ## CLI
 
-These root commands use spakky-typer in a candidate environment whose DB has been explicitly initialized.
+These commands belong to the spakky-typer `memory` group in a candidate environment whose DB has been explicitly initialized.
 
-- `neurath update-enclave --project-id ID --session-id ID --expected-revision N --changes JSON`: atomically applies a set/remove array. Optional task-id selects task scope; `--changes -` reads JSON from stdin. A set contains key/value/kind/references and optional details.
-- `neurath save-checkpoint --project-id ID --session-id ID --content TEXT --reference REF`: stores outcomes, decisions, remaining work and next actions as a report. Repeat reference as needed; `--content -` reads stdin. It does not complete tasks.
-- `neurath search-memory --project-id ID --text TEXT`: searches recent memory IDs, optionally limited by session-id/task-id and limit. SQL wildcard characters are treated literally.
-- `neurath read-memory --project-id ID --memory-id ID`: reads a selected historical body and its sources. Use session-id instead of memory-id to preview sources, current tasks, runners, enclaves and memory IDs. A checkpoint is not required; preview never changes ownership.
-- `neurath resume-session --project-id ID --source-session-id ID --target-session-id ID --expected-revision N --turn-id ID`: connects existing work to the observed target turn. Equal source and target IDs explicitly resume the same execution.
+- `neurath memory update --project-id ID --session-id ID --expected-revision N --changes JSON`: atomically applies a set/remove array. Optional task-id selects task scope; `--changes -` reads JSON from stdin. A set contains key/value/kind/references and optional details.
+- `neurath memory checkpoint --project-id ID --session-id ID --content TEXT --reference REF`: stores outcomes, decisions, remaining work and next actions as a report. Repeat reference as needed; `--content -` reads stdin. It does not complete tasks.
+- `neurath memory search --project-id ID --text TEXT`: searches recent memory IDs, optionally limited by session-id/task-id and limit. SQL wildcard characters are treated literally.
+- `neurath memory read --project-id ID --memory-id ID`: reads a selected historical body and its sources. Use session-id instead of memory-id to preview sources, current tasks, runners, enclaves and memory IDs. A checkpoint is not required; preview never changes ownership.
+- `neurath memory resume --project-id ID --source-session-id ID --target-session-id ID --expected-revision N --turn-id ID`: connects existing work to the observed target turn. Equal source and target IDs explicitly resume the same execution.
 
 ## Handoff and automatic restoration
 
@@ -30,6 +30,6 @@ Native validation uses separate temporary databases and validation sessions. It 
 
 ## Graphify integration
 
-`search-memory --graph-directory PATH` invokes the existing `graphify query` command for related code/document relationships. `save-checkpoint --graph-directory PATH` explicitly runs `graphify update`, then adds the verified graph reference to the report. External work runs outside DB transactions.
+`memory search --graph-directory PATH` invokes the existing `graphify query` command for related code/document relationships. `memory checkpoint --graph-directory PATH` explicitly runs `graphify update`, then adds the verified graph reference to the report. External work runs outside DB transactions.
 
 The adapter backs up graph.json before updating and verifies retained document nodes, relationships, hyperedges and their targets. Recomputed community statistics are excluded from semantic comparisons. Command failure, lost document relationships or malformed output is never success: failed output is retained and the original graph.json is restored. Other Graphify reports may have been regenerated, so reports from a rejected update must not serve as completion evidence. No graph engine or semantic extractor is duplicated.

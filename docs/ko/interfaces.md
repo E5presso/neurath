@@ -43,7 +43,7 @@ CLI는 에이전트가 직접 전달해야 하는 의도 또는 직접 조회할
 
 `audit-deps`·`update-deps`는 first-party 기본 스킬에서 제외합니다. 필요한 의존성 작업은 에이전트가 프로젝트 도구나 선택한 전문 스킬로 수행하며 기존 사용자/프로젝트 스킬은 삭제하지 않습니다.
 
-`recover-session`은 제공하지 않습니다. 명시적인 재개/인수는 기존 **`resume-session` CLI**로 충분합니다. 자동 맥락 복원은 런타임이 수행하고, 운영 저장소가 고장 나도 필요한 진단·복구 명령은 사용할 수 있어야 합니다. 별도 복구 스킬을 거치지 않습니다.
+`recover-session`은 제공하지 않습니다. 명시적인 재개/인수는 기존 **`memory resume` CLI**로 충분합니다. 자동 맥락 복원은 런타임이 수행하고, 운영 저장소가 고장 나도 필요한 진단·복구 명령은 사용할 수 있어야 합니다. 별도 복구 스킬을 거치지 않습니다.
 
 `test-harness`·`optimize-harness`는 사용자 배포 스킬이 아닙니다. 해당 검증과 개선 기능은 Neurath 개발 및 아래 사용자 요청에 따른 자가개선 과정에 유지합니다. `review-pr`는 `review-code`의 대상 선택으로, `dev-docs`·`user-docs`는 독자별 지침을 가진 `sync-docs`로 통합합니다. Graphify는 기존 전문 도구/스킬을 사용합니다.
 
@@ -66,11 +66,11 @@ CLI는 에이전트가 직접 전달해야 하는 의도 또는 직접 조회할
 | `neurath delegate-task` | 기존 작업을 피어 또는 provider에 배정·실행 연결. 필요 모델/정책은 명시; 같은 배정 재전달로 중복 실행 없음 | write |
 | `neurath send-message` | 수신자/구독 대상에 전달; 답장은 원 메시지 참조 | write |
 | `neurath read-message` | 선택 본문을 읽고 확인된 전체 전달만 읽음 기록; 이해/수락을 뜻하지 않음 | read+receipt |
-| `neurath search-memory` | 관련 기억·학습·체크포인트·인계 후보 검색 | read |
-| `neurath read-memory` | 선택 기록과 근거·인계 미리보기 조회; 소유권 불변 | read |
-| `neurath save-checkpoint` | 현재 결과·판단·남은 일과 참조를 인계 보고로 저장 | write |
-| `neurath resume-session` | 확인한 이전 작업과 runner/맥락을 재개 또는 인수; 이전 작성과 중복 방지 | write |
-| `neurath update-enclave` | 같은 사실 저장소의 예상 개정에 set/remove 변경 목록 적용; 원문/작업은 삭제하지 않음 | write |
+| `neurath memory search` | 관련 기억·학습·체크포인트·인계 후보 검색 | read |
+| `neurath memory read` | 선택 기록과 근거·인계 미리보기 조회; 소유권 불변 | read |
+| `neurath memory checkpoint` | 현재 결과·판단·남은 일과 참조를 인계 보고로 저장 | write |
+| `neurath memory resume` | 확인한 이전 작업과 runner/맥락을 재개 또는 인수; 이전 작성과 중복 방지 | write |
+| `neurath memory update` | 같은 사실 저장소의 예상 개정에 set/remove 변경 목록 적용; 원문/작업은 삭제하지 않음 | write |
 | `neurath list-articles` | 뉴스룸의 관련 제목·개정 검색/목록 | read |
 | `neurath read-article` | 선택 개정의 본문/댓글 조회; 전체 전달만 해당 개정 읽음 기록 | read+receipt |
 | `neurath publish-article` | 제목·본문·근거로 기사 게시; 활성 피어에게 제목 알림 | write |
@@ -87,7 +87,7 @@ CLI는 같은 애플리케이션 유스케이스를 직접 호출합니다. MCP 
 - `report-result`는 같은 task/attempt에 결과를 연결합니다. 수신자는 보고만 하고, 담당자의 판정과 실제 근거가 해당 조건을 충족할 때 내부에서 task/phase를 전이합니다. 모든 보고가 성공이나 소유자의 수용으로 바뀌지 않습니다. `update-task`에는 성공·근거·승인 직접 설정 필드가 없습니다.
 - 피어 위임과 provider 실행은 `delegate-task`의 대상 선택입니다. 내부 어댑터가 모델·정책을 검증하고 실제 실행합니다. 관찰은 `get-context`, 취소는 해당 배정 작업의 `update-task`로 처리합니다. 제출과 실제 시작/중단은 구분합니다.
 - 외부 감시는 요청된 작업의 대기 의존성으로 관리합니다. `update-task`가 실제 요청에 해당하는 관찰 대상·해소 조건·허용된 후속 범위를 기록하면 내부 모니터가 그 의존성을 관찰합니다. 대기 사유만으로 임의 감시를 만들지 않습니다. 취소·재개·인계는 같은 작업 수명주기를 따릅니다.
-- Enclave의 set/remove는 같은 사실 변경 목록인 `update-enclave`에 통합합니다. 삭제는 명시적인 remove와 예상 개정이 있어야 하며 null 값과 혼동하지 않습니다.
+- Enclave의 set/remove는 같은 사실 변경 목록인 `memory update`에 통합합니다. 삭제는 명시적인 remove와 예상 개정이 있어야 하며 null 값과 혼동하지 않습니다.
 - 피어 구독/대화 알림 종료는 프로젝트 알림 설정입니다. 관련 설정을 호스트 파일 도구로 읽고 수정하며 런타임이 반영합니다. 이 변경은 배정 작업을 취소하거나 이력을 지우지 않습니다. 모델이 매 턴 호출할 도구로 노출하지 않습니다.
 - 학습의 생성·검증·보류·철회는 사용자가 요청한 회고 안에서 처리합니다. 읽기는 기억 조회를 사용합니다. 명시적 교훈 정정은 출처 있는 교훈 자료의 개정으로 남기고 런타임이 반영합니다. 이전 효과·실패 이력은 보존하며 사용자가 말하지 않은 지시를 학습으로 만들지 않습니다.
 - 우회·깊은 진단·설치·업데이트·DB 복구는 업무 명령이 실패해도 사용할 수 있는 관리 명령입니다. 정상 상태의 진단 요약은 `get-context`에서 보입니다. `update-neurath`와 런타임 복구 과정에서 필요에 따라 관리 경로를 사용합니다. 상세 CLI 문법은 구현 문서에서 정의합니다.
@@ -142,4 +142,4 @@ Typer가 제공하는 명령/도움말 정의를 입력으로 Neurath의 릴리�
 
 ## 8. Enclave와 훅의 역할
 
-에이전트는 `update-enclave`로 현재 사실·가설·판단과 근거를 저장하고 `get-context`로 조회합니다. 생성된 CLI 가이드는 보존할 맥락과 호출법을 안내합니다. 압축 뒤 자동 적재와 실패 처리는 [Enclave 복원](architecture.md#5-enclave기억graphifypull)의 훅 경로가 담당합니다.
+에이전트는 `memory update`로 현재 사실·가설·판단과 근거를 저장하고 `get-context`로 조회합니다. 생성된 CLI 가이드는 보존할 맥락과 호출법을 안내합니다. 압축 뒤 자동 적재와 실패 처리는 [Enclave 복원](architecture.md#5-enclave기억graphifypull)의 훅 경로가 담당합니다.

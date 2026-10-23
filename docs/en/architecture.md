@@ -96,12 +96,12 @@ Checkpoints retain work, decisions, and next actions. Do not require fake tasks 
 
 Retain Graphify retrieval and updates of code/document relationships. Rebuilding while losing original document relations is not success. Preserve sources, relations, and verification. The graph does not replace user originals or current enclave.
 
-**Separate enclave writes from context restoration.** Agents call `neurath update-enclave` to persist/update working facts, hypotheses, decisions and evidence in the core. Skills/rules and the generated CLI guide explain this use. A conversational statement alone does not imply persistence.
+**Separate enclave writes from context restoration.** Agents call `neurath memory update` to persist/update working facts, hypotheses, decisions and evidence in the core. Skills/rules and the generated CLI guide explain this use. A conversational statement alone does not imply persistence.
 
 After compaction, do not wait for the agent to remember a read. The post-compaction hook reads the current session/task enclave from the core and automatically supplies it through a supported context output before the next model request. Keep `neurath get-context` for explicit inspection. No new public restoration command or skill is needed.
 
 ```text
-Agent → update-enclave CLI → core SQLite state
+Agent → memory update CLI → core SQLite state
 Compaction completes → post-compaction hook → latest enclave read → model context → continue work
 ```
 

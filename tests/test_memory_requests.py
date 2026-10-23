@@ -258,15 +258,20 @@ async def test_restore_failure_does_not_claim_delivery_or_request_retry(
     assert result["continue"] is False and "memory unavailable" in result["stopReason"]
 
 
-async def test_cli_commands_use_flat_names_and_real_registered_usecases(database, memory_actor):
+async def test_memory_group_commands_use_real_registered_usecases(database, memory_actor):
     actor = memory_actor
     args = ["--project-id", actor.project.uid, "--session-id", actor.session.uid]
     help_ = await cli(database, ["--help"])
-    assert help_.exit_code == 0 and "update-enclave" in help_.stdout
+    assert help_.exit_code == 0 and "memory" in help_.stdout
+    group_help = await cli(database, ["memory", "--help"])
+    assert group_help.exit_code == 0
+    for name in ("read", "update", "search", "checkpoint", "resume"):
+        assert name in group_help.stdout
     result = await cli(
         database,
         [
-            "update-enclave",
+            "memory",
+            "update",
             *args,
             "--expected-revision",
             "0",
@@ -279,24 +284,27 @@ async def test_cli_commands_use_flat_names_and_real_registered_usecases(database
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout)["revision"] == 1
     report = await cli(
-        database, ["save-checkpoint", *args, "--content", "remaining", "--reference", "source"]
+        database, ["memory", "checkpoint", *args, "--content", "remaining", "--reference", "source"]
     )
     assert report.exit_code == 0, report.output
     memory_id = json.loads(report.stdout)["id"]
     read = await cli(
-        database, ["read-memory", "--project-id", actor.project.uid, "--memory-id", memory_id]
+        database, ["memory", "read", "--project-id", actor.project.uid, "--memory-id", memory_id]
     )
     assert json.loads(read.stdout)["content"] == "remaining"
-    preview_ = await cli(database, ["read-memory", *args])
+    preview_ = await cli(database, ["memory", "read", *args])
     assert json.loads(preview_.stdout)["session_id"] == actor.session.uid
-    search = await cli(database, ["search-memory", *args, "--text", "remaining"])
+    search = await cli(database, ["memory", "search", *args, "--text", "remaining"])
     assert memory_id in json.loads(search.stdout)["memory_ids"]
-    assert (await cli(database, ["read-memory", "--project-id", actor.project.uid])).exit_code != 0
+    assert (
+        await cli(database, ["memory", "read", "--project-id", actor.project.uid])
+    ).exit_code != 0
     await native(database, actor, "UserPromptSubmit")
     result = await cli(
         database,
         [
-            "resume-session",
+            "memory",
+            "resume",
             "--project-id",
             actor.project.uid,
             "--source-session-id",
@@ -613,13 +621,14 @@ async def test_cli_graph_paths_use_existing_tool_and_record_validated_reference(
     )
     actor = memory_actor
     args = ["--project-id", actor.project.uid, "--session-id", actor.session.uid]
-    search = await cli(database, ["search-memory", *args, "--graph-directory", "/graph"])
+    search = await cli(database, ["memory", "search", *args, "--graph-directory", "/graph"])
     assert search.exit_code == 0, search.output
     assert json.loads(search.stdout)["graph"] == "related document"
     result = await cli(
         database,
         [
-            "save-checkpoint",
+            "memory",
+            "checkpoint",
             *args,
             "--content",
             "checked graph",
@@ -691,7 +700,7 @@ async def test_stdin_reports_and_updates_and_stale_same_session_resume(
     args = ["--project-id", actor.project.uid, "--session-id", actor.session.uid]
     result = await cli(
         database,
-        ["save-checkpoint", *args, "--content", "-", "--reference", "source"],
+        ["memory", "checkpoint", *args, "--content", "-", "--reference", "source"],
         "full stdin report",
     )
     assert result.exit_code == 0, result.output
