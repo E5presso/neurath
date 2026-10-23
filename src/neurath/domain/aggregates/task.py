@@ -11,6 +11,7 @@ from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 from neurath.domain.aggregates.request_source import RequestSource
 from neurath.domain.collaboration_events import TaskDefinitionChanged
 from neurath.domain.errors import ContextNotFound, InvalidTaskState, RevisionConflict
+from neurath.domain.monitoring import MonitorKind, TaskMonitor
 from neurath.domain.task_records import (
     ExternalWait,
     Outcome,
@@ -37,6 +38,7 @@ class Task(AbstractAggregateRoot[UUID]):
         follow_up_of: 미달 요구를 이어받는 원래 태스크.
         invalidated_reason: 실제 정정으로 무효화한 이유.
         revision: 저장소의 정수 낙관적 버전.
+        monitors: 명시적으로 요청한 외부 대기에 종속된 감시 이력.
     """
 
     project_id: UUID
@@ -49,6 +51,7 @@ class Task(AbstractAggregateRoot[UUID]):
     follow_up_of: UUID | None = None
     invalidated_reason: str | None = None
     revision: int = 1
+    monitors: Sequence[TaskMonitor] = ()
 
     @classmethod
     @override
@@ -269,6 +272,7 @@ class Task(AbstractAggregateRoot[UUID]):
             Outcome.PARTIAL: TaskStatus.PENDING,
         }
         self.status = statuses[result.outcome]
+        self.cancel_monitors("Current task attempt reported a result")
 
     def correct(
         self,
@@ -312,6 +316,7 @@ class Task(AbstractAggregateRoot[UUID]):
         self.status = TaskStatus.PENDING
         self.current_attempt_number = None
         self.invalidated_reason = None
+        self.cancel_monitors("Original task requirement changed")
         self.add_event(TaskDefinitionChanged(task_id=self.uid))
 
     def wait(self, condition: ExternalWait) -> None:
@@ -349,6 +354,7 @@ class Task(AbstractAggregateRoot[UUID]):
             raise InvalidTaskState("Task is not waiting for an external dependency")
         self.waits = tuple(self.waits[:-1]) + (replace(self.waits[-1], resolution=resolution),)
         self.status = TaskStatus.ACTIVE
+        self.cancel_monitors("Original external wait resolved")
 
     def invalidate(self, source: RequestSource, reason: str) -> None:
         """정정 출처를 새 개정에 연결하고 태스크를 invalidated로 바꾼다.
@@ -373,6 +379,7 @@ class Task(AbstractAggregateRoot[UUID]):
         self.status = TaskStatus.INVALIDATED
         self.current_attempt_number = None
         self.invalidated_reason = reason
+        self.cancel_monitors("Original task requirement changed")
         self.add_event(TaskDefinitionChanged(task_id=self.uid))
 
     def validate_dependencies(
@@ -429,3 +436,121 @@ class Task(AbstractAggregateRoot[UUID]):
         """
         if self.status in (TaskStatus.INVALIDATED, TaskStatus.SUCCEEDED):
             raise InvalidTaskState("Only unfinished current work can be delegated")
+
+    def monitor(self, number: int) -> TaskMonitor:
+        """태스크에 종속된 정확한 감시를 조회한다.
+
+        Args:
+            number: 태스크 안의 감시 순번.
+
+        Returns:
+            TaskMonitor: 관찰·사건·알림·자원 이력.
+
+        Raises:
+            ContextNotFound: 지정한 감시가 없는 경우.
+        """
+        for monitor in self.monitors:
+            if monitor.number == number:
+                return monitor
+        raise ContextNotFound("Task monitor does not exist")
+
+    def update_monitor(self, monitor: TaskMonitor) -> None:
+        """기존 감시 하나만 교체하여 다른 대기와 사건을 보존한다.
+
+        Args:
+            monitor: 동일 순번의 최신 감시.
+        """
+        self.monitor(monitor.number)
+        self.monitors = tuple(
+            monitor if item.number == monitor.number else item for item in self.monitors
+        )
+
+    def register_monitor(
+        self, execution_id: UUID, kind: MonitorKind, target: str, budget: int
+    ) -> TaskMonitor:
+        """현재 대기를 명시적으로 요청한 경우에만 유한한 감시를 등록한다.
+
+        Args:
+            execution_id: 같은 소유 세션에서 실제 확인한 실행.
+            kind: 결정론적 외부 관찰 종류.
+            target: 대기 대상과 정확히 같은 외부 주소.
+            budget: 명시적으로 허용한 관찰 횟수.
+
+        Returns:
+            TaskMonitor: 원 요구·대기에 연결한 새 감시.
+
+        Raises:
+            InvalidTaskState: 대기 상태·대상이 다르거나 중복 감시를 만들려는 경우.
+        """
+        if self.status is not TaskStatus.WAITING or target != self.waits[-1].target:
+            raise InvalidTaskState("Monitoring requires the exact requested external wait")
+        if budget < 1 or any(
+            item.wait_number == len(self.waits) and (item.active or item.poll_id is not None)
+            for item in self.monitors
+        ):
+            raise InvalidTaskState("Monitoring requires positive budget and no existing resource")
+        monitor = TaskMonitor(
+            number=len(self.monitors) + 1,
+            wait_number=len(self.waits),
+            definition_number=self.definition.number,
+            owner_execution_id=execution_id,
+            kind=kind,
+            target=target,
+            remaining_polls=budget,
+        )
+        self.monitors = tuple(self.monitors) + (monitor,)
+        return monitor
+
+    def reconcile_monitor(self, number: int, *, cancelled: bool) -> TaskMonitor:
+        """최신 요구·대기·실행 취소에 대조하여 오래된 감시를 중지한다.
+
+        Args:
+            number: 대조할 감시.
+            cancelled: 현재 소유 실행에 취소가 기록됐는지 여부.
+
+        Returns:
+            TaskMonitor: 기존 상태 또는 새 관찰·알림을 금지한 감시.
+        """
+        monitor = self.monitor(number)
+        if (
+            cancelled
+            or self.status is not TaskStatus.WAITING
+            or monitor.definition_number != self.definition.number
+            or monitor.wait_number != len(self.waits)
+        ):
+            monitor = monitor.cancel("Owner cancelled or original task dependency changed")
+            self.update_monitor(monitor)
+        return monitor
+
+    def resolve_monitor(self, number: int, event_number: int, resolution: str) -> None:
+        """현재 대기의 정확한 사건을 명시적으로 해소하며 작업 성공은 기록하지 않는다.
+
+        Args:
+            number: 현재 대기에 연결한 감시.
+            event_number: 해소 판단에 실제 사용한 변화 사건.
+            resolution: 원 해소 조건을 충족했다는 관찰 근거.
+
+        Raises:
+            InvalidTaskState: 현재 대기와 다른 감시나 이미 취소한 감시인 경우.
+        """
+        monitor = self.reconcile_monitor(number, cancelled=False)
+        if not monitor.active:
+            raise InvalidTaskState("Monitor cannot resolve a cancelled or changed dependency")
+        event = monitor.event(event_number)
+        if event.number != monitor.events[-1].number:
+            raise InvalidTaskState("Only the latest observed event can resolve the current wait")
+        self.resume(resolution)
+        monitor = monitor.update_event(replace(event, acknowledged=True, resolved=True))
+        self.update_monitor(monitor.cancel("External dependency explicitly resolved"))
+
+    def cancel_monitors(self, reason: str, execution_id: UUID | None = None) -> None:
+        """현재 범위의 새 감시·알림을 중지하고 미확인 자원은 보존한다.
+
+        Args:
+            reason: 요구 변경·해소·명시 취소 이유.
+            execution_id: 지정하면 해당 실행이 소유한 감시만 취소함.
+        """
+        for monitor in self.monitors:
+            if execution_id is not None and monitor.owner_execution_id != execution_id:
+                continue
+            self.update_monitor(monitor.cancel(reason))

@@ -122,6 +122,8 @@ class ResumeSessionUseCase(IAsyncCommandUseCase[ResumeSessionCommand, HostSessio
                 workflow.require_transferable()
                 workflow.transfer(source.uid, target.uid)
                 await self.workflows.save(workflow)
+            for monitor in task.monitors:
+                task.update_monitor(monitor.transfer(target_execution.uid))
             task.transfer(source.uid, target.uid)
             await self.tasks.save(task)
         for enclave in await self.enclaves.find_by_session_id(source.uid):

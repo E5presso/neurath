@@ -364,6 +364,10 @@ async def test_destructive_downgrade_is_rejected_and_rolls_back_intermediate_met
 
     original = await register_session(str(repository), "codex", "retained", database_path=database)
     before = database.read_bytes()
+    with closing(sqlite3.connect(database)) as connection:
+        schema_before = connection.execute(
+            "SELECT version_num FROM core_schema_revision"
+        ).fetchone()
     engine = create_database_engine(database, write=True, migration=True)
     try:
         with pytest.raises(RuntimeError, match="Destructive core downgrade is unsupported"):
@@ -380,9 +384,9 @@ async def test_destructive_downgrade_is_rejected_and_rolls_back_intermediate_met
         await get_session_context(original.project.id, original.session.id, database_path=database)
     ) == session_state(original)
     with closing(sqlite3.connect(database)) as connection:
-        assert (connection.execute("SELECT version_num FROM core_schema_revision")).fetchone() == (
-            "core_0010",
-        )
+        assert (
+            connection.execute("SELECT version_num FROM core_schema_revision")
+        ).fetchone() == schema_before
         assert (
             connection.execute("SELECT name FROM sqlite_master WHERE type='trigger'")
         ).fetchall() == [("core_location_owner_immutable",)]

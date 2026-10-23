@@ -28,6 +28,7 @@ from neurath.domain.task_records import (
     TaskResult,
     TaskStatus,
 )
+from neurath.infrastructure.models.monitoring import TaskMonitorModel
 
 
 @Table(Task)
@@ -49,6 +50,7 @@ class TaskModel(AbstractMappableTable[Task]):
         definitions: 소유한 요구 개정.
         attempts: 소유한 실행 시도.
         waits: 소유한 외부 대기 기록.
+        monitors: 명시적으로 요청한 감시와 사건·알림 이력.
     """
 
     __tablename__ = "core_tasks"
@@ -88,6 +90,10 @@ class TaskModel(AbstractMappableTable[Task]):
         lazy="selectin", cascade="all, delete-orphan", order_by="TaskWaitModel.number"
     )
 
+    monitors: Mapped[list[TaskMonitorModel]] = relationship(
+        lazy="selectin", cascade="all, delete-orphan", order_by="TaskMonitorModel.number"
+    )
+
     @classmethod
     @override
     def from_domain(cls, domain: Task) -> Self:
@@ -111,6 +117,7 @@ class TaskModel(AbstractMappableTable[Task]):
             current_attempt_number=domain.current_attempt_number,
             follow_up_of=domain.follow_up_of,
             invalidated_reason=domain.invalidated_reason,
+            monitors=[TaskMonitorModel.from_value(value, domain.uid) for value in domain.monitors],
             definitions=[
                 TaskDefinitionModel.from_value(value, domain.uid, domain.project_id)
                 for value in domain.definitions
@@ -141,6 +148,7 @@ class TaskModel(AbstractMappableTable[Task]):
             current_attempt_number=self.current_attempt_number,
             follow_up_of=self.follow_up_of,
             invalidated_reason=self.invalidated_reason,
+            monitors=tuple(value.to_value() for value in self.monitors),
             definitions=tuple(value.to_value() for value in self.definitions),
             attempts=tuple(value.to_value() for value in self.attempts),
             waits=tuple(value.to_value() for value in self.waits),

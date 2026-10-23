@@ -148,3 +148,7 @@ Typer가 제공하는 명령/도움말 정의를 입력으로 Neurath의 릴리�
 ## 8. Enclave와 훅의 역할
 
 에이전트는 `memory update`로 현재 사실·가설·판단과 근거를 저장하고 `get-context`로 조회합니다. 생성된 CLI 가이드는 보존할 맥락과 호출법을 안내합니다. 압축 뒤 자동 적재와 실패 처리는 [Enclave 복원](architecture.md#5-enclave기억graphifypull)의 훅 경로가 담당합니다.
+
+## #146 Monitoring
+
+[감시 관찰·사건·알림과 후보 실행 경계](monitoring.md).

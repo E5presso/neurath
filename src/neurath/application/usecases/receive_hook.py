@@ -194,6 +194,10 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
         except InvalidExecutionState as error:
             return ReceiveHookResult(action=HookAction.PAUSE, message=f"{error}\n{todo}")
         execution = await self.executions.save(execution)
+        if execution.status is ExecutionStatus.CANCELLED:
+            for task in await self.tasks.find_by_project_id(session.project_id):
+                task.cancel_monitors("Host confirmed owner interruption", execution.uid)
+                await self.tasks.save(task)
         continuous = peer.active and (
             command.event is not HookEvent.SESSION_START or command.start_source == "compact"
         )
