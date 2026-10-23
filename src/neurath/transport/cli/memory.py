@@ -7,7 +7,7 @@ from typing import Annotated
 
 from spakky.plugins.sqlalchemy.persistency.connection_manager import AsyncConnectionManager
 from spakky.plugins.typer.stereotypes.cli_controller import CliController, command
-from typer import Option, echo
+from typer import Exit, Option, echo
 
 from neurath.application.usecases.query_graph import QueryGraphQuery, QueryGraphUseCase
 from neurath.application.usecases.read_memory import ReadMemoryQuery, ReadMemoryUseCase
@@ -22,7 +22,7 @@ from neurath.application.usecases.update_enclave import (
     UpdateEnclaveCommand,
     UpdateEnclaveUseCase,
 )
-from neurath.application.usecases.update_graph import UpdateGraphCommand, UpdateGraphUseCase
+from neurath.domain.aggregates.memory import GraphUpdateStatus
 from neurath.domain.enclave_records import EnclaveFact, EnclaveKind
 
 
@@ -38,7 +38,6 @@ class MemoryCliController:
         search: SearchMemoryUseCase,
         connection: AsyncConnectionManager,
         query_graph: QueryGraphUseCase,
-        update_graph: UpdateGraphUseCase,
     ) -> None:
         """현재 맥락과 과거 기억을 조회·저장하는 작업 단위를 주입받는다.
 
@@ -49,7 +48,6 @@ class MemoryCliController:
             search: 관련 기록 검색.
             connection: 같은 명령 루프에서 정리할 비동기 엔진.
             query_graph: 기존 Graphify 관계 조회.
-            update_graph: 문서 관계 보존을 확인하는 갱신.
         """
         self.update = update
         self.checkpoint = checkpoint
@@ -57,7 +55,6 @@ class MemoryCliController:
         self.search = search
         self.connection = connection
         self.query_graph = query_graph
-        self.update_graph = update_graph
 
     @command("update")
     async def update_enclave(
@@ -163,18 +160,33 @@ class MemoryCliController:
             reference: 반복 지정하는 출처·산출물 참조.
             task_id: 관련 작업 ID.
             graph_directory: 명시적으로 갱신·검증할 Graphify 프로젝트 경로.
+
+        Raises:
+            Exit: 외부 갱신이 실패했거나 결과가 저장되지 않아 성공을 확인할 수 없는 경우.
         """
         try:
-            if graph_directory is not None:
-                reference = [
-                    *reference,
-                    await self.update_graph.run(UpdateGraphCommand(graph_directory)),
-                ]
             content = sys.stdin.read() if content == "-" else content
             result = await self.checkpoint.run(
-                SaveCheckpointCommand(project_id, session_id, content, reference, task_id)
+                SaveCheckpointCommand(
+                    project_id, session_id, content, reference, task_id, graph_directory
+                )
             )
-            echo(json.dumps({"id": result.uid, "kind": result.kind.value}))
+            if graph_directory is not None:
+                result = await self.read.run(ReadMemoryQuery(project_id, result.uid))
+            echo(
+                json.dumps(
+                    {
+                        "id": result.uid,
+                        "kind": result.kind.value,
+                        "graph_status": result.graph_status,
+                        "graph_reference": result.graph_reference,
+                        "graph_error": result.graph_error,
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            if result.graph_status not in (None, GraphUpdateStatus.SUCCEEDED):
+                raise Exit(code=1)
         finally:
             await self.connection.dispose()
 
@@ -234,6 +246,9 @@ class MemoryCliController:
                         "references": result.references,
                         "session_id": result.session_id,
                         "task_id": result.task_id,
+                        "graph_status": result.graph_status,
+                        "graph_reference": result.graph_reference,
+                        "graph_error": result.graph_error,
                     },
                     ensure_ascii=False,
                 )

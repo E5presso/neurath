@@ -238,8 +238,10 @@ async def test_cli_groups_and_injected_usecases_match_memory_and_session_respons
 
     from typer.main import get_command
 
+    from neurath.application.ports.services.graph import IGraphService
     from neurath.application.usecases.preview_session import PreviewSessionUseCase
     from neurath.application.usecases.resume_session import ResumeSessionUseCase
+    from neurath.application.usecases.update_checkpoint_graph import UpdateCheckpointGraphUseCase
     from neurath.infrastructure.database import sqlite_url
     from neurath.transport.cli.memory import MemoryCliController
     from neurath.transport.cli.session import SessionCliController
@@ -256,5 +258,6 @@ async def test_cli_groups_and_injected_usecases_match_memory_and_session_respons
     session_dependencies = set(get_type_hints(SessionCliController.__init__).values())
     session_operations = {PreviewSessionUseCase, ResumeSessionUseCase}
     assert memory_dependencies.isdisjoint(session_operations)
+    assert memory_dependencies.isdisjoint({IGraphService, UpdateCheckpointGraphUseCase})
     assert session_operations <= session_dependencies
     assert not missing.exists()

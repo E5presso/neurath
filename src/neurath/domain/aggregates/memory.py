@@ -8,6 +8,22 @@ from uuid import uuid4
 from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 
+from neurath.domain.memory_events import CheckpointGraphRequested
+
+
+class GraphUpdateStatus(StrEnum):
+    """커밋된 체크포인트에 연결된 외부 갱신 결과를 구분한다.
+
+    Attributes:
+        PENDING: 요청은 저장했으나 결과가 아직 기록되지 않은 상태.
+        SUCCEEDED: 검증된 그래프 참조를 기록한 상태.
+        FAILED: 외부 갱신 실패를 기록한 상태.
+    """
+
+    PENDING = "pending"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
 
 class MemoryKind(StrEnum):
     """기억 기록의 목적을 구분한다.
@@ -34,6 +50,9 @@ class Memory(AbstractAggregateRoot[str]):
         kind: 상세 자료·체크포인트·인수 보고의 구분.
         content: 1 MiB 이내의 원래 본문.
         references: 원문·산출물·이전 기록으로 돌아갈 참조.
+        graph_directory: 커밋 후 갱신을 요청한 경로이며 요청이 없으면 None.
+        graph_reference: 외부 갱신 성공 후 기록한 그래프 참조.
+        graph_error: 외부 갱신 실패의 관찰이며 결과 미기록은 None.
     """
 
     project_id: str
@@ -42,6 +61,62 @@ class Memory(AbstractAggregateRoot[str]):
     kind: MemoryKind
     content: str
     references: Sequence[str]
+    graph_directory: str | None = None
+    graph_reference: str | None = None
+    graph_error: str | None = None
+
+    @property
+    def graph_status(self) -> GraphUpdateStatus | None:
+        """요청이 없거나 결과를 기록하지 못한 상태를 성공과 구분한다.
+
+        Returns:
+            GraphUpdateStatus | None: 저장된 외부 갱신 상태이며 요청이 없으면 None.
+        """
+        if self.graph_directory is None:
+            return None
+        if self.graph_reference is not None:
+            return GraphUpdateStatus.SUCCEEDED
+        if self.graph_error is not None:
+            return GraphUpdateStatus.FAILED
+        return GraphUpdateStatus.PENDING
+
+    def request_graph_update(self, directory: str) -> None:
+        """검증된 보고에 외부 갱신 요청을 연결하고 저장 후 발행할 사건을 만든다.
+
+        Args:
+            directory: 갱신할 그래프의 프로젝트 경로.
+
+        Raises:
+            ValueError: 경로가 비어 있거나 이미 갱신 요청이 있는 경우.
+        """
+        if not directory.strip() or self.graph_directory is not None:
+            raise ValueError("A graph update requires a nonempty, new request directory")
+        self.graph_directory = directory
+        self.add_event(CheckpointGraphRequested(memory_id=self.uid, directory=directory))
+
+    def record_graph_update(self, directory: str, reference: str | None, error: str | None) -> None:
+        """같은 요청의 외부 관찰만 기록하며 원래 보고 본문과 출처를 보존한다.
+
+        Args:
+            directory: 실제 갱신을 시도한 요청 경로.
+            reference: 성공한 그래프 참조이며 실패면 None.
+            error: 실패 관찰이며 성공이면 None.
+
+        Raises:
+            ValueError: 요청이 다르거나 이미 결과가 있거나 성공·실패 관찰이 모호한 경우.
+        """
+        if directory != self.graph_directory or self.graph_status is not GraphUpdateStatus.PENDING:
+            raise ValueError("Graph outcome does not match a pending checkpoint request")
+        if (
+            (reference is None) == (error is None)
+            or (reference is not None and not reference.strip())
+            or (error is not None and not error.strip())
+        ):
+            raise ValueError("Exactly one graph reference or failure is required")
+        self.graph_reference = reference
+        self.graph_error = error
+        if reference is not None:
+            self.references = (*self.references, reference)
 
     @classmethod
     @override

@@ -7,7 +7,6 @@ import pytest
 
 from neurath.application.ports.services.graph import IGraphService
 from neurath.application.usecases.query_graph import QueryGraphQuery, QueryGraphUseCase
-from neurath.application.usecases.update_graph import UpdateGraphCommand, UpdateGraphUseCase
 from neurath.infrastructure.graph import SubprocessGraphService
 
 
@@ -59,7 +58,7 @@ async def test_existing_graphify_is_called_and_semantic_records_survive(graph, m
         )
         == "related doc and code"
     )
-    reference = await UpdateGraphUseCase(service).run(UpdateGraphCommand(str(graph.parent.parent)))
+    reference = service.update(str(graph.parent.parent))
     assert reference.startswith(graph.as_uri() + "#sha256=")
     assert calls[0][0] == ["graphify", "query", "requirement"]
     assert calls[1][0][1] == "update"

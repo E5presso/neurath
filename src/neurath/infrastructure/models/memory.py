@@ -26,6 +26,9 @@ class MemoryModel(AbstractMappableTable[Memory]):
         kind: 기억 또는 사실의 종류.
         content: 자르지 않고 보존한 전체 본문.
         references: 원문·산출물·상세 자료의 참조 목록.
+        graph_directory: 커밋된 외부 갱신 요청의 경로.
+        graph_reference: 저장된 갱신 성공 참조.
+        graph_error: 저장된 갱신 실패 관찰.
     """
 
     __tablename__ = "core_memories"
@@ -39,6 +42,9 @@ class MemoryModel(AbstractMappableTable[Memory]):
     kind: Mapped[str] = mapped_column(String, nullable=False)
     content: Mapped[str] = mapped_column(String, nullable=False)
     references: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    graph_directory: Mapped[str | None] = mapped_column(String)
+    graph_reference: Mapped[str | None] = mapped_column(String)
+    graph_error: Mapped[str | None] = mapped_column(String)
 
     @classmethod
     @override
@@ -62,6 +68,9 @@ class MemoryModel(AbstractMappableTable[Memory]):
             kind=domain.kind.value,
             content=domain.content,
             references=list(domain.references),
+            graph_directory=domain.graph_directory,
+            graph_reference=domain.graph_reference,
+            graph_error=domain.graph_error,
         )
 
     @override
@@ -82,4 +91,7 @@ class MemoryModel(AbstractMappableTable[Memory]):
             kind=MemoryKind(self.kind),
             content=self.content,
             references=self.references,
+            graph_directory=self.graph_directory,
+            graph_reference=self.graph_reference,
+            graph_error=self.graph_error,
         )

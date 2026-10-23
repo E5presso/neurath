@@ -1,6 +1,6 @@
 # Current context, memory and handoff
 
-Issue #143 separates current enclave facts, sourced historical memories, checkpoint reports and actual session handoff. User-wide SQLite migration `core_0006` adds three tables and a session successor link while preserving sources, unfinished tasks and runners. A historical report never becomes a success verdict.
+Issue #143 separates current enclave facts, sourced historical memories, checkpoint reports and actual session handoff. User-wide SQLite migration `core_0006` adds three tables and a session successor link while preserving sources, unfinished tasks and runners. `core_0007` adds optional graph request/outcome fields without inventing requests or successes for existing reports. A historical report never becomes a success verdict.
 
 ## Current context and history
 
@@ -31,6 +31,8 @@ Native validation uses separate temporary databases and validation sessions. It 
 
 ## Graphify integration
 
-`memory search --graph-directory PATH` invokes the existing `graphify query` command for related code/document relationships. `memory checkpoint --graph-directory PATH` explicitly runs `graphify update`, then adds the verified graph reference to the report. External work runs outside DB transactions.
+`memory search --graph-directory PATH` invokes the existing `graphify query` command for related code/document relationships. `memory checkpoint --graph-directory PATH` first reads the body and validates project/session/task scope, current ownership, content, references, size and request directory. Only after the report and request commit does a domain event start Graphify. External execution runs outside DB transactions; an observed outcome is recorded in a separate transaction. Invalid requests and initial commit failures never invoke the external tool.
+
+The CLI rereads the persisted report instead of treating the request snapshot as completion. `graph_status` distinguishes a stored success reference (`succeeded`), observed external failure (`failed`), and an outcome not yet recorded (`pending`). Reports without a graph request use null. `graph_reference` and `graph_error` expose the observation. Failed or unrecorded outcomes print the report ID/status and exit with code 1. The valid report is preserved. Pending may include an external change whose result could not be saved; it is neither success nor proof of non-execution, and is not automatically retried.
 
 The adapter backs up graph.json before updating and verifies retained document nodes, relationships, hyperedges and their targets. Recomputed community statistics are excluded from semantic comparisons. Command failure, lost document relationships or malformed output is never success: failed output is retained and the original graph.json is restored. Other Graphify reports may have been regenerated, so reports from a rejected update must not serve as completion evidence. No graph engine or semantic extractor is duplicated.
