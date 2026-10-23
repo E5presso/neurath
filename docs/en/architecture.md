@@ -96,12 +96,12 @@ Checkpoints retain work, decisions, and next actions. Do not require fake tasks 
 
 Retain Graphify retrieval and updates of code/document relationships. Rebuilding while losing original document relations is not success. Preserve sources, relations, and verification. The graph does not replace user originals or current enclave.
 
-**Separate enclave writes from context restoration.** Agents call `neurath update-enclave` to persist/update working facts, hypotheses, decisions and evidence in the core. Skills/rules and the generated CLI guide explain this use. A conversational statement alone does not imply persistence.
+**Separate enclave writes from context restoration.** Agents call `neurath memory update` to persist/update working facts, hypotheses, decisions and evidence in the core. Skills/rules and the generated CLI guide explain this use. A conversational statement alone does not imply persistence.
 
 After compaction, do not wait for the agent to remember a read. The post-compaction hook reads the current session/task enclave from the core and automatically supplies it through a supported context output before the next model request. Keep `neurath get-context` for explicit inspection. No new public restoration command or skill is needed.
 
 ```text
-Agent → update-enclave CLI → core SQLite state
+Agent → memory update CLI → core SQLite state
 Compaction completes → post-compaction hook → latest enclave read → model context → continue work
 ```
 
@@ -148,7 +148,7 @@ These groups are not deployment service counts. Implement the core as stateless 
 
 Persist requests/tasks, runs/phase attempts, host events/executions, current facts/memory, assignments/messages/articles, reviews/learning, and installation/recovery by responsibility. Keep large originals retrievable through references. Do not hold DB write locks during external execution. Use filtered/paginated reads and read transactions, and atomic revision-checked mutations with their related records.
 
-Connect public operations to these use cases without arbitrary per-call token or approval-object assembly. Adapters supply actual identity and authority. Return results/current state/actionable faults; accepted work is not a successful goal. The [public list](interfaces.md) selects 14 skills/19 CLI commands; the [disposition map](capability-continuity.md) connects historical capabilities to public/internal/host paths.
+Connect public operations to these use cases without arbitrary per-call token or approval-object assembly. Adapters supply actual identity and authority. Return results/current state/actionable faults; accepted work is not a successful goal. The [public list](interfaces.md) selects 14 skills/20 CLI commands; the [disposition map](capability-continuity.md) connects historical capabilities to public/internal/host paths.
 
 ## 9. Installation, upgrade, recovery, and finish-session
 

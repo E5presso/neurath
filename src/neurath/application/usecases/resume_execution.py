@@ -8,6 +8,7 @@ from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.execution import IExecutionRepository
+from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.domain.aggregates.execution import Execution
 
 
@@ -28,18 +29,20 @@ class ResumeExecutionCommand(AbstractCommand):
 class ResumeExecutionUseCase(IAsyncCommandUseCase[ResumeExecutionCommand, Execution]):
     """현재 턴의 실행 정지만 해제하고 이전 작성 임대·태스크 이력은 보존한다.
 
-    일반 UserPromptSubmit에서 자동 호출하지 않는다. resume-session을 담당하는
+    일반 UserPromptSubmit에서 자동 호출하지 않는다. session resume을 담당하는
     호출자가 실제 재개 지시에 따라 사용한다. 이전 작성이 남아 있으면 다음 쓰기의
     임대 검사가 계속 충돌을 검출하므로 재개가 작성 종료 확인을 대신하지 않는다.
     """
 
-    def __init__(self, executions: IExecutionRepository) -> None:
+    def __init__(self, executions: IExecutionRepository, sessions: ISessionRepository) -> None:
         """재개할 실행을 읽고 저장할 저장소를 받는다.
 
         Args:
             executions: 현재 턴과 중지 상태를 보존하는 실행 저장소.
+            sessions: 인수 완료 여부를 확인할 세션 저장소.
         """
         self.executions = executions
+        self.sessions = sessions
 
     @transactional
     @override
@@ -53,5 +56,6 @@ class ResumeExecutionUseCase(IAsyncCommandUseCase[ResumeExecutionCommand, Execut
             Execution: 현재 턴에서 다시 실행할 수 있는 실행 상태.
         """
         execution = await self.executions.get(command.execution_id)
+        (await self.sessions.get(execution.session_id)).require_current_owner()
         execution.resume(command.turn_id)
         return await self.executions.save(execution)

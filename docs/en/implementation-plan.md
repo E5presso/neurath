@@ -25,7 +25,7 @@ This plan records implementation order and requirement ownership. The [core foun
 | [#151 — [Distribution] CLI·스킬·훅 설치와 릴리스 가이드 자동 생성](https://github.com/E5presso/neurath/issues/151) | [#148](https://github.com/E5presso/neurath/issues/148), [#149](https://github.com/E5presso/neurath/issues/149), [#139](https://github.com/E5presso/neurath/issues/139), [#150](https://github.com/E5presso/neurath/issues/150), [#147](https://github.com/E5presso/neurath/issues/147) | A35, A77, A78, A79, A80 | B25, B26 |
 | [#152 — [Delivery] 전체 요구 검증·문서 동기화·세 프로젝트 업데이트와 종료](https://github.com/E5presso/neurath/issues/152) | [#151](https://github.com/E5presso/neurath/issues/151), [#138](https://github.com/E5presso/neurath/issues/138), [#146](https://github.com/E5presso/neurath/issues/146), [#145](https://github.com/E5presso/neurath/issues/145), [#142](https://github.com/E5presso/neurath/issues/142) | A39, A40, A41, A55, A57, A62 | B27 |
 
-All 84 requirement cases and 27 capability results have a primary implementation ticket. Issue #148 lists all 19 CLI commands; #149 lists all 14 default skills. The 128 historical operations map through their B results; the capability map retains public/internal/host/specialist destinations for all 33 historical skills.
+All 84 requirement cases and 27 capability results have a primary implementation ticket. Issue #148 owns CLI implementation; #149 lists the 14 default skills. The [public list](interfaces.md) records the reviewed memory/session split and its current 20 command paths. The 128 historical operations map through their B results; the capability map retains public/internal/host/specialist destinations for all 33 historical skills.
 
 ## Implementation order
 

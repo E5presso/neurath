@@ -403,3 +403,17 @@ class Task(AbstractAggregateRoot[str]):
             if uid not in visited:
                 visited.add(uid)
                 pending.extend(graph[uid])
+
+    def transfer(self, source_session_id: str, target_session_id: str) -> None:
+        """원 소유자가 일치할 때 현재 소유만 옮기고 과거 이력을 유지한다.
+
+        Args:
+            source_session_id: 인수 전 확인한 소유 세션.
+            target_session_id: 같은 프로젝트로 확인된 후속 세션.
+
+        Raises:
+            ContextNotFound: 현재 소유자가 원 세션과 다른 경우.
+        """
+        if self.owner_session_id != source_session_id:
+            raise ContextNotFound("Ownership changed before handoff")
+        self.owner_session_id = target_session_id

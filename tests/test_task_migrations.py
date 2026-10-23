@@ -91,7 +91,9 @@ async def test_core0002_upgrade_keeps_every_old_row_foreign_key_and_unfinished_o
     await storage.initialize_database(path)
     after = snapshot(path)
     for table, records in before.items():
-        if table != "core_schema_revision":
+        if table == "core_sessions":
+            assert after[table] == [(*row, None) for row in records]
+        elif table != "core_schema_revision":
             assert after[table] == records
     assert after["legacy_task"] == [("old-project", "unfinished original requirement", "waiting")]
     assert after["core_tasks"] == after["core_request_sources"] == []

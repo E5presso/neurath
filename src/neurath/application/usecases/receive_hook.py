@@ -9,6 +9,7 @@ from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
+from neurath.application.ports.repositories.enclave import IEnclaveRepository
 from neurath.application.ports.repositories.execution import IExecutionRepository
 from neurath.application.ports.repositories.project import IProjectRepository
 from neurath.application.ports.repositories.session import ISessionRepository
@@ -16,13 +17,16 @@ from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.application.ports.repositories.workflow import IWorkflowRepository
 from neurath.application.ports.repositories.writer import IWriterRepository
 from neurath.application.ports.services.directory_observer import IDirectoryObserverService
+from neurath.domain.aggregates.enclave import Enclave
 from neurath.domain.aggregates.execution import Execution
 from neurath.domain.aggregates.project import Project
 from neurath.domain.aggregates.session import HostSession
 from neurath.domain.aggregates.task import Task
+from neurath.domain.aggregates.workflow import WorkflowRun
 from neurath.domain.aggregates.writer import Writer
 from neurath.domain.errors import InvalidExecutionState
 from neurath.domain.runtime_records import ExecutionStatus, HookAction, HookEvent, Liveness
+from neurath.domain.task_records import TaskStatus
 
 
 @dataclass(frozen=True)
@@ -67,10 +71,19 @@ class ReceiveHookResult:
     Attributes:
         action: 현재 실행에 대한 허용·계속·중지 판정.
         message: 호스트에 전달할 중지 사유와 TODO.
+        restore: 현재 사건에서 맥락 복원을 요청하는지 여부.
+        enclaves: 복원 범위의 최신 현재 맥락.
+        tasks: 이 세션의 현재 요구와 원문 참조.
+        workflows: 작업에 연결된 현재 절차와 시도.
+
     """
 
     action: HookAction
     message: str
+    restore: bool = False
+    enclaves: Sequence[Enclave] = ()
+    tasks: Sequence[Task] = ()
+    workflows: Sequence[WorkflowRun] = ()
 
 
 @UseCase()
@@ -86,6 +99,7 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
         writers: IWriterRepository,
         tasks: ITaskRepository,
         workflows: IWorkflowRepository,
+        enclaves: IEnclaveRepository,
     ) -> None:
         """위치 관찰과 훅 상태를 저장하는 의존성을 주입받는다.
 
@@ -97,6 +111,7 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
             writers: 작성 소유자와 세대를 저장한다.
             tasks: 해당 세션의 미완료 원장을 조회한다.
             workflows: 진행 중인 단계의 revision을 조회한다.
+            enclaves: 압축·재개 시 현재 사실을 조회한다.
         """
         self.directories = directories
         self.projects = projects
@@ -105,6 +120,7 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
         self.writers = writers
         self.tasks = tasks
         self.workflows = workflows
+        self.enclaves = enclaves
 
     @transactional
     @override
@@ -146,6 +162,10 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
                     observation.working_directory,
                 )
             )
+        if session.successor_id is not None:
+            return ReceiveHookResult(
+                HookAction.PAUSE, f"Work was handed off to session {session.successor_id}"
+            )
         execution = await self.executions.find_by_session_id_and_agent_id(
             session.uid, command.agent_id
         )
@@ -162,7 +182,33 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
         except InvalidExecutionState as error:
             return ReceiveHookResult(HookAction.PAUSE, f"{error}\n{todo}")
         execution = await self.executions.save(execution)
-        return ReceiveHookResult(action, f"{execution.reason}\n{todo}".strip())
+        restore = (
+            command.event is HookEvent.SESSION_START
+            and command.start_source in ("compact", "resume", "startup")
+            and not command.agent_id
+        )
+        enclaves: Sequence[Enclave] = ()
+        workflows: list[WorkflowRun] = []
+        if restore:
+            active = tuple(
+                task
+                for task in tasks
+                if task.status not in (TaskStatus.SUCCEEDED, TaskStatus.INVALIDATED)
+            )
+            task_ids = {task.uid for task in active}
+            enclaves = tuple(
+                item
+                for item in await self.enclaves.find_by_session_id(session.uid)
+                if item.task_id is None or item.task_id in task_ids
+            )
+            for task in active:
+                workflow = await self.workflows.find_by_task_id(task.uid)
+                if workflow is not None:
+                    workflows.append(workflow)
+            tasks = active
+        return ReceiveHookResult(
+            action, f"{execution.reason}\n{todo}".strip(), restore, enclaves, tasks, workflows
+        )
 
     async def _apply(
         self,

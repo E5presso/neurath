@@ -1,5 +1,6 @@
 """호스트 실행 상태의 기본 Aggregate 저장 계약을 제공한다."""
 
+from collections.abc import Sequence
 from typing import override
 
 from spakky.data.stereotype.repository import Repository
@@ -38,3 +39,18 @@ class SQLAlchemyExecutionRepository(
         if record is None:
             return None
         return record.to_domain()
+
+    @override
+    async def find_by_session_id(self, session_id: str) -> Sequence[Execution]:
+        """소유 범위의 상태 기록을 인수 판단용 aggregate로 조회한다.
+
+        Args:
+            session_id: 조회할 소유 범위의 ID.
+
+        Returns:
+            Sequence[Execution]: 저장된 현재 상태 목록.
+        """
+        rows = await self._session_manager.session.scalars(
+            select(ExecutionModel).where(ExecutionModel.session_id == session_id)
+        )
+        return tuple(row.to_domain() for row in rows)

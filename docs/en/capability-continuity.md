@@ -2,7 +2,7 @@
 
 [Public interfaces](interfaces.md) · [Specification](specification.md) · [Acceptance](acceptance.md) · [한국어](../ko/capability-continuity.md)
 
-The 128 operations and 33 skills below are a **historical capability audit inventory**, not a new public list. Select 14 skills and 19 CLI commands. Preserve purpose and B outcome contracts, not historical names/counts/exposure. Baseline: capability documents at Git `e4bcc85`, later names, and current user corrections; not instructions to copy old code.
+The 128 operations and 33 skills below are a **historical capability audit inventory**, not a new public list. Select 14 skills and 20 CLI commands. Preserve purpose and B outcome contracts, not historical names/counts/exposure. Baseline: capability documents at Git `e4bcc85`, later names, and current user corrections; not instructions to copy old code.
 
 ## 1. Destinations of 128 historical operations
 
@@ -56,7 +56,7 @@ The 128 operations and 33 skills below are a **historical capability audit inven
 | `provider_run` | delegate-task | CLI | Entrypoint for actual supported-provider execution | B12 |
 | `provider_status` | get-context | CLI | Read pinned plan and actual execution state together | B12 |
 | `provider_cancel` | update-task | CLI | Actual target-run interruption | B12 |
-| `provider_recover` | provider recovery | internal | Reconcile original run on reconnect; explicit repair uses resume-session | B12 |
+| `provider_recover` | provider recovery | internal | Reconcile original run on reconnect; explicit repair uses session resume | B12 |
 | `collaboration_register` | peer connection lifecycle | internal | Register/update using actual connection identity/address | B13 |
 | `collaboration_discover` | get-context | CLI | One peer inventory | B13 |
 | `collaboration_inbox` | get-context | CLI | Read messages/conversation/actual delivery status together | B13 |
@@ -85,16 +85,16 @@ The 128 operations and 33 skills below are a **historical capability audit inven
 | `newsroom_peers` | get-context | CLI | One peer inventory | B17 |
 | `newsroom_seen` | article read receipt | internal | Record actual full-read delivery, not an agent assertion | B17 |
 | `artifact_put` | host artifact tools + internal reference ingestion | host+internal | Use host artifact storage; preserve references in reports/checkpoints | B18 |
-| `artifact_read` | read-memory / host artifact tools | CLI+host | read-memory resolves Neurath records; host tools read original files | B18 |
-| `memory_recall` | search-memory / read-memory | CLI | Filter history/lessons by type/state, then read details | B18 |
-| `memory_checkpoint` | save-checkpoint | CLI | Saving a report needs no separate skill | B18 |
-| `memory_pull` | search-memory / read-memory / resume-session | CLI | Separate discovery/preview from adoption effects | B18 |
+| `artifact_read` | memory read / host artifact tools | CLI+host | memory read resolves Neurath records; host tools read original files | B18 |
+| `memory_recall` | memory search / memory read | CLI | Filter history/lessons by type/state, then read details | B18 |
+| `memory_checkpoint` | memory checkpoint | CLI | Saving a report needs no separate skill | B18 |
+| `memory_pull` | memory search / memory read / session preview / session resume | CLI | Separate discovery/preview from adoption effects | B18 |
 | `enclave_read` | get-context | CLI | Distinct fact read/update/delete | B19 |
-| `enclave_set` | update-enclave | CLI | Distinct fact read/update/delete | B19 |
-| `enclave_delete` | update-enclave | CLI | Distinct fact read/update/delete | B19 |
-| `learning_status` | search-memory / read-memory | CLI | Filter history/lessons by type/state, then read details | B20 |
-| `learning_pending` | search-memory / read-memory | CLI | Filter history/lessons by type/state, then read details | B20 |
-| `learning_history` | search-memory / read-memory | CLI | Filter history/lessons by type/state, then read details | B20 |
+| `enclave_set` | memory update | CLI | Distinct fact read/update/delete | B19 |
+| `enclave_delete` | memory update | CLI | Distinct fact read/update/delete | B19 |
+| `learning_status` | memory search / memory read | CLI | Filter history/lessons by type/state, then read details | B20 |
+| `learning_pending` | memory search / memory read | CLI | Filter history/lessons by type/state, then read details | B20 |
+| `learning_history` | memory search / memory read | CLI | Filter history/lessons by type/state, then read details | B20 |
 | `learning_defer` | reflection / versioned lesson source | internal/config/CLI | Apply deferral/retraction through attributed lesson sources and reflection lifecycle | B20 |
 | `diagnostics_integrity` | get-context / maintenance CLI | CLI | One diagnosis interface with scoped inputs | B21 |
 | `diagnostics_project` | get-context / maintenance CLI | CLI | One diagnosis interface with scoped inputs | B21 |
@@ -116,18 +116,18 @@ The 128 operations and 33 skills below are a **historical capability audit inven
 | `monitor_ack` | monitor lifecycle | internal | Process consumption/wait/recovery/handoff from work/host events | B24 |
 | `monitor_external_wait` | monitor lifecycle | internal | Process consumption/wait/recovery/handoff from work/host events | B24 |
 | `monitor_handoff` | monitor lifecycle | internal | Process consumption/wait/recovery/handoff from work/host events | B24 |
-| `installation_plan` | maintenance CLI + update-neurath / resume-session | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B25 |
-| `installation_apply` | maintenance CLI + update-neurath / resume-session | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B25 |
-| `installation_recover` | maintenance CLI + update-neurath / resume-session | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B25 |
-| `releases_status` | maintenance CLI + update-neurath / resume-session | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
-| `releases_check` | maintenance CLI + update-neurath / resume-session | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
-| `releases_notice` | maintenance CLI + update-neurath / resume-session | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
-| `releases_prepare` | maintenance CLI + update-neurath / resume-session | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
-| `releases_choose` | maintenance CLI + update-neurath / resume-session | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
-| `releases_apply` | maintenance CLI + update-neurath / resume-session | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
-| `releases_recover` | maintenance CLI + update-neurath / resume-session | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
-| `maintenance_choice_read` | maintenance CLI + update-neurath / resume-session | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
-| `maintenance_choice_prepare` | maintenance CLI + update-neurath / resume-session | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
+| `installation_plan` | maintenance CLI + update-neurath / session resume | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B25 |
+| `installation_apply` | maintenance CLI + update-neurath / session resume | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B25 |
+| `installation_recover` | maintenance CLI + update-neurath / session resume | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B25 |
+| `releases_status` | maintenance CLI + update-neurath / session resume | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
+| `releases_check` | maintenance CLI + update-neurath / session resume | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
+| `releases_notice` | maintenance CLI + update-neurath / session resume | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
+| `releases_prepare` | maintenance CLI + update-neurath / session resume | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
+| `releases_choose` | maintenance CLI + update-neurath / session resume | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
+| `releases_apply` | maintenance CLI + update-neurath / session resume | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
+| `releases_recover` | maintenance CLI + update-neurath / session resume | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
+| `maintenance_choice_read` | maintenance CLI + update-neurath / session resume | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
+| `maintenance_choice_prepare` | maintenance CLI + update-neurath / session resume | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
 | `reporting_status` | host artifact / GitHub tools | host | Use existing artifact/publication tools and actual user authority; no dedicated publication/approval ledger | B27 |
 | `reporting_list` | host artifact / GitHub tools | host | Use existing artifact/publication tools and actual user authority; no dedicated publication/approval ledger | B27 |
 | `reporting_read` | host artifact / GitHub tools | host | Use existing artifact/publication tools and actual user authority; no dedicated publication/approval ledger | B27 |
@@ -144,7 +144,7 @@ The 128 operations and 33 skills below are a **historical capability audit inven
 | `review-spec` | skill | review-spec | Reusable procedure with decisions and verification | Report requirement/design/implementation gaps and evidence; preimplementation audit is not implementation acceptance. |
 | `qa` | skill | qa | Reusable procedure with decisions and verification | Reproduce specified UI/API/persistence scenarios; distinguish failure and untested behavior. |
 | `autopilot` | skill | autopilot | Reusable procedure with decisions and verification | Complete requested issues/dependencies without inventing unrelated work. |
-| `checkpoint` | CLI | save-checkpoint | No separate skill for one report save | Preserve originals/current outcomes/remaining work/next steps in a resumable report. |
+| `checkpoint` | CLI | memory checkpoint | No separate skill for one report save | Preserve originals/current outcomes/remaining work/next steps in a resumable report. |
 | `commit` | host/project | host tools / selected project skill | Ordinary agent work or project-specific expertise, not an installed Neurath default | Match diff/checks, commit authorized files only, verify actual SHA. |
 | `create-pr` | host/project | host tools / selected project skill | Ordinary agent work or project-specific expertise, not an installed Neurath default | Create a scoped PR reflecting branch/diff/validation and verify remote identity/body. |
 | `create-issue` | host/project | host tools / selected project skill | Ordinary agent work or project-specific expertise, not an installed Neurath default | Create an issue retaining original requirements/acceptance/dependencies and verify publication. |
@@ -173,7 +173,7 @@ The 128 operations and 33 skills below are a **historical capability audit inven
 | `update-deps` | external/project | project dependency tooling / selected specialist skill | Useful specialist work, not a Neurath first-party default | Verify scoped manifest/lock updates, compatibility checks and regression outcomes. |
 | `update-status` | host/project | host tools / selected project skill | Ordinary agent work or project-specific expertise, not an installed Neurath default | Reflect evidenced progress/remaining work without inflated completion. |
 | `update-neurath` | skill | update-neurath | Reusable procedure with decisions and verification | Verify requested distribution, installation/data preservation and live new connection; expose migration failures. |
-| `reconnect-host` | CLI/internal | resume-session / runtime recovery; maintenance CLI when CLI is unavailable | Use existing resume-session and runtime recovery; CLI fallback during CLI/runtime failure | Restore actual connection through official paths and resume original work; another process is not the existing connection. |
+| `reconnect-host` | CLI/internal | session resume / runtime recovery; maintenance CLI when CLI is unavailable | Use existing session resume and runtime recovery; CLI fallback during CLI/runtime failure | Restore actual connection through official paths and resume original work; another process is not the existing connection. |
 
 ## 3. Capability-specific observable outcomes
 

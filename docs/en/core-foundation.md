@@ -4,7 +4,7 @@
 
 #137 manages projects and sessions per request in a user-wide SQLite database.
 Dependencies use the official Spakky 8.2.0 release, including post-commit event publishing, in-process setup and request isolation fixes. All direct Spakky dependencies use this version, with published packages locked by `uv.lock`. No temporary Git pins or local path dependencies are required.
-Public CLI, hooks and installation remain subsequent implementation work.
+The candidate provides hook, memory and handoff CLI commands; remaining commands and installation remain subsequent work.
 
 ## Framework components and responsibilities
 
@@ -113,7 +113,7 @@ identity and explicit/concurrent initialization. Migration tests retain original
 values and dependent records, repeat initialization and verify full rollback after
 migration failure. See [Contributing](../../CONTRIBUTING.md) for running the checks.
 
-Hook installation, memory, collaboration, business CLI, actual user-data migration
+[Memory and handoff](memory.md) are implemented. Hook installation, collaboration, remaining business CLI, actual user-data migration
 and installation remain subsequent tickets. `setup` rejects installation of this
 foundation candidate. Source changes do not alter user databases or installed distributions.
 

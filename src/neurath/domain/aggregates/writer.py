@@ -128,3 +128,12 @@ class Writer(AbstractAggregateRoot[str]):
                 generation=generation,
             )
         )
+
+    def require_released(self) -> None:
+        """진행 중인 실제 작업을 인수 완료로 취급하지 않는다.
+
+        Raises:
+            InvalidExecutionState: 종료 또는 결과가 아직 확인되지 않은 경우.
+        """
+        if self.execution_id is not None:
+            raise InvalidExecutionState("Source write termination is not confirmed")

@@ -575,7 +575,9 @@ async def test_core0003_upgrade_preserves_unfinished_tasks_and_is_repeatable(dat
     (await initialize_database(database))
     after = snapshot(database)
     for table, rows in before.items():
-        if table != "core_schema_revision":
+        if table == "core_sessions":
+            assert after[table] == [(*row, None) for row in rows]
+        elif table != "core_schema_revision":
             assert after[table] == rows
     assert after["core_workflows"] == []
     async with storage_scope(database, write=False) as scope:
