@@ -16,7 +16,7 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 - 코드·설치 수정은 승인된 로컬 작업이다. 공개 push·PR·배포는 사용자의 별도 요청 없이 수행하지 않는다.
 - 도메인 aggregate, 명시적 ABC port, 개별 command/query use case, 구체 repository adapter와 declarative ORM 모델의 책임을 구분한다. Protocol은 사용하지 않고 명시적 상속·추상 계약을 사용한다. 참고 구조의 불필요한 중복 유스케이스 인터페이스나 ORM 수명 구현을 복제하지 않는다. 이름만으로 인터페이스·클래스의 필요성을 단정하지 않는다. 모든 유스케이스는 Spakky의 IAsyncCommandUseCase 또는 IAsyncQueryUseCase와 run 계약을 구현하고 입력은 AbstractCommand 또는 AbstractQuery를 상속한다. Spakky Framework 8.2.0의 AbstractAggregateRoot·AbstractValueObject·IAsyncGenericRepository·AbstractAsyncGenericRepository·AbstractMappableTable·Table·SchemaRegistry와 AsyncConnectionManager·AsyncSessionManager·AsyncTransaction을 사용한다. 현재 저장소의 기본 CRUD·배치는 프레임워크 구현을 재사용한다. Command가 작업 대상 Aggregate와 그 의존 범위를 읽는 계약은 Repository에 둔다. 기본 CRUD·배치는 그대로 재사용하며 추가 계약은 도메인 aggregate를 반환한다. 조회용 검색·목록·투영은 QueryUseCase가 SQLAlchemy로 처리하여 자신의 반환 계약을 구성한다. DB 유스케이스의 run은 공식 @transactional로 경계를 선언한다. 호출자는 컨테이너에서 받은 유스케이스를 직접 호출하며 외부에서 다시 트랜잭션을 감싸지 않는다. 메서드 이름·클래스 이름이나 contextmanager 문법 자체를 금지하지 않는다.
 - 전체 현재 src와 tools에 strict Pyrefly·Google 형식 pydoclint·Ruff 검사를 적용한다. pre-commit과 CI는 tools/quality.py를 공유한다. 모듈 의미와 문서의 유용성은 별도 사람 검토 사항이다. 저장소는 조회·저장만 제공하며 위치 식별·승격·충돌 규칙은 Project aggregate가 소유한다. 엔티티는 가변 상태·동일성을 가지며 불변 관찰·명령·응답 값과 구분한다.
-- 현재 후보는 #137의 프로젝트·세션 기반, #140의 원문·태스크 원장, #141의 단계 실행 및 #142의 호스트 런타임과 #143의 기억·enclave·재개 라이브러리다. 이전 MCP runtime은 Git 기록에 있으며 새 패키지에는 포함하지 않는다. 훅 CLI는 spakky-typer로 제공한다. 나머지 업무 CLI·설치·기존 자료 변환은 후속 티켓이며 이 후보를 실설치하지 않는다.
+- 현재 후보는 #137의 프로젝트·세션 기반, #140의 원문·태스크 원장, #141의 단계 실행 및 #142의 호스트 런타임과 #143의 기억·enclave·재개 및 #144의 협업·provider 라이브러리다. 이전 MCP runtime은 Git 기록에 있으며 새 패키지에는 포함하지 않는다. 훅 CLI는 spakky-typer로 제공한다. 나머지 업무 CLI·설치·기존 자료 변환은 후속 티켓이며 이 후보를 실설치하지 않는다.
 
 - ProjectLocation은 Project.locations에 종속된 불변 값이다. 별도 위치 repository·DI·생명주기를 만들지 않는다. 물리적 자식 테이블은 선언형 ORM 관계로 매핑하고 프로젝트 저장 시 원자적으로 반영한다. 소유자 선택·승격은 도메인에 두고 repository에는 조회·저장 매핑만 둔다.
 - repository는 신규·기존 엔티티를 모두 save(entity) -> entity로 저장한다. add/insert/create/update 저장 별칭을 만들지 않는다. 도메인의 create와 SQLAlchemy Session.add는 이 계약 명칭 규칙과 구분한다. 세션의 ORM 버전 검사·동일 값 no-op·분리된 오래된 엔티티 충돌을 보존한다.
@@ -71,3 +71,16 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 
 - 외부 변경을 포함하는 요청은 입력·범위 검증을 먼저 수행한다. 그 요청에 필요한 선행 저장이 있으면 커밋이 끝난 뒤 외부 작업을 시작하며, 필요 없는 사전 기록을 새로 만들도록 강제하지 않는다. 체크포인트는 SaveCheckpointUseCase에서 검증·저장하고, 커밋 후 표준 도메인 이벤트로 Graphify 갱신 및 결과 기록을 이어간다. 외부 작업 중 DB 트랜잭션을 유지하거나 컨트롤러가 갱신·저장 순서를 조율하지 않는다. 독립적인 조회·응답 구성을 포함한 모든 유스케이스 복수 호출을 일괄 금지하지 않는다.
 - tests/test_checkpoint_graph.py를 공통 pre-commit·CI에 포함한다. 무효 입력·다른 소유 범위·stdin 실패·커밋 실패에서 외부 호출과 파일 변경이 없는지, 정상 경로가 커밋 이후 잠금 없이 실행되는지 확인한다. 외부 실패는 failed, 결과 미기록은 pending으로 보존하며 CLI는 비성공 종료 코드와 보고 ID·상태를 반환한다. 기록되지 않은 결과를 성공으로 추정하거나 자동 재실행하지 않는다.
+
+
+- #144의 피어는 관찰한 호스트 세션·네이티브 자식 주소로 연결한다. 전달·본문 읽음·ACK·배정 수락·실제 수행·원 태스크의 성공을 구분한다. 기존 지시 범위의 수신·검토에는 새 인간 입력이나 부모 작업 폴더 작성 임대를 요구하지 않는다. 배정의 원 출처·정정 이력·역할·근거를 보존하며 조회는 재전송이나 새 실행을 만들지 않는다.
+- 정정·취소는 해당 태스크의 배정에만 전파한다. 수락한 배정은 수신자의 현재 실행 범위로 연결하고, 늦은 옛 결과로 현재 요구를 완료하지 않는다. 미확인 전달·중단은 미확인으로 보고한다. 새로운 모델 실행은 명시한 경로·실제 지원 모델·정책으로 시작하며 워크트리나 연결 재개를 이유로 새 세션을 만들지 않는다.
+- provider 모델 조회는 추론 프롬프트를 보내지 않으며 사용자 훅을 실행하지 않는 조회 경로를 사용한다. 외부 실행은 검증·선행 저장 커밋 후 시작하고 DB 쓰기 잠금을 유지하지 않는다. 중복 배정·실행 전 취소·실행 중 취소·PID 재사용·유실 결과를 같은 실행 ID로 검증한다. tests/test_collaboration.py와 tests/test_provider.py를 공통 품질 검사에 포함하며 fixture와 실제 설치된 공급자의 관찰 근거를 구분한다.
+
+
+- 불변 Command·Query·Result·관찰 DTO는 Spakky `@immutable`을 사용하고 키워드 인자로 생성한다. `@dataclass(frozen=True)` 관습을 새 계약에 남기지 않는다. 필드 재할당 금지와 깊은 불변성·값 동등성은 다른 요구다. 기존 도메인 값 객체의 비교 의미는 유지하고, DTO 비교가 필요한 시험은 확인할 필드 값을 명시한다.
+- Neurath가 생성하는 내부 aggregate 기본 키와 그 참조는 Python `UUID`로 전달하고 `next_id()`는 `uuid7()`을 반환한다. ORM은 SQLAlchemy의 `Uuid()`를 사용하며 기존 문자열 스키마는 별도 Alembic revision에서 식별자·외래 키·이력·트리거를 보존해 이전한다. 내장 타입을 피하기 위한 자체 UUID TypeDecorator를 만들지 않는다. 외부 호스트 세션·턴·도구 호출 ID, 원문 위치·관찰 참조는 원래 계약을 유지한다. 기존 UUID4 키를 재발급하지 않는다. JSON·CLI·프로세스 인자는 명시적인 문자열 경계다. 프레임워크 version 토큰·파일 백업명까지 UUID4 금지로 확대하지 않는다.
+- 긴 실행 흐름은 진입 메서드에서 주요 단계와 오류·무변경 경로가 읽히도록 정리한다. 배정 상태·범위·중복 판단은 도메인이 소유하고 유스케이스는 조회·호출·저장을 조정한다. 호스트 프로토콜의 프레이밍·응답 해석과 프로세스 수명·결과 관찰은 구분한다. 메서드 길이·개수나 모든 조건문에 임의의 금지 규칙을 만들지 않는다.
+- 지원 provider 선택에는 공통 `ProviderKind`, 실행 관찰에는 `ProviderStatus`를 사용한다. 공급자별 CLI 인자·초기화·응답 처리는 `match`의 명시적인 분기로 표현하며 미지원 값을 Claude 경로 등으로 암묵 대체하지 않는다. 자유 형식의 외부 식별자까지 일괄 Enum으로 바꾸지 않는다.
+- `tools/architecture.py`는 별칭을 포함한 frozen dataclass 선언을 검사하며 `tests/test_review_contracts.py`는 전체 내부 키의 UUID7 생성, 불변 계약의 키워드 생성, 기존 UUID4·외래 키 보존, 미지원 provider 거절을 확인한다. 가독성과 책임 분리 자체를 구문 검사로 증명했다고 주장하지 않는다.
+- 생성자·함수 인자로 한 번 전달하는 단순 값은 인라인으로 작성한다. 위임 메시지·실행 프롬프트처럼 여러 줄의 고정 서식은 triple quote로 줄 구조를 드러내며 반복되는 `\n` 이스케이프의 긴 문자열로 작성하지 않는다. 여러 항목을 합치는 `"\n".join(...)`, 재사용·검증·부작용 순서·복잡한 계산을 설명하는 변수까지 기계적으로 금지하지 않는다. 본문 원문·정정 순서와 실제 전달 내용은 회귀 시험으로 확인한다.

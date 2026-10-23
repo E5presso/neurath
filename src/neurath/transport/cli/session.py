@@ -3,6 +3,7 @@
 import json
 from dataclasses import asdict
 from typing import Annotated
+from uuid import UUID
 
 from spakky.plugins.sqlalchemy.persistency.connection_manager import AsyncConnectionManager
 from spakky.plugins.typer.stereotypes.cli_controller import CliController, command
@@ -10,6 +11,7 @@ from typer import Option, echo
 
 from neurath.application.usecases.preview_session import PreviewSessionQuery, PreviewSessionUseCase
 from neurath.application.usecases.resume_session import ResumeSessionCommand, ResumeSessionUseCase
+from neurath.serialization import encode_uuid
 
 
 @CliController("session")
@@ -36,8 +38,8 @@ class SessionCliController:
     @command("preview")
     async def preview_session(
         self,
-        project_id: Annotated[str, Option("--project-id")],
-        session_id: Annotated[str, Option("--session-id")],
+        project_id: Annotated[UUID, Option("--project-id")],
+        session_id: Annotated[UUID, Option("--session-id")],
     ) -> None:
         """원문·작업·runner·현재 맥락을 소유권 변경 없이 인수 전에 미리 본다.
 
@@ -46,7 +48,9 @@ class SessionCliController:
             session_id: 미리 볼 원 세션 ID.
         """
         try:
-            result = await self.preview.run(PreviewSessionQuery(project_id, session_id))
+            result = await self.preview.run(
+                PreviewSessionQuery(project_id=project_id, session_id=session_id)
+            )
             echo(
                 json.dumps(
                     {
@@ -84,6 +88,7 @@ class SessionCliController:
                         ],
                         "memory_ids": result.memory_ids,
                     },
+                    default=encode_uuid,
                     ensure_ascii=False,
                 )
             )
@@ -93,9 +98,9 @@ class SessionCliController:
     @command("resume")
     async def resume_session(
         self,
-        project_id: Annotated[str, Option("--project-id")],
-        source_session_id: Annotated[str, Option("--source-session-id")],
-        target_session_id: Annotated[str, Option("--target-session-id")],
+        project_id: Annotated[UUID, Option("--project-id")],
+        source_session_id: Annotated[UUID, Option("--source-session-id")],
+        target_session_id: Annotated[UUID, Option("--target-session-id")],
         expected_revision: Annotated[int, Option("--expected-revision")],
         turn_id: Annotated[str, Option("--turn-id")],
     ) -> None:
@@ -111,9 +116,13 @@ class SessionCliController:
         try:
             result = await self.resume.run(
                 ResumeSessionCommand(
-                    project_id, source_session_id, target_session_id, expected_revision, turn_id
+                    project_id=project_id,
+                    source_session_id=source_session_id,
+                    target_session_id=target_session_id,
+                    expected_revision=expected_revision,
+                    turn_id=turn_id,
                 )
             )
-            echo(json.dumps({"session_id": result.uid, "resumed": True}))
+            echo(json.dumps({"session_id": result.uid, "resumed": True}, default=encode_uuid))
         finally:
             await self.connection.dispose()

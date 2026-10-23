@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 from typing import override
+from uuid import UUID
 
 from spakky.data.stereotype.repository import Repository
 from spakky.plugins.sqlalchemy.persistency.repository import AbstractAsyncGenericRepository
@@ -13,7 +14,7 @@ from neurath.infrastructure.models.writer import WriterModel
 
 
 @Repository()
-class SQLAlchemyWriterRepository(AbstractAsyncGenericRepository[Writer, str], IWriterRepository):
+class SQLAlchemyWriterRepository(AbstractAsyncGenericRepository[Writer, UUID], IWriterRepository):
     """작성 소유자·턴·도구 호출·세대를 가진 임대를 표준 SQLAlchemy 매핑·CRUD·낙관적 잠금으로 저장한다."""
 
     @override
@@ -34,7 +35,7 @@ class SQLAlchemyWriterRepository(AbstractAsyncGenericRepository[Writer, str], IW
         return record.to_domain()
 
     @override
-    async def find_by_execution_id(self, execution_id: str) -> Sequence[Writer]:
+    async def find_by_execution_id(self, execution_id: UUID) -> Sequence[Writer]:
         """소유 범위의 상태 기록을 인수 판단용 aggregate로 조회한다.
 
         Args:

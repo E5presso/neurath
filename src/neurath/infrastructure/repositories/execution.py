@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 from typing import override
+from uuid import UUID
 
 from spakky.data.stereotype.repository import Repository
 from spakky.plugins.sqlalchemy.persistency.repository import AbstractAsyncGenericRepository
@@ -14,13 +15,13 @@ from neurath.infrastructure.models.execution import ExecutionModel
 
 @Repository()
 class SQLAlchemyExecutionRepository(
-    AbstractAsyncGenericRepository[Execution, str], IExecutionRepository
+    AbstractAsyncGenericRepository[Execution, UUID], IExecutionRepository
 ):
     """실제 턴·중단 상태·Stop 관찰을 가진 실행를 표준 SQLAlchemy 매핑·CRUD·낙관적 잠금으로 저장한다."""
 
     @override
     async def find_by_session_id_and_agent_id(
-        self, session_id: str, agent_id: str
+        self, session_id: UUID, agent_id: str
     ) -> Execution | None:
         """현재 세션과 자식 식별자에 연결된 실행 aggregate를 찾는다.
 
@@ -41,7 +42,7 @@ class SQLAlchemyExecutionRepository(
         return record.to_domain()
 
     @override
-    async def find_by_session_id(self, session_id: str) -> Sequence[Execution]:
+    async def find_by_session_id(self, session_id: UUID) -> Sequence[Execution]:
         """소유 범위의 상태 기록을 인수 판단용 aggregate로 조회한다.
 
         Args:

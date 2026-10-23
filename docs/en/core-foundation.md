@@ -8,7 +8,7 @@ The candidate provides hook, memory and handoff CLI commands; remaining commands
 
 ## Framework components and responsibilities
 
-- `Project` and `HostSession` use `@mutable` and `AbstractAggregateRoot[str]` for identity, equality and change tracking. Project owns `ProjectLocation` as an `AbstractValueObject`.
+- `Project` and `HostSession` use `@mutable` and `AbstractAggregateRoot[UUID]` for identity, equality and change tracking. Project owns `ProjectLocation` as an `AbstractValueObject`.
 - The existing `id` reference remains a read-only compatibility property over `uid`. Identity selection, folder promotion, ownership conflicts, session scope and movement remain domain rules.
 - Repository ports reuse standard `IAsyncGenericRepository` aggregate CRUD. Aggregate lookups by location or native identity are repository contracts for commands. CommandUseCases do not depend directly on SQLAlchemy sessions, queries or ORM models.
 - `SQLAlchemyProjectRepository` and `SQLAlchemySessionRepository` inherit `AbstractAsyncGenericRepository`. They do not redefine constructors, `get`, `get_or_none`, `contains`, `range`, `save`, `save_all`, `delete`, or `delete_all`.
@@ -122,3 +122,9 @@ foundation candidate. Source changes do not alter user databases or installed di
 `core_0005` adds [host execution and writer leases](host-runtime.md).
 
 Additional aggregate lookups use `find_by_<criteria>` names. The owned project locations use select-in eager loading (`lazy="selectin"`), not deferred loading. A regression test loads three projects and their locations with one parent SELECT and one child IN SELECT, with no additional SQL on access. Collection joined loading requires `Result.unique()`, which the Spakky 8.2.0 generic get/range methods do not apply. Select-in loading preserves reuse of the framework CRUD implementation.
+
+## Identifiers and immutable input contracts
+
+Internal aggregate IDs and their command, query, and repository references use `UUID`. New IDs use time-ordered `uuid7()`. ORM columns use SQLAlchemy `Uuid()`. Migration `core_0009` converts SQLite key storage to 32-character hex without reissuing UUID4 or UUID7 identifiers. It preserves relational references, composite constraints, indexes, triggers, and unfinished history. Foreign key checks before and after migration protect the transaction; a failure rolls back data, schema, and revision together. External host IDs and strings within JSON, source text, and artifact references retain their original representation. JSON and CLI boundaries render internal UUIDs as canonical strings.
+
+Immutable inputs, results, and observations use Spakky `@immutable` with keyword arguments. This prevents field reassignment without imposing deep immutability on nested collections. Domain value objects retain their framework equality semantics.

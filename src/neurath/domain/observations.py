@@ -1,9 +1,9 @@
 """프로젝트 식별 판단 없이 도메인 외부에서 관찰한 불변 사실을 제공한다."""
 
-from dataclasses import dataclass
+from spakky.core.common.mutability import immutable
 
 
-@dataclass(frozen=True)
+@immutable
 class DirectoryObservation:
     """읽기 전용 관찰로 얻은 정규 디렉터리와 선택적 Git 메타데이터다.
 

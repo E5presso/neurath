@@ -1,8 +1,9 @@
 """DB 잠금 밖에서 실제 작성 종료를 관찰하고 같은 세대만 회수한다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -11,7 +12,7 @@ from neurath.application.ports.repositories.writer import IWriterRepository
 from neurath.domain.aggregates.writer import Writer
 
 
-@dataclass(frozen=True)
+@immutable
 class RecoverWriterCommand(AbstractCommand):
     """회수 전에 읽은 작성 임대와 세대를 지정한다.
 
@@ -20,7 +21,7 @@ class RecoverWriterCommand(AbstractCommand):
         generation: 사용자가 조회한 세대가 아닌 실행 어댑터가 관찰할 세대.
     """
 
-    writer_id: str
+    writer_id: UUID
     generation: int
 
 

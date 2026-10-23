@@ -1,8 +1,9 @@
 """선택한 절차의 현재 단계와 과거 정의·시도·결과를 조회한다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
@@ -11,7 +12,7 @@ from neurath.application.ports.repositories.workflow import IWorkflowRepository
 from neurath.domain.aggregates.workflow import WorkflowRun
 
 
-@dataclass(frozen=True)
+@immutable
 class GetWorkflowQuery(AbstractQuery):
     """소유 범위 안에서 조회할 run을 지정한다.
 
@@ -21,12 +22,12 @@ class GetWorkflowQuery(AbstractQuery):
         run_id: 조회할 run ID.
     """
 
-    project_id: str
-    session_id: str
-    run_id: str
+    project_id: UUID
+    session_id: UUID
+    run_id: UUID
 
 
-@dataclass(frozen=True)
+@immutable
 class GetWorkflowResult:
     """소유 범위가 확인된 run. current는 다음 단계이며 모두 끝났으면 None.
 

@@ -35,18 +35,26 @@ async def test_public_usecase_commits_and_rolls_back_without_caller_transaction(
     async with spakky_context(database) as scope:
         register = scope.get(RegisterSessionUseCase)
         result = await register.run(
-            RegisterSessionCommand(DirectoryObservation("/registered"), "codex", "native")
+            RegisterSessionCommand(
+                observation=DirectoryObservation(working_directory="/registered"),
+                provider="codex",
+                host_session_id="native",
+            )
         )
         with pytest.raises(SessionNotInitializedError):
             _ = scope.get(AsyncSessionManager).session
         before = snapshot(database)
         with pytest.raises(ValueError):
             await register.run(
-                RegisterSessionCommand(DirectoryObservation("/must-rollback"), "", "invalid")
+                RegisterSessionCommand(
+                    observation=DirectoryObservation(working_directory="/must-rollback"),
+                    provider="",
+                    host_session_id="invalid",
+                )
             )
         assert snapshot(database) == before
         restored = await scope.get(GetSessionContextUseCase).run(
-            GetSessionContextQuery(result.project.uid, result.session.uid)
+            GetSessionContextQuery(project_id=result.project.uid, session_id=result.session.uid)
         )
         assert restored.session == result.session
 
@@ -58,7 +66,11 @@ async def test_same_application_keeps_concurrent_usecase_requests_separate(datab
         async def request(name):
             scope.clear_context()
             result = await register.run(
-                RegisterSessionCommand(DirectoryObservation("/" + name), "codex", name)
+                RegisterSessionCommand(
+                    observation=DirectoryObservation(working_directory="/" + name),
+                    provider="codex",
+                    host_session_id=name,
+                )
             )
             with pytest.raises(SessionNotInitializedError):
                 _ = scope.get(AsyncSessionManager).session

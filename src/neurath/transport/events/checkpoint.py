@@ -36,7 +36,9 @@ class CheckpointEventHandler:
         Args:
             event: 검증과 저장이 끝난 보고의 요청 사건.
         """
-        await self.update.run(UpdateCheckpointGraphCommand(event.memory_id, event.directory))
+        await self.update.run(
+            UpdateCheckpointGraphCommand(memory_id=event.memory_id, directory=event.directory)
+        )
 
     @on_event(CheckpointGraphObserved)
     async def record_graph(self, event: CheckpointGraphObserved) -> None:
@@ -47,6 +49,9 @@ class CheckpointEventHandler:
         """
         await self.record.run(
             RecordCheckpointGraphCommand(
-                event.memory_id, event.directory, event.reference, event.error
+                memory_id=event.memory_id,
+                directory=event.directory,
+                reference=event.reference,
+                error=event.error,
             )
         )

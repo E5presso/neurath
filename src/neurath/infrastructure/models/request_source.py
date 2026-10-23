@@ -50,21 +50,21 @@ class RequestSourceModel(AbstractMappableTable[RequestSource]):
         ),
         CheckConstraint("revision >= 1", name="source_revision_positive"),
     )
-    id: Mapped[str] = mapped_column(String, primary_key=True)
+    id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True)
     version: Mapped[UUID] = mapped_column(Uuid(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
 
     __mapper_args__ = {"version_id_col": revision}
-    project_id: Mapped[str] = mapped_column(String, ForeignKey("core_projects.id"), nullable=False)
-    session_id: Mapped[str] = mapped_column(String, nullable=False)
+    project_id: Mapped[UUID] = mapped_column(Uuid(), ForeignKey("core_projects.id"), nullable=False)
+    session_id: Mapped[UUID] = mapped_column(Uuid(), nullable=False)
     kind: Mapped[str] = mapped_column(String, nullable=False)
     body: Mapped[str] = mapped_column(String, nullable=False)
     author: Mapped[str | None] = mapped_column(String, nullable=True)
     reference: Mapped[str | None] = mapped_column(String, nullable=True)
-    corrects_id: Mapped[str | None] = mapped_column(
-        String, ForeignKey("core_request_sources.id"), nullable=True
+    corrects_id: Mapped[UUID | None] = mapped_column(
+        Uuid(), ForeignKey("core_request_sources.id"), nullable=True
     )
 
     @classmethod

@@ -1,6 +1,7 @@
 """표준 저장소 CRUD와 실제 프레임워크 자원 수명 및 낙관적 잠금을 검증한다."""
 
 from datetime import UTC
+from uuid import uuid7
 
 import pytest
 from spakky.data.persistency.aggregate_collector import AggregateCollector
@@ -156,18 +157,16 @@ async def test_exception_rolls_back_and_framework_closes_without_commit(database
 
 
 async def test_inherited_crud_batch_delete_and_missing_contracts(database):
-    first = Project.create(DirectoryObservation("/first"))
-    second = Project.create(DirectoryObservation("/second"))
+    first = Project.create(DirectoryObservation(working_directory="/first"))
+    second = Project.create(DirectoryObservation(working_directory="/second"))
     async with storage_scope(database) as scope:
         projects = scope.get(IProjectRepository)
-        assert (await projects.get_or_none("missing")) is None
-        assert not (await projects.contains("missing"))
+        assert (await projects.get_or_none(uuid7())) is None
+        assert not (await projects.contains(uuid7()))
         saved = await projects.save_all((first, second))
         assert {item.uid for item in saved} == {first.uid, second.uid}
         assert await projects.contains(first.uid)
-        assert {
-            item.uid for item in (await projects.range((second.uid, first.uid, "missing")))
-        } == {
+        assert {item.uid for item in (await projects.range((second.uid, first.uid, uuid7())))} == {
             first.uid,
             second.uid,
         }
@@ -262,13 +261,21 @@ async def test_orm_flush_rejects_stale_identity_map_without_refreshing_it(databa
 
 
 async def test_project_save_roundtrips_owned_locations_and_updates_the_whole_aggregate(database):
-    project = Project.create(DirectoryObservation("/repo"))
+    project = Project.create(DirectoryObservation(working_directory="/repo"))
     mapped = ProjectModel.from_domain(project)
     assert mapped.to_domain().locations == project.locations
     assert mapped.locations[0].project_id == project.uid
     async with storage_scope(database) as scope:
         project = await scope.get(IProjectRepository).save(project)
-    project.associate(Project.identify(DirectoryObservation("/linked", "/repo/.git", "/repo")))
+    project.associate(
+        Project.identify(
+            DirectoryObservation(
+                working_directory="/linked",
+                git_common_directory="/repo/.git",
+                primary_worktree="/repo",
+            )
+        )
+    )
     async with storage_scope(database) as scope:
         projects = scope.get(IProjectRepository)
         saved = await projects.save(project)
@@ -294,8 +301,8 @@ async def test_project_save_roundtrips_owned_locations_and_updates_the_whole_agg
 async def test_cross_owner_aggregate_save_conflict_rolls_back_parent_and_children(
     database, existing_parent
 ):
-    first = Project.create(DirectoryObservation("/first"))
-    conflicting = Project.create(DirectoryObservation("/second"))
+    first = Project.create(DirectoryObservation(working_directory="/first"))
+    conflicting = Project.create(DirectoryObservation(working_directory="/second"))
     original_locations = conflicting.locations
     async with storage_scope(database) as scope:
         projects = scope.get(IProjectRepository)
@@ -321,7 +328,7 @@ async def test_cross_owner_aggregate_save_conflict_rolls_back_parent_and_childre
 
 
 async def test_session_save_inserts_and_returns_stored_entity(database):
-    project = Project.create(DirectoryObservation("/repo"))
+    project = Project.create(DirectoryObservation(working_directory="/repo"))
     entity = HostSession.create(project.uid, "codex", "new", "/repo")
     async with storage_scope(database) as scope:
         (await scope.get(IProjectRepository).save(project))

@@ -1,5 +1,7 @@
 """커밋된 체크포인트의 외부 갱신 요청과 관찰 결과를 전달한다."""
 
+from uuid import UUID
+
 from spakky.core.common.mutability import immutable
 from spakky.domain.models.event import AbstractDomainEvent
 
@@ -13,7 +15,7 @@ class CheckpointGraphRequested(AbstractDomainEvent):
         directory: 명시적으로 요청한 Graphify 경로.
     """
 
-    memory_id: str
+    memory_id: UUID
     directory: str
 
 
@@ -28,7 +30,7 @@ class CheckpointGraphObserved(AbstractDomainEvent):
         error: 실패 관찰이며 성공이면 None.
     """
 
-    memory_id: str
+    memory_id: UUID
     directory: str
     reference: str | None
     error: str | None

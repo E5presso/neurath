@@ -5,6 +5,7 @@ import signal
 import subprocess
 from collections.abc import Mapping
 from typing import override
+from uuid import UUID
 
 from spakky.core.pod.annotations.pod import Pod
 
@@ -24,7 +25,7 @@ class PosixWriterObserverService(IWriterObserverService, IExecutionControllerSer
     """
 
     def __init__(
-        self, processes: Mapping[tuple[str, str, str], subprocess.Popen[bytes]] | None = None
+        self, processes: Mapping[tuple[UUID, str, str], subprocess.Popen[bytes]] | None = None
     ) -> None:
         """실행기가 직접 시작한 프로세스 핸들을 실제 호출 식별자에 연결한다.
 
@@ -34,7 +35,7 @@ class PosixWriterObserverService(IWriterObserverService, IExecutionControllerSer
         self.processes = {} if processes is None else processes
 
     @override
-    def observe(self, execution_id: str, turn_id: str, tool_use_id: str) -> Liveness:
+    def observe(self, execution_id: UUID, turn_id: str, tool_use_id: str) -> Liveness:
         """일치하는 호출의 프로세스와 남은 그룹 구성원까지 확인한다.
 
         Args:
@@ -51,7 +52,7 @@ class PosixWriterObserverService(IWriterObserverService, IExecutionControllerSer
         return self._observe(process)
 
     @override
-    def interrupt(self, execution_id: str, turn_id: str) -> Liveness:
+    def interrupt(self, execution_id: UUID, turn_id: str) -> Liveness:
         """정확한 실행·턴의 소유 프로세스 그룹만 중단하고 종료를 확인한다.
 
         Args:

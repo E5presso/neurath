@@ -7,6 +7,7 @@ import subprocess
 import sys
 from contextlib import closing
 from dataclasses import asdict
+from uuid import uuid7
 
 import pytest
 from spakky.plugins.sqlalchemy.persistency.repository import AbstractAsyncGenericRepository
@@ -61,13 +62,13 @@ async def record(database, actor, kind=SourceKind.PROMPT, *, corrects_id=None, a
         await run(
             RecordSourceUseCase,
             RecordSourceCommand(
-                actor.project.uid,
-                actor.session.uid,
-                kind,
-                "original requirement text",
-                author,
-                "ticket:140",
-                corrects_id,
+                project_id=actor.project.uid,
+                session_id=actor.session.uid,
+                kind=kind,
+                body="original requirement text",
+                author=author,
+                reference="ticket:140",
+                corrects_id=corrects_id,
             ),
             database_path=database,
         )
@@ -82,13 +83,13 @@ async def create(
         await run(
             CreateTaskUseCase,
             CreateTaskCommand(
-                actor.project.uid,
-                actor.session.uid,
-                original.uid,
-                title,
-                "artifact exists with required content",
-                dependencies,
-                follow_up_of,
+                project_id=actor.project.uid,
+                session_id=actor.session.uid,
+                source_id=original.uid,
+                title=title,
+                required_result="artifact exists with required content",
+                dependencies=dependencies,
+                follow_up_of=follow_up_of,
             ),
             database_path=database,
         )
@@ -99,7 +100,12 @@ async def start(database, task):
     return (
         await run(
             StartTaskUseCase,
-            StartTaskCommand(task.project_id, task.owner_session_id, task.uid, task.revision),
+            StartTaskCommand(
+                project_id=task.project_id,
+                session_id=task.owner_session_id,
+                task_id=task.uid,
+                expected_revision=task.revision,
+            ),
             database_path=database,
         )
     ).task
@@ -127,7 +133,12 @@ async def report(
         await run(
             ReportResultUseCase,
             ReportResultCommand(
-                task.project_id, task.owner_session_id, task.uid, task.revision, number, result
+                project_id=task.project_id,
+                session_id=task.owner_session_id,
+                task_id=task.uid,
+                expected_revision=task.revision,
+                attempt_number=number,
+                result=result,
             ),
             database_path=database,
         )
@@ -138,7 +149,9 @@ async def history(database, task):
     return (
         await run(
             GetTaskUseCase,
-            GetTaskQuery(task.project_id, task.owner_session_id, task.uid),
+            GetTaskQuery(
+                project_id=task.project_id, session_id=task.owner_session_id, task_id=task.uid
+            ),
             database_path=database,
         )
     ).task
@@ -146,7 +159,9 @@ async def history(database, task):
 
 async def board(database, actor):
     return await run(
-        GetTasksUseCase, GetTasksQuery(actor.project.uid, actor.session.uid), database_path=database
+        GetTasksUseCase,
+        GetTasksQuery(project_id=actor.project.uid, session_id=actor.session.uid),
+        database_path=database,
     )
 
 
@@ -174,7 +189,7 @@ async def test_source_reuse_keeps_original_session_and_nonhuman_author_without_n
     assert (
         await run(
             GetSourcesUseCase,
-            GetSourcesQuery(first.project.uid, first.session.uid),
+            GetSourcesQuery(project_id=first.project.uid, session_id=first.session.uid),
             database_path=database,
         )
     ).sources == ()
@@ -186,7 +201,7 @@ async def test_source_reuse_keeps_original_session_and_nonhuman_author_without_n
     sources = (
         await run(
             GetSourcesUseCase,
-            GetSourcesQuery(first.project.uid, peer.session.uid),
+            GetSourcesQuery(project_id=first.project.uid, session_id=peer.session.uid),
             database_path=database,
         )
     ).sources
@@ -199,7 +214,9 @@ async def test_source_reuse_keeps_original_session_and_nonhuman_author_without_n
         (
             await run(
                 GetTaskUseCase,
-                GetTaskQuery(work.project_id, first.session.uid, work.uid),
+                GetTaskQuery(
+                    project_id=work.project_id, session_id=first.session.uid, task_id=work.uid
+                ),
                 database_path=database,
             )
         ).task
@@ -217,12 +234,12 @@ async def test_actual_failed_command_retry_and_followup_preserve_results_and_tod
         await run(
             SubmitResultUseCase,
             SubmitResultCommand(
-                active.project_id,
-                active.owner_session_id,
-                active.uid,
-                active.revision,
-                1,
-                submission,
+                project_id=active.project_id,
+                session_id=active.owner_session_id,
+                task_id=active.uid,
+                expected_revision=active.revision,
+                attempt_number=1,
+                submission=submission,
             ),
             database_path=database,
         )
@@ -253,7 +270,7 @@ async def test_actual_failed_command_retry_and_followup_preserve_results_and_tod
     source = (
         await run(
             GetSourcesUseCase,
-            GetSourcesQuery(actor.project.uid, actor.session.uid),
+            GetSourcesQuery(project_id=actor.project.uid, session_id=actor.session.uid),
             database_path=database,
         )
     ).sources[0]
@@ -310,11 +327,11 @@ async def test_correction_only_changes_selected_fields_and_late_result_does_not_
         await run(
             CorrectTaskUseCase,
             CorrectTaskCommand(
-                active.project_id,
-                active.owner_session_id,
-                active.uid,
-                active.revision,
-                correction.uid,
+                project_id=active.project_id,
+                session_id=active.owner_session_id,
+                task_id=active.uid,
+                expected_revision=active.revision,
+                source_id=correction.uid,
                 required_result="corrected artifact",
             ),
             database_path=database,
@@ -361,7 +378,11 @@ async def test_partial_wait_resume_and_independent_task_keep_exact_same_attempt(
         await run(
             WaitTaskUseCase,
             WaitTaskCommand(
-                active.project_id, active.owner_session_id, active.uid, active.revision, condition
+                project_id=active.project_id,
+                session_id=active.owner_session_id,
+                task_id=active.uid,
+                expected_revision=active.revision,
+                condition=condition,
             ),
             database_path=database,
         )
@@ -376,11 +397,11 @@ async def test_partial_wait_resume_and_independent_task_keep_exact_same_attempt(
         await run(
             ResumeTaskUseCase,
             ResumeTaskCommand(
-                waiting.project_id,
-                waiting.owner_session_id,
-                waiting.uid,
-                waiting.revision,
-                f"read:{target.read_text()}",
+                project_id=waiting.project_id,
+                session_id=waiting.owner_session_id,
+                task_id=waiting.uid,
+                expected_revision=waiting.revision,
+                resolution=f"read:{target.read_text()}",
             ),
             database_path=database,
         )
@@ -404,11 +425,11 @@ async def test_status_question_and_summary_do_not_create_or_revise_goals(databas
             await run(
                 CorrectTaskUseCase,
                 CorrectTaskCommand(
-                    work.project_id,
-                    work.owner_session_id,
-                    work.uid,
-                    work.revision,
-                    informational.uid,
+                    project_id=work.project_id,
+                    session_id=work.owner_session_id,
+                    task_id=work.uid,
+                    expected_revision=work.revision,
+                    source_id=informational.uid,
                     title="unrequested goal",
                 ),
                 database_path=database,
@@ -435,18 +456,18 @@ async def test_dependency_correction_rejects_cycle_and_keeps_previous_graph_and_
             await run(
                 CorrectTaskUseCase,
                 CorrectTaskCommand(
-                    parent.project_id,
-                    parent.owner_session_id,
-                    parent.uid,
-                    parent.revision,
-                    correction.uid,
+                    project_id=parent.project_id,
+                    session_id=parent.owner_session_id,
+                    task_id=parent.uid,
+                    expected_revision=parent.revision,
+                    source_id=correction.uid,
                     dependencies=(child.uid,),
                 ),
                 database_path=database,
             )
         ).task
     with pytest.raises(ContextNotFound):
-        (await create(database, actor, source=correction, dependencies=("missing",)))
+        (await create(database, actor, source=correction, dependencies=(uuid7(),)))
     assert snapshot(database) == before
     (await report(database, (await start(database, parent))))
     assert child.uid in (await board(database, actor)).ready_task_ids
@@ -454,11 +475,11 @@ async def test_dependency_correction_rejects_cycle_and_keeps_previous_graph_and_
         await run(
             CorrectTaskUseCase,
             CorrectTaskCommand(
-                child.project_id,
-                child.owner_session_id,
-                child.uid,
-                child.revision,
-                (
+                project_id=child.project_id,
+                session_id=child.owner_session_id,
+                task_id=child.uid,
+                expected_revision=child.revision,
+                source_id=(
                     await record(
                         database,
                         actor,
@@ -490,12 +511,12 @@ async def test_invalidated_task_never_revives_from_late_result_and_is_not_all_su
         await run(
             InvalidateTaskUseCase,
             InvalidateTaskCommand(
-                active.project_id,
-                active.owner_session_id,
-                active.uid,
-                active.revision,
-                change.uid,
-                "actual user correction",
+                project_id=active.project_id,
+                session_id=active.owner_session_id,
+                task_id=active.uid,
+                expected_revision=active.revision,
+                source_id=change.uid,
+                reason="actual user correction",
             ),
             database_path=database,
         )
@@ -580,7 +601,7 @@ async def test_source_correction_and_followup_cannot_cross_project_scope(databas
         (
             await run(
                 GetSourcesUseCase,
-                GetSourcesQuery(actor.project.uid, outside.session.uid),
+                GetSourcesQuery(project_id=actor.project.uid, session_id=outside.session.uid),
                 database_path=database,
             )
         ).sources
@@ -622,19 +643,27 @@ async def test_independent_process_reads_same_todo_without_mutating_task_outcome
 import asyncio, json, sys
 from dataclasses import asdict
 from pathlib import Path
+from uuid import UUID
 from neurath.application.usecases.get_tasks import GetTasksQuery, GetTasksUseCase
 from tests.support.requests import run
-print(json.dumps(asdict(asyncio.run(run(GetTasksUseCase, GetTasksQuery(sys.argv[2],sys.argv[3]),database_path=Path(sys.argv[1])))), default=str))
+print(json.dumps(asdict(asyncio.run(run(GetTasksUseCase, GetTasksQuery(project_id=UUID(sys.argv[2]),session_id=UUID(sys.argv[3])),database_path=Path(sys.argv[1])))), default=str))
 """
     before = snapshot(database)
     process = subprocess.run(
-        [sys.executable, "-c", script, str(database), actor.project.uid, actor.session.uid],
+        [
+            sys.executable,
+            "-c",
+            script,
+            str(database),
+            str(actor.project.uid),
+            str(actor.session.uid),
+        ],
         check=True,
         capture_output=True,
         text=True,
     )
     observed = json.loads(process.stdout)
-    assert observed["tasks"][0]["uid"] == active.uid
+    assert observed["tasks"][0]["uid"] == str(active.uid)
     assert observed["tasks"][0]["status"] == "active"
     assert not observed["all_terminal"] and not observed["all_succeeded"]
     assert snapshot(database) == before
@@ -670,7 +699,7 @@ async def test_query_failure_does_not_hide_remaining_tasks(
             (
                 await run(
                     GetSourcesUseCase,
-                    GetSourcesQuery(actor.project.uid, actor.session.uid),
+                    GetSourcesQuery(project_id=actor.project.uid, session_id=actor.session.uid),
                     database_path=database,
                 )
             ).sources
@@ -693,10 +722,10 @@ async def test_correction_does_not_rewrite_sibling_goal_or_original_source_and_n
         await run(
             RecordSourceUseCase,
             RecordSourceCommand(
-                actor.project.uid,
-                actor.session.uid,
-                SourceKind.CORRECTION,
-                "Change only the first requirement title",
+                project_id=actor.project.uid,
+                session_id=actor.session.uid,
+                kind=SourceKind.CORRECTION,
+                body="Change only the first requirement title",
                 corrects_id=original.uid,
             ),
             database_path=database,
@@ -706,11 +735,11 @@ async def test_correction_does_not_rewrite_sibling_goal_or_original_source_and_n
         await run(
             CorrectTaskUseCase,
             CorrectTaskCommand(
-                first.project_id,
-                first.owner_session_id,
-                first.uid,
-                first.revision,
-                change.uid,
+                project_id=first.project_id,
+                session_id=first.owner_session_id,
+                task_id=first.uid,
+                expected_revision=first.revision,
+                source_id=change.uid,
                 title="corrected first title",
             ),
             database_path=database,
@@ -721,7 +750,7 @@ async def test_correction_does_not_rewrite_sibling_goal_or_original_source_and_n
     assert (
         await run(
             GetSourcesUseCase,
-            GetSourcesQuery(actor.project.uid, actor.session.uid),
+            GetSourcesQuery(project_id=actor.project.uid, session_id=actor.session.uid),
             database_path=database,
         )
     ).sources[0] == original
@@ -734,7 +763,11 @@ async def test_correction_does_not_rewrite_sibling_goal_or_original_source_and_n
         await run(
             CorrectTaskUseCase,
             CorrectTaskCommand(
-                done.project_id, done.owner_session_id, done.uid, done.revision, unchanged.uid
+                project_id=done.project_id,
+                session_id=done.owner_session_id,
+                task_id=done.uid,
+                expected_revision=done.revision,
+                source_id=unchanged.uid,
             ),
             database_path=database,
         )
@@ -753,11 +786,11 @@ async def test_todo_contains_all_six_states_and_client_display_cannot_mutate_the
         await run(
             WaitTaskUseCase,
             WaitTaskCommand(
-                to_wait.project_id,
-                to_wait.owner_session_id,
-                to_wait.uid,
-                to_wait.revision,
-                ExternalWait(
+                project_id=to_wait.project_id,
+                session_id=to_wait.owner_session_id,
+                task_id=to_wait.uid,
+                expected_revision=to_wait.revision,
+                condition=ExternalWait(
                     target="external job",
                     condition="job completed",
                     resume_scope="read result",
@@ -785,12 +818,12 @@ async def test_todo_contains_all_six_states_and_client_display_cannot_mutate_the
         await run(
             InvalidateTaskUseCase,
             InvalidateTaskCommand(
-                original.project_id,
-                original.owner_session_id,
-                original.uid,
-                original.revision,
-                change.uid,
-                "actual request removed",
+                project_id=original.project_id,
+                session_id=original.owner_session_id,
+                task_id=original.uid,
+                expected_revision=original.revision,
+                source_id=change.uid,
+                reason="actual request removed",
             ),
             database_path=database,
         )
@@ -811,7 +844,7 @@ async def test_todo_contains_all_six_states_and_client_display_cannot_mutate_the
     for item in host_display["tasks"]:
         item["status"] = "completed"
     host_display["tasks"].clear()
-    assert (await board(database, actor)) == current
+    assert asdict(await board(database, actor)) == asdict(current)
     assert snapshot(database) == before
     assert not current.all_terminal and not current.all_succeeded
     # 실제 반환 엔티티를 변경해도 저장소 밖의 조작으로 원장이 바뀌지 않아야 한다.

@@ -8,6 +8,7 @@ from contextlib import closing
 from dataclasses import replace
 from pathlib import Path
 from time import monotonic, sleep
+from uuid import uuid7
 
 import pytest
 from alembic import command
@@ -75,7 +76,11 @@ async def work(database, tmp_path):
         skill="implement-spec", version="1", phases=(step,), inputs=(("request", "산출물"),)
     )
     request = StartWorkflowCommand(
-        actor.project.uid, actor.session.uid, task.uid, task.revision, definition
+        project_id=actor.project.uid,
+        session_id=actor.session.uid,
+        task_id=task.uid,
+        expected_task_revision=task.revision,
+        definition=definition,
     )
     flow = (await run(StartWorkflowUseCase, request, database_path=database)).run
     return actor, task, flow
@@ -85,7 +90,9 @@ async def read(database, flow):
     return (
         await run(
             GetWorkflowUseCase,
-            GetWorkflowQuery(flow.project_id, flow.session_id, flow.uid),
+            GetWorkflowQuery(
+                project_id=flow.project_id, session_id=flow.session_id, run_id=flow.uid
+            ),
             database_path=database,
         )
     ).run
@@ -99,11 +106,18 @@ async def execute(database, flow, executor=None, notifier=None):
         if notifier is not None:
             scope.get(NotifyPhaseWaitUseCase).notifier = notifier
         reservation = await usecase.run(
-            ExecutePhaseCommand(flow.project_id, flow.session_id, flow.uid, flow.revision)
+            ExecutePhaseCommand(
+                project_id=flow.project_id,
+                session_id=flow.session_id,
+                run_id=flow.uid,
+                expected_revision=flow.revision,
+            )
         )
         current = (
             await scope.get(GetWorkflowUseCase).run(
-                GetWorkflowQuery(flow.project_id, flow.session_id, flow.uid)
+                GetWorkflowQuery(
+                    project_id=flow.project_id, session_id=flow.session_id, run_id=flow.uid
+                )
             )
         ).run
         return replace(reservation, run=current)
@@ -127,12 +141,14 @@ async def test_real_execution_finishes_workflow_then_allows_task_success(databas
     async with storage_scope(database, write=False) as scope:
         active = await scope.get(ITaskRepository).get(task.uid)
     report = ReportResultCommand(
-        flow.project_id,
-        flow.session_id,
-        task.uid,
-        active.revision,
-        active.current_attempt_number,
-        TaskResult(outcome=Outcome.SUCCEEDED, summary="산출물 확인", observations=("artifact",)),
+        project_id=flow.project_id,
+        session_id=flow.session_id,
+        task_id=task.uid,
+        expected_revision=active.revision,
+        attempt_number=active.current_attempt_number,
+        result=TaskResult(
+            outcome=Outcome.SUCCEEDED, summary="산출물 확인", observations=("artifact",)
+        ),
     )
     with pytest.raises(InvalidWorkflowState):
         (await run(ReportResultUseCase, report, database_path=database))
@@ -152,7 +168,11 @@ async def test_real_execution_finishes_workflow_then_allows_task_success(databas
 async def test_start_is_idempotent_but_definition_changes_use_revision(database, work):
     actor, task, flow = work
     request = StartWorkflowCommand(
-        flow.project_id, flow.session_id, task.uid, task.revision, flow.definition
+        project_id=flow.project_id,
+        session_id=flow.session_id,
+        task_id=task.uid,
+        expected_task_revision=task.revision,
+        definition=flow.definition,
     )
     assert (await run(StartWorkflowUseCase, request, database_path=database)).run.uid == flow.uid
     with pytest.raises(InvalidWorkflowState):
@@ -173,12 +193,12 @@ async def test_explicit_prepare_report_skip_and_revision_roundtrip(database, wor
         await run(
             ReviseWorkflowUseCase,
             ReviseWorkflowCommand(
-                flow.project_id,
-                flow.session_id,
-                flow.uid,
-                flow.revision,
-                definition,
-                "UI 선택 분기 추가",
+                project_id=flow.project_id,
+                session_id=flow.session_id,
+                run_id=flow.uid,
+                expected_revision=flow.revision,
+                definition=definition,
+                reason="UI 선택 분기 추가",
             ),
             database_path=database,
         )
@@ -187,7 +207,12 @@ async def test_explicit_prepare_report_skip_and_revision_roundtrip(database, wor
         await run(
             SkipPhaseUseCase,
             SkipPhaseCommand(
-                flow.project_id, flow.session_id, flow.uid, flow.revision, "no-ui", "UI 변경 없음"
+                project_id=flow.project_id,
+                session_id=flow.session_id,
+                run_id=flow.uid,
+                expected_revision=flow.revision,
+                condition="no-ui",
+                reason="UI 변경 없음",
             ),
             database_path=database,
         )
@@ -195,7 +220,12 @@ async def test_explicit_prepare_report_skip_and_revision_roundtrip(database, wor
     prepared = (
         await run(
             PreparePhaseUseCase,
-            PreparePhaseCommand(flow.project_id, flow.session_id, flow.uid, flow.revision),
+            PreparePhaseCommand(
+                project_id=flow.project_id,
+                session_id=flow.session_id,
+                run_id=flow.uid,
+                expected_revision=flow.revision,
+            ),
             database_path=database,
         )
     ).run
@@ -203,7 +233,12 @@ async def test_explicit_prepare_report_skip_and_revision_roundtrip(database, wor
         (
             await run(
                 PreparePhaseUseCase,
-                PreparePhaseCommand(flow.project_id, flow.session_id, flow.uid, flow.revision),
+                PreparePhaseCommand(
+                    project_id=flow.project_id,
+                    session_id=flow.session_id,
+                    run_id=flow.uid,
+                    expected_revision=flow.revision,
+                ),
                 database_path=database,
             )
         )
@@ -211,11 +246,11 @@ async def test_explicit_prepare_report_skip_and_revision_roundtrip(database, wor
         await run(
             ReportPhaseUseCase,
             ReportPhaseCommand(
-                flow.project_id,
-                flow.session_id,
-                flow.uid,
-                prepared.attempts[-1].number,
-                result(prepared.current),
+                project_id=flow.project_id,
+                session_id=flow.session_id,
+                run_id=flow.uid,
+                attempt_number=prepared.attempts[-1].number,
+                result=result(prepared.current),
             ),
             database_path=database,
         )
@@ -297,7 +332,12 @@ async def test_restarted_reserved_attempt_uses_lookup_then_only_verified_dedup(
     prepared = (
         await run(
             PreparePhaseUseCase,
-            PreparePhaseCommand(flow.project_id, flow.session_id, flow.uid, flow.revision),
+            PreparePhaseCommand(
+                project_id=flow.project_id,
+                session_id=flow.session_id,
+                run_id=flow.uid,
+                expected_revision=flow.revision,
+            ),
             database_path=database,
         )
     ).run
@@ -325,7 +365,12 @@ async def test_task_cancellation_blocks_execution_and_prepare(database, work):
         (
             await run(
                 PreparePhaseUseCase,
-                PreparePhaseCommand(flow.project_id, flow.session_id, flow.uid, flow.revision),
+                PreparePhaseCommand(
+                    project_id=flow.project_id,
+                    session_id=flow.session_id,
+                    run_id=flow.uid,
+                    expected_revision=flow.revision,
+                ),
                 database_path=database,
             )
         )
@@ -405,7 +450,7 @@ def test_subprocess_interrupt_terminates_actual_process(tmp_path):
 
 async def test_populated_workflow_downgrade_preserves_all_records(database, work):
     before = snapshot(database)
-    engine = create_database_engine(database, write=True)
+    engine = create_database_engine(database, write=True, migration=True)
     try:
         with pytest.raises(RuntimeError, match="Workflow history"):
             async with engine.begin() as connection:
@@ -423,7 +468,7 @@ async def test_primitive_repository_and_framework_transaction_are_used(database,
     _, _, flow = work
     async with storage_scope(database, write=False) as scope:
         repository = scope.get(IWorkflowRepository)
-        assert (await repository.get_or_none("missing")) is None
+        assert (await repository.get_or_none(uuid7())) is None
         assert (await repository.get(flow.uid)).uid == flow.uid
         assert scope.get(RunPhaseUseCase).executor is scope.get(IPhaseExecutorService)
         assert scope.get(IWorkflowNotifierService).__class__ is StderrWorkflowNotifierService
@@ -444,12 +489,12 @@ async def test_same_waiting_attempt_is_reconciled_after_unrelated_phase_revision
         await run(
             ReviseWorkflowUseCase,
             ReviseWorkflowCommand(
-                flow.project_id,
-                flow.session_id,
-                flow.uid,
-                flow.revision,
-                extended,
-                "문서 단계 추가",
+                project_id=flow.project_id,
+                session_id=flow.session_id,
+                run_id=flow.uid,
+                expected_revision=flow.revision,
+                definition=extended,
+                reason="문서 단계 추가",
             ),
             database_path=database,
         )
@@ -465,12 +510,12 @@ async def test_same_waiting_attempt_is_reconciled_after_unrelated_phase_revision
         await run(
             ReviseWorkflowUseCase,
             ReviseWorkflowCommand(
-                flow.project_id,
-                flow.session_id,
-                flow.uid,
-                waiting.revision,
-                updated,
-                "문서 대상만 변경",
+                project_id=flow.project_id,
+                session_id=flow.session_id,
+                run_id=flow.uid,
+                expected_revision=waiting.revision,
+                definition=updated,
+                reason="문서 대상만 변경",
             ),
             database_path=database,
         )
@@ -499,12 +544,12 @@ async def test_changed_target_during_external_execution_keeps_old_result_without
                 run(
                     ReviseWorkflowUseCase,
                     ReviseWorkflowCommand(
-                        flow.project_id,
-                        flow.session_id,
-                        flow.uid,
-                        current.revision,
-                        updated,
-                        "실행 중 소스 변경",
+                        project_id=flow.project_id,
+                        session_id=flow.session_id,
+                        run_id=flow.uid,
+                        expected_revision=current.revision,
+                        definition=updated,
+                        reason="실행 중 소스 변경",
                     ),
                     database_path=database,
                 )
@@ -527,7 +572,12 @@ async def test_start_attaches_to_existing_active_task_without_a_second_attempt(d
     task = (
         await run(
             StartTaskUseCase,
-            StartTaskCommand(task.project_id, task.owner_session_id, task.uid, task.revision),
+            StartTaskCommand(
+                project_id=task.project_id,
+                session_id=task.owner_session_id,
+                task_id=task.uid,
+                expected_revision=task.revision,
+            ),
             database_path=database,
         )
     ).task
@@ -542,11 +592,13 @@ async def test_start_attaches_to_existing_active_task_without_a_second_attempt(d
         await run(
             StartWorkflowUseCase,
             StartWorkflowCommand(
-                task.project_id,
-                task.owner_session_id,
-                task.uid,
-                task.revision,
-                WorkflowDefinition(skill="debug", version="1", phases=(step,), inputs=()),
+                project_id=task.project_id,
+                session_id=task.owner_session_id,
+                task_id=task.uid,
+                expected_task_revision=task.revision,
+                definition=WorkflowDefinition(
+                    skill="debug", version="1", phases=(step,), inputs=()
+                ),
             ),
             database_path=database,
         )
@@ -561,7 +613,7 @@ async def test_core0003_upgrade_preserves_unfinished_tasks_and_is_repeatable(dat
     folder.mkdir()
     actor = await register_session(str(folder), "codex", "retained", database_path=database)
     task = await create(database, actor)
-    engine = create_database_engine(database, write=True)
+    engine = create_database_engine(database, write=True, migration=True)
     try:
         async with engine.begin() as connection:
             await connection.run_sync(
@@ -574,11 +626,17 @@ async def test_core0003_upgrade_preserves_unfinished_tasks_and_is_repeatable(dat
     before = snapshot(database)
     (await initialize_database(database))
     after = snapshot(database)
+    identifiers = {
+        str(uid): uid.hex
+        for uid in (actor.project.uid, actor.session.uid, task.uid, task.definition.source_id)
+    }
     for table, rows in before.items():
+        if table == "core_schema_revision":
+            continue
+        expected = [tuple(identifiers.get(value, value) for value in row) for row in rows]
         if table == "core_sessions":
-            assert after[table] == [(*row, None) for row in rows]
-        elif table != "core_schema_revision":
-            assert after[table] == rows
+            expected = [(*row, None) for row in expected]
+        assert after[table] == expected
     assert after["core_workflows"] == []
     async with storage_scope(database, write=False) as scope:
         assert (await scope.get(ITaskRepository).get(task.uid)).status is TaskStatus.PENDING
@@ -591,7 +649,7 @@ async def test_core0003_upgrade_preserves_unfinished_tasks_and_is_repeatable(dat
 async def test_core0004_failure_rolls_back_schema_and_preserves_old_bytes(database, monkeypatch):
     import neurath.infrastructure.database as storage
 
-    engine = create_database_engine(database, write=True)
+    engine = create_database_engine(database, write=True, migration=True)
     try:
         async with engine.begin() as connection:
             await connection.run_sync(
@@ -624,7 +682,12 @@ async def test_incomplete_execution_adapters_leave_work_unconfirmed(
         flow = (
             await run(
                 PreparePhaseUseCase,
-                PreparePhaseCommand(flow.project_id, flow.session_id, flow.uid, flow.revision),
+                PreparePhaseCommand(
+                    project_id=flow.project_id,
+                    session_id=flow.session_id,
+                    run_id=flow.uid,
+                    expected_revision=flow.revision,
+                ),
                 database_path=database,
             )
         ).run
@@ -677,7 +740,11 @@ async def test_incomplete_workflow_lookup_rolls_back_start(database, work, monke
             await run(
                 StartWorkflowUseCase,
                 StartWorkflowCommand(
-                    flow.project_id, flow.session_id, task.uid, task.revision, flow.definition
+                    project_id=flow.project_id,
+                    session_id=flow.session_id,
+                    task_id=task.uid,
+                    expected_task_revision=task.revision,
+                    definition=flow.definition,
                 ),
                 database_path=database,
             )
@@ -707,7 +774,9 @@ async def test_waiting_workflow_does_not_block_independent_task(database, work, 
     independent = await create(database, actor, title="별도 작업")
     await execute(database, flow, RecoverableExecutor(flow.current, fail=True))
     board = await run(
-        GetTasksUseCase, GetTasksQuery(flow.project_id, flow.session_id), database_path=database
+        GetTasksUseCase,
+        GetTasksQuery(project_id=flow.project_id, session_id=flow.session_id),
+        database_path=database,
     )
     assert board.ready_task_ids == (independent.uid,)
     assert not board.all_terminal and not board.all_succeeded
@@ -720,7 +789,12 @@ async def test_report_does_not_resume_unrelated_external_wait(database, work):
     prepared = (
         await run(
             PreparePhaseUseCase,
-            PreparePhaseCommand(flow.project_id, flow.session_id, flow.uid, flow.revision),
+            PreparePhaseCommand(
+                project_id=flow.project_id,
+                session_id=flow.session_id,
+                run_id=flow.uid,
+                expected_revision=flow.revision,
+            ),
             database_path=database,
         )
     ).run
@@ -741,11 +815,11 @@ async def test_report_does_not_resume_unrelated_external_wait(database, work):
         await run(
             ReportPhaseUseCase,
             ReportPhaseCommand(
-                flow.project_id,
-                flow.session_id,
-                flow.uid,
-                prepared.attempts[-1].number,
-                result(prepared.current),
+                project_id=flow.project_id,
+                session_id=flow.session_id,
+                run_id=flow.uid,
+                attempt_number=prepared.attempts[-1].number,
+                result=result(prepared.current),
             ),
             database_path=database,
         )
@@ -790,24 +864,38 @@ async def test_workflow_is_readable_after_process_restart(database, work):
     prepared = (
         await run(
             PreparePhaseUseCase,
-            PreparePhaseCommand(flow.project_id, flow.session_id, flow.uid, flow.revision),
+            PreparePhaseCommand(
+                project_id=flow.project_id,
+                session_id=flow.session_id,
+                run_id=flow.uid,
+                expected_revision=flow.revision,
+            ),
             database_path=database,
         )
     ).run
     script = """
 import asyncio, sys
 from pathlib import Path
+from uuid import UUID
 from spakky.plugins.sqlalchemy.persistency.transaction import AsyncTransaction
 from tests.support.application import spakky_context
 from neurath.application.usecases.get_workflow import GetWorkflowUseCase, GetWorkflowQuery
 async def main():
     async with spakky_context(Path(sys.argv[1]),write=False) as scope:
-        flow=(await scope.get(GetWorkflowUseCase).run(GetWorkflowQuery(*sys.argv[2:]))).run
+        flow=(await scope.get(GetWorkflowUseCase).run(GetWorkflowQuery(project_id=UUID(sys.argv[2]),session_id=UUID(sys.argv[3]),run_id=UUID(sys.argv[4])))).run
         print(flow.definition.version, flow.attempts[0].status.value, flow.current.target_revision)
 asyncio.run(main())
 """
     child = subprocess.run(
-        [sys.executable, "-c", script, str(database), flow.project_id, flow.session_id, flow.uid],
+        [
+            sys.executable,
+            "-c",
+            script,
+            str(database),
+            str(flow.project_id),
+            str(flow.session_id),
+            str(flow.uid),
+        ],
         capture_output=True,
         text=True,
         check=True,
@@ -854,7 +942,12 @@ async def test_phase_and_task_wait_are_rolled_back_together_on_save_failure(
     prepared = (
         await run(
             PreparePhaseUseCase,
-            PreparePhaseCommand(flow.project_id, flow.session_id, flow.uid, flow.revision),
+            PreparePhaseCommand(
+                project_id=flow.project_id,
+                session_id=flow.session_id,
+                run_id=flow.uid,
+                expected_revision=flow.revision,
+            ),
             database_path=database,
         )
     ).run
@@ -869,11 +962,11 @@ async def test_phase_and_task_wait_are_rolled_back_together_on_save_failure(
             await run(
                 ReportPhaseUseCase,
                 ReportPhaseCommand(
-                    flow.project_id,
-                    flow.session_id,
-                    flow.uid,
-                    prepared.attempts[-1].number,
-                    result(prepared.current, status=PhaseStatus.WAITING),
+                    project_id=flow.project_id,
+                    session_id=flow.session_id,
+                    run_id=flow.uid,
+                    attempt_number=prepared.attempts[-1].number,
+                    result=result(prepared.current, status=PhaseStatus.WAITING),
                 ),
                 database_path=database,
             )
@@ -911,7 +1004,12 @@ async def test_recovered_result_returns_before_capability_check_or_resubmission(
     prepared = (
         await run(
             PreparePhaseUseCase,
-            PreparePhaseCommand(flow.project_id, flow.session_id, flow.uid, flow.revision),
+            PreparePhaseCommand(
+                project_id=flow.project_id,
+                session_id=flow.session_id,
+                run_id=flow.uid,
+                expected_revision=flow.revision,
+            ),
             database_path=database,
         )
     ).run

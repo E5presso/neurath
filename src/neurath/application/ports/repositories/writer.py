@@ -2,13 +2,14 @@
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from uuid import UUID
 
 from spakky.data.persistency.repository import IAsyncGenericRepository
 
 from neurath.domain.aggregates.writer import Writer
 
 
-class IWriterRepository(IAsyncGenericRepository[Writer, str], ABC):
+class IWriterRepository(IAsyncGenericRepository[Writer, UUID], ABC):
     """작성 소유자·턴·도구 호출·세대를 가진 임대의 식별자 조회와 저장을 프레임워크 기본 계약으로 제공한다."""
 
     @abstractmethod
@@ -27,7 +28,7 @@ class IWriterRepository(IAsyncGenericRepository[Writer, str], ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def find_by_execution_id(self, execution_id: str) -> Sequence[Writer]:
+    async def find_by_execution_id(self, execution_id: UUID) -> Sequence[Writer]:
         """인수 확인에 필요한 범위의 실행 또는 작성 기록을 조회한다.
 
         Args:

@@ -32,13 +32,13 @@ class MemoryModel(AbstractMappableTable[Memory]):
     """
 
     __tablename__ = "core_memories"
-    id: Mapped[str] = mapped_column(String, primary_key=True)
+    id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True)
     version: Mapped[UUID] = mapped_column(Uuid(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    project_id: Mapped[str] = mapped_column(String, ForeignKey("core_projects.id"), nullable=False)
-    session_id: Mapped[str] = mapped_column(String, ForeignKey("core_sessions.id"), nullable=False)
-    task_id: Mapped[str | None] = mapped_column(String, ForeignKey("core_tasks.id"))
+    project_id: Mapped[UUID] = mapped_column(Uuid(), ForeignKey("core_projects.id"), nullable=False)
+    session_id: Mapped[UUID] = mapped_column(Uuid(), ForeignKey("core_sessions.id"), nullable=False)
+    task_id: Mapped[UUID | None] = mapped_column(Uuid(), ForeignKey("core_tasks.id"))
     kind: Mapped[str] = mapped_column(String, nullable=False)
     content: Mapped[str] = mapped_column(String, nullable=False)
     references: Mapped[list[str]] = mapped_column(JSON, nullable=False)

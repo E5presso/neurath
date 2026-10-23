@@ -2,18 +2,19 @@
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from uuid import UUID
 
 from spakky.data.persistency.repository import IAsyncGenericRepository
 
 from neurath.domain.aggregates.execution import Execution
 
 
-class IExecutionRepository(IAsyncGenericRepository[Execution, str], ABC):
+class IExecutionRepository(IAsyncGenericRepository[Execution, UUID], ABC):
     """실제 턴·중단 상태·Stop 관찰을 가진 실행의 식별자 조회와 저장을 프레임워크 기본 계약으로 제공한다."""
 
     @abstractmethod
     async def find_by_session_id_and_agent_id(
-        self, session_id: str, agent_id: str
+        self, session_id: UUID, agent_id: str
     ) -> Execution | None:
         """현재 세션과 자식 식별자에 연결된 실행 aggregate를 찾는다.
 
@@ -30,7 +31,7 @@ class IExecutionRepository(IAsyncGenericRepository[Execution, str], ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def find_by_session_id(self, session_id: str) -> Sequence[Execution]:
+    async def find_by_session_id(self, session_id: UUID) -> Sequence[Execution]:
         """인수 확인에 필요한 범위의 실행 또는 작성 기록을 조회한다.
 
         Args:

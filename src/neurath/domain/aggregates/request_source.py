@@ -2,7 +2,7 @@
 
 from enum import StrEnum
 from typing import Self, override
-from uuid import uuid4
+from uuid import UUID, uuid7
 
 from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
@@ -31,7 +31,7 @@ class SourceKind(StrEnum):
 
 
 @mutable
-class RequestSource(AbstractAggregateRoot[str]):
+class RequestSource(AbstractAggregateRoot[UUID]):
     """요구의 원문과 최초 기록 세션, 발신 맥락 및 정정 대상 ID를 보존한다.
 
     Attributes:
@@ -45,35 +45,35 @@ class RequestSource(AbstractAggregateRoot[str]):
         revision: 저장소의 낙관적 버전.
     """
 
-    project_id: str
-    session_id: str
+    project_id: UUID
+    session_id: UUID
     kind: SourceKind
     body: str
     author: str | None = None
     reference: str | None = None
-    corrects_id: str | None = None
+    corrects_id: UUID | None = None
     revision: int = 1
 
     @classmethod
     @override
-    def next_id(cls) -> str:
+    def next_id(cls) -> UUID:
         """새 출처 식별자를 생성한다.
 
         Returns:
-            str: 독립적으로 보존할 출처 식별자.
+            UUID: 독립적으로 보존할 출처 식별자.
         """
-        return str(uuid4())
+        return uuid7()
 
     @classmethod
     def create(
         cls,
-        project_id: str,
-        session_id: str,
+        project_id: UUID,
+        session_id: UUID,
         kind: SourceKind,
         body: str,
         author: str | None = None,
         reference: str | None = None,
-        corrects_id: str | None = None,
+        corrects_id: UUID | None = None,
     ) -> Self:
         """새 uid로 원문 객체를 만들고 본문·정정 용도의 일관성을 검증한다.
 
@@ -118,7 +118,7 @@ class RequestSource(AbstractAggregateRoot[str]):
                 "Corrections require an existing source; other source kinds cannot correct"
             )
 
-    def require_project(self, project_id: str) -> None:
+    def require_project(self, project_id: UUID) -> None:
         """프로젝트 밖의 출처 참조를 거부한다.
 
         Args:
@@ -141,7 +141,7 @@ class RequestSource(AbstractAggregateRoot[str]):
         if self.kind in (SourceKind.STATUS, SourceKind.SUMMARY):
             raise InvalidTaskState("Status questions and summaries cannot define requirements")
 
-    def require_correction(self, current_source_id: str) -> None:
+    def require_correction(self, current_source_id: UUID) -> None:
         """정정한 출처와 현재 요구의 관계를 확인한다.
 
         Args:

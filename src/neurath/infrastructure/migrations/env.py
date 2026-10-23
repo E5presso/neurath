@@ -6,6 +6,8 @@ from spakky.core.application.application_context import ApplicationContext
 from spakky.plugins.sqlalchemy.orm.table import AbstractTable
 from sqlalchemy.engine import Connection
 
+from neurath.domain.errors import StorageNotReady
+
 # 애플리케이션과 같은 스캔 규칙으로 새 @Table 모델까지 metadata에 반영한다.
 SpakkyApplication(ApplicationContext()).scan("neurath.infrastructure.models")
 connection = context.config.attributes["connection"]
@@ -18,4 +20,8 @@ context.configure(
     transactional_ddl=True,
 )
 with context.begin_transaction():
+    if connection.exec_driver_sql("PRAGMA foreign_key_check").first() is not None:
+        raise StorageNotReady("Existing foreign key violations must be repaired before migration")
     context.run_migrations()
+    if connection.exec_driver_sql("PRAGMA foreign_key_check").first() is not None:
+        raise StorageNotReady("Migration violated foreign keys; changes are rolled back")

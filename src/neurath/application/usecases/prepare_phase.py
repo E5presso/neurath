@@ -1,8 +1,9 @@
 """실행 가능한 다음 단계를 예약하여 외부 동작 전에 시도를 저장한다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -12,7 +13,7 @@ from neurath.application.ports.repositories.workflow import IWorkflowRepository
 from neurath.domain.aggregates.workflow import WorkflowRun
 
 
-@dataclass(frozen=True)
+@immutable
 class PreparePhaseCommand(AbstractCommand):
     """다음 단계의 실행을 예약할 run과 읽은 저장 버전을 지정한다.
 
@@ -23,13 +24,13 @@ class PreparePhaseCommand(AbstractCommand):
         expected_revision: 예약 전에 읽은 run 저장 버전.
     """
 
-    project_id: str
-    session_id: str
-    run_id: str
+    project_id: UUID
+    session_id: UUID
+    run_id: UUID
     expected_revision: int
 
 
-@dataclass(frozen=True)
+@immutable
 class PreparePhaseResult:
     """새 running 시도가 마지막에 추가된 run. 호출자는 저장 후 외부 실행을 연결한다.
 

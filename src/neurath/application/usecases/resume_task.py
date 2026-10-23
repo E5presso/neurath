@@ -1,8 +1,9 @@
 """waiting 태스크의 마지막 대기를 해소하고 같은 시도를 active로 되돌린다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -11,7 +12,7 @@ from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.domain.aggregates.task import Task
 
 
-@dataclass(frozen=True)
+@immutable
 class ResumeTaskCommand(AbstractCommand):
     """외부 대기가 해소된 태스크와 해소 관찰을 지정한다.
 
@@ -23,14 +24,14 @@ class ResumeTaskCommand(AbstractCommand):
         resolution: 마지막 외부 대기를 해소한 관찰 내용 또는 참조. 공백만 있는 값은 거부한다.
     """
 
-    project_id: str
-    session_id: str
-    task_id: str
+    project_id: UUID
+    session_id: UUID
+    task_id: UUID
     expected_revision: int
     resolution: str
 
 
-@dataclass(frozen=True)
+@immutable
 class ResumeTaskResult:
     """마지막 대기의 해소 기록과 같은 실행 시도를 유지한 활성 태스크를 반환한다.
 

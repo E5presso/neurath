@@ -11,13 +11,21 @@ from neurath.domain.observations import DirectoryObservation
 
 
 def test_identity_and_root_policy_distinguishes_clones_and_unifies_worktrees():
-    primary = DirectoryObservation("/repo", "/repo/.git", "/repo")
-    linked = DirectoryObservation("/linked/child", "/repo/.git", "/repo")
-    clone = DirectoryObservation("/clone", "/clone/.git", "/clone")
+    primary = DirectoryObservation(
+        working_directory="/repo", git_common_directory="/repo/.git", primary_worktree="/repo"
+    )
+    linked = DirectoryObservation(
+        working_directory="/linked/child",
+        git_common_directory="/repo/.git",
+        primary_worktree="/repo",
+    )
+    clone = DirectoryObservation(
+        working_directory="/clone", git_common_directory="/clone/.git", primary_worktree="/clone"
+    )
     assert Project.identify(primary) == Project.identify(linked)
     assert Project.identify(primary) != Project.identify(clone)
     assert Project.create(linked).root_path == "/repo"
-    assert Project.identify(DirectoryObservation("/folder")) == (
+    assert Project.identify(DirectoryObservation(working_directory="/folder")) == (
         ProjectLocation(kind=ProjectKind.FOLDER, path="/folder"),
     )
 
@@ -25,8 +33,12 @@ def test_identity_and_root_policy_distinguishes_clones_and_unifies_worktrees():
 @pytest.mark.parametrize(
     "observation",
     [
-        DirectoryObservation("/path", "/git", None),
-        DirectoryObservation("/path", None, "/root"),
+        DirectoryObservation(
+            working_directory="/path", git_common_directory="/git", primary_worktree=None
+        ),
+        DirectoryObservation(
+            working_directory="/path", git_common_directory=None, primary_worktree="/root"
+        ),
     ],
 )
 def test_incomplete_git_facts_are_rejected_in_domain(observation):
@@ -35,9 +47,13 @@ def test_incomplete_git_facts_are_rejected_in_domain(observation):
 
 
 def test_folder_promotion_from_first_linked_observation_retains_entity_identity():
-    project = Project.create(DirectoryObservation("/repo"))
+    project = Project.create(DirectoryObservation(working_directory="/repo"))
     retained_id = project.id
-    candidates = Project.identify(DirectoryObservation("/linked", "/repo/.git", "/repo"))
+    candidates = Project.identify(
+        DirectoryObservation(
+            working_directory="/linked", git_common_directory="/repo/.git", primary_worktree="/repo"
+        )
+    )
     assert Project.owner_of((project,)) is project
     project.associate(candidates)
     assert set(project.locations) == set(candidates)
@@ -45,8 +61,12 @@ def test_folder_promotion_from_first_linked_observation_retains_entity_identity(
 
 
 def test_conflicting_owners_and_replacement_git_identity_never_partially_associate():
-    first = Project.create(DirectoryObservation("/one", "/one/.git", "/one"))
-    second = Project.create(DirectoryObservation("/two"))
+    first = Project.create(
+        DirectoryObservation(
+            working_directory="/one", git_common_directory="/one/.git", primary_worktree="/one"
+        )
+    )
+    second = Project.create(DirectoryObservation(working_directory="/two"))
     before = first.locations
     with pytest.raises(ProjectIdentityConflict):
         Project.owner_of((first, second))

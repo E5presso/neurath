@@ -1,16 +1,16 @@
 """커밋된 단계 대기 상태를 사용자에게 안내한다."""
 
 import asyncio
-from dataclasses import dataclass
 from typing import override
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.services.phase_executor import IWorkflowNotifierService
 
 
-@dataclass(frozen=True)
+@immutable
 class NotifyPhaseWaitCommand(AbstractCommand):
     """이미 저장한 외부 대기 상태의 안내 대상을 지정한다.
 

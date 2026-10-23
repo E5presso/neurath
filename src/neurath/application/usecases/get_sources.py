@@ -1,9 +1,10 @@
 """호출 세션의 프로젝트를 확인한 뒤 프로젝트 전체 출처를 조회한다."""
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
@@ -15,7 +16,7 @@ from neurath.domain.aggregates.request_source import RequestSource
 from neurath.infrastructure.models.request_source import RequestSourceModel
 
 
-@dataclass(frozen=True)
+@immutable
 class GetSourcesQuery(AbstractQuery):
     """원문 목록을 조회할 프로젝트와 그 프로젝트에 속한 호출 세션을 지정한다.
 
@@ -24,11 +25,11 @@ class GetSourcesQuery(AbstractQuery):
         session_id: 해당 프로젝트에 속한 호출 세션 ID.
     """
 
-    project_id: str
-    session_id: str
+    project_id: UUID
+    session_id: UUID
 
 
-@dataclass(frozen=True)
+@immutable
 class GetSourcesResult:
     """프로젝트의 원문·정정·상태 질문·요약 기록을 모두 반환한다.
 

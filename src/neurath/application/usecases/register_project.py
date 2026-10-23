@@ -1,8 +1,8 @@
 """관찰 위치의 기존 소유 프로젝트를 찾고, 없으면 새 프로젝트를 등록한다."""
 
-from dataclasses import dataclass
 from typing import override
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -12,7 +12,7 @@ from neurath.domain.aggregates.project import Project
 from neurath.domain.observations import DirectoryObservation
 
 
-@dataclass(frozen=True)
+@immutable
 class RegisterProjectCommand(AbstractCommand):
     """프로젝트를 찾거나 등록하는 데 사용할 디렉터리·Git 관찰을 전달한다.
 
@@ -23,7 +23,7 @@ class RegisterProjectCommand(AbstractCommand):
     observation: DirectoryObservation
 
 
-@dataclass(frozen=True)
+@immutable
 class RegisterProjectResult:
     """관찰한 로컬 위치들을 소유하는 기존 또는 신규 프로젝트를 반환한다.
 

@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from enum import StrEnum
 from typing import Self, override
-from uuid import uuid4
+from uuid import UUID, uuid7
 
 from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
@@ -40,7 +40,7 @@ class MemoryKind(StrEnum):
 
 
 @mutable
-class Memory(AbstractAggregateRoot[str]):
+class Memory(AbstractAggregateRoot[UUID]):
     """현재 enclave를 덮어쓰거나 태스크를 완료하지 않는 출처 있는 기록이다.
 
     Attributes:
@@ -55,9 +55,9 @@ class Memory(AbstractAggregateRoot[str]):
         graph_error: 외부 갱신 실패의 관찰이며 결과 미기록은 None.
     """
 
-    project_id: str
-    session_id: str
-    task_id: str | None
+    project_id: UUID
+    session_id: UUID
+    task_id: UUID | None
     kind: MemoryKind
     content: str
     references: Sequence[str]
@@ -120,20 +120,20 @@ class Memory(AbstractAggregateRoot[str]):
 
     @classmethod
     @override
-    def next_id(cls) -> str:
+    def next_id(cls) -> UUID:
         """선택 조회에 사용할 기억 식별자를 생성한다.
 
         Returns:
-            str: 새로운 UUID 문자열.
+            UUID: 새로운 UUID 값.
         """
-        return str(uuid4())
+        return uuid7()
 
     @classmethod
     def create(
         cls,
-        project_id: str,
-        session_id: str,
-        task_id: str | None,
+        project_id: UUID,
+        session_id: UUID,
+        task_id: UUID | None,
         kind: MemoryKind,
         content: str,
         references: Sequence[str],

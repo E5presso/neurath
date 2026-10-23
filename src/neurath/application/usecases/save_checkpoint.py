@@ -1,9 +1,10 @@
 """작업 완료 판정과 별개로 재개 가능한 보고를 저장한다."""
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -14,7 +15,7 @@ from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.domain.aggregates.memory import Memory, MemoryKind
 
 
-@dataclass(frozen=True)
+@immutable
 class SaveCheckpointCommand(AbstractCommand):
     """현재 결과·판단·남은 일과 다음 행동을 보고로 전달한다.
 
@@ -27,11 +28,11 @@ class SaveCheckpointCommand(AbstractCommand):
         graph_directory: 검증·저장 커밋 후 갱신할 선택적 Graphify 경로.
     """
 
-    project_id: str
-    session_id: str
+    project_id: UUID
+    session_id: UUID
     content: str
     references: Sequence[str]
-    task_id: str | None = None
+    task_id: UUID | None = None
     graph_directory: str | None = None
 
 

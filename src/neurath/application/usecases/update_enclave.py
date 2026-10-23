@@ -1,9 +1,11 @@
 """현재 맥락의 변경 목록을 하나의 트랜잭션으로 적용한다."""
 
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -18,7 +20,7 @@ from neurath.domain.enclave_records import EnclaveFact
 from neurath.domain.errors import RevisionConflict
 
 
-@dataclass(frozen=True)
+@immutable
 class SetEnclaveFact:
     """현재 내용과 선택적 상세 자료를 저장한다.
 
@@ -31,7 +33,7 @@ class SetEnclaveFact:
     details: str | None = None
 
 
-@dataclass(frozen=True)
+@immutable
 class RemoveEnclaveFact:
     """현재 항목의 명시적 삭제를 요청한다.
 
@@ -42,7 +44,7 @@ class RemoveEnclaveFact:
     key: str
 
 
-@dataclass(frozen=True)
+@immutable
 class UpdateEnclaveCommand(AbstractCommand):
     """같은 예상 개정을 기준으로 적용할 변경을 지정한다.
 
@@ -54,9 +56,9 @@ class UpdateEnclaveCommand(AbstractCommand):
         changes: 순서대로 원자 적용할 저장·삭제 목록.
     """
 
-    project_id: str
-    session_id: str
-    task_id: str | None
+    project_id: UUID
+    session_id: UUID
+    task_id: UUID | None
     expected_revision: int
     changes: Sequence[SetEnclaveFact | RemoveEnclaveFact]
 

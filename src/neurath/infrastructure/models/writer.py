@@ -31,7 +31,7 @@ class WriterModel(AbstractMappableTable[Writer]):
 
     __tablename__ = "core_writers"
     __table_args__ = (UniqueConstraint("resource"),)
-    id: Mapped[str] = mapped_column(String, primary_key=True)
+    id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True)
     version: Mapped[UUID] = mapped_column(
         Uuid(), nullable=False, server_default="00000000000000000000000000000000"
     )
@@ -43,8 +43,8 @@ class WriterModel(AbstractMappableTable[Writer]):
     )
 
     resource: Mapped[str] = mapped_column(String, nullable=False)
-    execution_id: Mapped[str | None] = mapped_column(
-        String, ForeignKey("core_executions.id"), nullable=True
+    execution_id: Mapped[UUID | None] = mapped_column(
+        Uuid(), ForeignKey("core_executions.id"), nullable=True
     )
     turn_id: Mapped[str] = mapped_column(String, nullable=False)
     tool_use_id: Mapped[str] = mapped_column(String, nullable=False)

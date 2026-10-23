@@ -1,8 +1,9 @@
 """미확정 시도에 후보 자료를 저장하며 성공 판정은 report_result에 남긴다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -12,7 +13,7 @@ from neurath.domain.aggregates.task import Task
 from neurath.domain.task_records import SubmittedResult
 
 
-@dataclass(frozen=True)
+@immutable
 class SubmitResultCommand(AbstractCommand):
     """아직 확정되지 않은 실행 시도에 저장할 후보 설명·산출물 참조를 지정한다.
 
@@ -25,15 +26,15 @@ class SubmitResultCommand(AbstractCommand):
         submission: 확정 전 후보 설명과 산출물 참조. 같은 값은 유지하고 다른 값은 교체한다.
     """
 
-    project_id: str
-    session_id: str
-    task_id: str
+    project_id: UUID
+    session_id: UUID
+    task_id: UUID
     expected_revision: int
     attempt_number: int
     submission: SubmittedResult
 
 
-@dataclass(frozen=True)
+@immutable
 class SubmitResult:
     """후보 제출이 반영되고 실행 상태는 유지된 태스크를 반환한다.
 

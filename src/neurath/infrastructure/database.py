@@ -34,7 +34,12 @@ def user_database_path() -> Path:
 
 
 def create_database_engine(
-    path: Path | None = None, *, write: bool, create: bool = False, timeout: float = 5.0
+    path: Path | None = None,
+    *,
+    write: bool,
+    create: bool = False,
+    timeout: float = 5.0,
+    migration: bool = False,
 ) -> AsyncEngine:
     """읽기·쓰기 정책이 연결된 NullPool SQLite 엔진을 생성한다.
 
@@ -46,6 +51,7 @@ def create_database_engine(
         write: 쓰기를 허용하고 읽기 전에 쓰기 권한을 예약할지 여부.
         create: 명시적 초기화 과정에서 데이터베이스 파일을 생성할지 여부.
         timeout: SQLite가 데이터베이스 잠금을 기다리는 시간(초).
+        migration: 명시적 스키마 이전 연결에서만 외래 키 검사를 Alembic의 전후 검사로 맡긴다.
 
     Returns:
         AsyncEngine: 사용 후 호출자가 await dispose로 정리할 비동기 엔진.
@@ -55,7 +61,7 @@ def create_database_engine(
         poolclass=NullPool,
         connect_args={"timeout": timeout},
     )
-    configure_sqlite_engine(engine.sync_engine, write=write)
+    configure_sqlite_engine(engine.sync_engine, write=write, migration=migration)
     return engine
 
 
@@ -98,7 +104,9 @@ def sqlite_url(path: Path, mode: str) -> URL:
     )
 
 
-def configure_sqlite_engine(engine: Engine, *, write: bool, check_schema: bool = False) -> None:
+def configure_sqlite_engine(
+    engine: Engine, *, write: bool, check_schema: bool = False, migration: bool = False
+) -> None:
     """외래 키·읽기 전용 설정과 트랜잭션 시작 이벤트를 엔진에 등록한다.
 
     쓰기 요청은 BEGIN IMMEDIATE로 첫 조회 전에 쓰기 잠금을 예약한다. 읽기는
@@ -109,10 +117,11 @@ def configure_sqlite_engine(engine: Engine, *, write: bool, check_schema: bool =
         engine: 프레임워크 또는 마이그레이션이 생성한 엔진.
         write: 상태 조회 전에 쓰기 권한을 예약할지 여부.
         check_schema: 일반 요청의 트랜잭션에서 Alembic 스키마를 검사할지 여부.
+        migration: SQLite 테이블 재생성을 위해 트랜잭션 시작 전에 외래 키 집행을 해제한다.
     """
 
     def configure(connection: DBAPIConnection, record: ConnectionPoolEntry) -> None:
-        """SQLAlchemy가 트랜잭션을 시작하게 하고 모든 연결에 외래 키 제약을 적용한다.
+        """일반 요청에 외래 키 제약을 적용하고 이전 연결은 Alembic 검증을 사용한다.
 
         Args:
             connection: SQLite 트랜잭션 동작을 설정할 연결.
@@ -121,7 +130,7 @@ def configure_sqlite_engine(engine: Engine, *, write: bool, check_schema: bool =
         engine.dialect.set_isolation_level(connection, "AUTOCOMMIT")
         cursor = connection.cursor()
         try:
-            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.execute("PRAGMA foreign_keys=OFF" if migration else "PRAGMA foreign_keys=ON")
             if not write:
                 cursor.execute("PRAGMA query_only=ON")
         finally:
@@ -155,7 +164,7 @@ async def initialize_database(path: Path | None = None) -> None:
     """
     path = (path if path is not None else user_database_path()).expanduser().resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
-    engine = create_database_engine(path, write=True, create=True)
+    engine = create_database_engine(path, write=True, create=True, migration=True)
     try:
         async with engine.begin() as connection:
             await connection.run_sync(_upgrade_store)

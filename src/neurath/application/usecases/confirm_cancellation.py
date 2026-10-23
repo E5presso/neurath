@@ -1,8 +1,9 @@
 """호스트 관찰 이후 현재 소유 상태를 재검사하여 확정 결과만 반영한다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -12,7 +13,7 @@ from neurath.domain.aggregates.execution import Execution
 from neurath.domain.runtime_records import Liveness
 
 
-@dataclass(frozen=True)
+@immutable
 class ConfirmCancellationCommand(AbstractCommand):
     """외부 조회와 대조할 소유 식별자와 실제 관찰을 전달한다.
 
@@ -22,7 +23,7 @@ class ConfirmCancellationCommand(AbstractCommand):
         liveness: 실제 호스트에서 관찰한 종료 상태.
     """
 
-    execution_id: str
+    execution_id: UUID
     turn_id: str
     liveness: Liveness
 

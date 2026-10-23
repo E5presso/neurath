@@ -1,9 +1,10 @@
 """체크포인트가 없어도 현재 원문·작업·절차·맥락을 소유권 변경 없이 미리 본다."""
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
@@ -23,7 +24,7 @@ from neurath.infrastructure.models.task import TaskModel
 from neurath.infrastructure.models.workflow import WorkflowModel
 
 
-@dataclass(frozen=True)
+@immutable
 class PreviewSessionQuery(AbstractQuery):
     """명시적으로 미리 볼 원 작업의 세션 범위를 지정한다.
 
@@ -32,11 +33,11 @@ class PreviewSessionQuery(AbstractQuery):
         session_id: 소유권 변경 없이 읽을 세션.
     """
 
-    project_id: str
-    session_id: str
+    project_id: UUID
+    session_id: UUID
 
 
-@dataclass(frozen=True)
+@immutable
 class PreviewSessionResult:
     """과거 보고와 구분되는 현재 인수 후보의 실제 저장 상태다.
 
@@ -54,7 +55,7 @@ class PreviewSessionResult:
     tasks: Sequence[Task]
     workflows: Sequence[WorkflowRun]
     enclaves: Sequence[Enclave]
-    memory_ids: Sequence[str]
+    memory_ids: Sequence[UUID]
 
 
 @UseCase()
@@ -145,4 +146,11 @@ class PreviewSessionUseCase(IAsyncQueryUseCase[PreviewSessionQuery, PreviewSessi
                 .order_by(MemoryModel.created_at.desc(), MemoryModel.id)
             )
         )
-        return PreviewSessionResult(session, sources, tasks, workflows, enclaves, memories)
+        return PreviewSessionResult(
+            session=session,
+            sources=sources,
+            tasks=tasks,
+            workflows=workflows,
+            enclaves=enclaves,
+            memory_ids=memories,
+        )

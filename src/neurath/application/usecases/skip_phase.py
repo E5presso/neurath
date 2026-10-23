@@ -1,8 +1,9 @@
 """현재 선택 단계의 생략 조건과 근거를 기록한다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -11,7 +12,7 @@ from neurath.application.ports.repositories.workflow import IWorkflowRepository
 from neurath.domain.aggregates.workflow import WorkflowRun
 
 
-@dataclass(frozen=True)
+@immutable
 class SkipPhaseCommand(AbstractCommand):
     """정의된 선택 분기를 생략할 조건과 그 근거를 지정한다.
 
@@ -24,15 +25,15 @@ class SkipPhaseCommand(AbstractCommand):
         reason: 조건을 충족한 근거.
     """
 
-    project_id: str
-    session_id: str
-    run_id: str
+    project_id: UUID
+    session_id: UUID
+    run_id: UUID
     expected_revision: int
     condition: str
     reason: str
 
 
-@dataclass(frozen=True)
+@immutable
 class SkipPhaseResult:
     """생략 이력이 추가된 run. 필수 단계나 미확정 실행은 생략하지 않는다.
 

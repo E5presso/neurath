@@ -2,17 +2,18 @@
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from uuid import UUID
 
 from spakky.data.persistency.repository import IAsyncGenericRepository
 
 from neurath.domain.aggregates.enclave import Enclave
 
 
-class IEnclaveRepository(IAsyncGenericRepository[Enclave, str], ABC):
+class IEnclaveRepository(IAsyncGenericRepository[Enclave, UUID], ABC):
     """Enclave의 기본 저장·식별자 조회를 상속한다."""
 
     @abstractmethod
-    async def find_by_session_id(self, session_id: str) -> Sequence[Enclave]:
+    async def find_by_session_id(self, session_id: UUID) -> Sequence[Enclave]:
         """세션에 속한 현재 맥락 aggregate들을 조회한다.
 
         Args:

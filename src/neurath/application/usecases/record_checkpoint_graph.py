@@ -1,8 +1,9 @@
 """커밋된 체크포인트 요청에 외부 갱신의 관찰 결과를 기록한다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -11,7 +12,7 @@ from neurath.application.ports.repositories.memory import IMemoryRepository
 from neurath.domain.aggregates.memory import Memory
 
 
-@dataclass(frozen=True)
+@immutable
 class RecordCheckpointGraphCommand(AbstractCommand):
     """외부 갱신에서 확인한 결과를 원래 보고 ID에 연결한다.
 
@@ -22,7 +23,7 @@ class RecordCheckpointGraphCommand(AbstractCommand):
         error: 외부 실패 관찰이며 성공이면 None.
     """
 
-    memory_id: str
+    memory_id: UUID
     directory: str
     reference: str | None
     error: str | None

@@ -1,8 +1,9 @@
 """active 태스크에 해소되지 않은 외부 대기를 추가하고 waiting으로 바꾼다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -12,7 +13,7 @@ from neurath.domain.aggregates.task import Task
 from neurath.domain.task_records import ExternalWait
 
 
-@dataclass(frozen=True)
+@immutable
 class WaitTaskCommand(AbstractCommand):
     """활성 태스크가 기다릴 외부 대상·해소 조건·후속 범위를 지정한다.
 
@@ -24,14 +25,14 @@ class WaitTaskCommand(AbstractCommand):
         condition: 대상·해소 조건·후속 범위·관찰을 가진 대기 값. resolution은 None이어야 한다.
     """
 
-    project_id: str
-    session_id: str
-    task_id: str
+    project_id: UUID
+    session_id: UUID
+    task_id: UUID
     expected_revision: int
     condition: ExternalWait
 
 
-@dataclass(frozen=True)
+@immutable
 class WaitTaskResult:
     """외부 대기가 추가되고 현재 실행 시도를 유지한 대기 태스크를 반환한다.
 

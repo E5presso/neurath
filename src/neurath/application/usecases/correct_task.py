@@ -1,9 +1,10 @@
 """현재 요구를 가리키는 정정 출처로 태스크의 지정한 필드만 변경한다."""
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -13,7 +14,7 @@ from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.domain.aggregates.task import Task
 
 
-@dataclass(frozen=True)
+@immutable
 class CorrectTaskCommand(AbstractCommand):
     """현재 요구를 정정한 출처와 변경할 제목·결과·의존 목록을 지정한다.
 
@@ -28,17 +29,17 @@ class CorrectTaskCommand(AbstractCommand):
         dependencies: 새 선행 태스크 ID 목록. None이면 유지하고 빈 목록이면 모두 해제한다.
     """
 
-    project_id: str
-    session_id: str
-    task_id: str
+    project_id: UUID
+    session_id: UUID
+    task_id: UUID
     expected_revision: int
-    source_id: str
+    source_id: UUID
     title: str | None = None
     required_result: str | None = None
-    dependencies: Sequence[str] | None = None
+    dependencies: Sequence[UUID] | None = None
 
 
-@dataclass(frozen=True)
+@immutable
 class CorrectTaskResult:
     """정정이 반영된 현재 요구와 이전 개정·시도를 함께 반환한다.
 

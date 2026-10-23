@@ -1,8 +1,9 @@
 """시도의 관찰 결과를 확정하고 현재 요구 개정의 결과만 태스크 상태에 반영한다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -13,7 +14,7 @@ from neurath.domain.aggregates.task import Task
 from neurath.domain.task_records import Outcome, TaskResult
 
 
-@dataclass(frozen=True)
+@immutable
 class ReportResultCommand(AbstractCommand):
     """실행 시도에 확정할 관찰 결과와 태스크의 저장 revision을 지정한다.
 
@@ -26,15 +27,15 @@ class ReportResultCommand(AbstractCommand):
         result: 성공·실패·부분 수행과 관찰 참조·남은 일을 담은 결과.
     """
 
-    project_id: str
-    session_id: str
-    task_id: str
+    project_id: UUID
+    session_id: UUID
+    task_id: UUID
     expected_revision: int
     attempt_number: int
     result: TaskResult
 
 
-@dataclass(frozen=True)
+@immutable
 class ReportResult:
     """확정 결과와 그 결과가 반영된 현재 상태를 가진 태스크를 반환한다.
 

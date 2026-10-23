@@ -1,8 +1,9 @@
 """선택한 절차를 현재 태스크에 연결하고 첫 실행을 준비한다."""
 
-from dataclasses import dataclass
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
@@ -15,7 +16,7 @@ from neurath.domain.task_records import TaskStatus
 from neurath.domain.workflow_records import WorkflowDefinition
 
 
-@dataclass(frozen=True)
+@immutable
 class StartWorkflowCommand(AbstractCommand):
     """선택한 스킬 버전·입력·단계를 현재 태스크에 연결하는 요청이다.
 
@@ -27,14 +28,14 @@ class StartWorkflowCommand(AbstractCommand):
         definition: 고정할 스킬 버전·입력·순서 있는 단계.
     """
 
-    project_id: str
-    session_id: str
-    task_id: str
+    project_id: UUID
+    session_id: UUID
+    task_id: UUID
     expected_task_revision: int
     definition: WorkflowDefinition
 
 
-@dataclass(frozen=True)
+@immutable
 class StartWorkflowResult:
     """새로 연결했거나 같은 정의로 이미 연결된 run. 아직 phase를 실행하지 않는다.
 

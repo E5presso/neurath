@@ -51,7 +51,9 @@ class RuntimeEventHandler:
         Args:
             event: 중단할 실행과 정확한 턴.
         """
-        await self.interruption.run(InterruptExecutionCommand(event.execution_id, event.turn_id))
+        await self.interruption.run(
+            InterruptExecutionCommand(execution_id=event.execution_id, turn_id=event.turn_id)
+        )
 
     @on_event(WriterRecoveryRequested)
     async def recover(self, event: WriterRecoveryRequested) -> None:
@@ -62,11 +64,11 @@ class RuntimeEventHandler:
         """
         await self.observation.run(
             ObserveWriterCommand(
-                event.writer_id,
-                event.execution_id,
-                event.turn_id,
-                event.tool_use_id,
-                event.generation,
+                writer_id=event.writer_id,
+                execution_id=event.execution_id,
+                turn_id=event.turn_id,
+                tool_use_id=event.tool_use_id,
+                generation=event.generation,
             )
         )
 
@@ -78,7 +80,9 @@ class RuntimeEventHandler:
             event: 정확한 턴의 실제 중단 관찰.
         """
         await self.cancellation.run(
-            ConfirmCancellationCommand(event.execution_id, event.turn_id, event.liveness)
+            ConfirmCancellationCommand(
+                execution_id=event.execution_id, turn_id=event.turn_id, liveness=event.liveness
+            )
         )
 
     @on_event(WriterLivenessObserved)
@@ -90,6 +94,9 @@ class RuntimeEventHandler:
         """
         await self.release.run(
             ReleaseWriterCommand(
-                event.writer_id, event.execution_id, event.generation, event.liveness
+                writer_id=event.writer_id,
+                execution_id=event.execution_id,
+                generation=event.generation,
+                liveness=event.liveness,
             )
         )
