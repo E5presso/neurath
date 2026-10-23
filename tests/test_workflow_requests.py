@@ -8,6 +8,7 @@ from contextlib import closing
 from dataclasses import replace
 from pathlib import Path
 from time import monotonic, sleep
+from uuid import uuid7
 
 import pytest
 from alembic import command
@@ -449,7 +450,7 @@ def test_subprocess_interrupt_terminates_actual_process(tmp_path):
 
 async def test_populated_workflow_downgrade_preserves_all_records(database, work):
     before = snapshot(database)
-    engine = create_database_engine(database, write=True)
+    engine = create_database_engine(database, write=True, migration=True)
     try:
         with pytest.raises(RuntimeError, match="Workflow history"):
             async with engine.begin() as connection:
@@ -467,7 +468,7 @@ async def test_primitive_repository_and_framework_transaction_are_used(database,
     _, _, flow = work
     async with storage_scope(database, write=False) as scope:
         repository = scope.get(IWorkflowRepository)
-        assert (await repository.get_or_none("missing")) is None
+        assert (await repository.get_or_none(uuid7())) is None
         assert (await repository.get(flow.uid)).uid == flow.uid
         assert scope.get(RunPhaseUseCase).executor is scope.get(IPhaseExecutorService)
         assert scope.get(IWorkflowNotifierService).__class__ is StderrWorkflowNotifierService
@@ -612,7 +613,7 @@ async def test_core0003_upgrade_preserves_unfinished_tasks_and_is_repeatable(dat
     folder.mkdir()
     actor = await register_session(str(folder), "codex", "retained", database_path=database)
     task = await create(database, actor)
-    engine = create_database_engine(database, write=True)
+    engine = create_database_engine(database, write=True, migration=True)
     try:
         async with engine.begin() as connection:
             await connection.run_sync(
@@ -625,11 +626,17 @@ async def test_core0003_upgrade_preserves_unfinished_tasks_and_is_repeatable(dat
     before = snapshot(database)
     (await initialize_database(database))
     after = snapshot(database)
+    identifiers = {
+        str(uid): uid.hex
+        for uid in (actor.project.uid, actor.session.uid, task.uid, task.definition.source_id)
+    }
     for table, rows in before.items():
+        if table == "core_schema_revision":
+            continue
+        expected = [tuple(identifiers.get(value, value) for value in row) for row in rows]
         if table == "core_sessions":
-            assert after[table] == [(*row, None) for row in rows]
-        elif table != "core_schema_revision":
-            assert after[table] == rows
+            expected = [(*row, None) for row in expected]
+        assert after[table] == expected
     assert after["core_workflows"] == []
     async with storage_scope(database, write=False) as scope:
         assert (await scope.get(ITaskRepository).get(task.uid)).status is TaskStatus.PENDING
@@ -642,7 +649,7 @@ async def test_core0003_upgrade_preserves_unfinished_tasks_and_is_repeatable(dat
 async def test_core0004_failure_rolls_back_schema_and_preserves_old_bytes(database, monkeypatch):
     import neurath.infrastructure.database as storage
 
-    engine = create_database_engine(database, write=True)
+    engine = create_database_engine(database, write=True, migration=True)
     try:
         async with engine.begin() as connection:
             await connection.run_sync(

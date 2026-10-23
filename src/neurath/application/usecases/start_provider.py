@@ -81,7 +81,13 @@ class StartProviderUseCase(IAsyncCommandUseCase[StartProviderCommand, Delegation
         originals = [source]
         while originals[-1].corrects_id is not None:
             originals.append(await self.sources.get(originals[-1].corrects_id))
-        source_text = "\n".join(f"Source {item.uid}: {item.body}" for item in reversed(originals))
-        prompt = f"Delegation {delegation.uid}; role {delegation.role}; task {task.uid}; definition {delegation.definition_number}\nOriginal source {source.uid}:\n{source_text}\nRequired result: {task.definition.required_result}\nAssigned scope: {delegation.scope}\nWork only within this assignment. Report concrete evidence and remaining work."
-        delegation.request_provider(task, prompt)
+        delegation.request_provider(
+            task,
+            f"""Delegation {delegation.uid}; role {delegation.role}; task {task.uid}; definition {delegation.definition_number}
+Original source {source.uid}:
+{"\n".join(f"Source {item.uid}: {item.body}" for item in reversed(originals))}
+Required result: {task.definition.required_result}
+Assigned scope: {delegation.scope}
+Work only within this assignment. Report concrete evidence and remaining work.""",
+        )
         return await self.delegations.save(delegation)

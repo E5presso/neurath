@@ -26,7 +26,6 @@ from neurath.domain.workflow_records import (
     WorkflowDefinition,
     WorkflowRevision,
 )
-from neurath.infrastructure.uuid_type import UUIDText
 
 
 @Table(WorkflowRun)
@@ -53,19 +52,15 @@ class WorkflowModel(AbstractMappableTable[WorkflowRun]):
             ["project_id", "session_id"], ["core_sessions.project_id", "core_sessions.id"]
         ),
     )
-    id: Mapped[UUID] = mapped_column(UUIDText, primary_key=True)
+    id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True)
     version: Mapped[UUID] = mapped_column(Uuid(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
-    project_id: Mapped[UUID] = mapped_column(
-        UUIDText, ForeignKey("core_projects.id"), nullable=False
-    )
-    session_id: Mapped[UUID] = mapped_column(
-        UUIDText, ForeignKey("core_sessions.id"), nullable=False
-    )
+    project_id: Mapped[UUID] = mapped_column(Uuid(), ForeignKey("core_projects.id"), nullable=False)
+    session_id: Mapped[UUID] = mapped_column(Uuid(), ForeignKey("core_sessions.id"), nullable=False)
     task_id: Mapped[UUID] = mapped_column(
-        UUIDText, ForeignKey("core_tasks.id"), unique=True, nullable=False
+        Uuid(), ForeignKey("core_tasks.id"), unique=True, nullable=False
     )
 
     __mapper_args__ = {"version_id_col": revision}
@@ -140,9 +135,7 @@ class WorkflowRevisionModel(AbstractTable):
     """
 
     __tablename__ = "core_workflow_revisions"
-    run_id: Mapped[UUID] = mapped_column(
-        UUIDText, ForeignKey("core_workflows.id"), primary_key=True
-    )
+    run_id: Mapped[UUID] = mapped_column(Uuid(), ForeignKey("core_workflows.id"), primary_key=True)
     number: Mapped[int] = mapped_column(Integer, primary_key=True)
     skill: Mapped[str] = mapped_column(String, nullable=False)
     definition_version: Mapped[str] = mapped_column(String, nullable=False)
@@ -225,7 +218,7 @@ class PhaseDefinitionModel(AbstractTable):
             ["core_workflow_revisions.run_id", "core_workflow_revisions.number"],
         ),
     )
-    run_id: Mapped[UUID] = mapped_column(UUIDText, primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True)
     definition_number: Mapped[int] = mapped_column(Integer, primary_key=True)
     position: Mapped[int] = mapped_column(Integer, primary_key=True)
     key: Mapped[str] = mapped_column(String, nullable=False)
@@ -316,9 +309,7 @@ class PhaseAttemptModel(AbstractTable):
             ["core_workflow_revisions.run_id", "core_workflow_revisions.number"],
         ),
     )
-    run_id: Mapped[UUID] = mapped_column(
-        UUIDText, ForeignKey("core_workflows.id"), primary_key=True
-    )
+    run_id: Mapped[UUID] = mapped_column(Uuid(), ForeignKey("core_workflows.id"), primary_key=True)
     number: Mapped[int] = mapped_column(Integer, primary_key=True)
     definition_number: Mapped[int] = mapped_column(Integer, nullable=False)
     phase_key: Mapped[str] = mapped_column(String, nullable=False)

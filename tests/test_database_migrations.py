@@ -68,7 +68,7 @@ async def test_legacy_database_bytes_are_preserved_on_rejected_initialization(tm
     assert path.read_bytes() == before
 
 
-async def test_original_schema_records_are_readable_and_updatable_without_data_conversion(tmp_path):
+async def test_original_schema_records_are_readable_and_updatable_after_uuid_migration(tmp_path):
     path = tmp_path / "original.sqlite3"
     folder = tmp_path / "project"
     folder.mkdir()
@@ -234,7 +234,7 @@ async def test_framework_migration_preserves_legacy_values_and_marks_unknown_met
     assert path.read_bytes() == before
     with closing(sqlite3.connect(path)) as connection:
         assert (connection.execute("SELECT * FROM dependent_fixture")).fetchall() == [
-            ("17dc3986-8d19-45d0-bef0-ee8180dcb078", "unfinished original source")
+            ("17dc39868d1945d0bef0ee8180dcb078", "unfinished original source")
         ]
         assert (connection.execute("PRAGMA foreign_key_check")).fetchall() == []
 
@@ -250,7 +250,7 @@ async def test_failed_framework_migration_rolls_back_schema_data_and_revision(
         connection.executescript(fixture.read_text())
         (
             connection.execute(
-                "INSERT INTO core_projects (id, root_path) VALUES ('retained', '/legacy')"
+                "INSERT INTO core_projects (id, root_path) VALUES ('17dc3986-8d19-45d0-bef0-ee8180dcb078', '/legacy')"
             )
         )
     before = path.read_bytes()
@@ -266,7 +266,7 @@ async def test_failed_framework_migration_rolls_back_schema_data_and_revision(
     assert path.read_bytes() == before
     with closing(sqlite3.connect(path)) as connection:
         assert (connection.execute("SELECT * FROM core_projects")).fetchall() == [
-            ("retained", "/legacy")
+            ("17dc3986-8d19-45d0-bef0-ee8180dcb078", "/legacy")
         ]
         assert (connection.execute("SELECT version_num FROM core_schema_revision")).fetchone() == (
             "core_0001",
@@ -300,10 +300,10 @@ async def test_metadata_downgrade_preserves_original_records_and_can_upgrade(dat
         (
             connection.execute(
                 "INSERT INTO dependent_fixture VALUES (?, 'unfinished original source')",
-                (str(original.project.id),),
+                (original.project.id.hex,),
             )
         )
-    engine = create_database_engine(database, write=True)
+    engine = create_database_engine(database, write=True, migration=True)
     try:
         async with engine.begin() as connection:
             await connection.run_sync(
@@ -364,7 +364,7 @@ async def test_destructive_downgrade_is_rejected_and_rolls_back_intermediate_met
 
     original = await register_session(str(repository), "codex", "retained", database_path=database)
     before = database.read_bytes()
-    engine = create_database_engine(database, write=True)
+    engine = create_database_engine(database, write=True, migration=True)
     try:
         with pytest.raises(RuntimeError, match="Destructive core downgrade is unsupported"):
             async with engine.begin() as connection:
@@ -381,7 +381,7 @@ async def test_destructive_downgrade_is_rejected_and_rolls_back_intermediate_met
     ) == session_state(original)
     with closing(sqlite3.connect(database)) as connection:
         assert (connection.execute("SELECT version_num FROM core_schema_revision")).fetchone() == (
-            "core_0008",
+            "core_0009",
         )
         assert (
             connection.execute("SELECT name FROM sqlite_master WHERE type='trigger'")

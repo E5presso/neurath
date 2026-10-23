@@ -2,6 +2,7 @@
 
 import importlib
 from dataclasses import replace
+from uuid import uuid7
 
 import pytest
 
@@ -446,7 +447,7 @@ async def test_inbox_pagination_validation_and_subscription(database, collaborat
         )
     with pytest.raises(ContextNotFound):
         await call(
-            database, "get_collaboration_context", "GetCollaborationContext", "missing", query=True
+            database, "get_collaboration_context", "GetCollaborationContext", uuid7(), query=True
         )
 
 
@@ -969,7 +970,7 @@ async def test_collaboration_migration_preserves_history_and_rejects_loss(databa
     from tests.test_task_requests import snapshot
 
     before = snapshot(database)
-    engine = create_database_engine(database, write=True)
+    engine = create_database_engine(database, write=True, migration=True)
     try:
         with pytest.raises(RuntimeError, match="Collaboration history"):
             async with engine.begin() as connection:
@@ -1049,3 +1050,86 @@ async def test_direct_inactive_recipient_is_queued_without_wakeup_and_receives_o
     assert len(connected.inbox) == 2
     assert any(str(direct.uid) in message for message in connected.inbox)
     assert any(str(delegated.message_id) in message for message in connected.inbox)
+
+
+@pytest.mark.parametrize("provider_route", [False, True])
+async def test_assignment_text_preserves_source_order_and_literal_newlines(
+    database, collaboration, monkeypatch, provider_route
+):
+    from neurath.application.provider_records import ProviderCapabilities, ProviderObservation
+    from neurath.domain.provider import ProviderStatus
+    from neurath.infrastructure.provider import SubprocessProviderService
+
+    actor, sender, _, recipient, task = collaboration
+    correction = await call(
+        database,
+        "record_source",
+        "RecordSource",
+        task.project_id,
+        actor.session.uid,
+        SourceKind.CORRECTION,
+        "정정 첫째 줄\n정정 둘째 줄",
+        corrects_id=task.definition.source_id,
+    )
+    corrected = await call(
+        database,
+        "correct_task",
+        "CorrectTask",
+        task.project_id,
+        actor.session.uid,
+        task.uid,
+        task.revision,
+        correction.source.uid,
+        required_result="수정된 결과",
+    )
+    context = (*collaboration[:4], corrected.task)
+    original_line = f"Source {task.definition.source_id}: original requirement text"
+    correction_lines = f"Source {correction.source.uid}: 정정 첫째 줄\n정정 둘째 줄"
+    prompts = []
+
+    def start(self, uid, plan, prompt):
+        prompts.append(prompt)
+        return ProviderObservation(reference="fixture:run", status=ProviderStatus.RUNNING)
+
+    if provider_route:
+        monkeypatch.setattr(
+            SubprocessProviderService,
+            "discover",
+            lambda self, provider: ProviderCapabilities(
+                provider=provider,
+                models=["fixture-model"],
+                policies=["read-only"],
+            ),
+        )
+        monkeypatch.setattr(SubprocessProviderService, "start", start)
+        delegation = await prepare(
+            database,
+            context,
+            route=DelegationRoute.PROVIDER,
+            recipient_id=None,
+            plan=ProviderPlan(
+                provider=ProviderKind.CODEX,
+                model="fixture-model",
+                policy="read-only",
+                directory=actor.session.working_directory,
+                parent_session_id=actor.session.uid,
+            ),
+        )
+        await call(database, "start_provider", "StartProvider", delegation.uid, sender.uid)
+        assert prompts == [
+            f"Delegation {delegation.uid}; role {delegation.role}; task {task.uid}; definition 2\n"
+            f"Original source {correction.source.uid}:\n{original_line}\n{correction_lines}\n"
+            "Required result: 수정된 결과\nAssigned scope: Implement and test the assigned artifact\n"
+            "Work only within this assignment. Report concrete evidence and remaining work."
+        ]
+        return
+    delegation = await assignment(database, context)
+    message = await call(
+        database, "read_message", "ReadMessage", delegation.message_id, recipient.uid
+    )
+    assert message.body == (
+        f"Delegation: {delegation.uid}\nTask: {task.uid} / definition 2\nRole: {delegation.role}\n"
+        f"Source: {correction.source.uid}\n{original_line}\n{correction_lines}\n"
+        "Required result: 수정된 결과\nAssigned scope: Implement and test the assigned artifact\n"
+        "Accept the current assignment before execution; report evidence and remaining work to this assignment."
+    )

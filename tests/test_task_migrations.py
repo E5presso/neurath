@@ -98,13 +98,19 @@ async def test_core0002_upgrade_keeps_every_old_row_foreign_key_and_unfinished_o
     assert path.read_bytes() == original_bytes
     await storage.initialize_database(path)
     after = snapshot(path)
+    identifiers = {
+        "451f9ebe-36ec-4ce3-b6eb-cf2d7a763d1e": "451f9ebe36ec4ce3b6ebcf2d7a763d1e",
+        "4d803d31-c081-4bbc-af1a-9ed3da7d7a91": "4d803d31c0814bbcaf1a9ed3da7d7a91",
+    }
     for table, records in before.items():
+        if table == "core_schema_revision":
+            continue
+        expected = [tuple(identifiers.get(value, value) for value in row) for row in records]
         if table == "core_sessions":
-            assert after[table] == [(*row, None) for row in records]
-        elif table != "core_schema_revision":
-            assert after[table] == records
+            expected = [(*row, None) for row in expected]
+        assert after[table] == expected
     assert after["legacy_task"] == [
-        ("451f9ebe-36ec-4ce3-b6eb-cf2d7a763d1e", "unfinished original requirement", "waiting")
+        ("451f9ebe36ec4ce3b6ebcf2d7a763d1e", "unfinished original requirement", "waiting")
     ]
     assert after["core_tasks"] == after["core_request_sources"] == []
     assert (
@@ -154,7 +160,7 @@ async def test_populated_task_downgrade_refuses_without_deleting_sources_or_unfi
         work = await create(database, actor, source=original)
         assert work.status.value == "pending"
     before = snapshot(database)
-    engine = storage.create_database_engine(database, write=True)
+    engine = storage.create_database_engine(database, write=True, migration=True)
     try:
         with pytest.raises(RuntimeError, match="must be preserved"):
             async with engine.begin() as connection:

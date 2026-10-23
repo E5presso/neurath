@@ -9,7 +9,6 @@ from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, U
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from neurath.domain.aggregates.project import Project, ProjectKind, ProjectLocation
-from neurath.infrastructure.uuid_type import UUIDText
 
 
 @Table(Project)
@@ -27,7 +26,7 @@ class ProjectModel(AbstractMappableTable[Project]):
     """
 
     __tablename__ = "core_projects"
-    id: Mapped[UUID] = mapped_column(UUIDText, primary_key=True)
+    id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True)
     version: Mapped[UUID] = mapped_column(
         Uuid(), nullable=False, server_default="00000000000000000000000000000000"
     )
@@ -106,9 +105,7 @@ class ProjectLocationModel(AbstractTable):
     __table_args__ = (CheckConstraint("kind IN ('git', 'folder')", name="location_kind"),)
     kind: Mapped[str] = mapped_column(String, primary_key=True)
     path: Mapped[str] = mapped_column(String, primary_key=True)
-    project_id: Mapped[UUID] = mapped_column(
-        UUIDText, ForeignKey("core_projects.id"), nullable=False
-    )
+    project_id: Mapped[UUID] = mapped_column(Uuid(), ForeignKey("core_projects.id"), nullable=False)
 
     @classmethod
     def from_domain(cls, location: ProjectLocation, project_id: UUID) -> Self:

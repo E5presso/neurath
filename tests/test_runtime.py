@@ -407,7 +407,7 @@ async def test_recovery_cannot_release_new_generation_during_external_observatio
 async def test_migration_preserves_runtime_history_and_empty_downgrade(database, native, tmp_path):
     from neurath.infrastructure.database import create_database_engine, initialize_database
 
-    engine = create_database_engine(database, write=True)
+    engine = create_database_engine(database, write=True, migration=True)
     try:
         with pytest.raises(RuntimeError, match="history"):
             async with engine.begin() as connection:
@@ -421,7 +421,7 @@ async def test_migration_preserves_runtime_history_and_empty_downgrade(database,
     assert (await execution(database, native[0])).turn_id == "turn-1"
     empty = tmp_path / "empty.db"
     (await initialize_database(empty))
-    engine = create_database_engine(empty, write=True)
+    engine = create_database_engine(empty, write=True, migration=True)
     try:
         async with engine.begin() as connection:
             await connection.run_sync(
@@ -438,7 +438,7 @@ async def test_migration_preserves_runtime_history_and_empty_downgrade(database,
             (
                 await scope.get(AsyncSessionManager).session.execute(
                     text(
-                        "INSERT INTO core_writers (id, version, created_at, updated_at, revision, resource, turn_id, tool_use_id, generation) VALUES ('orphan', '00000000000000000000000000000000', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1, '/w', '', '', 0)"
+                        "INSERT INTO core_writers (id, version, created_at, updated_at, revision, resource, turn_id, tool_use_id, generation) VALUES ('11111111111111111111111111111111', '00000000000000000000000000000000', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1, '/w', '', '', 0)"
                     )
                 )
             )

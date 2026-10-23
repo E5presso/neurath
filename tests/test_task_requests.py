@@ -7,6 +7,7 @@ import subprocess
 import sys
 from contextlib import closing
 from dataclasses import asdict
+from uuid import uuid7
 
 import pytest
 from spakky.plugins.sqlalchemy.persistency.repository import AbstractAsyncGenericRepository
@@ -466,7 +467,7 @@ async def test_dependency_correction_rejects_cycle_and_keeps_previous_graph_and_
             )
         ).task
     with pytest.raises(ContextNotFound):
-        (await create(database, actor, source=correction, dependencies=("missing",)))
+        (await create(database, actor, source=correction, dependencies=(uuid7(),)))
     assert snapshot(database) == before
     (await report(database, (await start(database, parent))))
     assert child.uid in (await board(database, actor)).ready_task_ids

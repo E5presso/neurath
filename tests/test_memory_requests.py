@@ -3,7 +3,7 @@
 import asyncio
 import json
 from dataclasses import asdict
-from uuid import UUID
+from uuid import UUID, uuid7
 
 import pytest
 from typer import Typer
@@ -126,12 +126,12 @@ async def test_update_memory_roundtrip_atomicity_and_scoped_search(database, mem
         )
     ) == [memory_id]
     assert not await run(
-        SearchMemoryUseCase, SearchMemoryQuery(project_id="other"), database_path=database
+        SearchMemoryUseCase, SearchMemoryQuery(project_id=uuid7()), database_path=database
     )
     with pytest.raises(ContextNotFound):
         await run(
             ReadMemoryUseCase,
-            ReadMemoryQuery(project_id="other", memory_id=memory_id),
+            ReadMemoryQuery(project_id=uuid7(), memory_id=memory_id),
             database_path=database,
         )
     for limit in (0, 101):
@@ -701,7 +701,9 @@ async def test_cli_graph_paths_use_existing_tool_and_record_validated_reference(
     assert result.exit_code == 0, result.output
     memory = await run(
         ReadMemoryUseCase,
-        ReadMemoryQuery(project_id=actor.project.uid, memory_id=json.loads(result.stdout)["id"]),
+        ReadMemoryQuery(
+            project_id=actor.project.uid, memory_id=UUID(json.loads(result.stdout)["id"])
+        ),
         database_path=database,
     )
     assert memory.references[-1] == "file:///graph.json#sha256=observed"
@@ -766,7 +768,9 @@ async def test_stdin_reports_and_updates_and_stale_same_session_resume(
     assert result.exit_code == 0, result.output
     memory = await run(
         ReadMemoryUseCase,
-        ReadMemoryQuery(project_id=actor.project.uid, memory_id=json.loads(result.stdout)["id"]),
+        ReadMemoryQuery(
+            project_id=actor.project.uid, memory_id=UUID(json.loads(result.stdout)["id"])
+        ),
         database_path=database,
     )
     assert memory.content == "full stdin report"

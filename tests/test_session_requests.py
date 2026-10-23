@@ -162,7 +162,7 @@ async def test_folder_to_git_promotion_preserves_foreign_keys_from_first_linked_
         (
             connection.execute(
                 "INSERT INTO dependent_fixture VALUES (?, ?)",
-                (str(before.project.id), "unfinished original source"),
+                (before.project.id.hex, "unfinished original source"),
             )
         )
     initialize_git(plain)
@@ -175,7 +175,7 @@ async def test_folder_to_git_promotion_preserves_foreign_keys_from_first_linked_
     )
     with closing(sqlite3.connect(database)) as connection, connection:
         assert (connection.execute("SELECT * FROM dependent_fixture")).fetchall() == [
-            (str(before.project.id), "unfinished original source")
+            (before.project.id.hex, "unfinished original source")
         ]
         assert (connection.execute("PRAGMA foreign_key_check")).fetchall() == []
 
@@ -265,34 +265,34 @@ async def test_uncommitted_data_is_invisible_and_read_only_connection_rejects_wr
             )
 
 
-async def test_foreign_keys_and_positive_revisions_are_enforced(database):
+async def test_foreign_keys_and_positive_revisions_are_enforced(database, tmp_path):
+    from uuid import uuid7
+
+    actor = await register_session(str(tmp_path), "codex", "native", database_path=database)
     engine = create_database_engine(database, write=True)
     try:
-        with pytest.raises(IntegrityError):
+        with pytest.raises(IntegrityError, match="FOREIGN KEY"):
             async with AsyncSession(engine) as session, session.begin():
-                session.add(
-                    SessionModel(
-                        id="bad",
-                        project_id="absent",
-                        provider="test",
-                        host_session_id="x",
-                        working_directory="/tmp",
-                        revision=1,
-                    )
-                )
-        with pytest.raises(IntegrityError):
+                invalid = SessionModel.from_domain(actor.session)
+                invalid.id = uuid7()
+                invalid.project_id = uuid7()
+                session.add(invalid)
+        with pytest.raises(IntegrityError, match="session_revision_positive"):
             async with AsyncSession(engine) as session, session.begin():
-                session.add(ProjectModel(id="project", root_path="/tmp"))
-                (await session.flush())
-                (
-                    await session.execute(
-                        text(
-                            "INSERT INTO core_sessions (id, project_id, provider, host_session_id, working_directory, revision) VALUES ('bad', 'project', 'test', 'x', '/tmp', 0)"
-                        )
+                invalid = SessionModel.from_domain(actor.session)
+                invalid.id = uuid7()
+                invalid.host_session_id = "other"
+                invalid.revision = 0
+                await session.execute(
+                    SessionModel.__table__.insert().values(
+                        {
+                            column.name: getattr(invalid, column.name)
+                            for column in SessionModel.__table__.columns
+                        }
                     )
                 )
     finally:
-        (await engine.dispose())
+        await engine.dispose()
 
 
 async def test_identity_conflict_does_not_merge_or_modify_existing_aliases(database):

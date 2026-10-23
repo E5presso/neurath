@@ -125,6 +125,6 @@ Additional aggregate lookups use `find_by_<criteria>` names. The owned project l
 
 ## Identifiers and immutable input contracts
 
-Internal aggregate IDs and their command, query, and repository references use `UUID`. New IDs use time-ordered `uuid7()`. Existing UUID4 values and references remain unchanged. `UUIDText` maps Python UUID values to the existing canonical SQLite text representation, avoiding reissued keys or a bulk data conversion. External host identifiers and source/artifact references remain strings; JSON and CLI boundaries render internal UUID values as strings.
+Internal aggregate IDs and their command, query, and repository references use `UUID`. New IDs use time-ordered `uuid7()`. ORM columns use SQLAlchemy `Uuid()`. Migration `core_0009` converts SQLite key storage to 32-character hex without reissuing UUID4 or UUID7 identifiers. It preserves relational references, composite constraints, indexes, triggers, and unfinished history. Foreign key checks before and after migration protect the transaction; a failure rolls back data, schema, and revision together. External host IDs and strings within JSON, source text, and artifact references retain their original representation. JSON and CLI boundaries render internal UUIDs as canonical strings.
 
 Immutable inputs, results, and observations use Spakky `@immutable` with keyword arguments. This prevents field reassignment without imposing deep immutability on nested collections. Domain value objects retain their framework equality semantics.

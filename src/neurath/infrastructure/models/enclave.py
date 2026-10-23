@@ -10,7 +10,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from neurath.domain.aggregates.enclave import Enclave
 from neurath.domain.enclave_records import EnclaveChange, EnclaveFact, EnclaveKind
-from neurath.infrastructure.uuid_type import UUIDText
 
 
 @Table(Enclave)
@@ -45,17 +44,13 @@ class EnclaveModel(AbstractMappableTable[Enclave]):
             sqlite_where=text("task_id IS NULL"),
         ),
     )
-    id: Mapped[UUID] = mapped_column(UUIDText, primary_key=True)
+    id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True)
     version: Mapped[UUID] = mapped_column(Uuid(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    project_id: Mapped[UUID] = mapped_column(
-        UUIDText, ForeignKey("core_projects.id"), nullable=False
-    )
-    session_id: Mapped[UUID] = mapped_column(
-        UUIDText, ForeignKey("core_sessions.id"), nullable=False
-    )
-    task_id: Mapped[UUID | None] = mapped_column(UUIDText, ForeignKey("core_tasks.id"))
+    project_id: Mapped[UUID] = mapped_column(Uuid(), ForeignKey("core_projects.id"), nullable=False)
+    session_id: Mapped[UUID] = mapped_column(Uuid(), ForeignKey("core_sessions.id"), nullable=False)
+    task_id: Mapped[UUID | None] = mapped_column(Uuid(), ForeignKey("core_tasks.id"))
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
     __mapper_args__ = {"version_id_col": revision}
     changes: Mapped[list[EnclaveChangeModel]] = relationship(
@@ -120,7 +115,7 @@ class EnclaveChangeModel(AbstractTable):
 
     __tablename__ = "core_enclave_changes"
     enclave_id: Mapped[UUID] = mapped_column(
-        UUIDText, ForeignKey("core_enclaves.id"), primary_key=True
+        Uuid(), ForeignKey("core_enclaves.id"), primary_key=True
     )
     number: Mapped[int] = mapped_column(Integer, primary_key=True)
     key: Mapped[str] = mapped_column(String, nullable=False)

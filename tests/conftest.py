@@ -12,8 +12,8 @@ from spakky.plugins.sqlalchemy.persistency.transaction import AsyncTransaction
 from neurath.infrastructure.database import initialize_database
 from tests.support.application import spakky_context
 
-# 원시 SQL 검증에서도 실제 저장 표현인 정규 UUID 문자열을 사용한다.
-sqlite3.register_adapter(UUID, str)
+# 원시 SQL 검증에서도 Uuid의 SQLite 저장 표현인 32자리 hex를 사용한다.
+sqlite3.register_adapter(UUID, lambda value: value.hex)
 
 
 def git(directory, *arguments):

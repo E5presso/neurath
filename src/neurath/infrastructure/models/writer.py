@@ -10,7 +10,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import DateTime
 
 from neurath.domain.aggregates.writer import Writer
-from neurath.infrastructure.uuid_type import UUIDText
 
 
 @Table(Writer)
@@ -32,7 +31,7 @@ class WriterModel(AbstractMappableTable[Writer]):
 
     __tablename__ = "core_writers"
     __table_args__ = (UniqueConstraint("resource"),)
-    id: Mapped[UUID] = mapped_column(UUIDText, primary_key=True)
+    id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True)
     version: Mapped[UUID] = mapped_column(
         Uuid(), nullable=False, server_default="00000000000000000000000000000000"
     )
@@ -45,7 +44,7 @@ class WriterModel(AbstractMappableTable[Writer]):
 
     resource: Mapped[str] = mapped_column(String, nullable=False)
     execution_id: Mapped[UUID | None] = mapped_column(
-        UUIDText, ForeignKey("core_executions.id"), nullable=True
+        Uuid(), ForeignKey("core_executions.id"), nullable=True
     )
     turn_id: Mapped[str] = mapped_column(String, nullable=False)
     tool_use_id: Mapped[str] = mapped_column(String, nullable=False)

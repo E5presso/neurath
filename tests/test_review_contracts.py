@@ -15,7 +15,6 @@ from neurath.domain.aggregates.project import Project
 from neurath.domain.observations import DirectoryObservation
 from neurath.domain.provider import ProviderKind
 from neurath.infrastructure.provider_worker import _execution_arguments
-from neurath.infrastructure.uuid_type import UUIDText
 from neurath.serialization import encode_uuid
 from tests.conftest import storage_scope
 from tools.architecture import ArchitectureChecker
@@ -79,9 +78,7 @@ def test_commands_use_keyword_only_immutable_fields():
         command.peer_id = uuid7()
 
 
-async def test_existing_uuid4_values_and_foreign_keys_keep_their_stored_representation(
-    database, tmp_path
-):
+async def test_uuid4_values_and_foreign_keys_use_native_uuid_storage(database, tmp_path):
     import sqlite3
 
     original = uuid4()
@@ -94,20 +91,13 @@ async def test_existing_uuid4_values_and_foreign_keys_keep_their_stored_represen
     async with storage_scope(database, write=False) as scope:
         restored = await scope.get(IProjectRepository).get(original)
     assert restored.uid == original and restored.uid.version == 4
-    assert before == [(str(original),)]
+    assert before == [(original.hex,)]
     with sqlite3.connect(database) as connection:
         assert connection.execute("SELECT id FROM core_projects").fetchall() == before
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
 
-def test_uuid_boundary_rejects_invalid_stored_identity_without_reissuing_it():
-    from sqlalchemy.dialects.sqlite import dialect
-
-    storage = UUIDText()
-    with pytest.raises(ValueError):
-        storage.process_result_value("legacy-opaque-id", dialect())
-    assert storage.process_bind_param(None, dialect()) is None
-    assert storage.process_result_value(None, dialect()) is None
+def test_json_uuid_encoding_preserves_identity_and_rejects_unrelated_values():
     assert encode_uuid(UUID(int=1)) == str(UUID(int=1))
     with pytest.raises(TypeError):
         encode_uuid(object())

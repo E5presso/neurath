@@ -4,6 +4,7 @@ import sqlite3
 import subprocess
 from contextlib import closing
 from dataclasses import FrozenInstanceError
+from uuid import uuid7
 
 import pytest
 from spakky.core.application.application_context import ApplicationContext
@@ -113,8 +114,8 @@ async def test_unknown_scope_cannot_read_or_mutate_any_records(
     database, repository, operation, missing
 ):
     first = await register_session(str(repository), "codex", "retained", database_path=database)
-    project_id = "absent" if missing in ("project", "both") else first.project.id
-    session_id = "absent" if missing in ("session", "both") else first.session.id
+    project_id = uuid7() if missing in ("project", "both") else first.project.id
+    session_id = uuid7() if missing in ("session", "both") else first.session.id
     before = persisted_state(database)
     expected = EntityNotFoundError if missing in ("session", "both") else ContextNotFound
     with pytest.raises(expected):
@@ -294,7 +295,7 @@ async def test_file_path_and_unknown_project_lookup_are_rejected_without_writes(
         (await register_session(str(invalid), "codex", "native", database_path=database))
     with pytest.raises(EntityNotFoundError):
         async with storage_scope(database, write=False) as scope:
-            (await scope.get(IProjectRepository).get("missing"))
+            (await scope.get(IProjectRepository).get(uuid7()))
     assert persisted_state(database) == before
 
 

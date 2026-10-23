@@ -1,6 +1,7 @@
 """표준 저장소 CRUD와 실제 프레임워크 자원 수명 및 낙관적 잠금을 검증한다."""
 
 from datetime import UTC
+from uuid import uuid7
 
 import pytest
 from spakky.data.persistency.aggregate_collector import AggregateCollector
@@ -160,14 +161,12 @@ async def test_inherited_crud_batch_delete_and_missing_contracts(database):
     second = Project.create(DirectoryObservation(working_directory="/second"))
     async with storage_scope(database) as scope:
         projects = scope.get(IProjectRepository)
-        assert (await projects.get_or_none("missing")) is None
-        assert not (await projects.contains("missing"))
+        assert (await projects.get_or_none(uuid7())) is None
+        assert not (await projects.contains(uuid7()))
         saved = await projects.save_all((first, second))
         assert {item.uid for item in saved} == {first.uid, second.uid}
         assert await projects.contains(first.uid)
-        assert {
-            item.uid for item in (await projects.range((second.uid, first.uid, "missing")))
-        } == {
+        assert {item.uid for item in (await projects.range((second.uid, first.uid, uuid7())))} == {
             first.uid,
             second.uid,
         }

@@ -17,7 +17,6 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from neurath.domain.aggregates.session import HostSession
-from neurath.infrastructure.uuid_type import UUIDText
 
 
 @Table(HostSession)
@@ -43,7 +42,7 @@ class SessionModel(AbstractMappableTable[HostSession]):
         UniqueConstraint("project_id", "id", name="uq_core_session_scope"),
         CheckConstraint("revision >= 1", name="session_revision_positive"),
     )
-    id: Mapped[UUID] = mapped_column(UUIDText, primary_key=True)
+    id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True)
     version: Mapped[UUID] = mapped_column(
         Uuid(), nullable=False, server_default="00000000000000000000000000000000"
     )
@@ -54,15 +53,13 @@ class SessionModel(AbstractMappableTable[HostSession]):
         DateTime(timezone=True), nullable=False, server_default="1970-01-01 00:00:00"
     )
 
-    project_id: Mapped[UUID] = mapped_column(
-        UUIDText, ForeignKey("core_projects.id"), nullable=False
-    )
+    project_id: Mapped[UUID] = mapped_column(Uuid(), ForeignKey("core_projects.id"), nullable=False)
     provider: Mapped[str] = mapped_column(String, nullable=False)
     host_session_id: Mapped[str] = mapped_column(String, nullable=False)
     working_directory: Mapped[str] = mapped_column(String, nullable=False)
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    successor_id: Mapped[UUID | None] = mapped_column(UUIDText)
+    successor_id: Mapped[UUID | None] = mapped_column(Uuid())
 
     __mapper_args__ = {"version_id_col": revision}
 

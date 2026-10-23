@@ -28,7 +28,6 @@ from neurath.domain.delegation_records import (
     ProviderPlan,
 )
 from neurath.domain.provider import ProviderKind, ProviderStatus
-from neurath.infrastructure.uuid_type import UUIDText
 
 
 @Table(Delegation)
@@ -83,29 +82,29 @@ class DelegationModel(AbstractMappableTable[Delegation]):
             sqlite_where=text("parent_id IS NULL"),
         ),
     )
-    id: Mapped[UUID] = mapped_column(UUIDText, primary_key=True)
+    id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True)
     version: Mapped[UUID] = mapped_column(Uuid(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
-    task_id: Mapped[UUID] = mapped_column(UUIDText, ForeignKey("core_tasks.id"), nullable=False)
+    task_id: Mapped[UUID] = mapped_column(Uuid(), ForeignKey("core_tasks.id"), nullable=False)
     definition_number: Mapped[int] = mapped_column(Integer, nullable=False)
     source_id: Mapped[UUID] = mapped_column(
-        UUIDText, ForeignKey("core_request_sources.id"), nullable=False
+        Uuid(), ForeignKey("core_request_sources.id"), nullable=False
     )
     parent_id: Mapped[UUID | None] = mapped_column(
-        UUIDText, ForeignKey("core_delegations.id"), nullable=True
+        Uuid(), ForeignKey("core_delegations.id"), nullable=True
     )
-    sender_id: Mapped[UUID] = mapped_column(UUIDText, ForeignKey("core_peers.id"), nullable=False)
+    sender_id: Mapped[UUID] = mapped_column(Uuid(), ForeignKey("core_peers.id"), nullable=False)
     recipient_id: Mapped[UUID | None] = mapped_column(
-        UUIDText, ForeignKey("core_peers.id"), nullable=True
+        Uuid(), ForeignKey("core_peers.id"), nullable=True
     )
     role: Mapped[str] = mapped_column(String, nullable=False)
     scope: Mapped[str] = mapped_column(String, nullable=False)
     route: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False)
     message_id: Mapped[UUID | None] = mapped_column(
-        UUIDText, ForeignKey("core_messages.id"), nullable=True
+        Uuid(), ForeignKey("core_messages.id"), nullable=True
     )
     execution_reference: Mapped[str | None] = mapped_column(String, nullable=True)
     progress: Mapped[list[str]] = mapped_column(JSON, nullable=False)
@@ -115,7 +114,7 @@ class DelegationModel(AbstractMappableTable[Delegation]):
     plan_model: Mapped[str | None] = mapped_column(String, nullable=True)
     plan_policy: Mapped[str | None] = mapped_column(String, nullable=True)
     plan_directory: Mapped[str | None] = mapped_column(String, nullable=True)
-    plan_parent_session_id: Mapped[UUID | None] = mapped_column(UUIDText, nullable=True)
+    plan_parent_session_id: Mapped[UUID | None] = mapped_column(Uuid(), nullable=True)
     provider_requested: Mapped[bool] = mapped_column(Boolean, nullable=False)
     provider_status: Mapped[str | None] = mapped_column(String, nullable=True)
     provider_output: Mapped[str] = mapped_column(String, nullable=False)

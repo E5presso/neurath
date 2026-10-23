@@ -4,7 +4,7 @@ import io
 import json
 import sqlite3
 from unittest.mock import patch
-from uuid import UUID
+from uuid import UUID, uuid7
 
 import pytest
 from alembic import command as migration
@@ -77,11 +77,11 @@ async def test_invalid_checkpoint_never_changes_graph_or_ledger(
     project_id, session_id, task_id = actor.project.uid, actor.session.uid, task.uid
     content, references, directory = "report", ["source:original"], "/graph"
     if invalid == "project":
-        project_id = "missing-project"
+        project_id = uuid7()
     if invalid == "session":
-        session_id = "missing-session"
+        session_id = uuid7()
     if invalid == "missing_task":
-        task_id = "missing-task"
+        task_id = uuid7()
     if invalid == "other_task_owner":
         session_id = peer.session.uid
     if invalid == "handed_off":
@@ -289,7 +289,7 @@ async def test_cli_reports_failed_or_unrecorded_graph_outcome_without_false_succ
     assert tuple(ids) == (UUID(output["id"]),)
     stored = await run(
         ReadMemoryUseCase,
-        ReadMemoryQuery(project_id=actor.project.uid, memory_id=output["id"]),
+        ReadMemoryQuery(project_id=actor.project.uid, memory_id=UUID(output["id"])),
         database_path=database,
     )
     assert stored.content == "report" and tuple(stored.references) == ("source",)
@@ -336,7 +336,7 @@ async def test_graph_migration_preserves_old_report_and_rejects_outcome_loss(
         database_path=database,
     )
     before = snapshot(database)
-    engine = create_database_engine(database, write=True)
+    engine = create_database_engine(database, write=True, migration=True)
     try:
         async with engine.begin() as connection:
             await connection.run_sync(

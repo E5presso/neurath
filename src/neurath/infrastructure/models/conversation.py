@@ -9,7 +9,6 @@ from sqlalchemy import JSON, Boolean, DateTime, Integer, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from neurath.domain.aggregates.conversation import Conversation
-from neurath.infrastructure.uuid_type import UUIDText
 
 
 @Table(Conversation)
@@ -27,7 +26,7 @@ class ConversationModel(AbstractMappableTable[Conversation]):
     """
 
     __tablename__ = "core_conversations"
-    id: Mapped[UUID] = mapped_column(UUIDText, primary_key=True)
+    id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True)
     version: Mapped[UUID] = mapped_column(Uuid(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

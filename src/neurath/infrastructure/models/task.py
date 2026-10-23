@@ -28,7 +28,6 @@ from neurath.domain.task_records import (
     TaskResult,
     TaskStatus,
 )
-from neurath.infrastructure.uuid_type import UUIDText
 
 
 @Table(Task)
@@ -64,21 +63,19 @@ class TaskModel(AbstractMappableTable[Task]):
         ),
         CheckConstraint("revision >= 1", name="task_revision_positive"),
     )
-    id: Mapped[UUID] = mapped_column(UUIDText, primary_key=True)
+    id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True)
     version: Mapped[UUID] = mapped_column(Uuid(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
 
     __mapper_args__ = {"version_id_col": revision}
-    project_id: Mapped[UUID] = mapped_column(
-        UUIDText, ForeignKey("core_projects.id"), nullable=False
-    )
-    owner_session_id: Mapped[UUID] = mapped_column(UUIDText, nullable=False)
+    project_id: Mapped[UUID] = mapped_column(Uuid(), ForeignKey("core_projects.id"), nullable=False)
+    owner_session_id: Mapped[UUID] = mapped_column(Uuid(), nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False)
     current_attempt_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     follow_up_of: Mapped[UUID | None] = mapped_column(
-        UUIDText, ForeignKey("core_tasks.id"), nullable=True
+        Uuid(), ForeignKey("core_tasks.id"), nullable=True
     )
     invalidated_reason: Mapped[str | None] = mapped_column(String, nullable=True)
     definitions: Mapped[list[TaskDefinitionModel]] = relationship(
@@ -171,10 +168,10 @@ class TaskDefinitionModel(AbstractTable):
             ["core_request_sources.project_id", "core_request_sources.id"],
         ),
     )
-    task_id: Mapped[UUID] = mapped_column(UUIDText, ForeignKey("core_tasks.id"), primary_key=True)
+    task_id: Mapped[UUID] = mapped_column(Uuid(), ForeignKey("core_tasks.id"), primary_key=True)
     number: Mapped[int] = mapped_column(Integer, primary_key=True)
-    project_id: Mapped[UUID] = mapped_column(UUIDText, nullable=False)
-    source_id: Mapped[UUID] = mapped_column(UUIDText, nullable=False)
+    project_id: Mapped[UUID] = mapped_column(Uuid(), nullable=False)
+    source_id: Mapped[UUID] = mapped_column(Uuid(), nullable=False)
     title: Mapped[str] = mapped_column(String, nullable=False)
     required_result: Mapped[str] = mapped_column(String, nullable=False)
     dependencies: Mapped[list[TaskDependencyModel]] = relationship(
@@ -250,10 +247,10 @@ class TaskDependencyModel(AbstractTable):
         ),
         CheckConstraint("task_id != prerequisite_id", name="task_not_self_dependent"),
     )
-    task_id: Mapped[UUID] = mapped_column(UUIDText, primary_key=True)
+    task_id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True)
     definition_number: Mapped[int] = mapped_column(Integer, primary_key=True)
-    prerequisite_id: Mapped[UUID] = mapped_column(UUIDText, primary_key=True)
-    project_id: Mapped[UUID] = mapped_column(UUIDText, nullable=False)
+    prerequisite_id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(Uuid(), nullable=False)
 
 
 @Table()
@@ -281,12 +278,10 @@ class TaskAttemptModel(AbstractTable):
             ["core_task_definitions.task_id", "core_task_definitions.number"],
         ),
     )
-    task_id: Mapped[UUID] = mapped_column(UUIDText, ForeignKey("core_tasks.id"), primary_key=True)
+    task_id: Mapped[UUID] = mapped_column(Uuid(), ForeignKey("core_tasks.id"), primary_key=True)
     number: Mapped[int] = mapped_column(Integer, primary_key=True)
     definition_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    session_id: Mapped[UUID] = mapped_column(
-        UUIDText, ForeignKey("core_sessions.id"), nullable=False
-    )
+    session_id: Mapped[UUID] = mapped_column(Uuid(), ForeignKey("core_sessions.id"), nullable=False)
     submission_summary: Mapped[str | None] = mapped_column(String, nullable=True)
     submission_references: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     outcome: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -369,7 +364,7 @@ class TaskWaitModel(AbstractTable):
     """
 
     __tablename__ = "core_task_waits"
-    task_id: Mapped[UUID] = mapped_column(UUIDText, ForeignKey("core_tasks.id"), primary_key=True)
+    task_id: Mapped[UUID] = mapped_column(Uuid(), ForeignKey("core_tasks.id"), primary_key=True)
     number: Mapped[int] = mapped_column(Integer, primary_key=True)
     target: Mapped[str] = mapped_column(String, nullable=False)
     condition: Mapped[str] = mapped_column(String, nullable=False)

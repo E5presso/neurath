@@ -98,12 +98,10 @@ class DispatchDelegationUseCase(IAsyncCommandUseCase[DispatchDelegationCommand, 
         originals = [source]
         while originals[-1].corrects_id is not None:
             originals.append(await self.sources.get(originals[-1].corrects_id))
-        source_text = "\n".join(f"Source {item.uid}: {item.body}" for item in reversed(originals))
         conversation = Conversation(
             uid=Conversation.next_id(), participants=(delegation.sender_id, delegation.recipient_id)
         )
         await self.conversations.save(conversation)
-        body = f"Delegation: {delegation.uid}\nTask: {task.uid} / definition {delegation.definition_number}\nRole: {delegation.role}\nSource: {source.uid}\n{source_text}\nRequired result: {task.definition.required_result}\nAssigned scope: {delegation.scope}\nAccept the current assignment before execution; report evidence and remaining work to this assignment."
         message = Message(
             uid=Message.next_id(),
             conversation_id=conversation.uid,
@@ -111,7 +109,14 @@ class DispatchDelegationUseCase(IAsyncCommandUseCase[DispatchDelegationCommand, 
             recipient_id=delegation.recipient_id,
             key=str(delegation.uid),
             title=task.definition.title,
-            body=body,
+            body=f"""Delegation: {delegation.uid}
+Task: {task.uid} / definition {delegation.definition_number}
+Role: {delegation.role}
+Source: {source.uid}
+{"\n".join(f"Source {item.uid}: {item.body}" for item in reversed(originals))}
+Required result: {task.definition.required_result}
+Assigned scope: {delegation.scope}
+Accept the current assignment before execution; report evidence and remaining work to this assignment.""",
         )
         await self.messages.save(message)
         delegation.assign(message.uid)

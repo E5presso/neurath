@@ -14,7 +14,7 @@ from tests.test_task_requests import snapshot
 
 
 async def test_empty_memory_migration_can_downgrade_and_upgrade(database):
-    engine = create_database_engine(database, write=True)
+    engine = create_database_engine(database, write=True, migration=True)
     try:
         async with engine.begin() as connection:
             await connection.run_sync(lambda c: command.downgrade(migration_config(c), "core_0005"))
@@ -57,7 +57,7 @@ async def test_memory_or_handoff_history_prevents_destructive_downgrade(database
             source.hand_off(peer.session, source.revision)
             await scope.get(ISessionRepository).save(source)
     before = snapshot(database)
-    engine = create_database_engine(database, write=True)
+    engine = create_database_engine(database, write=True, migration=True)
     try:
         with pytest.raises(RuntimeError):
             async with engine.begin() as connection:
