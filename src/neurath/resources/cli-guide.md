@@ -1,4 +1,4 @@
-# Neurath 0.3.1 CLI
+# Neurath 0.4.0 CLI
 
 Neurath preserves the current request, work, context and collaboration across host events. The host agent performs the actual reasoning, editing, tools and native delegation.
 Use this installed command: `@NEURATH_COMMAND@`. The host session and project are resolved automatically. Never invent native identities or ask the user to re-enter existing instructions. No Neurath approval token is required.

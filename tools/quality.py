@@ -44,6 +44,7 @@ def main() -> None:
             "tests/test_host_flow.py",
             "tests/test_skill_workflows.py",
             "tests/test_rules_entry.py",
+            "tests/test_install_transition.py",
             "tests/test_historical_migration.py",
             "tests/test_distribution.py",
             "tests/test_intent_fixes.py",

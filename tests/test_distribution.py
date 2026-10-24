@@ -441,7 +441,7 @@ def test_official_download_digest_and_exact_source_preparation(tmp_path, release
     a, _ = releases
     service = PosixDistributionService()
     content = Path(a["wheel"]).read_bytes()
-    url = "https://github.com/E5presso/neurath/releases/download/v-fixture/neurath-0.3.1-py3-none-any.whl"
+    url = f"https://github.com/E5presso/neurath/releases/download/v-fixture/{Path(a['wheel']).name}"
     asset = {"browser_download_url": url, "digest": "sha256:" + hashlib.sha256(content).hexdigest()}
 
     def fetch(request, **kwargs):

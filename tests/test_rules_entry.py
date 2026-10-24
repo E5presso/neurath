@@ -17,6 +17,13 @@ from tests.support.hook_cli import HookCliClient
 from tests.test_host_flow import invoke
 
 
+def effective_guide(root, provider, rules):
+    index = rules.read_text()
+    relative = re.search(rf"- {provider.value}: .*?\]\(<([^>]+)>\)", index)[1]
+    assert not Path(relative).is_absolute()
+    return (root / relative).read_text()
+
+
 @pytest.fixture(params=list(ProviderKind))
 async def installed_rules(tmp_path, request, monkeypatch):
     provider = request.param
@@ -46,9 +53,10 @@ async def test_rules_index_locates_real_skill_sources_and_preserves_instruction_
 ):
     root, provider, rules, custom, database = installed_rules
     before = database.read_bytes()
-    content = rules.read_text()
-    assert content.startswith("User/project instructions take their existing precedence.")
-    assert content.count("<!-- neurath:begin -->") == content.count("<!-- neurath:end -->") == 1
+    routing = rules.read_text()
+    assert routing.startswith("User/project instructions take their existing precedence.")
+    assert routing.count("<!-- neurath:begin -->") == routing.count("<!-- neurath:end -->") == 1
+    content = effective_guide(root, provider, rules)
     assert "user does not need to enable a Neurath mode" in content
     assert "An explicitly named skill takes precedence" in content
     assert "native, project, or user skill" in content
@@ -74,7 +82,8 @@ async def test_rules_index_locates_real_skill_sources_and_preserves_instruction_
     again = await PosixInstallationService(PosixSkillCatalogService()).install(
         provider, str(root), str(database.parent.parent)
     )
-    assert again.changed_files == () and rules.read_text() == content
+    assert again.changed_files == () and rules.read_text() == routing
+    assert effective_guide(root, provider, rules) == content
 
 
 async def test_representative_work_requests_can_follow_rules_to_existing_cli_runner(
@@ -102,7 +111,9 @@ async def test_representative_work_requests_can_follow_rules_to_existing_cli_run
         assert current["tasks"] == current["workflows"] == []
         path = next(
             Path(value)
-            for value in re.findall(r"\]\(<([^>]+/SKILL\.md)>\)", rules.read_text())
+            for value in re.findall(
+                r"\]\(<([^>]+/SKILL\.md)>\)", effective_guide(root, provider, rules)
+            )
             if Path(value).parent.name == skill
         )
         before = database.read_bytes()
@@ -159,8 +170,8 @@ async def test_explicit_project_skill_is_available_without_replacing_it_with_bui
             prompt="Use project-specialist to check this project; do not substitute a generic review.",
         )
     )
-    assert "An explicitly named skill takes precedence" in rules.read_text()
-    assert "--definition @file.json" in rules.read_text()
+    assert "An explicitly named skill takes precedence" in effective_guide(root, provider, rules)
+    assert "--definition @file.json" in effective_guide(root, provider, rules)
     task = await invoke(
         database,
         [
@@ -202,7 +213,7 @@ async def test_question_explanation_status_and_single_host_operations_do_not_cre
     installed_rules, monkeypatch
 ):
     root, provider, rules, _, database = installed_rules
-    content = rules.read_text()
+    content = effective_guide(root, provider, rules)
     assert (
         "Simple questions, explanations, and status requests do not require a skill, task, or workflow"
         in content
