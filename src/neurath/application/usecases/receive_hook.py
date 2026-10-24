@@ -60,6 +60,7 @@ class ReceiveHookCommand(AbstractCommand):
         repeated: Stop 계속 수행 플래그.
         reason: 호스트가 전달한 실패·종료 사유.
         delegation_id: 이 실행이 맡은 배정이며 일반 호스트 작업이면 None.
+        bypass: 차단 판정만 우회하며 실제 턴·중단·종료 관찰은 유지한다.
     """
 
     provider: str
@@ -76,6 +77,7 @@ class ReceiveHookCommand(AbstractCommand):
     repeated: bool = False
     reason: str = ""
     delegation_id: UUID | None = None
+    bypass: bool = False
 
 
 @immutable
@@ -492,6 +494,12 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
         if command.event == HookEvent.STOP_FAILURE:
             execution.pause(command.reason or "Host execution failed")
             return HookAction.PAUSE, None
+        if command.bypass and command.event in (
+            HookEvent.PRE_TOOL_USE,
+            HookEvent.STOP,
+            HookEvent.SUBAGENT_STOP,
+        ):
+            return HookAction.ALLOW, None
         if command.event in (HookEvent.STOP, HookEvent.SUBAGENT_STOP):
             progress = []
             for task in tasks:

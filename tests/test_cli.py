@@ -56,7 +56,9 @@ async def test_malformed_stdin_yields_json_without_opening_database(tmp_path, pa
     assert not missing.exists()
 
 
-async def test_help_and_bypass_never_open_transaction_or_call_usecase(tmp_path, monkeypatch):
+async def test_help_and_malformed_bypass_never_open_transaction_or_call_usecase(
+    tmp_path, monkeypatch
+):
     async def unexpected(*args, **kwargs):
         raise AssertionError("must not execute usecase")
 

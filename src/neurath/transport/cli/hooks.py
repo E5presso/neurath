@@ -3,17 +3,22 @@
 import json
 import os
 import sys
+from dataclasses import asdict, replace
 from typing import Annotated, cast
 from uuid import UUID
 
 from spakky.plugins.sqlalchemy.persistency.connection_manager import AsyncConnectionManager
 from spakky.plugins.typer.stereotypes.cli_controller import CliController, command
-from typer import Option, echo
+from typer import Exit, Option, echo
 
 from neurath.application.usecases.receive_hook import (
     ReceiveHookCommand,
     ReceiveHookResult,
     ReceiveHookUseCase,
+)
+from neurath.application.usecases.record_recovery_failure import (
+    RecordRecoveryFailureCommand,
+    RecordRecoveryFailureUseCase,
 )
 from neurath.domain.enums.hook_action import HookAction
 from neurath.domain.enums.hook_event import HookEvent
@@ -25,53 +30,121 @@ from neurath.serialization import encode_uuid
 class HookCliController:
     """표준입력을 읽고 호스트 응답을 출력하며 호스트 입력은 주입된 유스케이스에 전달한다.
 
-    도움말과 우회는 유스케이스나 DB 트랜잭션을 실행하지 않는다. 실패도 호스트가 해석하는 JSON으로 반환하여
+    도움말은 DB를 열지 않는다. 우회도 가능한 실제 턴 관찰은 유지하며 실패를 호스트 JSON으로 반환하여
     훅 장애가 같은 모델 턴을 계속 생성하지 않게 한다. 허용 결과는 네이티브 권한을 대체하지 않는다.
     """
 
-    def __init__(self, usecase: ReceiveHookUseCase, connection: AsyncConnectionManager) -> None:
+    def __init__(
+        self,
+        usecase: ReceiveHookUseCase,
+        connection: AsyncConnectionManager,
+        recovery: RecordRecoveryFailureUseCase,
+    ) -> None:
         """스캔된 컨테이너에서 훅 수신 유스케이스를 직접 주입받는다.
 
         Args:
             usecase: 세션 등록·훅 적용·트랜잭션을 담당하는 유스케이스.
             connection: 명령을 실행한 이벤트 루프에서 정리할 비동기 엔진.
+            recovery: DB·출력 장애를 별도로 기록할 경로.
         """
         self.usecase = usecase
         self.connection = connection
+        self.recovery = recovery
 
     @command("handle", help="표준입력의 네이티브 훅 JSON을 처리합니다.")
     async def handle(
         self,
         provider: Annotated[ProviderKind, Option("--provider", help="호스트 입력 규격")],
-        bypass: Annotated[bool, Option("--bypass", help="원장을 변경하지 않고 훅을 우회")] = False,
+        bypass: Annotated[
+            bool, Option("--bypass", help="차단만 우회하고 가능한 실제 턴 관찰은 보존")
+        ] = False,
     ) -> None:
         """호스트 JSON 하나를 받아 제어 응답 하나를 표준출력에 기록한다.
 
         Args:
             provider: 설치된 훅의 공급자 규격.
             bypass: 관리 경로가 활성화한 우회이며 성공·승인을 기록하지 않음.
+
+        Raises:
+            Exit: 호스트 응답 출력이 실패해 정상 응답을 전달하지 못한 경우.
         """
         try:
-            if bypass:
-                echo(
-                    json.dumps(
-                        {
-                            "systemMessage": "Neurath hook bypass is enabled; task state is unchanged"
-                        },
-                        default=encode_uuid,
+            try:
+                result = await self.dispatch(provider.value, self._read_payload(), bypass=bypass)
+            except Exception as error:
+                receipt = await self.recovery.run(
+                    RecordRecoveryFailureCommand(
+                        detail=f"{type(error).__name__}: {error}",
+                        reference=f"hook:{provider.value}",
                     )
                 )
-                return
-            try:
-                result = await self.dispatch(provider.value, self._read_payload())
-            except Exception as error:
                 result = {
                     "continue": False,
-                    "stopReason": f"Neurath hook failure: {error}. Use the management recovery/bypass path; unfinished work is preserved.",
+                    "stopReason": f"Neurath hook failure: {error}. Use neurath maintenance diagnose; unfinished work is preserved. Recovery: {asdict(receipt)}",
                 }
-            echo(json.dumps(result, default=encode_uuid, ensure_ascii=False))
+                if bypass:
+                    result = {
+                        "systemMessage": f"Neurath hook bypass is enabled; bookkeeping failed and remains unverified. Recovery: {asdict(receipt)}"
+                    }
+            try:
+                echo(json.dumps(result, default=encode_uuid, ensure_ascii=False))
+            except OSError as error:
+                await self.recovery.run(
+                    RecordRecoveryFailureCommand(
+                        detail=f"Hook response output failed: {error}",
+                        reference=f"hook:{provider.value}:stdout",
+                    )
+                )
+                raise Exit(1) from error
+
         finally:
             await self.connection.dispose()
+
+    @command("verify")
+    async def verify(self, provider: Annotated[ProviderKind, Option("--provider")]) -> None:
+        """복원 후 실제 Stop·작성 선행 훅의 차단 경로를 우회 없이 다시 실행한다.
+
+        합성된 호스트 신원을 만들지 않는다. stdin은 호스트에서 확보한 실제 사건이어야 하며
+        정상 허용은 차단 재검증 성공으로 표시하지 않는다. 실행 관찰은 일반 훅처럼 저장한다.
+
+        Args:
+            provider: 실제 사건을 관찰한 호스트 공급자.
+
+        Raises:
+            Exit: 차단을 관찰하지 못했거나 요청·DB 처리가 실패한 경우.
+        """
+        try:
+            try:
+                payload = self._read_payload()
+                decoded = self.decode(provider.value, payload)
+                self._require_guard_event(decoded.event)
+                response = await self.dispatch(provider.value, payload)
+                verified = response.get("decision") == "block" or response.get("continue") is False
+                echo(json.dumps({"verified": verified, "response": response}, default=encode_uuid))
+            except Exception as error:
+                await self.recovery.run(
+                    RecordRecoveryFailureCommand(
+                        detail=f"{type(error).__name__}: {error}", reference="hook:verify"
+                    )
+                )
+                raise Exit(1) from error
+            if not verified:
+                raise Exit(1)
+        finally:
+            await self.connection.dispose()
+
+    @staticmethod
+    def _require_guard_event(event: HookEvent) -> None:
+        """실제 차단을 검사할 수 있는 네이티브 사건만 선택한다.
+
+        Args:
+            event: 호스트 입력에서 해석한 사건.
+
+        Raises:
+            ValueError: Stop 또는 도구 선행 사건이 아닌 경우.
+        """
+        if event not in (HookEvent.STOP, HookEvent.SUBAGENT_STOP, HookEvent.PRE_TOOL_USE):
+            raise ValueError("Verification requires a real Stop or PreToolUse event")
 
     @staticmethod
     def _read_payload() -> dict[str, object]:
@@ -88,32 +161,38 @@ class HookCliController:
             raise ValueError("Hook input must be a JSON object")
         return cast(dict[str, object], payload)
 
-    async def dispatch(self, provider: str, payload: dict[str, object]) -> dict[str, object]:
+    async def dispatch(
+        self, provider: str, payload: dict[str, object], *, bypass: bool = False
+    ) -> dict[str, object]:
         """해석한 입력으로 요청을 열고 코어 결과를 호스트 응답 형식으로 변환한다.
 
         Args:
             provider: 실제 호스트 공급자.
             payload: 호스트가 전달한 JSON 객체.
+            bypass: 실제 관찰은 기록하되 하네스 차단만 해제한다.
 
         Returns:
             dict[str, object]: 네이티브 허용·계속·중지 응답.
         """
-        command = self.decode(provider, payload)
+        command = replace(self.decode(provider, payload), bypass=bypass)
         result = await self.usecase.run(command)
-        if result.action is HookAction.PAUSE:
+        response: dict[str, object] = {}
+        if bypass:
+            response["systemMessage"] = (
+                "Neurath hook bypass is enabled; enforcement only is suspended, task outcomes and host permissions are unchanged"
+            )
+        elif result.action is HookAction.PAUSE:
             return {"continue": False, "stopReason": result.message or "Execution is paused"}
-        if result.action is HookAction.CONTINUE:
+        elif result.action is HookAction.CONTINUE:
             return {"decision": "block", "reason": "Continue unfinished work:\n" + result.message}
         if result.restore or result.inbox:
             context = self._context(result)
             if context:
-                return {
-                    "hookSpecificOutput": {
-                        "hookEventName": command.event.value,
-                        "additionalContext": context,
-                    }
+                response["hookSpecificOutput"] = {
+                    "hookEventName": command.event.value,
+                    "additionalContext": context,
                 }
-        return {}
+        return response
 
     @staticmethod
     def _context(result: ReceiveHookResult) -> str:
