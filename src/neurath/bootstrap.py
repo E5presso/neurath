@@ -32,7 +32,12 @@ def create_application() -> SpakkyApplication:
         .load_plugins()
         .scan(
             "neurath",
-            exclude={"neurath.infrastructure.migrations", "neurath.bootstrap", "neurath.cli"},
+            exclude={
+                "neurath.infrastructure.migrations",
+                "neurath.bootstrap",
+                "neurath.cli",
+                "neurath.entrypoint",
+            },
         )
     )
 

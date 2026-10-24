@@ -135,3 +135,7 @@ class HostSession(AbstractAggregateRoot[UUID]):
         if successor.uid == self.uid:
             raise InvalidExecutionState("A handoff requires a different session")
         self.successor_id = successor.uid
+
+    def reopen_for_new_work(self) -> None:
+        """새 실제 사용자 턴에서 새 작업을 받을 수 있게 하되 인수된 태스크 소유자는 바꾸지 않는다."""
+        self.successor_id = None

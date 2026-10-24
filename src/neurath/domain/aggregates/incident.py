@@ -144,7 +144,6 @@ class Incident(AbstractAggregateRoot[UUID]):
         progress = 0
         for evidence in self.evidence:
             if evidence.kind is IncidentEvidenceKind.OBSERVATION:
-                progress = 0
                 continue
             if evidence.kind is IncidentEvidenceKind.REPRODUCTION:
                 progress = 1

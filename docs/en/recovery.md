@@ -6,7 +6,7 @@
 
 The foundation library uses explicit `initialize_database` to initialize/upgrade through the package's Alembic head. See [core foundation](core-foundation.md) for the default DB path, schema and invocation example. Ordinary requests verify compatibility without changing schema.
 
-Initialization does not convert historical harness stores into the new model. Unrecognized existing stores are rejected without modification; current `setup` does not install this candidate. Historical-data conversion belongs to #150, installation cutover to #151 while operational diagnosis, bypass and incident tracking are provided below. See the [implementation plan](implementation-plan.md).
+`neurath maintenance initialize` explicitly initializes or upgrades the current store. `./setup --provider codex --directory <project>` or `maintenance install` installs the matching CLI guide, 14 skills, rules, and hooks into managed areas. Existing SQLite stores receive consistent backup-API copies including WAL data; changed settings are backed up too. Unrelated instructions, hooks, and skills are preserved, and failed file application restores original settings. Converting historical harness stores of other formats is a separate migration; unidentified databases are never initialized or erased.
 
 ## Preservation during migration and recovery
 
@@ -28,12 +28,7 @@ Host tools remove worktrees. Preserve unmerged commits, local changes and requir
 
 The `maintenance` group can start with a malformed business connection URL. During official application construction only, it uses an unopened read-only SQLite URL, then restores the original environment before diagnosis. It does not edit user configuration files or databases; diagnostics observe the original configuration and selected file.
 
-- `incident open --symptom <symptom> --reference <source> [--project-id <id>]` opens an unresolved incident.
-- `incident show --incident-id <id>` reads the original symptom, evidence, transfers, replacement, and revision.
-- `incident record --incident-id <id> --revision <revision> --kind reproduction|fix|regression --detail <actual-work> --reference <evidence>` appends evidence in order. Regression requires `--passed` or `--failed`.
-- `incident refresh --incident-id <id> --revision <revision> [diagnostic-options]` actually runs diagnostics again and appends the observation.
-- `incident escalate --incident-id <id> --revision <revision> --destination <destination-and-reason>` and `incident supersede --incident-id <id> --revision <revision> --replacement-id <id>` preserve unresolved history and original incident links.
-- `incident resolve --incident-id <id> --revision <revision> --explanation <resolution>` requires the latest reproduction followed by a fix and passing regression evidence. Resolving an incident does not complete the original task.
+Original symptoms, reproduction, fixes, regression evidence, and transfers remain internal records. There is no public `incident` administration group requiring humans to register, promote, and resolve the same facts again. Healthy refresh observations do not reset existing resolution evidence. Incident resolution remains distinct from task success.
 
 When the database cannot save, `maintenance record-failure --detail <cause-and-unfinished-work> --reference <original-call>` appends an independent record to `$XDG_STATE_HOME/neurath/recovery.jsonl` (default `~/.local/state/neurath/recovery.jsonl`). Hook and incident-command failures attempt this path and stderr once each. Failure of both paths does not start retries or model execution. `host_submitted` means output submission; `delivery: unverified` means actual user delivery has not been confirmed. The recovery file does not replace the core ledger or decide success.
 

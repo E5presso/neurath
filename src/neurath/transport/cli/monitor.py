@@ -10,6 +10,10 @@ from spakky.plugins.typer.stereotypes.cli_controller import CliController, comma
 from typer import Option, echo
 
 from neurath.application.usecases.get_monitor import GetMonitorQuery, GetMonitorUseCase
+from neurath.application.usecases.resolve_session_context import (
+    ResolveSessionContextQuery,
+    ResolveSessionContextUseCase,
+)
 from neurath.application.usecases.tick_monitor import TickMonitorCommand, TickMonitorUseCase
 from neurath.serialization import encode_uuid
 
@@ -23,6 +27,7 @@ class MonitorCliController:
         tick: TickMonitorUseCase,
         status: GetMonitorUseCase,
         connection: AsyncConnectionManager,
+        context: ResolveSessionContextUseCase,
     ) -> None:
         """실제 작업 단위와 명령 이벤트 루프의 정리 계약을 받는다.
 
@@ -30,20 +35,40 @@ class MonitorCliController:
             tick: 커밋된 예약 뒤 외부 관찰·알림·결과 저장.
             status: 첫 관찰·사건·실패·필요한 조작 조회.
             connection: 명령 이벤트 루프에서 정리할 연결.
+            context: 현재 호스트 범위를 자동 조회한다.
         """
         self.tick = tick
         self.status = status
         self.connection = connection
+        self.context = context
+
+    async def _scope(self, project_id: UUID | None, session_id: UUID | None) -> tuple[UUID, UUID]:
+        """명시 범위가 없으면 현재 호스트의 실제 소유 범위를 사용한다.
+
+        Args:
+            project_id: 명시 프로젝트 또는 None.
+            session_id: 명시 세션 또는 None.
+
+        Returns:
+            tuple[UUID, UUID]: 조회에 사용할 현재 프로젝트·세션.
+        """
+        if project_id is not None and session_id is not None:
+            return project_id, session_id
+        scope = await self.context.run(
+            ResolveSessionContextQuery(project_id=project_id, session_id=session_id)
+        )
+        return scope.session.project_id, scope.session.uid
 
     @command("tick")
     async def tick_monitor(
         self,
-        project_id: Annotated[UUID, Option("--project-id")],
-        session_id: Annotated[UUID, Option("--session-id")],
+        *,
+        project_id: Annotated[UUID | None, Option("--project-id")] = None,
+        session_id: Annotated[UUID | None, Option("--session-id")] = None,
         task_id: Annotated[UUID, Option("--task-id")],
         monitor_number: Annotated[int, Option("--monitor-number")],
-        execution_id: Annotated[UUID, Option("--execution-id")],
-        generation: Annotated[int, Option("--generation")],
+        execution_id: Annotated[UUID | None, Option("--execution-id")] = None,
+        generation: Annotated[int | None, Option("--generation")] = None,
     ) -> None:
         """등록된 정확한 감시를 내부 런타임에서 한 번만 관찰한다.
 
@@ -56,6 +81,18 @@ class MonitorCliController:
             generation: 조회한 현재 자원 세대.
         """
         try:
+            project_id, session_id = await self._scope(project_id, session_id)
+            if execution_id is None or generation is None:
+                current = await self.status.run(
+                    GetMonitorQuery(
+                        project_id=project_id,
+                        session_id=session_id,
+                        task_id=task_id,
+                        monitor_number=monitor_number,
+                    )
+                )
+                execution_id = current.owner_execution_id if execution_id is None else execution_id
+                generation = current.generation if generation is None else generation
             result = await self.tick.run(
                 TickMonitorCommand(
                     project_id=project_id,
@@ -73,8 +110,9 @@ class MonitorCliController:
     @command("status")
     async def read_monitor(
         self,
-        project_id: Annotated[UUID, Option("--project-id")],
-        session_id: Annotated[UUID, Option("--session-id")],
+        *,
+        project_id: Annotated[UUID | None, Option("--project-id")] = None,
+        session_id: Annotated[UUID | None, Option("--session-id")] = None,
         task_id: Annotated[UUID, Option("--task-id")],
         monitor_number: Annotated[int, Option("--monitor-number")],
     ) -> None:
@@ -87,6 +125,7 @@ class MonitorCliController:
             monitor_number: 조회할 정확한 감시 순번.
         """
         try:
+            project_id, session_id = await self._scope(project_id, session_id)
             result = await self.status.run(
                 GetMonitorQuery(
                     project_id=project_id,

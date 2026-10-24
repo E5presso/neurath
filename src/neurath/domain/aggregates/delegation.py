@@ -1,6 +1,7 @@
 """원래 태스크 요구에 연결된 배정과 실제 수신자의 수행 이력을 보존한다."""
 
 from collections.abc import Sequence
+from hashlib import sha256
 from typing import Self, override
 from uuid import UUID, uuid7
 
@@ -48,6 +49,8 @@ class Delegation(AbstractAggregateRoot[UUID]):
         provider_error: 실패·미확인 관찰의 설명.
         native_session_id: 실제 출력에서 관찰한 호스트 세션 ID.
         revision: 저장소 낙관적 버전.
+        candidate: 독립 평가의 내용 지문이며 일반 배정은 빈 문자열.
+        request_key: 동일 요청의 재전달을 구분하며 명시 재시도는 별도 키를 사용한다.
     """
 
     task_id: UUID
@@ -73,6 +76,8 @@ class Delegation(AbstractAggregateRoot[UUID]):
     provider_error: str | None = None
     native_session_id: str | None = None
     revision: int = 1
+    candidate: str = ""
+    request_key: str = ""
 
     @classmethod
     @override
@@ -91,6 +96,8 @@ class Delegation(AbstractAggregateRoot[UUID]):
         Raises:
             ValueError: 요구 개정·범위가 없거나 경로별 필수 정보가 잘못된 경우.
         """
+        if self.candidate and self.role is not DelegationRole.REVIEWER:
+            raise ValueError("Evaluation candidates require a reviewer")
         if self.definition_number < 1 or not self.scope.strip():
             raise ValueError("Delegation requires a current definition and scope")
         if (self.route is DelegationRoute.PROVIDER) != (self.plan is not None):
@@ -233,6 +240,27 @@ class Delegation(AbstractAggregateRoot[UUID]):
         if self.provider_requested:
             self.add_event(ProviderStopRequested(delegation_id=self.uid, sender_id=self.sender_id))
 
+    def request_stop(self, reason: str) -> None:
+        """사용자가 취소한 정확한 배정만 중단 요청으로 기록한다.
+
+        Args:
+            reason: 취소의 실제 근거.
+
+        Raises:
+            ValueError: 취소 이유가 없는 경우.
+        """
+        if not reason.strip():
+            raise ValueError("A stop request requires its original reason")
+        if self.stop_reason is not None or self.status in (
+            DelegationStatus.COMPLETED,
+            DelegationStatus.STOPPED,
+        ):
+            return
+        self.stop_reason = reason
+        self.status = DelegationStatus.STOP_REQUESTED
+        if self.provider_requested:
+            self.add_event(ProviderStopRequested(delegation_id=self.uid, sender_id=self.sender_id))
+
     def confirm_stop(self, peer_id: UUID, evidence: str) -> None:
         """수신 경계의 중단 관찰이 있을 때만 실제 중단을 표시한다.
 
@@ -361,6 +389,32 @@ class Delegation(AbstractAggregateRoot[UUID]):
         self.native_session_id = native_session_id
         self.recipient_id = peer_id
 
+    def evaluation_report(self) -> DelegationReport:
+        """실제 완료한 독립 실행 또는 수신자의 원 보고만 평가 근거로 반환한다.
+
+        Returns:
+            DelegationReport: 원 보고 또는 실제 provider 출력과 실행 참조.
+
+        Raises:
+            InvalidTaskState: 완료·출력·실제 실행 관찰이 빠진 경우.
+        """
+        if self.status is not DelegationStatus.COMPLETED:
+            raise InvalidTaskState("Evaluation has no completed report")
+        if self.plan is None:
+            if self.report is None:
+                raise InvalidTaskState("Evaluation has no completed report")
+            return self.report
+        if (
+            self.provider_status is not ProviderStatus.COMPLETED
+            or not self.native_session_id
+            or not self.execution_reference
+            or not self.provider_output.strip()
+        ):
+            raise InvalidTaskState("Provider evaluation has not completed successfully")
+        return DelegationReport(
+            summary=self.provider_output, references=(self.execution_reference,)
+        )
+
     def require_redelegation(self, task: Task, sender_id: UUID) -> None:
         """수락한 최신 배정의 수신자만 그 범위에서 다시 위임할 수 있게 한다.
 
@@ -371,42 +425,47 @@ class Delegation(AbstractAggregateRoot[UUID]):
         Raises:
             InvalidTaskState: 아직 수락하지 않았거나 이미 끝낸 배정인 경우.
         """
+        if self.candidate:
+            raise InvalidTaskState("Evaluation assignments cannot recursively delegate evaluation")
         self.require_recipient(sender_id)
         self.require_current(task)
         if self.status not in (DelegationStatus.ACCEPTED, DelegationStatus.RUNNING):
             raise InvalidTaskState("Redelegation requires an accepted current assignment")
 
-    def find_reusable(self, assignments: Sequence[Self]) -> Self | None:
-        """같은 요구·역할의 배정을 재사용하고 다른 원문으로 덮어쓰는 재시도를 거부한다.
-
-        Args:
-            assignments: 같은 태스크에 이미 저장한 배정들.
+    @property
+    def request_identity(self) -> str:
+        """수신 대상과 범위가 같은 요청만 재사용할 내부 식별값을 반환한다.
 
         Returns:
-            Self | None: 같은 요청의 기존 배정이며 최초 요청이면 None.
-
-        Raises:
-            InvalidTaskState: 루트 배정이 이미 있거나 같은 배정의 범위를 바꾸려 한 경우.
+            str: 사용자의 승인과 무관한 중복 제출 비교값.
         """
-        for existing in assignments:
-            if (
-                existing.definition_number != self.definition_number
-                or existing.role is not self.role
-            ):
-                continue
-            if existing.sender_id != self.sender_id:
-                if existing.parent_id is None and self.parent_id is None:
-                    raise InvalidTaskState(
-                        "This task revision already has a root assignment; recover it instead of duplicating execution"
-                    )
-                continue
-            recipient_id = None if existing.plan is not None else existing.recipient_id
-            if (
-                recipient_id != self.recipient_id
-                or existing.scope != self.scope
-                or existing.route is not self.route
-                or existing.plan != self.plan
-            ):
-                raise InvalidTaskState("This definition and role already have an assignment")
-            return existing
-        return None
+        if self.request_key and not self.request_key.startswith("legacy:"):
+            return self.request_key
+        recipient = None if self.plan is not None else self.recipient_id
+        envelope = (
+            self.task_id,
+            self.definition_number,
+            self.source_id,
+            self.sender_id,
+            recipient,
+            self.role,
+            self.scope,
+            self.route,
+            self.parent_id,
+            self.plan,
+            self.candidate,
+        )
+        return sha256(repr(envelope).encode()).hexdigest()
+
+    def find_reusable(self, assignments: Sequence[Self]) -> Self | None:
+        """동일 요청만 재사용하고 다른 검토자·범위의 정당한 배정은 허용한다.
+
+        Args:
+            assignments: 같은 태스크에 저장한 기존 배정.
+
+        Returns:
+            Self | None: 동일 요청의 원 배정 또는 새 요청의 None.
+        """
+        return next(
+            (item for item in assignments if item.request_identity == self.request_identity), None
+        )

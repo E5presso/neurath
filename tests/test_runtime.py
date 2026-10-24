@@ -4,6 +4,7 @@ import asyncio
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import pytest
 from alembic import command as alembic_command
@@ -51,6 +52,8 @@ async def native(database, tmp_path):
 
 async def send(native, event, **fields):
     actor, adapter, payload = native
+    if fields.get("tool_name") in ("Write", "Edit"):
+        fields.setdefault("tool_input", {"file_path": str(Path(payload["cwd"]) / "shared.txt")})
     return await adapter.handle(dict(payload, hook_event_name=event, **fields))
 
 
@@ -67,7 +70,9 @@ async def execution(database, actor, agent=""):
 async def writer(database, native):
     async with storage_scope(database, write=False) as scope:
         row = await scope.get(AsyncSessionManager).session.scalar(
-            select(WriterModel).where(WriterModel.resource == native[2]["cwd"])
+            select(WriterModel).where(
+                WriterModel.resource == str(Path(native[2]["cwd"]) / "shared.txt")
+            )
         )
         return None if row is None else row.to_domain()
 
@@ -82,7 +87,7 @@ async def test_stop_feedback_once_preserves_tasks_and_cancelled_turn(database, n
     assert paused["continue"] is False
     assert "No progress" in paused["stopReason"]
     assert (await execution(database, actor)).status is ExecutionStatus.PAUSED
-    assert (await send(native, "Stop"))["continue"] is False
+    assert (await send(native, "Stop", stop_hook_active=True))["continue"] is False
     assert "hookSpecificOutput" in await send(native, "SessionStart", source="resume")
     assert (await execution(database, actor)).status is ExecutionStatus.PAUSED
     assert (await send(native, "UserPromptSubmit", turn_id="turn-2")) == {}
@@ -91,8 +96,9 @@ async def test_stop_feedback_once_preserves_tasks_and_cancelled_turn(database, n
     assert (await send(native, "UserPromptSubmit", turn_id="turn-2")) == {}
     assert (
         await send(native, "PreToolUse", turn_id="turn-2", tool_name="Edit", tool_use_id="edit")
-    )["continue"] is False
-    assert (await writer(database, native)) is None
+    ) == {}
+    # 네이티브 호스트가 허용한 파일 호출을 과거 턴 상태로 다시 차단하지 않는다.
+    assert (await writer(database, native)).tool_use_id == "edit"
     assert (
         await send(native, "PreToolUse", turn_id="turn-2", tool_name="Read", tool_use_id="read")
     ) == {}
@@ -129,7 +135,7 @@ async def test_writer_exclusion_and_child_read_regression_133(database, native):
             tool_name="Write",
             tool_use_id="child-write",
         )
-    )["continue"] is False
+    )["hookSpecificOutput"]["permissionDecision"] == "deny"
     assert (await send(native, "SubagentStop", agent_id="native-child")) == {}
     assert (await writer(database, native)).execution_id == first.execution_id
     assert (
@@ -169,7 +175,7 @@ async def test_unconfirmed_shell_completion_does_not_release_and_failure_cancels
             tool_response={"session_id": 42},
         )
     ) == {}
-    assert (await writer(database, native)).execution_id is not None
+    assert await writer(database, native) is None
     assert (
         await send(
             native,
@@ -179,7 +185,7 @@ async def test_unconfirmed_shell_completion_does_not_release_and_failure_cancels
             tool_response={"exit_code": 0},
         )
     ) == {}
-    assert (await writer(database, native)).execution_id is None
+    assert await writer(database, native) is None
     assert (await send(native, "PreToolUse", tool_name="Write", tool_use_id="write")) == {}
     assert (
         await send(
@@ -203,7 +209,13 @@ async def test_two_actual_requests_have_only_one_writer(database, native):
 
         from neurath.infrastructure.database import sqlite_url
 
-        payload = dict(native[2], hook_event_name="PreToolUse", tool_name="Write", tool_use_id=call)
+        payload = dict(
+            native[2],
+            hook_event_name="PreToolUse",
+            tool_name="Write",
+            tool_use_id=call,
+            tool_input={"file_path": str(Path(native[2]["cwd"]) / "shared.txt")},
+        )
         result = subprocess.run(
             [
                 str(Path(sys.executable).with_name("neurath")),
@@ -228,7 +240,10 @@ async def test_two_actual_requests_have_only_one_writer(database, native):
     with ThreadPoolExecutor(2) as pool:
         results = list(pool.map(claim, ("a", "b")))
     assert results.count({}) == 1
-    assert sum(r.get("continue") is False for r in results) == 1
+    assert (
+        sum(r.get("hookSpecificOutput", {}).get("permissionDecision") == "deny" for r in results)
+        == 1
+    )
     assert (await writer(database, native)).generation == 1
 
 
@@ -244,12 +259,11 @@ async def test_codec_validation_failure_bypass_and_claude_prompt_identity(databa
         dict(payload, hook_event_name="PreToolUse"),
     ):
         result = await adapter.handle(bad)
-        assert result["continue"] is False
-        assert "hook failure" in result["stopReason"]
+        assert "host tools remain available" in result["systemMessage"]
     assert "systemMessage" in (await adapter.handle({}, bypass=True))
     assert (await execution(database, actor)).status is ExecutionStatus.RUNNING
     missing = HookCliClient("claude", database.parent / "missing.db")
-    assert (await missing.handle(payload))["continue"] is False
+    assert "systemMessage" in (await missing.handle(payload))
     assert "systemMessage" in (await missing.handle({}, bypass=True))
     claude = HookCliClient("claude", database)
     cp = dict(payload, prompt_id="prompt-actual", hook_event_name="UserPromptSubmit")
@@ -257,8 +271,8 @@ async def test_codec_validation_failure_bypass_and_claude_prompt_identity(databa
     cp["hook_event_name"] = "Stop"
     assert (await claude.handle(cp)) == {}
     cp.pop("prompt_id")
-    assert (await claude.handle(cp))["continue"] is False
-    assert (await send(native, "UnrecognizedEvent"))["continue"] is False
+    assert (await claude.handle(cp)) == {}
+    assert "systemMessage" in await send(native, "UnrecognizedEvent")
     assert (await send(native, "StopFailure", error="provider unavailable"))["continue"] is False
     assert (await execution(database, actor)).reason == "provider unavailable"
 
@@ -316,7 +330,7 @@ def test_writer_domain_rejects_stale_release_and_unknown_liveness():
     lease.release("owner", 2, Liveness.STOPPED)
 
 
-def test_execution_domain_does_not_resume_cancelled_or_ended_and_empty_is_not_success():
+def test_same_turn_cancellation_is_preserved_and_new_host_turn_can_run():
     current = Execution.create("session")
     with pytest.raises(InvalidExecutionState):
         current.begin_turn("")
@@ -331,13 +345,21 @@ def test_execution_domain_does_not_resume_cancelled_or_ended_and_empty_is_not_su
     current.pause("do not overwrite")
     assert current.status is ExecutionStatus.ENDED
     current.begin_turn("two")
-    assert current.status is ExecutionStatus.ENDED
+    assert current.status is ExecutionStatus.RUNNING
     current.resume("two")
     assert current.status is ExecutionStatus.RUNNING
 
 
+async def claim_managed_writer(database, native, call):
+    current = await execution(database, native[0])
+    async with storage_scope(database) as scope:
+        lease = Writer.create(str(Path(native[2]["cwd"]) / "shared.txt"))
+        lease.acquire(current.uid, current.turn_id, call)
+        return await scope.get(IWriterRepository).save(lease)
+
+
 async def test_real_process_liveness_recovery_and_generation_recheck(database, native):
-    (await send(native, "PreToolUse", tool_name="exec_command", tool_use_id="process"))
+    await claim_managed_writer(database, native, "process")
     lease = await writer(database, native)
     process = subprocess.Popen(
         [sys.executable, "-c", "import time; time.sleep(30)"], start_new_session=True
@@ -391,6 +413,11 @@ async def test_real_process_liveness_recovery_and_generation_recheck(database, n
 async def test_recovery_cannot_release_new_generation_during_external_observation(database, native):
     (await send(native, "PreToolUse", tool_name="Write", tool_use_id="first"))
     lease = await writer(database, native)
+
+    async with storage_scope(database) as scope:
+        current = await scope.get(IWriterRepository).get(lease.uid)
+        current.native_sync = False
+        await scope.get(IWriterRepository).save(current)
 
     class RacingObserver(IWriterObserverService):
         def observe(self, execution_id, turn_id, tool_use_id):
@@ -555,7 +582,7 @@ def test_workspace_normalization_and_missing_git(database, repository, monkeypat
     from neurath.infrastructure.services.directory_observer import GitDirectoryObserverService
 
     service = GitDirectoryObserverService()
-    assert service.workspace(str(child)) == str(repository)
+    assert service.observe(str(child)).primary_worktree == str(repository)
 
     def missing(*args, **kwargs):
         raise FileNotFoundError("no git")
@@ -564,7 +591,7 @@ def test_workspace_normalization_and_missing_git(database, repository, monkeypat
     from neurath.domain.errors import NeurathError
 
     with pytest.raises(NeurathError, match="Cannot inspect"):
-        service.workspace(str(child))
+        service.observe(str(child))
 
 
 async def test_real_targeted_cancellation_preserves_other_process_and_writes(database, native):
@@ -573,7 +600,7 @@ async def test_real_targeted_cancellation_preserves_other_process_and_writes(dat
         CancelExecutionUseCase,
     )
 
-    (await send(native, "PreToolUse", tool_name="exec_command", tool_use_id="process"))
+    await claim_managed_writer(database, native, "process")
     current = await execution(database, native[0])
     process = subprocess.Popen(
         [sys.executable, "-c", "import time; time.sleep(30)"], start_new_session=True
@@ -635,7 +662,7 @@ async def test_unknown_cancellation_and_late_response_cannot_cancel_new_turn(dat
         cancel = scope.get(CancelExecutionUseCase)
         await cancel.run(CancelExecutionCommand(execution_id=current.uid, turn_id=current.turn_id))
     assert (await execution(database, native[0])).turn_id == "new-turn"
-    assert (await execution(database, native[0])).status is ExecutionStatus.PAUSED
+    assert (await execution(database, native[0])).status is ExecutionStatus.RUNNING
     with pytest.raises(NotImplementedError):
         IExecutionControllerService.interrupt(None, None, None)
 
@@ -718,7 +745,7 @@ async def test_actual_normalized_codex_bash_terminal_hook_releases_without_parsi
     database, native
 ):
     assert (await send(native, "PreToolUse", tool_name="Bash", tool_use_id="shell-real")) == {}
-    assert (await writer(database, native)).execution_id is not None
+    assert await writer(database, native) is None
     # Codex는 unified-exec 프로세스가 끝났을 때 이 사건을 발생시킨다.
     # 잘린 출력은 전체 읽음이나 명령 성공의 근거로 사용하지 않는다.
     assert (
@@ -730,7 +757,7 @@ async def test_actual_normalized_codex_bash_terminal_hook_releases_without_parsi
             tool_response="[truncated output]",
         )
     ) == {}
-    assert (await writer(database, native)).execution_id is None
+    assert await writer(database, native) is None
 
 
 async def test_claude_bash_result_shape_interrupt_and_background_are_distinct(database, native):
@@ -750,7 +777,7 @@ async def test_claude_bash_result_shape_interrupt_and_background_are_distinct(da
         tool_response={"stdout": "done", "stderr": "", "interrupted": False},
     )
     assert (await adapter.handle(post)) == {}
-    assert (await writer(database, native)).execution_id is None
+    assert await writer(database, native) is None
     post["tool_response"] = {"stdout": "", "stderr": "", "interrupted": True}
     assert (await adapter.handle(dict(pre, tool_use_id="interrupt"))) == {}
     assert (await adapter.handle(dict(post, tool_use_id="interrupt"))) == {}
@@ -769,7 +796,7 @@ async def test_claude_bash_result_shape_interrupt_and_background_are_distinct(da
     assert (await adapter.handle(older)) == {}
 
 
-async def test_resume_keeps_cancelled_work_paused_until_explicit_request(database, native):
+async def test_new_native_turn_does_not_require_internal_resume_procedure(database, native):
     from neurath.application.usecases.resume_execution import (
         ResumeExecutionCommand,
         ResumeExecutionUseCase,
@@ -779,12 +806,12 @@ async def test_resume_keeps_cancelled_work_paused_until_explicit_request(databas
     (await send(native, "Interrupt"))
     (await send(native, "UserPromptSubmit", turn_id="status-question"))
     current = await execution(database, native[0])
-    assert current.status is ExecutionStatus.CANCELLED
+    assert current.status is ExecutionStatus.RUNNING
     assert (
         await send(
             native, "PreToolUse", turn_id="status-question", tool_name="Write", tool_use_id="write"
         )
-    )["continue"] is False
+    ) == {}
     resumed = await run(
         ResumeExecutionUseCase,
         ResumeExecutionCommand(execution_id=current.uid, turn_id=current.turn_id),

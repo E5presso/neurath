@@ -13,9 +13,7 @@ use case, Spakky 도메인 기반·기본 SQLAlchemy repository·테이블 매�
 과거 실행 코드는 Git 기록에서 복구할 수 있습니다. 이 체크아웃을 수정하거나
 검증해도 기존 설치 배포본과 사용자 데이터베이스는 바뀌지 않습니다.
 
-이 기반은 실행 중인 하네스의 설치 대체물이 아닙니다. `setup`은 설명과 함께
-종료하며 사라진 모듈을 가리키는 console entry point도 배포하지 않습니다.
-CLI·자료 이전·설치는 승인된 후속 구현 계획에 남아 있습니다.
+`./setup --provider codex --directory <프로젝트>` 또는 `neurath maintenance install`로 현재 CLI·rules·14개 스킬·훅을 설치합니다. 관련 없는 지침·훅·스킬을 보존하고 기존 DB·설정의 복구 사본을 남깁니다. 실제 호스트의 훅 신뢰와 실행은 별도로 확인합니다. 인식하지 못한 과거 DB는 초기화하거나 삭제하지 않습니다.
 
 - [기반 구조·API·구현 경계](docs/ko/core-foundation.md)
 - [개발과 강제 품질 검사](CONTRIBUTING.ko.md)

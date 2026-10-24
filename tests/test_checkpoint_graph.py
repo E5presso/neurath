@@ -161,7 +161,11 @@ async def test_stdin_failure_has_no_database_or_graph_effect(database, context, 
     async with spakky_context(database) as scope:
         with patch("sys.stdin", stream), pytest.raises(ValueError):
             await scope.get(MemoryCliController).save_checkpoint(
-                actor.project.uid, actor.session.uid, "-", ["source"], graph_directory="/graph"
+                project_id=actor.project.uid,
+                session_id=actor.session.uid,
+                content="-",
+                reference=["source"],
+                graph_directory="/graph",
             )
     marker, calls = graph_write
     assert not marker.exists() and calls == []

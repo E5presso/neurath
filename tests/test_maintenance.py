@@ -5,7 +5,7 @@ import json
 import os
 import sqlite3
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from alembic import command as alembic_command
@@ -38,6 +38,7 @@ from tests.support.application import request_application
 from tests.support.hook_cli import HookCliClient
 from tests.support.requests import run
 from tests.support.session_requests import register_session
+from tests.test_collaboration import call
 from tests.test_runtime import execution
 from tests.test_task_migrations import migration_config
 from tests.test_task_requests import create
@@ -76,8 +77,8 @@ def test_incident_resolution_requires_current_ordered_evidence():
     with pytest.raises(ValueError):
         incident.resolve(" ")
     incident.record(evidence(Kind.OBSERVATION))
-    with pytest.raises(ValueError):
-        incident.resolve("새 관찰은 새 근거가 필요")
+    # 정상 재관찰은 이미 확보한 재현·수정·회귀 순서를 지우지 않는다.
+    assert incident.evidence[-1].kind is Kind.OBSERVATION
     incident.record(evidence(Kind.REPRODUCTION))
     incident.record(evidence(Kind.FIX))
     incident.record(evidence(Kind.REGRESSION, True))
@@ -128,134 +129,75 @@ async def cli(database, args, payload=""):
         )
 
 
-async def test_incident_cli_roundtrip_resolution_and_readonly_query(database):
-    first = await cli(
-        database, ["incident", "open", "--symptom", "원 증상", "--reference", "run:1"]
-    )
-    assert first.exit_code == 0, first.output
-    incident = json.loads(first.stdout)
+async def test_incident_internal_roundtrip_preserves_evidence_without_manual_cli(database):
+    missing = await cli(database, ["incident", "--help"])
+    assert missing.exit_code == 2
+    incident = await call(database, "open_incident", "OpenIncident", "원 증상", ("run:1",))
     before = database.read_bytes()
-    query = await cli(database, ["incident", "show", "--incident-id", incident["id"]])
-    assert query.exit_code == 0 and json.loads(query.stdout) == incident
-    assert database.read_bytes() == before
-
-    async def edit(action, *args):
-        result = await cli(
+    queried = await call(database, "get_incident", "GetIncident", incident.uid, query=True)
+    assert queried.symptom == incident.symptom and database.read_bytes() == before
+    incident = await call(
+        database,
+        "escalate_incident",
+        "EscalateIncident",
+        incident.uid,
+        incident.revision,
+        "upstream:2",
+    )
+    assert incident.status is Status.ESCALATED
+    for kind in (Kind.REPRODUCTION, Kind.FIX, Kind.REGRESSION):
+        incident = await call(
             database,
-            [
-                "incident",
-                action,
-                "--incident-id",
-                incident["id"],
-                "--revision",
-                str(incident["revision"]),
-                *args,
-            ],
+            "record_incident_evidence",
+            "RecordIncidentEvidence",
+            incident.uid,
+            incident.revision,
+            evidence(kind, True if kind is Kind.REGRESSION else None),
         )
-        assert result.exit_code == 0, result.output
-        return json.loads(result.stdout)
-
-    incident = await edit("escalate", "--destination", "upstream:2")
-    assert incident["status"] == "escalated"
-    for kind in ("reproduction", "fix", "regression"):
-        incident = await edit(
-            "record",
-            "--kind",
-            kind,
-            "--detail",
-            "실제 결과",
-            "--reference",
-            "run:1",
-            *(["--passed"] if kind == "regression" else []),
-        )
-    incident = await edit("resolve", "--explanation", "실제 회귀 확인")
-    assert incident["status"] == "resolved" and len(incident["evidence"]) == 3
-    stale = await cli(
+    incident = await call(
         database,
-        [
-            "incident",
-            "escalate",
-            "--incident-id",
-            incident["id"],
-            "--revision",
-            "1",
-            "--destination",
-            "old",
-        ],
+        "resolve_incident",
+        "ResolveIncident",
+        incident.uid,
+        incident.revision,
+        "실제 회귀 확인",
     )
-    assert stale.exit_code == 1 and "revision" in stale.output
-    assert incident["symptom"] == "원 증상"
+    assert incident.status is Status.RESOLVED and len(incident.evidence) == 3
+    with pytest.raises(RevisionConflict):
+        await call(database, "escalate_incident", "EscalateIncident", incident.uid, 1, "old")
+    assert incident.symptom == "원 증상"
 
 
-async def test_supersede_cli_and_project_reference(database, tmp_path):
+async def test_supersede_internal_history_and_project_reference(database, tmp_path):
     actor = await register_session(str(tmp_path), "codex", "s", database_path=database)
-    args = [
-        "incident",
-        "open",
-        "--symptom",
-        "x",
-        "--reference",
-        "actual",
-        "--project-id",
-        str(actor.project.uid),
-    ]
-    old = json.loads((await cli(database, args)).stdout)
-    new = json.loads((await cli(database, args)).stdout)
-    linked = await cli(
-        database,
-        [
-            "incident",
-            "supersede",
-            "--incident-id",
-            old["id"],
-            "--revision",
-            "1",
-            "--replacement-id",
-            new["id"],
-        ],
+    old = await call(database, "open_incident", "OpenIncident", "x", ("actual",), actor.project.uid)
+    new = await call(database, "open_incident", "OpenIncident", "x", ("actual",), actor.project.uid)
+    linked = await call(
+        database, "supersede_incident", "SupersedeIncident", old.uid, old.revision, new.uid
     )
-    assert linked.exit_code == 0, linked.output
-    assert json.loads(linked.stdout)["replacement_id"] == new["id"]
+    assert linked.replacement_id == new.uid
     assert (
-        json.loads((await cli(database, ["incident", "show", "--incident-id", new["id"]])).stdout)[
-            "status"
-        ]
-        == "open"
-    )
+        await call(database, "get_incident", "GetIncident", new.uid, query=True)
+    ).status is Status.OPEN
 
 
 async def test_real_refresh_retains_failed_observation_and_does_not_resolve(database, tmp_path):
-    opened = json.loads(
-        (
-            await cli(database, ["incident", "open", "--symptom", "broken", "--reference", "run"])
-        ).stdout
-    )
-    result = await cli(
+    opened = await call(database, "open_incident", "OpenIncident", "broken", ("run",))
+    updated = await call(
         database,
-        [
-            "incident",
-            "refresh",
-            "--incident-id",
-            opened["id"],
-            "--revision",
-            "1",
-            "--database",
-            str(tmp_path / "gone"),
-        ],
+        "refresh_incident",
+        "RefreshIncident",
+        opened.uid,
+        opened.revision,
+        DiagnoseQuery(database=str(tmp_path / "gone")),
     )
-    assert result.exit_code == 0, result.output
-    updated = json.loads(result.stdout)
-    assert updated["status"] == "open"
-    findings = json.loads(updated["evidence"][0]["detail"])
+    assert updated.status is Status.OPEN
+    findings = json.loads(updated.evidence[0].detail)
     assert {item["status"] for item in findings} >= {"missing"}
     with pytest.raises(RevisionConflict):
         await run(
             RefreshIncidentUseCase,
-            RefreshIncidentCommand(
-                incident_id=UUID(opened["id"]),
-                revision=1,
-                query=DiagnoseQuery(),
-            ),
+            RefreshIncidentCommand(incident_id=opened.uid, revision=1, query=DiagnoseQuery()),
             database_path=database,
         )
 
@@ -316,7 +258,7 @@ async def test_diagnostics_readonly_native_resume_and_bypass_restore(database, t
         "systemMessage"
     ]
     assert (await execution(database, actor)).status.value == "cancelled"
-    assert (await client.handle(write))["continue"] is False
+    assert (await client.handle(write)) == {}
 
 
 async def test_verify_rejects_non_guard_missing_and_allowed_events(database, tmp_path):
@@ -425,7 +367,7 @@ async def test_management_and_hook_work_when_business_database_is_corrupt(tmp_pa
     result = await cli(
         database, ["incident", "open", "--symptom", "actual", "--reference", "source"]
     )
-    assert result.exit_code == 1 and "recovery" in result.output
+    assert result.exit_code == 2 and "No such command" in result.output
     result = await cli(database, ["maintenance", "diagnose", "--database", str(database)])
     assert result.exit_code == 1 and "failed" in result.stdout
     result = await cli(
@@ -436,7 +378,7 @@ async def test_management_and_hook_work_when_business_database_is_corrupt(tmp_pa
         session_id="s", cwd=str(tmp_path), turn_id="t", hook_event_name="UserPromptSubmit"
     )
     failed = await HookCliClient("codex", database).handle(payload)
-    assert failed["continue"] is False and "unfinished" in failed["stopReason"]
+    assert "bookkeeping failed" in failed["systemMessage"]
     bypass = await HookCliClient("codex", database).handle(payload, bypass=True)
     assert "bookkeeping failed" in bypass["systemMessage"] and database.read_text() == "corrupt"
 
@@ -471,8 +413,8 @@ async def test_incident_migration_preserves_data_and_refuses_loss(database):
     )
     engine = create_database_engine(database, write=True, migration=True)
     try:
-        async with engine.begin() as connection:
-            with pytest.raises(RuntimeError, match="preserved"):
+        with pytest.raises(RuntimeError, match="preserved"):
+            async with engine.begin() as connection:
                 await connection.run_sync(
                     lambda conn: alembic_command.downgrade(migration_config(conn), "core_0011")
                 )
@@ -670,6 +612,7 @@ async def test_hook_failure_with_empty_message_still_records_cause(database, tmp
         session_id="s", cwd=str(tmp_path), turn_id="t", hook_event_name="UserPromptSubmit"
     )
     response = await HookCliClient("codex", database).handle(payload)
-    assert response["continue"] is False
+    assert "bookkeeping failed" in response["systemMessage"]
     record = json.loads((tmp_path / "state/neurath/recovery.jsonl").read_text())
-    assert record["detail"] == "RuntimeError: "
+    assert record["detail"].startswith("RuntimeError: ; pending host event:")
+    assert "UserPromptSubmit" in record["detail"]

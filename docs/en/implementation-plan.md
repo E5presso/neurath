@@ -25,14 +25,13 @@ This plan records implementation order and requirement ownership. The [core foun
 | [#151 — [Distribution] CLI·스킬·훅 설치와 릴리스 가이드 자동 생성](https://github.com/E5presso/neurath/issues/151) | [#148](https://github.com/E5presso/neurath/issues/148), [#149](https://github.com/E5presso/neurath/issues/149), [#139](https://github.com/E5presso/neurath/issues/139), [#150](https://github.com/E5presso/neurath/issues/150), [#147](https://github.com/E5presso/neurath/issues/147) | A35, A77, A78, A79, A80 | B25, B26 |
 | [#152 — [Delivery] 전체 요구 검증·문서 동기화·세 프로젝트 업데이트와 종료](https://github.com/E5presso/neurath/issues/152) | [#151](https://github.com/E5presso/neurath/issues/151), [#138](https://github.com/E5presso/neurath/issues/138), [#146](https://github.com/E5presso/neurath/issues/146), [#145](https://github.com/E5presso/neurath/issues/145), [#142](https://github.com/E5presso/neurath/issues/142) | A39, A40, A41, A55, A57, A62 | B27 |
 
-All 84 requirement cases and 27 capability results have a primary implementation ticket. Issue #148 owns CLI implementation; #149 lists the 14 default skills. The [public list](interfaces.md) records the reviewed memory/session split and its current 20 command paths. The 128 historical operations map through their B results; the capability map retains public/internal/host/specialist destinations for all 33 historical skills.
+The requirement cases and 27 capability results have a primary implementation ticket. Issue #148 owns CLI implementation; #149 lists the 14 default skills. The [public list](interfaces.md) records the reviewed memory/session split and the current grouped command paths. The 128 historical operations map through their B results; the capability map retains public/internal/host/specialist destinations for all 33 historical skills.
 
 ## Implementation order
 
-1. Core persistence/request handling → tasks, runner and host execution.
-2. Memory, collaboration, newsroom, external monitoring, recovery and independent outcome/retrospective evaluation.
-3. CLI integration → skill definitions → rules entry and actual startup.
-4. Data migration and distribution/guide installation → full validation, three-project rollout and finish.
+Library completion is not product completion. Each change first checks original input→current tasks→selected skill→host work→memory/collaboration/waiting→actual result evaluation→Stop, implementing the required internal boundaries together. CLI, rules, hooks, and installation guides are not postponed to a separate final stage.
+
+The PR #163 audit corrections connect these paths together. Ticket references retain original traceability, not live issue completion, merge, or deployment status. Conversion of other historical DB formats and actual cutover of the three projects require their own preservation and activation evidence.
 
 ## Core foundation implementation
 
@@ -43,3 +42,5 @@ CLI, migration, or deployment completion; those remain in their assigned tickets
 [Task ledger implementation](task-ledger.md) is the current #140 scope, not completion of subsequent runner/host/CLI work.
 
 [Phase runner implementation](workflow-runner.md) describes the #141 internal APIs, local execution and reconciliation boundary.
+
+[#138: Result evaluation and reflection implementation](result-evaluation.md)

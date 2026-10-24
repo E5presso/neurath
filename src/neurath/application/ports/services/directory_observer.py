@@ -22,18 +22,3 @@ class IDirectoryObserverService(ABC):
             NotImplementedError: 구현 없이 추상 포트를 호출한 경우.
         """
         raise NotImplementedError
-
-    @abstractmethod
-    def workspace(self, working_directory: str) -> str:
-        """공유 작성 충돌을 대조할 현재 Git 작업 트리 또는 일반 폴더를 조회한다.
-
-        Args:
-            working_directory: 호스트에서 관찰한 실제 작업 디렉터리.
-
-        Returns:
-            str: 현재 작업 트리의 정규 루트 또는 Git이 없는 작업 폴더.
-
-        Raises:
-            NotImplementedError: 구체 서비스가 작성 범위 조회를 구현하지 않은 경우.
-        """
-        raise NotImplementedError

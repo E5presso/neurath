@@ -2,13 +2,13 @@
 
 [Documentation](index.md) · [Execution architecture](architecture.md) · [한국어](../ko/workflow-runner.md)
 
-#141 provides internal Python APIs connecting selected skill definitions and phase execution to the task ledger. It includes a real local-process adapter; the hook CLI is provided by #142; business CLI, provider delegation and installed host wiring remain subsequent work.
+`workflow start` connects a selected skill to the task ledger. The agent performs actual work through host tools and reports the current phase with `workflow report`. Only explicit executable phases use the existing process adapter.
 
 ## Definitions and outcomes
 
-One `WorkflowRun` belongs to a task and owns `WorkflowDefinition` revisions and `PhaseAttempt` history. Each phase specifies a purpose, resolved arguments, working directory, target revision, required checks, optional skip condition and execution limits. Inputs retain the selected definition's input record; arguments are already resolved for execution.
+One `WorkflowRun` belongs to a task and owns `WorkflowDefinition` revisions and `PhaseAttempt` history. Each phase specifies a purpose, resolved arguments, working directory, target revision, required checks, optional skip condition and execution limits. Inputs retain the selected definition record. Reasoning, design, and review phases use `arguments=()` and run through the host agent without a subprocess. Only executable phases use command arguments.
 
-The last attempt matching the current phase definition determines progression. Changed targets/conditions require new work; unchanged valid outcomes and waiting attempts are reused. Old-definition results remain in history without completing a replacement phase. Removing a required phase requires an actual task correction; optional skips record the defined condition and evidence.
+The last attempt matching the current phase definition determines progression. Changed targets/conditions require new work; unchanged valid outcomes and waiting attempts are reused. Old-definition results remain in history without completing a replacement phase. Method revisions do not require a fabricated correction of the user goal. Preserve the revised method and reason; only changed requirements need task-source correction. Optional skips retain their condition and evidence.
 
 A phase's max_attempts bounds actual executions for the same target and task requirement. Exhaustion retains unresolved work/history and rejects another unchanged attempt. A corrected target receives its own attempt budget.
 

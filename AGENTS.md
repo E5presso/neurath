@@ -1,6 +1,6 @@
 # Neurath 개발 지침
 
-Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네스다.
+Neurath는 사용자의 지시를 과도하게 확대하거나 필요한 일을 누락하지 않도록 원문·작업·기억·협업을 같은 호스트 흐름으로 연결하는 로컬 애플리케이션이다.
 현재 사용자 지시와 `docs/ko/specification.md`를 구현의 기준으로 삼는다.
 
 - 코어는 hook·CLI 요청마다 사용자 단위 단일 SQLite의 상태를 조회해 처리하는 stateless service다. 프로젝트·세션은 DB 안에서 구분한다. 지속 상태를 상주 코어 메모리에 의존시키지 않는다.
@@ -14,13 +14,13 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 - 기존 데이터 이전은 `migration`의 명시적 보존 경계에서 수행한다. 원본 DB를 수정하거나 미완료 작업을 임의로 완료·취소하지 않는다.
 - 새 설계는 Python + Typer 기반 `neurath` CLI 전용이며 MCP 서버나 어댑터를 제공하지 않는다. 릴리스 시 실제 CLI 정의에서 가이드 프롬프트를 생성하고 설치 시 관리 영역에 반영한다. 네이티브 호스트의 실행 권한과 사용자 승인을 하네스 기록으로 대체하지 않는다.
 - `uv sync --locked`로 개발 환경을 준비하고 `uv run --locked python tools/check.py`로 필수 검사를 실행한다.
-- 현재 `./setup`은 미완성 후보 설치를 거부한다. 소스 검사, 패키지 생성, 설치, 실제 호스트 호출을 구분해 보고한다.
+- `./setup`과 `maintenance install`은 현재 CLI·스킬·rules·훅의 소유 영역을 설치한다. 소스 검사, 패키지 생성, 파일 적용, 실제 호스트 호출·모델 전달을 각각 구분해 보고한다. 실제 훅 신뢰 값이나 네이티브 신원을 직접 만들지 않는다.
 - 설치는 관련 없는 사용자 설정·훅·지침을 보존하며, 변경 전에 복구 사본을 남긴다.
 - 공개 문서는 `docs/en`과 `docs/ko`의 같은 상대 경로에 함께 작성한다. README와 CONTRIBUTING은 영어·한국어 쌍을 유지한다. 개인 경로와 검증 원문은 공개 문서나 패키지에 넣지 않는다.
 - 코드·설치 수정은 승인된 로컬 작업이다. 공개 push·PR·배포는 사용자의 별도 요청 없이 수행하지 않는다.
 - 도메인 aggregate, 명시적 ABC port, 개별 command/query use case, 구체 repository adapter와 declarative ORM 모델의 책임을 구분한다. Protocol은 사용하지 않고 명시적 상속·추상 계약을 사용한다. 참고 구조의 불필요한 중복 유스케이스 인터페이스나 ORM 수명 구현을 복제하지 않는다. 이름만으로 인터페이스·클래스의 필요성을 단정하지 않는다. 모든 유스케이스는 Spakky의 IAsyncCommandUseCase 또는 IAsyncQueryUseCase와 run 계약을 구현하고 입력은 AbstractCommand 또는 AbstractQuery를 상속한다. Spakky Framework 8.2.0의 AbstractAggregateRoot·AbstractValueObject·IAsyncGenericRepository·AbstractAsyncGenericRepository·AbstractMappableTable·Table·SchemaRegistry와 AsyncConnectionManager·AsyncSessionManager·AsyncTransaction을 사용한다. 현재 저장소의 기본 CRUD·배치는 프레임워크 구현을 재사용한다. Command가 작업 대상 Aggregate와 그 의존 범위를 읽는 계약은 Repository에 둔다. 기본 CRUD·배치는 그대로 재사용하며 추가 계약은 도메인 aggregate를 반환한다. 조회용 검색·목록·투영은 QueryUseCase가 SQLAlchemy로 처리하여 자신의 반환 계약을 구성한다. DB 유스케이스의 run은 공식 @transactional로 경계를 선언한다. 호출자는 컨테이너에서 받은 유스케이스를 직접 호출하며 외부에서 다시 트랜잭션을 감싸지 않는다. 메서드 이름·클래스 이름이나 contextmanager 문법 자체를 금지하지 않는다.
 - 전체 현재 src와 tools에 strict Pyrefly·Google 형식 pydoclint·Ruff 검사를 적용한다. pre-commit과 CI는 tools/static_quality.py의 정적 검사를 공유한다. pre-commit은 tools/quality.py에서 구조·계약 회귀 시험을 실행하고, CI의 tools/check.py는 해당 시험을 포함한 전체 pytest를 커버리지와 함께 한 번만 실행한다. 모듈 의미와 문서의 유용성은 별도 사람 검토 사항이다. 저장소는 조회·저장만 제공하며 위치 식별·승격·충돌 규칙은 Project aggregate가 소유한다. 엔티티는 가변 상태·동일성을 가지며 불변 관찰·명령·응답 값과 구분한다.
-- 현재 후보는 #137의 프로젝트·세션 기반, #140의 원문·태스크 원장, #141의 단계 실행 및 #142의 호스트 런타임과 #143의 기억·enclave·재개 및 #144의 협업·provider 및 #145의 Newsroom 라이브러리·기사 CLI 및 #146의 요청된 외부 의존 감시와 #147의 운영 진단·장애 기록·우회 복원이다. 이전 MCP runtime은 Git 기록에 있으며 새 패키지에는 포함하지 않는다. 훅 CLI는 spakky-typer로 제공한다. 나머지 업무 CLI·설치·기존 자료 변환은 후속 티켓이며 이 후보를 실설치하지 않는다.
+- 현재 후보는 #137의 프로젝트·세션 기반, #140의 원문·태스크 원장, #141의 단계 실행 및 #142의 호스트 런타임과 #143의 기억·enclave·재개 및 #144의 협업·provider 및 #145의 Newsroom 라이브러리·기사 CLI 및 #146의 요청된 외부 의존 감시와 #147의 운영 진단·장애 기록·우회 복원이다. 이전 MCP runtime은 Git 기록에 있으며 새 패키지에는 포함하지 않는다. 훅 CLI는 spakky-typer로 제공한다. 업무 CLI·기본 스킬·설치·훅은 이번 제품 흐름에 함께 연결한다. 과거 다른 형식의 자료 변환은 별도이며 실제 사용자 저장소를 추측하여 초기화하지 않는다.
 
 - ProjectLocation은 Project.locations에 종속된 불변 값이다. 별도 위치 repository·DI·생명주기를 만들지 않는다. 물리적 자식 테이블은 선언형 ORM 관계로 매핑하고 프로젝트 저장 시 원자적으로 반영한다. 소유자 선택·승격은 도메인에 두고 repository에는 조회·저장 매핑만 둔다.
 - repository는 신규·기존 엔티티를 모두 save(entity) -> entity로 저장한다. add/insert/create/update 저장 별칭을 만들지 않는다. 도메인의 create와 SQLAlchemy Session.add는 이 계약 명칭 규칙과 구분한다. 세션의 ORM 버전 검사·동일 값 no-op·분리된 오래된 엔티티 충돌을 보존한다.
@@ -34,6 +34,8 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 - `tools/check.py`는 `src/neurath` 전체의 라인·분기 커버리지를 각각 100%로 강제한다. Alembic 동적 로드 파일도 소스 경로로 계측한다. 미실행 라인·분기 개수가 하나라도 있으면 실패하며 반올림한 비율로 통과하지 않는다. omit·커스텀 제외·pragma no cover/no branch로 기준을 우회하지 않는다. 커버리지 보고서는 coverage-out에 생성한다.
 
 - 시험 실행을 빠르게 할 때 검증을 생략하거나 프레임워크 내부 처리를 대체하지 않는다. 일반 유스케이스·훅 통합 시험은 한 시험의 동일 이벤트 루프·DB·읽기 정책 안에서 실제 앱을 순차 재사용할 수 있다. 동시·중첩 호출, 다른 루프·프로세스, 직접 저장소·DI·앱 수명 검증은 새 앱 경로를 유지한다. 앱은 시험 종료 시 성공·실패 모두 정리한다. 빈 DB 스키마는 실제 initialize_database로 한 번 만들고 SQLite backup으로 시험마다 별도 파일을 생성한다. 테스트 데이터·열린 DB 세션·앱 인스턴스를 시험 사이에 공유하지 않는다. 마이그레이션 시험은 실제 이전 경로를 계속 실행하며 tests/test_fixture_isolation.py에서 이 경계를 검증한다.
+
+- 필수 검사와 pre-commit 회귀 시험은 pytest-xdist로 CPU 수에 맞춰 최대 4개 worker에서 실행한다. worksteal로 남은 시험을 분배하고 각 worker의 임시 경로·DB·앱 수명을 격리한다. CI에서는 전체 시험을 pytest-split으로 4개 runner에 분배하고 각 runner는 2개 worker를 사용한다. 전체 시험을 한 번씩 실행하며 모든 분할 성공·측정 파일 존재를 확인한 뒤 pytest-cov 병합 결과에 기존 라인·분기 100%와 제외 0 검사를 적용한다. 개별 분할의 일부 커버리지를 최종 성공으로 취급하지 않는다. 병렬화 때문에 실제 프레임워크 초기화·마이그레이션·경합 검증을 mock으로 대체하거나 시험을 제외하지 않는다.
 
 - 최종 커버리지 보고서의 excluded_lines도 0이어야 한다. 추상 포트의 기본 본문으로 잘못 위임한 어댑터는 명시적으로 실패하며 등록 트랜잭션을 롤백해야 한다.
 
@@ -51,7 +53,7 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 - 유스케이스·서비스와 기존 코드의 조건 분기는 guard clause와 early return을 적극 사용한다. 오류·대상 외·무변경 경로를 먼저 raise·return·continue·break로 끝내고 정상 흐름을 얕게 유지한다. 검증 순서, 저장·알림의 조건, 트랜잭션과 finally의 정리 동작은 보존한다. 메서드를 분리할 때는 같은 책임 안의 의미 있는 작업으로 나누며 중첩을 감추려고 도메인 로직을 밖으로 옮기지 않는다.
 - 공통 Ruff 검사에 RET505·RET506·RET507·RET508을 적용하여 종료 분기 뒤의 불필요한 else를 검출한다. 그 밖의 중첩은 실제 제어 흐름을 검토해 단순화하며, 임의의 깊이 상한이나 모든 if·else의 금지로 확대하지 않는다.
 
-- #142의 Execution은 실제 호스트 턴과 중단 상태를, Writer는 공유 작업 폴더의 작성 소유자·세대를 관리한다. 읽기·진단·자식 조회에 작성 임대를 요구하지 않는다. Stop의 최신 TODO·phase 판정과 반복 거절 중지를 함께 검증한다. 새 사용자 턴·연결 재개만으로 취소를 해제하지 않으며 실제 재개 지시는 ResumeExecutionUseCase로 처리한다. 작성 회수는 실제 종료 관찰 뒤 같은 소유자·세대를 재검사하며, 훅 응답 생성과 실제 설치·알림 수신을 구분한다.
+- #142의 Execution은 실제 호스트 턴과 중단 상태를, Writer는 실제 파일 도구 입력이 지정한 파일의 작성 소유자·세대를 관리한다. Bash·exec_command를 이름만으로 쓰기로 분류하거나 일반 도구 허가 체계를 만들지 않는다. 읽기·진단·자식 조회에 작성 임대를 요구하지 않는다. Stop의 최신 TODO·phase 판정과 반복 거절 중지를 함께 검증한다. 동일 턴의 취소와 실제 새 사용자 턴을 구분한다. 새 턴의 일반 도구를 과거 실행 상태로 막지 않으며, 취소한 태스크·감시를 자동 복구하지 않는다. 정상 외부 대기 해소는 TaskResumed 사건으로 실행·피어까지 연결한다. 작성 회수는 실제 종료 관찰 뒤 같은 소유자·세대를 재검사하며, 훅 응답 생성과 실제 설치·알림 수신을 구분한다.
 
 - 제품 코드의 서비스 이름은 Service, 저장소 이름은 Repository로 끝낸다. 인터페이스는 I를 접두어로 사용하고 구현체는 그 I를 실제 기술 스택 이름으로 대체한다. 예: IDirectoryObserverService → GitDirectoryObserverService, IPhaseExecutorService → SubprocessPhaseExecutorService, IProjectRepository → SQLAlchemyProjectRepository. import·DI 등록·타입 표기·문서도 같은 이름을 사용하며 이전 이름의 호환 별칭을 남기지 않는다. tools/architecture.py가 전체 소스의 포트·등록·별칭·간접 상속을 추적해 명명 위반을 실패시키고, 이 검사는 공통 pre-commit·필수 CI에서 실행된다. 현재 기술 접두어는 Git·Subprocess·Stderr·Posix·SQLAlchemy이며 새 기술 구현을 도입할 때 그 접두어와 회귀 시험을 함께 반영한다.
 
@@ -69,8 +71,8 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 - 지원 훅 사건은 HookEvent로 표현하고 네이티브 문자열은 transport에서 Enum으로 변환한다. 외부 입력의 임의 문자열까지 모두 Enum으로 만들지 않는다.
 - Typer 실행 진입점은 공식 가이드처럼 스캔·시작한 애플리케이션에서 가져온 모듈 전역 cli 객체를 노출한다. 설치된 console script는 해당 객체를 호출하며 비동기 연결 정리는 명령의 이벤트 루프에서 수행한다.
 
-- #143의 enclave는 현재 맥락이며 Memory의 과거 기록·체크포인트와 구분한다. 기대 개정은 저장소의 낙관적 revision으로, 여러 변경의 이력은 aggregate 안의 순번으로 관리한다. 삭제 기록과 원문은 남기되 복원은 최신 현재 항목만 사용한다. 미리보기는 소유권을 바꾸지 않으며 실제 인수는 원 실행 종료·작성 해제·후속 턴을 확인한다. 인수된 원 세션은 다시 쓰기를 시작하지 못한다.
-- 압축 후 복원은 실제 SessionStart/compact 입력과 additionalContext 계약을 사용한다. CLI stdout 생성, 호스트 훅 호출, 다음 모델 입력·응답에서의 실제 전달을 구분해 검증한다. 호스트 한도를 넘는 맥락을 조용히 잘라 성공으로 보고하지 않는다. Graphify는 기존 CLI를 사용하고 문서 의미 관계가 유실된 갱신을 거절하여 원 그래프를 복원한다.
+- #143의 enclave는 현재 맥락이며 Memory의 과거 기록·체크포인트와 구분한다. 기대 개정은 저장소의 낙관적 revision으로, 여러 변경의 이력은 aggregate 안의 순번으로 관리한다. 삭제 기록과 원문은 남기되 복원은 최신 현재 항목만 사용한다. 미리보기는 소유권을 바꾸지 않으며 실제 인수는 원 실행 종료·작성 해제·후속 턴을 확인한다. 인수된 원 태스크의 소유권은 유지한다. 원 세션의 실제 새 사용자 턴은 새 작업을 할 수 있으며 빈 enclave 이력만으로 인수를 거부하지 않는다. 서로 다른 현재 사실은 합치고 실제 같은 키 충돌만 돌려준다.
+- 압축 후 복원은 실제 SessionStart/compact 입력과 additionalContext 계약을 사용한다. CLI stdout 생성, 호스트 훅 호출, 다음 모델 입력·응답에서의 실제 전달을 구분해 검증한다. 호스트 한도를 넘는 맥락을 조용히 잘라 성공으로 보고하지 않는다. Graphify는 기존 CLI와 원본 백업을 사용한다. 실제 출처 변경에 따른 의미 정정과 변경되지 않은 문서 관계 손실을 구분하며 라벨·설명·줄 번호를 영구 불변으로 만들지 않는다.
 
 - CLI 컨트롤러는 실제 작업 책임에 따라 나눈다. 기억 조회·검색·보고 저장·현재 맥락 갱신은 MemoryCliController의 `memory read/search/checkpoint/update`, 세션 인수 미리보기·실행 재개는 SessionCliController의 `session preview/resume`에 둔다. 기억에 연결된 정보라는 이유로 세션 작업까지 memory 컨트롤러에 넣거나 옵션으로 우회 노출하지 않는다. 기존 다른 컨트롤러의 역할까지 일괄 금지 규칙으로 확대하지 않는다.
 - 모든 제품 CLI Controller는 기능을 드러내는 group_name을 명시한다. 생략·None·빈 문자열로 클래스명 기본 그룹이나 루트 업무 명령을 만들지 않는다. NewsroomCliController는 `newsroom` 그룹의 `list/read/publish/revise/comment`를 제공한다. 문서의 과거 평면 명령 표기가 이 사용자 지시를 덮어쓰지 않으며, 새 Controller를 추가할 때 코드·실제 스캔 등록 시험·문서의 그룹 경로를 함께 맞춘다. tools/architecture.py는 실제 CliController 선언과 별칭의 그룹 누락을 검사하고 tests/test_cli.py는 스캔된 모든 Controller의 명시적 그룹과 실제 명령 트리를 대조한다.
@@ -97,3 +99,11 @@ Neurath는 원문 출처와 미완료 작업을 보존하는 에이전트 하네
 - #146의 감시는 Task의 명시적 외부 대기에 종속된 값과 사건이다. 별도 감시·사건 repository를 만들지 않는다. 첫 완결 관찰·같은 상태·출력 조각에는 새 사건·모델 호출이 없다. 관찰 예약·알림 시도는 먼저 커밋하고 외부 호출 동안 DB 쓰기 잠금을 유지하지 않는다. 알림 작성·제출 중·제출·실패·실제 전달 확인과 사건 ACK·대기 해소·태스크 성공을 구분한다. 동일 사건 알림은 최대 세 번만 제출하고 결과 불명을 자동 재전송하지 않는다. 취소·정정·해소를 최신 원장에 대조하며 자원 복구는 정확한 소유 실행·세대·예약 ID·실제 종료 관찰을 요구한다. 인계는 미확인 자원·알림 제출을 조정한 뒤 미처리 사건·취소·잔여 예산을 보존한다. tests/test_monitoring.py를 공통 pre-commit·CI에 포함하며 단일 tick·stderr 제출과 실제 호스트 스케줄·수신·모델 전달을 구분한다.
 
 - #147의 진단은 DB·설정·프로젝트 연결·재개 상태를 읽기 전용으로 관찰하고 자료 부재·실패·미확인을 정상 빈 상태로 바꾸지 않는다. 장애는 원 증상과 순서 있는 재현·수정·회귀 근거를 보존하며 이관·대체·재관찰만으로 해결되지 않는다. 우회는 하네스 차단만 중지하고 가능한 실제 턴·취소·종료 관찰을 유지한다. 복원은 우회 없는 실제 훅 차단 경로로 확인하며 새 사용자 프롬프트나 꾸민 호스트 신원을 요구하지 않는다. DB 장애와 출력 실패가 겹치면 독립 복구 파일·호스트 오류 출력을 각각 한 번만 시도하고, 저장·제출·실제 전달을 구분한다. tests/test_maintenance.py를 공통 pre-commit·CI에서 실행하며 원문·미완료 상태 보존과 조회 불변성을 검사한다.
+
+- #138의 독립 평가는 기존 WorkflowRun phase와 Delegation 후보에 연결한다. 일반 PhaseResult로 의미 검토를 통과시키지 않으며 실제 독립 보고·현재 관련 요구·선택한 파일/HEAD를 대조한다. Stop은 Task의 최신 상태를 결정론적으로 확인하고 모델을 호출하지 않는다. 회고 선택은 run이, 교훈 검증·적용·보류·철회 이력은 Memory가 소유한다. tests/test_evaluation.py와 tests/test_evaluation_domain.py는 공통 pre-commit·CI에서 검증하며 fixture 출력과 실제 모델 실행·운영 설치를 구분한다.
+
+- 일반 SQLite 조회는 쓰기 잠금을 선점하지 않는다. 명시적 마이그레이션만 쓰기를 예약하며, 파일·Git·provider 관찰 중에는 DB 트랜잭션을 유지하지 않는다. 평가 관찰 뒤 저장 전 원장·후보를 다시 대조한다. 실제 CLI와 동일한 연결 정책의 회귀 시험을 유지한다.
+- 조사·설계·리뷰 phase는 실행 인자 없는 호스트 에이전트 단계일 수 있다. 수행 방법 변경을 사용자 목표 정정으로 강제하지 않는다. 평가에는 TODO에 연결되지 않은 원문도 제공하고, 동일 배정 재전송 방지와 다른 검토자·명시적 재시도를 구분한다.
+- 회고는 사용자 요청 때 수행하고 철회를 처리한다. 적용된 교훈은 다음 관련 세션에서 회상하되 현재 지시보다 낮은 과거 맥락이다. 상태를 APPLIED로 저장한 것만으로 실제 개선을 주장하지 않는다.
+- 메시지·기사·감시의 stdout 제출과 본문 읽음·ACK·작업 성공을 구분한다. 요청된 감시는 같은 호스트 대화의 콜백을 사용하며, 같은 상태의 콜백이 모델 작업을 계속 만들면 실패다. 네이티브 스케줄 등록과 훅 계약은 실제 호스트에서 따로 검증한다.
+- `tests/test_host_flow.py`와 `tests/test_host_installation.py`는 현재 맥락 자동 조회·원문→작업→절차→결과→Stop·감시→재개·기억·설정 보존의 회귀 시험이다. `tools/generate_cli_guide.py --check`로 실제 정의와 설치 프롬프트 일치를 검사한다. 구조·라인/분기 100%는 이 상호작용 검증을 대체하지 않는다.

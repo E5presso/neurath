@@ -2,8 +2,11 @@
 
 import asyncio
 from collections.abc import Sequence
+from dataclasses import replace
+from hashlib import sha256
+from pathlib import Path
 from typing import override
-from uuid import UUID
+from uuid import UUID, uuid7
 
 from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
@@ -14,9 +17,11 @@ from neurath.application.ports.repositories.article import IArticleRepository
 from neurath.application.ports.repositories.delegation import IDelegationRepository
 from neurath.application.ports.repositories.enclave import IEnclaveRepository
 from neurath.application.ports.repositories.execution import IExecutionRepository
+from neurath.application.ports.repositories.memory import IMemoryRepository
 from neurath.application.ports.repositories.message import IMessageRepository
 from neurath.application.ports.repositories.peer import IPeerRepository
 from neurath.application.ports.repositories.project import IProjectRepository
+from neurath.application.ports.repositories.request_source import IRequestSourceRepository
 from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.application.ports.repositories.workflow import IWorkflowRepository
@@ -25,9 +30,11 @@ from neurath.application.ports.services.directory_observer import IDirectoryObse
 from neurath.domain.aggregates.delegation import Delegation
 from neurath.domain.aggregates.enclave import Enclave
 from neurath.domain.aggregates.execution import Execution
+from neurath.domain.aggregates.memory import Memory, MemoryKind
 from neurath.domain.aggregates.message import DeliveryStatus
 from neurath.domain.aggregates.peer import Peer
 from neurath.domain.aggregates.project import Project
+from neurath.domain.aggregates.request_source import RequestSource, SourceKind
 from neurath.domain.aggregates.session import HostSession
 from neurath.domain.aggregates.task import Task
 from neurath.domain.aggregates.workflow import WorkflowRun
@@ -37,8 +44,10 @@ from neurath.domain.enums.hook_action import HookAction
 from neurath.domain.enums.hook_event import HookEvent
 from neurath.domain.enums.liveness import Liveness
 from neurath.domain.enums.task_status import TaskStatus
-from neurath.domain.errors import InvalidExecutionState, InvalidTaskState
+from neurath.domain.errors import InvalidExecutionState, InvalidTaskState, WriteConflict
+from neurath.domain.values.article_notice import ArticleNoticeStatus
 from neurath.domain.values.directory_observation import DirectoryObservation
+from neurath.domain.values.lesson_observation import LessonState
 
 
 @immutable
@@ -61,6 +70,9 @@ class ReceiveHookCommand(AbstractCommand):
         reason: 호스트가 전달한 실패·종료 사유.
         delegation_id: 이 실행이 맡은 배정이며 일반 호스트 작업이면 None.
         bypass: 차단 판정만 우회하며 실제 턴·중단·종료 관찰은 유지한다.
+        prompt: 실제 호스트가 전달한 원문이며 없는 경우 빈 문자열.
+        write_target: 구조화된 동기 파일 도구가 가리키는 실제 파일 경로.
+        write_targets: apply_patch 등 한 동기 호출의 모든 실제 파일 경로.
     """
 
     provider: str
@@ -78,6 +90,9 @@ class ReceiveHookCommand(AbstractCommand):
     reason: str = ""
     delegation_id: UUID | None = None
     bypass: bool = False
+    prompt: str = ""
+    write_target: str = ""
+    write_targets: Sequence[str] = ()
 
 
 @immutable
@@ -92,7 +107,10 @@ class ReceiveHookResult:
         tasks: 이 세션의 현재 요구와 원문 참조.
         workflows: 작업에 연결된 현재 절차와 시도.
         inbox: 이번 훅에 전달을 시도하는 메시지의 ID·제목 요약.
-
+        lessons: 현재 프로젝트에서 적용 중인 출처 있는 개선 기록.
+        peer_id: 출력 후 제출을 기록할 실제 수신 피어.
+        message_ids: 이번 출력의 메시지 ID.
+        article_ids: 이번 출력의 기사 ID와 개정.
     """
 
     action: HookAction
@@ -102,6 +120,10 @@ class ReceiveHookResult:
     tasks: Sequence[Task] = ()
     workflows: Sequence[WorkflowRun] = ()
     inbox: Sequence[str] = ()
+    lessons: Sequence[Memory] = ()
+    peer_id: UUID | None = None
+    message_ids: Sequence[UUID] = ()
+    article_ids: Sequence[tuple[UUID, int]] = ()
 
 
 @UseCase()
@@ -122,6 +144,8 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
         messages: IMessageRepository,
         delegations: IDelegationRepository,
         articles: IArticleRepository,
+        sources: IRequestSourceRepository,
+        memories: IMemoryRepository,
     ) -> None:
         """위치 관찰과 훅 상태를 저장하는 의존성을 주입받는다.
 
@@ -138,6 +162,8 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
             messages: 수신할 메시지를 조회하고 제출 시도를 기록한다.
             delegations: 이 실행에 연결된 배정의 현재 요구를 확인한다.
             articles: 활성 구독자의 최신 기사 제목 알림을 조회하고 소비한다.
+            sources: TODO에 연결되기 전 실제 호스트 원문을 보존한다.
+            memories: 요청된 회고에서 적용한 프로젝트 교훈을 조회한다.
         """
         self.directories = directories
         self.projects = projects
@@ -151,6 +177,8 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
         self.messages = messages
         self.delegations = delegations
         self.articles = articles
+        self.sources = sources
+        self.memories = memories
 
     @transactional
     @override
@@ -164,39 +192,78 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
             ReceiveHookResult: 미완료 작업과 현재 상태에 따른 호스트 제어 응답.
         """
         observation = await asyncio.to_thread(self.directories.observe, command.working_directory)
-        resource = (
-            await asyncio.to_thread(self.directories.workspace, command.working_directory)
-            if command.writes
-            else ""
-        )
+        resources = []
+        if command.writes:
+            for target in (*command.write_targets, command.write_target):
+                if not target:
+                    continue
+                path = Path(target)
+                if not path.is_absolute():
+                    path = Path(command.working_directory) / path
+                resource = str(path.resolve())
+                if resource not in resources:
+                    resources.append(resource)
         session = await self._register_host(command, observation)
-        if session.successor_id is not None:
-            return ReceiveHookResult(
-                action=HookAction.PAUSE,
-                message=f"Work was handed off to session {session.successor_id}",
-            )
-
         execution = await self._load_execution(session.uid, command.agent_id)
+        # 일부 호스트는 턴 ID를 제공하지 않는다. 내부 관찰 순번을 보존하며
+        # 이를 네이티브 턴 ID나 사용자의 별도 승인으로 해석하지 않는다.
+        if not command.turn_id:
+            turn = execution.turn_id
+            if command.event is HookEvent.USER_PROMPT_SUBMIT or not turn:
+                turn = f"observed:{uuid7()}"
+            command = replace(command, turn_id=turn)
+        if session.successor_id is not None:
+            if (
+                command.event is HookEvent.USER_PROMPT_SUBMIT
+                and command.turn_id
+                and command.turn_id != execution.turn_id
+            ):
+                session.reopen_for_new_work()
+                session = await self.sessions.save(session)
+            else:
+                return ReceiveHookResult(
+                    action=HookAction.ALLOW,
+                    message=f"Previous work was handed off to session {session.successor_id}",
+                    inbox=(
+                        f"Previous work was handed off to session {session.successor_id}; old task ownership is unchanged.",
+                    ),
+                )
+
+        if command.event is HookEvent.USER_PROMPT_SUBMIT and command.prompt:
+            reference = (
+                f"host-event:{command.turn_id}:{sha256(command.prompt.encode()).hexdigest()}"
+            )
+            existing_sources = await self.sources.find_by_session_id(session.uid)
+            if not any(source.reference == reference for source in existing_sources):
+                await self.sources.save(
+                    RequestSource.create(
+                        session.project_id,
+                        session.uid,
+                        SourceKind.PROMPT,
+                        command.prompt,
+                        author=f"host:{command.provider}",
+                        reference=reference,
+                    )
+                )
         peer = await self._load_peer(session.uid, command.agent_id)
         peer, assignment, assignment_task = await self._assignment_for_hook(command, session, peer)
-        if (
-            assignment is not None
-            and assignment_task is not None
-            and command.event is HookEvent.PRE_TOOL_USE
-            and command.writes
-        ):
-            try:
-                assignment.require_current(assignment_task)
-            except InvalidTaskState as error:
-                return ReceiveHookResult(action=HookAction.PAUSE, message=str(error))
-
         tasks = await self._execution_tasks(session, command.agent_id, assignment, assignment_task)
         todo = "\n".join(
             f"{task.uid}: {task.status.value} — {task.definition.title}" for task in tasks
         )
         try:
-            action, _ = await self._apply(command, execution, tasks, resource)
+            action, _ = await self._apply(command, execution, tasks, resources)
+        except WriteConflict as error:
+            return ReceiveHookResult(action=HookAction.CONTINUE, message=f"{error}\n{todo}")
         except InvalidExecutionState as error:
+            if command.event is HookEvent.PRE_TOOL_USE:
+                return ReceiveHookResult(
+                    action=HookAction.ALLOW,
+                    message=str(error),
+                    inbox=(
+                        f"Neurath could not correlate this host event: {error}. Stored work is unchanged.",
+                    ),
+                )
             return ReceiveHookResult(action=HookAction.PAUSE, message=f"{error}\n{todo}")
         execution = await self.executions.save(execution)
         if execution.status is ExecutionStatus.CANCELLED:
@@ -208,10 +275,9 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
         )
         peer.active = execution.status is ExecutionStatus.RUNNING
         await self.peers.save(peer)
-        inbox = (
-            *await self._deliver_inbox(peer, command.event),
-            *await self._deliver_articles(peer, continuous, command.event),
-        )
+        inbox, message_ids = await self._deliver_inbox(peer, command.event)
+        headlines, article_ids = await self._deliver_articles(peer, continuous, command.event)
+        inbox = (*inbox, *headlines)
 
         restore = (
             command.event is HookEvent.SESSION_START
@@ -219,7 +285,20 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
             and not command.agent_id
         )
         enclaves, tasks, workflows = await self._restore_context(session.uid, tasks, restore)
+        lessons = ()
+        if restore:
+            lessons = tuple(
+                item
+                for item in await self.memories.find_by_project_id_and_kind(
+                    session.project_id, MemoryKind.LESSON
+                )
+                if item.lessons and item.lessons[-1].state is LessonState.APPLIED
+            )
         return ReceiveHookResult(
+            lessons=lessons,
+            peer_id=peer.uid,
+            message_ids=message_ids,
+            article_ids=article_ids,
             action=action,
             message=f"{execution.reason}\n{todo}".strip(),
             restore=restore,
@@ -295,7 +374,12 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
         if peer is not None:
             return peer
         return await self.peers.save(
-            Peer(uid=Peer.next_id(), session_id=session_id, agent_id=agent_id)
+            Peer(
+                uid=Peer.next_id(),
+                session_id=session_id,
+                agent_id=agent_id,
+                subscriptions=("newsroom",),
+            )
         )
 
     async def _assignment_for_hook(
@@ -357,10 +441,16 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
             if task.owner_session_id == session.uid and not agent_id
         }
         if assignment is not None and assignment_task is not None and assignment.report is None:
+            try:
+                assignment.require_current(assignment_task)
+            except InvalidTaskState:
+                return tuple(tasks.values())
             tasks[assignment_task.uid] = assignment_task
         return tuple(tasks.values())
 
-    async def _deliver_inbox(self, peer: Peer, event: HookEvent) -> Sequence[str]:
+    async def _deliver_inbox(
+        self, peer: Peer, event: HookEvent
+    ) -> tuple[Sequence[str], Sequence[UUID]]:
         """수신 가능한 훅에 아직 시도하지 않은 메시지 제목만 제한해서 전달한다.
 
         Args:
@@ -368,14 +458,14 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
             event: 실제 호스트 사건.
 
         Returns:
-            Sequence[str]: 이번 응답에 넣을 원 메시지 ID·제목. 읽음이나 ACK는 아니다.
+            tuple[Sequence[str], Sequence[UUID]]: 출력 내용과 출력 뒤 기록할 원 메시지 ID.
         """
         if not peer.active or event not in (
             HookEvent.SESSION_START,
             HookEvent.USER_PROMPT_SUBMIT,
             HookEvent.PRE_TOOL_USE,
         ):
-            return ()
+            return (), ()
         pending = [
             message
             for message in await self.messages.find_by_recipient_id(peer.uid)
@@ -383,16 +473,14 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
         ][:20]
         inbox = []
         for message in pending:
-            message.begin_delivery()
-            await self.messages.save(message)
             inbox.append(
                 f"Message {message.uid} from {message.sender_id}: {message.title}. Read the original body before ACK; this is not task acceptance."
             )
-        return tuple(inbox)
+        return tuple(inbox), tuple(message.uid for message in pending)
 
     async def _deliver_articles(
         self, peer: Peer, continuous: bool, event: HookEvent
-    ) -> Sequence[str]:
+    ) -> tuple[Sequence[str], Sequence[tuple[UUID, int]]]:
         """활성 상태가 이어진 구독자에게만 최신 기사 식별자와 제목을 제출한다.
 
         Args:
@@ -401,7 +489,7 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
             event: 실제 호스트 사건.
 
         Returns:
-            Sequence[str]: 본문이나 열람 권한을 포함하지 않는 제목 알림.
+            tuple[Sequence[str], Sequence[tuple[UUID, int]]]: 제목과 실제 출력 뒤 기록할 개정.
         """
         eligible_event = event in (
             HookEvent.SESSION_START,
@@ -409,18 +497,30 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
             HookEvent.PRE_TOOL_USE,
         )
         headlines: list[str] = []
+        receipts: list[tuple[UUID, int]] = []
         for article in await self.articles.find_by_recipient_id(peer.uid):
             if peer.active and continuous and eligible_event and len(headlines) >= 10:
                 break
             if peer.active and continuous and not eligible_event:
                 continue
-            notify = article.consume_notices(peer, continuous)
-            await self.articles.save(article)
+            eligible = (
+                peer.active and continuous and eligible_event and "newsroom" in peer.subscriptions
+            )
+            notify = eligible and any(
+                item.peer_id == peer.uid
+                and item.revision_number == article.current.number
+                and item.status is ArticleNoticeStatus.PENDING
+                for item in article.notices
+            )
+            if not eligible:
+                article.consume_notices(peer, continuous=False)
+                await self.articles.save(article)
             if notify:
+                receipts.append((article.uid, article.current.number))
                 headlines.append(
                     f"Article {article.uid} revision {article.current.number}: {article.current.title}"
                 )
-        return tuple(headlines)
+        return tuple(headlines), tuple(receipts)
 
     async def _restore_context(
         self, session_id: UUID, tasks: Sequence[Task], restore: bool
@@ -460,7 +560,7 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
         command: ReceiveHookCommand,
         execution: Execution,
         tasks: Sequence[Task],
-        resource: str,
+        resources: Sequence[str],
     ) -> tuple[HookAction, int | None]:
         """수명 사건과 도구 사건을 전달하며 현재 상태에서 거절된 도메인 예외를 전파한다.
 
@@ -468,7 +568,7 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
             command: 처리할 호스트 사건.
             execution: 현재 실행 aggregate.
             tasks: 해당 실행의 최신 태스크.
-            resource: 실제 관찰한 작성 폴더.
+            resources: 실제 동기 파일 도구가 변경하는 정확한 파일들.
 
         Returns:
             tuple[HookAction, int | None]: 호스트 제어와 선택적인 작성 세대.
@@ -478,14 +578,22 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
             execution.observe_start(command.start_source)
             return HookAction.ALLOW, None
         if command.event == HookEvent.USER_PROMPT_SUBMIT:
+            for writer in await self.writers.find_by_execution_id(execution.uid):
+                if writer.native_sync and writer.turn_id != command.turn_id:
+                    writer.release(execution.uid, writer.generation, Liveness.STOPPED)
+                    await self.writers.save(writer)
             execution.begin_turn(command.turn_id)
             return HookAction.ALLOW, None
         if command.event == HookEvent.SESSION_END:
+            for writer in await self.writers.find_by_execution_id(execution.uid):
+                if writer.native_sync:
+                    writer.release(execution.uid, writer.generation, Liveness.STOPPED)
+                    await self.writers.save(writer)
             execution.end(command.reason)
             return HookAction.ALLOW, None
         if not execution.turn_id and command.turn_id:
             execution.begin_turn(command.turn_id)
-        if command.event == HookEvent.PRE_TOOL_USE and not resource:
+        if command.event == HookEvent.PRE_TOOL_USE and not resources:
             return HookAction.ALLOW, None
         execution.require_turn(command.turn_id)
         if command.event == HookEvent.INTERRUPT:
@@ -508,15 +616,18 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
                     progress.append((workflow.uid, workflow.revision))
             return execution.decide_stop(tasks, repeated=command.repeated, progress=progress), None
         if command.event == HookEvent.PRE_TOOL_USE:
-            if execution.status is not ExecutionStatus.RUNNING:
-                return HookAction.PAUSE, None
-            writer = await self.writers.find_by_resource(resource)
-            if writer is None:
-                writer = Writer.create(resource)
-            generation = writer.acquire(execution.uid, command.turn_id, command.tool_use_id)
-            (await self.writers.save(writer))
-            return HookAction.ALLOW, generation
-        await self._finish_write(command, execution, resource)
+            claimed = []
+            for resource in resources:
+                writer = await self.writers.find_by_resource(resource)
+                if writer is None:
+                    writer = Writer.create(resource)
+                writer.native_sync = True
+                writer.acquire(execution.uid, command.turn_id, command.tool_use_id)
+                claimed.append(writer)
+            await self.writers.save_all(claimed)
+            return HookAction.ALLOW, None
+        for resource in resources:
+            await self._finish_write(command, execution, resource)
         if command.interrupted:
             execution.cancel(command.turn_id, command.reason or "Host interrupted execution")
         return HookAction.ALLOW, None
@@ -529,7 +640,7 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
         Args:
             command: 종료 여부가 해석된 도구 사건.
             execution: 사건을 소유하는 현재 실행.
-            resource: 실제 관찰한 작성 폴더.
+            resource: 실제 동기 파일 도구가 변경한 정확한 파일.
         """
         if not resource or not command.finished:
             return

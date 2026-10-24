@@ -103,6 +103,15 @@ async def test_headlines_are_active_subscriber_snapshots_and_never_body_or_seen(
     assert [(n.peer_id, n.revision_number) for n in article.notices] == [(recipient.uid, 1)]
     response = await hook(database, receiver)
     assert response.inbox == (f"Article {article.uid} revision 1: 발견",)
+    assert (await stored(database, article)).notices[0].status is ArticleNoticeStatus.PENDING
+    await call(
+        database,
+        "record_hook_output",
+        "RecordHookOutput",
+        response.peer_id,
+        response.message_ids,
+        response.article_ids,
+    )
     assert (await stored(database, article)).notices[0].status is ArticleNoticeStatus.SUBMITTED
     assert article.current.body not in str(response.inbox)
     assert (await stored(database, article)).reads == ()
@@ -383,7 +392,7 @@ async def test_stdout_failure_and_stdin_failure_leave_no_false_receipt_or_public
         monkeypatch.setattr(newsroom.sys, "stdin", BrokenInput())
         with pytest.raises(OSError):
             await app.container.get(NewsroomCliController).publish_article(
-                sender.uid, "title", "-", ["ref"]
+                peer_id=sender.uid, title="title", body="-", reference=["ref"]
             )
     assert snapshot(database) == before
 
@@ -489,7 +498,24 @@ async def test_current_headline_replaces_old_revision_and_hook_batches_titles(
     assert no_delivery.inbox == ()
     titles = await hook(database, receiver)
     assert len(titles.inbox) == 10 and "revision 2" in titles.inbox[0]
-    assert len((await hook(database, receiver)).inbox) == 1
+    await call(
+        database,
+        "record_hook_output",
+        "RecordHookOutput",
+        titles.peer_id,
+        titles.message_ids,
+        titles.article_ids,
+    )
+    last = await hook(database, receiver)
+    assert len(last.inbox) == 1
+    await call(
+        database,
+        "record_hook_output",
+        "RecordHookOutput",
+        last.peer_id,
+        last.message_ids,
+        last.article_ids,
+    )
     assert (await hook(database, receiver)).inbox == ()
 
 
@@ -664,7 +690,7 @@ async def test_scanned_newsroom_commands_belong_to_explicit_group_without_manual
     from neurath.transport.cli.newsroom import NewsroomCliController
     from tests.support.application import scanned_application
 
-    names = {"list", "read", "publish", "revise", "comment"}
+    names = {"list", "read", "publish", "revise", "comment", "subscribe"}
     async with scanned_application(sqlite_url(database, "rw")) as app:
         root = get_command(app.container.get(Typer))
         assert CliController.get(NewsroomCliController).group_name == "newsroom"

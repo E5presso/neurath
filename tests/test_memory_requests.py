@@ -3,6 +3,7 @@
 import asyncio
 import json
 from dataclasses import asdict
+from pathlib import Path
 from uuid import UUID, uuid7
 
 import pytest
@@ -284,8 +285,10 @@ async def test_restore_failure_does_not_claim_delivery_or_request_retry(
     actor = memory_actor
     await update(database, actor, changes=[SetEnclaveFact(fact=fact("x" * 9000))])
     result = await native(database, actor, "SessionStart", source="compact")
-    assert result["continue"] is False and "hookSpecificOutput" not in result
-    assert "limit" in result["stopReason"]
+    context = result["hookSpecificOutput"]["additionalContext"]
+    path = Path(context.split(" at ", 1)[1].split(". It exceeds", 1)[0])
+    assert "x" * 9000 in path.read_text()
+    assert "no facts were discarded" in context and "continue" not in result
     from neurath.infrastructure.repositories.enclave import SQLAlchemyEnclaveRepository
 
     async def fail(*args):
@@ -293,7 +296,7 @@ async def test_restore_failure_does_not_claim_delivery_or_request_retry(
 
     monkeypatch.setattr(SQLAlchemyEnclaveRepository, "find_by_session_id", fail)
     result = await native(database, actor, "SessionStart", source="compact")
-    assert result["continue"] is False and "memory unavailable" in result["stopReason"]
+    assert "bookkeeping failed" in result["systemMessage"] and "continue" not in result
 
 
 async def test_memory_group_commands_use_real_registered_usecases(database, memory_actor):
@@ -491,7 +494,12 @@ async def test_handoff_without_checkpoint_preserves_work_and_fences_original_ses
     assert original.session.successor_id == target.session.uid and original.tasks == ()
     assert any(item.uid == orphan.uid for item in after.tasks)
     assert original.memory_ids
-    assert (await native(database, source, "UserPromptSubmit"))["continue"] is False
+    assert (
+        "handed off"
+        in (await native(database, source, "UserPromptSubmit"))["hookSpecificOutput"][
+            "additionalContext"
+        ]
+    )
     async with storage_scope(database, write=False) as scope:
         execution = await scope.get(IExecutionRepository).find_by_session_id_and_agent_id(
             source.session.uid, ""
@@ -583,6 +591,17 @@ async def test_handoff_refuses_missing_native_execution_active_writer_and_target
         await run(ResumeSessionUseCase, command, database_path=database)
     await native(database, source, "UserPromptSubmit")
     await native(database, source, "PreToolUse", tool_name="Write", tool_use_id="write")
+    from neurath.application.ports.repositories.execution import IExecutionRepository
+    from neurath.application.ports.repositories.writer import IWriterRepository
+    from neurath.domain.aggregates.writer import Writer
+
+    async with storage_scope(database) as scope:
+        current = await scope.get(IExecutionRepository).find_by_session_id_and_agent_id(
+            source.session.uid, ""
+        )
+        lease = Writer.create(source.session.working_directory)
+        lease.acquire(current.uid, "turn", "managed-process")
+        await scope.get(IWriterRepository).save(lease)
     await native(database, source, "SessionEnd")
     with pytest.raises(InvalidExecutionState, match="write termination"):
         await run(ResumeSessionUseCase, command, database_path=database)
@@ -596,8 +615,8 @@ async def test_handoff_refuses_missing_native_execution_active_writer_and_target
         writer.release(writer.execution_id, writer.generation, Liveness.STOPPED)
         await scope.get(IWriterRepository).save(writer)
     await update(database, target)
-    with pytest.raises(InvalidExecutionState, match="Target enclave"):
-        await run(ResumeSessionUseCase, command, database_path=database)
+    await run(ResumeSessionUseCase, command, database_path=database)
+    assert (await preview(database, target)).enclaves[0].facts[0].value == "current"
 
 
 def test_transfer_domain_guards_preserve_owner_and_running_attempt():
