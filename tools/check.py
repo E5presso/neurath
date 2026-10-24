@@ -6,16 +6,17 @@ from pathlib import Path
 
 
 def main() -> None:
-    """공유 품질 검사·전체 행동 시험·라인과 분기 100% 검사·휠 생성을 실행한다."""
+    """공유 정적 검사 뒤 전체 시험을 한 번 실행해 라인·분기 100%와 휠을 검증한다."""
     root = Path(__file__).resolve().parents[1]
     for arguments in (
-        ["tools/quality.py"],
+        ["tools/static_quality.py"],
         [
             "-m",
             "pytest",
             "-q",
             "--cov=src/neurath",
             "--cov-branch",
+            "--durations=20",
             "--cov-fail-under=100",
             "--cov-report=term-missing",
             "--cov-report=json:coverage-out/coverage.json",

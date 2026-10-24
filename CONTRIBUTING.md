@@ -17,7 +17,7 @@ uv run --locked python tools/check.py
 
 The Git hook installer uses a private hook directory and per-worktree settings for this checkout. It preserves shared/user configuration, chains an existing executable pre-commit first and does not overwrite unknown private hook directories.
 
-Pre-commit and the required runner share `tools/quality.py`: Ruff lint/formatting, strict Pyrefly, Google-style pydoclint, docstring-language checks and structure/contract regression tests. The required runner then executes all behavioral tests and builds the wheel, emitting `NEURATH_CHECK_OK` on success. CI uses the same runner.
+Pre-commit and the required runner share `tools/static_quality.py` for Ruff lint/formatting, strict Pyrefly, Google-style pydoclint, docstring-language and architecture checks. Pre-commit uses `tools/quality.py` to add structure/contract regression tests. The required `tools/check.py` runner executes the complete pytest suite, including those tests, once with coverage; it then enforces 100% line/branch coverage and builds the wheel, emitting `NEURATH_CHECK_OK` on success. CI uses the same runner.
 
 Type/docstring checks cover all production sources and development tools. Tests receive lint/formatting checks without requiring new docstrings or annotations. Existing docstrings, including tests and root Python configuration, use Korean summaries and natural-language field descriptions. Keep Google section headings and code/type identifiers; define argument types in signatures.
 

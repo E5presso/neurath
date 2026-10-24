@@ -1,4 +1,4 @@
-"""현재 패키지 전체에 공유하는 pre-commit 및 CI 품질 검사다."""
+"""커밋 전에 정적 검사와 구조·계약 회귀 시험을 실행한다."""
 
 import subprocess
 import sys
@@ -9,12 +9,7 @@ def main() -> None:
     """포맷·린트·엄격한 타입·구조와 검사 도구의 회귀 fixture를 확인한다."""
     root = Path(__file__).resolve().parents[1]
     commands = (
-        ["-m", "ruff", "check", "src", "tests", "tools"],
-        ["-m", "ruff", "format", "--check", "src", "tests", "tools"],
-        ["-m", "pyrefly", "check"],
-        ["-m", "pydoclint.main", "src", "tools"],
-        ["tools/architecture.py"],
-        ["tools/docstrings.py"],
+        ["tools/static_quality.py"],
         [
             "-m",
             "pytest",

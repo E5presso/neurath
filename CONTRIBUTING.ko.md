@@ -17,7 +17,7 @@ uv run --locked python tools/check.py
 
 Git hook 설치 도구는 현재 체크아웃의 전용 hook 디렉터리와 worktree별 설정을 사용합니다. 기존 공통·사용자 설정을 보존하고 실행 가능한 기존 pre-commit을 먼저 호출하며, 알 수 없는 전용 hook 디렉터리를 덮어쓰지 않습니다.
 
-pre-commit과 필수 runner는 `tools/quality.py`를 공유합니다. Ruff lint·포맷, strict Pyrefly, Google 형식 pydoclint, docstring 언어 검사와 구조·계약 회귀 시험을 실행합니다. 필수 runner는 이어서 전체 동작 시험과 휠 생성을 수행하고 성공하면 `NEURATH_CHECK_OK`를 출력합니다. CI도 같은 runner를 사용합니다.
+pre-commit과 필수 runner는 `tools/static_quality.py`의 Ruff lint·포맷, strict Pyrefly, Google 형식 pydoclint, docstring 언어·구조 검사를 공유합니다. pre-commit의 `tools/quality.py`는 여기에 구조·계약 회귀 시험을 실행합니다. 필수 runner인 `tools/check.py`는 같은 시험을 포함한 전체 pytest를 커버리지와 함께 한 번만 실행한 뒤 라인·분기 100%를 확인하고 휠을 생성합니다. 성공하면 `NEURATH_CHECK_OK`를 출력하며 CI도 같은 runner를 사용합니다.
 
 제품 소스와 개발 도구 전체에 타입·docstring 검사를 적용합니다. 테스트는 lint·포맷 대상이며 새 docstring·타입 표기를 강제하지 않습니다. 기존 docstring은 테스트·루트 Python 설정을 포함해 한국어 요약과 자연어 필드 설명을 사용합니다. Google 섹션명과 코드·타입 식별자는 유지하고, 인자 타입은 signature에 정의합니다.
 
