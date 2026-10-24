@@ -17,7 +17,7 @@ uv run --locked python tools/check.py
 
 Git hook 설치 도구는 현재 체크아웃의 전용 hook 디렉터리와 worktree별 설정을 사용합니다. 기존 공통·사용자 설정을 보존하고 실행 가능한 기존 pre-commit을 먼저 호출하며, 알 수 없는 전용 hook 디렉터리를 덮어쓰지 않습니다.
 
-pre-commit과 필수 runner는 `tools/static_quality.py`의 Ruff lint·포맷, strict Pyrefly, Google 형식 pydoclint, docstring 언어·구조 검사를 공유합니다. pre-commit의 `tools/quality.py`는 여기에 구조·계약 회귀 시험을 실행합니다. 필수 runner인 `tools/check.py`는 같은 시험을 포함한 전체 pytest를 커버리지와 함께 한 번만 실행한 뒤 라인·분기 100%를 확인하고 휠을 생성합니다. 성공하면 `NEURATH_CHECK_OK`를 출력하며 CI도 같은 runner를 사용합니다.
+pre-commit과 필수 runner는 `tools/static_quality.py`의 Ruff lint·포맷, strict Pyrefly, Google 형식 pydoclint, docstring 언어·구조 검사를 공유합니다. pre-commit의 `tools/quality.py`는 여기에 구조·계약 회귀 시험을 실행합니다. 필수 runner인 `tools/check.py`는 같은 시험을 포함한 전체 pytest를 커버리지와 함께 한 번만 실행한 뒤 라인·분기 100%를 확인하고 휠을 생성합니다. 성공하면 `NEURATH_CHECK_OK`를 출력합니다. CI는 전체 시험을 4개 runner에 나눠 실행하고, 모든 분할의 성공과 측정 파일을 확인한 뒤 같은 runner의 `--combine-coverage` 경로로 정적 검사·통합 커버리지·빌드를 검증합니다.
 
 제품 소스와 개발 도구 전체에 타입·docstring 검사를 적용합니다. 테스트는 lint·포맷 대상이며 새 docstring·타입 표기를 강제하지 않습니다. 기존 docstring은 테스트·루트 Python 설정을 포함해 한국어 요약과 자연어 필드 설명을 사용합니다. Google 섹션명과 코드·타입 식별자는 유지하고, 인자 타입은 signature에 정의합니다.
 
@@ -64,6 +64,6 @@ omit·커스텀 제외·`pragma: no cover`·`pragma: no branch`로 수치를 맞
 
 직접 저장소, 스캔·DI, 앱 수명, 재시작을 검사할 때는 `spakky_context`/`scanned_application`을 사용합니다. 이 경로와 별도 프로세스 시험은 앱을 새로 만듭니다. `storage_scope`도 새 앱을 유지하여 컨텍스트별 AggregateCollector와 저장소 수명을 원래대로 검사합니다.
 
-필수 검사와 pre-commit 회귀 시험은 pytest-xdist의 `-n auto --maxprocesses=4 --dist=worksteal`로 실행합니다. CPU 수에 맞춰 최대 4개 독립 프로세스를 사용하고, 남은 시험을 재분배합니다. 각 worker의 임시 폴더·빈 DB 템플릿·앱 수명은 분리됩니다. 전체 시험을 한 번씩 실행한 뒤 pytest-cov가 커버리지를 병합하며, 기존 라인·분기 100% 검사와 제외 라인 0 기준을 그대로 적용합니다. 개별 시험 디버깅은 `uv run pytest <경로>`로 순차 실행할 수 있습니다.
+필수 검사와 pre-commit 회귀 시험은 pytest-xdist의 `-n auto --maxprocesses=4 --dist=worksteal`로 실행합니다. CPU 수에 맞춰 최대 4개 독립 프로세스를 사용하고, 남은 시험을 재분배합니다. 각 worker의 임시 폴더·빈 DB 템플릿·앱 수명은 분리됩니다. CI는 pytest-split의 `least_duration`으로 전체 수집 항목을 4개 그룹에 분배하고 각 runner에서는 2개 worker를 사용합니다. 분할 측정 단계는 일부 소스만 실행하므로 개별 커버리지 비율로 판정하지 않습니다. 최종 필수 `check`는 모든 그룹 성공과 4개 측정 파일을 요구하고, 합산 결과에 기존 100% 기준을 적용합니다. 그룹 실패·파일 누락·미실행 라인이나 분기가 하나라도 있으면 실패합니다. 전체 시험을 한 번씩 실행한 뒤 pytest-cov가 커버리지를 병합하며, 기존 라인·분기 100% 검사와 제외 라인 0 기준을 그대로 적용합니다. 개별 시험 디버깅은 `uv run python -m pytest <경로>`로 순차 실행할 수 있습니다.
 
 기본 `database` fixture는 실제 마이그레이션으로 만든 빈 스키마를 SQLite backup으로 독립 파일에 복제합니다. 원본은 읽기 전용으로 열고 기존 대상 파일을 덮어쓰지 않습니다. 초기화·이전·downgrade 시험은 실제 마이그레이션을 직접 호출합니다. `tests/test_fixture_isolation.py`는 DB·읽기 정책·세션·앱 수명·실패·동시 호출 격리를 검증합니다.

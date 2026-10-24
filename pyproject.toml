@@ -33,6 +33,7 @@ dev = [
     "pytest-cov>=7",
     "pytest-asyncio>=1.4.0",
     "pytest-xdist>=3.8,<4",
+    "pytest-split>=0.11,<1",
 ]
 
 [tool.hatch.build.targets.wheel]
