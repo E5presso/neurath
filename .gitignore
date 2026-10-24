@@ -104,3 +104,16 @@ CLAUDE.md
 # Reproducible coverage reports and measurement database
 /coverage-out/
 /.coverage
+
+# Private CLI guides, runtime identity and installer restoration copies
+/.codex/neurath/
+/.claude/neurath/
+/.codex/*.before-*
+/.claude/*.before-*
+/.mcp.json.before-*
+/AGENTS.md.before-*
+/CLAUDE.md.before-*
+/.agents/skills/define-spec/SKILL.md
+/.agents/skills/implement-spec/SKILL.md
+/.claude/skills/define-spec/SKILL.md
+/.claude/skills/implement-spec/SKILL.md
