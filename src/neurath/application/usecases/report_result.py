@@ -5,14 +5,18 @@ from uuid import UUID
 
 from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
-from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
-from neurath.application.ports.repositories.task import ITaskRepository
-from neurath.application.ports.repositories.workflow import IWorkflowRepository
-from neurath.application.ports.services.evaluation_context import IEvaluationContextService
+from neurath.application.usecases.get_evaluation import GetEvaluationQuery, GetEvaluationUseCase
+from neurath.application.usecases.read_result_context import (
+    ReadResultContextQuery,
+    ReadResultContextUseCase,
+)
+from neurath.application.usecases.record_task_result import (
+    RecordTaskResultCommand,
+    RecordTaskResultUseCase,
+)
 from neurath.domain.aggregates.task import Task
-from neurath.domain.errors import InvalidWorkflowState
 from neurath.domain.values.task_attempt import Outcome, TaskResult
 
 
@@ -50,65 +54,73 @@ class ReportResult:
 
 @UseCase()
 class ReportResultUseCase(IAsyncCommandUseCase[ReportResultCommand, ReportResult]):
-    """시도의 관찰 결과를 확정하고 현재 요구 개정의 결과만 태스크 상태에 반영한다.
-
-    성공은 succeeded, 실패는 failed, 부분 수행은 pending이 된다. 정정 전 시도의
-    늦은 결과는 이력에만 남는다. 같은 확정 결과의 재보고는 revision이 오래돼도
-    멱등적으로 처리하지만, 다른 결과로 덮어쓰는 보고는 거부한다.
-    관찰 참조는 전달받아 저장하며 외부 명령 실행이나 증거 인증을 수행하지 않는다.
-    """
+    """최종 평가의 외부 후보를 관찰한 뒤 짧은 원장 변경으로 결과를 기록한다."""
 
     def __init__(
         self,
-        tasks: ITaskRepository,
-        workflows: IWorkflowRepository,
-        evaluations: IEvaluationContextService,
+        read: ReadResultContextUseCase,
+        evaluations: GetEvaluationUseCase,
+        record: RecordTaskResultUseCase,
     ) -> None:
-        """시도의 관찰 결과와 태스크 상태를 저장할 포트를 받는다.
+        """실제 조회·외부 관찰·원자 저장 경계를 받는다.
 
         Args:
-            tasks: 결과를 보고할 태스크를 조회하고 확정 결과·상태를 함께 저장한다.
-            workflows: 선택한 절차가 현재 요구를 완료했는지 확인할 저장소.
-            evaluations: 완료한 평가 후보의 관련 변경을 대조한다.
+            read: 결과를 보고할 작업과 절차의 스냅샷.
+            evaluations: 파일·Git 관찰이 트랜잭션 밖에서 수행되는 평가 조회.
+            record: 현재 원장과 스냅샷을 대조하는 최종 저장.
         """
-        self.tasks = tasks
-        self.workflows = workflows
+        self.read = read
         self.evaluations = evaluations
+        self.record = record
 
-    @transactional
     @override
     async def run(self, command: ReportResultCommand) -> ReportResult:
-        """시도의 결과를 기록하고 현재 요구에 적용되는 상태 변경을 저장한다.
+        """작업 완료를 외부 관찰의 잠금과 분리해 원자적으로 기록한다.
 
         Args:
-            command: 소유 범위·태스크 ID·시도 번호, 관찰 결과와 읽은 저장 revision.
+            command: 원래 작업과 시도의 관찰 결과.
 
         Returns:
-            ReportResult: 시도 결과와 현재 요구의 상태를 보존한 태스크.
-
-        Raises:
-            InvalidWorkflowState: 평가 후 관련 요구가 변경된 경우.
+            ReportResult: 현재 요구에 적용한 태스크 결과.
         """
-        task = await self.tasks.get(command.task_id)
-        task.require_scope(command.project_id, command.session_id)
-        attempt = task.attempt(command.attempt_number)
-        workflow = None
+        snapshot = await self.read.run(
+            ReadResultContextQuery(
+                project_id=command.project_id,
+                session_id=command.session_id,
+                task_id=command.task_id,
+            )
+        )
+        evaluations = []
+        workflow = snapshot.workflow
+        attempt = snapshot.task.attempt(command.attempt_number)
         if (
-            command.result.outcome is Outcome.SUCCEEDED
-            and attempt.definition_number == task.definition.number
+            workflow is not None
+            and command.result.outcome is Outcome.SUCCEEDED
             and attempt.result is None
+            and attempt.definition_number == snapshot.task.definition.number
         ):
-            workflow = await self.workflows.find_by_task_id(task.uid)
-        if workflow is not None:
-            workflow.require_complete(task.definition.number)
             for phase in workflow.definition.phases:
-                if phase.evaluation is None:
+                if not workflow.requires_evaluation(phase) or workflow.latest(phase) is None:
                     continue
-                reviewed = workflow.latest(phase)
-                if reviewed is None:
-                    continue
-                context = await self.evaluations.load(workflow, phase)
-                if reviewed.candidate != context.candidate:
-                    raise InvalidWorkflowState("Related requirements changed after evaluation")
-        task.report(command.attempt_number, command.result, command.expected_revision)
-        return ReportResult(task=(await self.tasks.save(task)))
+                current = await self.evaluations.run(
+                    GetEvaluationQuery(
+                        project_id=command.project_id,
+                        session_id=command.session_id,
+                        run_id=workflow.uid,
+                        phase_key=phase.key,
+                    )
+                )
+                evaluations.append((phase.key, current.context))
+        result = await self.record.run(
+            RecordTaskResultCommand(
+                project_id=command.project_id,
+                session_id=command.session_id,
+                task_id=command.task_id,
+                expected_revision=command.expected_revision,
+                attempt_number=command.attempt_number,
+                result=command.result,
+                workflow_version=None if workflow is None else workflow.version,
+                evaluations=evaluations,
+            )
+        )
+        return ReportResult(task=result.task)

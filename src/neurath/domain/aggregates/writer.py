@@ -7,7 +7,7 @@ from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 
 from neurath.domain.enums.liveness import Liveness
-from neurath.domain.errors import InvalidExecutionState
+from neurath.domain.errors import InvalidExecutionState, WriteConflict
 from neurath.domain.events.writer_recovery_requested import WriterRecoveryRequested
 
 
@@ -22,6 +22,7 @@ class Writer(AbstractAggregateRoot[UUID]):
         tool_use_id: 작성이 속한 실제 호스트 도구 호출.
         generation: 매 취득마다 증가하여 오래된 해제를 막는 세대.
         revision: 저장소가 검사하는 낙관적 버전.
+        native_sync: 실제 호스트의 동기 파일 변경 사건으로 취득한 작성 범위.
     """
 
     resource: str
@@ -30,6 +31,7 @@ class Writer(AbstractAggregateRoot[UUID]):
     tool_use_id: str
     generation: int
     revision: int
+    native_sync: bool = False
 
     @classmethod
     @override
@@ -73,7 +75,8 @@ class Writer(AbstractAggregateRoot[UUID]):
             int: 취득한 세대.
 
         Raises:
-            InvalidExecutionState: 호출 식별자가 없거나 다른 작성이 남아 있는 경우.
+            InvalidExecutionState: 실제 호출 식별자가 없는 경우.
+            WriteConflict: 같은 파일의 다른 작성이 아직 남아 있는 경우.
         """
         if not execution_id or not turn_id or not tool_use_id:
             raise InvalidExecutionState("Writer requires an observed execution, turn and call")
@@ -84,7 +87,7 @@ class Writer(AbstractAggregateRoot[UUID]):
                 tool_use_id,
             ):
                 return self.generation
-            raise InvalidExecutionState("Another write is still active")
+            raise WriteConflict("Another write is still active")
         self.execution_id = execution_id
         self.turn_id = turn_id
         self.tool_use_id = tool_use_id

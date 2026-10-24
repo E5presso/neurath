@@ -46,9 +46,16 @@ class EvaluationTarget(AbstractValueObject):
         """
         if len(set(self.task_ids)) != len(self.task_ids):
             raise ValueError("Evaluation task scope must be unique")
-        if (
-            not self.artifacts
-            or not self.verification
-            or any(not value.strip() for value in (*self.artifacts, *self.verification))
-        ):
+        if any(not value.strip() for value in (*self.artifacts, *self.verification)):
             raise ValueError("Evaluation requires actual artifacts and verification references")
+
+    def require_ready(self) -> None:
+        """절차 정의 시점에는 미정일 수 있지만 실제 평가 요청에는 결과 근거가 필요하다.
+
+        Raises:
+            ValueError: 실제 평가할 산출물 또는 검증 참조가 아직 없는 경우.
+        """
+        if not self.artifacts or not self.verification:
+            raise ValueError(
+                "Attach actual artifacts and verification before requesting evaluation"
+            )

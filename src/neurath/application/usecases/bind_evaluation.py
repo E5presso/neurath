@@ -5,16 +5,14 @@ from uuid import UUID
 
 from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
-from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
-from neurath.application.ports.repositories.delegation import IDelegationRepository
-from neurath.application.ports.repositories.task import ITaskRepository
-from neurath.application.ports.repositories.workflow import IWorkflowRepository
-from neurath.application.ports.services.evaluation_context import IEvaluationContextService
+from neurath.application.usecases.get_evaluation import GetEvaluationQuery, GetEvaluationUseCase
+from neurath.application.usecases.record_evaluation_binding import (
+    RecordEvaluationBindingCommand,
+    RecordEvaluationBindingUseCase,
+)
 from neurath.domain.aggregates.workflow import WorkflowRun
-from neurath.domain.enums.task_status import TaskStatus
-from neurath.domain.values.external_wait import ExternalWait
 
 
 @immutable
@@ -38,64 +36,44 @@ class BindEvaluationCommand(AbstractCommand):
 
 @UseCase()
 class BindEvaluationUseCase(IAsyncCommandUseCase[BindEvaluationCommand, WorkflowRun]):
-    """현재 후보를 다시 확인해 변경 중인 결과에 옛 평가를 연결하지 않는다."""
+    """외부 후보 관찰을 마친 뒤 원장 변경을 짧은 트랜잭션에 반영한다."""
 
-    def __init__(
-        self,
-        workflows: IWorkflowRepository,
-        tasks: ITaskRepository,
-        delegations: IDelegationRepository,
-        context: IEvaluationContextService,
-    ) -> None:
-        """현재 작업과 배정의 저장 경계를 받는다.
+    def __init__(self, read: GetEvaluationUseCase, record: RecordEvaluationBindingUseCase) -> None:
+        """관찰과 원자 저장의 작업 단위를 분리해 받는다.
 
         Args:
-            workflows: 단계 시도를 저장한다.
-            tasks: 현재 요구를 확인한다.
-            delegations: 저장된 검토 배정을 읽는다.
-            context: 현재 후보를 다시 계산한다.
+            read: 트랜잭션 밖에서 현재 파일·Git 후보를 관찰한다.
+            record: 관찰 중 관련 원장이 바뀌지 않았는지 확인하고 저장한다.
         """
-        self.workflows = workflows
-        self.tasks = tasks
-        self.delegations = delegations
-        self.context = context
+        self.read = read
+        self.record = record
 
-    @transactional
     @override
     async def run(self, command: BindEvaluationCommand) -> WorkflowRun:
-        """같은 후보의 기존 시도를 재사용하고 최초 배정만 예약한다.
+        """현재 후보를 관찰한 뒤 같은 요구 개정에만 변경을 반영한다.
 
         Args:
-            command: 실행·단계와 배정 연결.
+            command: 요청 범위와 실제 보고 또는 연결 정보.
 
         Returns:
-            WorkflowRun: 실제 외부 호출 전에 커밋할 단계 연결.
+            WorkflowRun: 원자적으로 반영한 현재 원장.
         """
-        run = await self.workflows.get(command.run_id)
-        run.require_scope(command.project_id, command.session_id)
-        phase = run.evaluation_phase(command.phase_key)
-        delegation = await self.delegations.get(command.delegation_id)
-        task = await self.tasks.get(run.task_id)
-        delegation.require_current(task)
-        context = await self.context.load(run, phase)
-        existing = run.latest(phase)
-        if (
-            existing is not None
-            and existing.delegation_id == delegation.uid
-            and existing.candidate == context.candidate
-        ):
-            return run
-        run.require_task(task, recovering=True)
-        if task.status is TaskStatus.WAITING:
-            task.resume("Related evaluation candidate changed")
-        attempt = run.bind_evaluation(phase, delegation, context.candidate)
-        task.wait(
-            ExternalWait(
-                target=f"{run.uid}:{attempt.number}",
-                condition="independent evaluation report received",
-                resume_scope=f"consume evaluation {run.uid}:{attempt.number}",
-                observation=f"delegation:{delegation.uid}; candidate:{context.candidate}",
+        snapshot = await self.read.run(
+            GetEvaluationQuery(
+                project_id=command.project_id,
+                session_id=command.session_id,
+                run_id=command.run_id,
+                phase_key=command.phase_key,
             )
         )
-        await self.tasks.save(task)
-        return await self.workflows.save(run)
+        return await self.record.run(
+            RecordEvaluationBindingCommand(
+                project_id=command.project_id,
+                session_id=command.session_id,
+                run_id=command.run_id,
+                phase_key=command.phase_key,
+                delegation_id=command.delegation_id,
+                observed=snapshot.context,
+                run_version=snapshot.run.version,
+            )
+        )

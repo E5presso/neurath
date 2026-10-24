@@ -10,6 +10,10 @@ from spakky.plugins.typer.stereotypes.cli_controller import CliController, comma
 from typer import Option, echo
 
 from neurath.application.usecases.preview_session import PreviewSessionQuery, PreviewSessionUseCase
+from neurath.application.usecases.resolve_session_context import (
+    ResolveSessionContextQuery,
+    ResolveSessionContextUseCase,
+)
 from neurath.application.usecases.resume_session import ResumeSessionCommand, ResumeSessionUseCase
 from neurath.serialization import encode_uuid
 
@@ -23,6 +27,7 @@ class SessionCliController:
         preview: PreviewSessionUseCase,
         resume: ResumeSessionUseCase,
         connection: AsyncConnectionManager,
+        context: ResolveSessionContextUseCase,
     ) -> None:
         """세션 작업 단위와 명령 루프에서 정리할 연결을 받는다.
 
@@ -30,16 +35,18 @@ class SessionCliController:
             preview: 원 세션의 현재 작업을 조회하는 유스케이스.
             resume: 확인된 후속 세션으로 실제 작업을 재개·인수하는 유스케이스.
             connection: 명령 실행 이벤트 루프에서 정리할 비동기 엔진.
+            context: 실제 호스트에서 현재 세션·턴을 찾는다.
         """
         self.preview = preview
         self.resume = resume
         self.connection = connection
+        self.context = context
 
     @command("preview")
     async def preview_session(
         self,
-        project_id: Annotated[UUID, Option("--project-id")],
-        session_id: Annotated[UUID, Option("--session-id")],
+        project_id: Annotated[UUID | None, Option("--project-id")] = None,
+        session_id: Annotated[UUID | None, Option("--session-id")] = None,
     ) -> None:
         """원문·작업·runner·현재 맥락을 소유권 변경 없이 인수 전에 미리 본다.
 
@@ -48,6 +55,10 @@ class SessionCliController:
             session_id: 미리 볼 원 세션 ID.
         """
         try:
+            scope = await self.context.run(
+                ResolveSessionContextQuery(project_id=project_id, session_id=session_id)
+            )
+            project_id, session_id = scope.session.project_id, scope.session.uid
             result = await self.preview.run(
                 PreviewSessionQuery(project_id=project_id, session_id=session_id)
             )
@@ -98,11 +109,11 @@ class SessionCliController:
     @command("resume")
     async def resume_session(
         self,
-        project_id: Annotated[UUID, Option("--project-id")],
-        source_session_id: Annotated[UUID, Option("--source-session-id")],
-        target_session_id: Annotated[UUID, Option("--target-session-id")],
-        expected_revision: Annotated[int, Option("--expected-revision")],
-        turn_id: Annotated[str, Option("--turn-id")],
+        project_id: Annotated[UUID | None, Option("--project-id")] = None,
+        source_session_id: Annotated[UUID | None, Option("--source-session-id")] = None,
+        target_session_id: Annotated[UUID | None, Option("--target-session-id")] = None,
+        expected_revision: Annotated[int | None, Option("--expected-revision")] = None,
+        turn_id: Annotated[str, Option("--turn-id")] = "",
     ) -> None:
         """종료·작성 해제 확인 뒤 미완료 작업과 현재 맥락을 이어받는다.
 
@@ -114,6 +125,22 @@ class SessionCliController:
             turn_id: 후속 호스트의 현재 턴.
         """
         try:
+            current = await self.context.run(
+                ResolveSessionContextQuery(project_id=project_id, session_id=target_session_id)
+            )
+            source = (
+                current
+                if source_session_id is None
+                else await self.context.run(
+                    ResolveSessionContextQuery(project_id=project_id, session_id=source_session_id)
+                )
+            )
+            project_id = current.session.project_id
+            source_session_id, target_session_id = source.session.uid, current.session.uid
+            if expected_revision is None:
+                expected_revision = source.session.revision
+            if not turn_id and current.execution is not None:
+                turn_id = current.execution.turn_id
             result = await self.resume.run(
                 ResumeSessionCommand(
                     project_id=project_id,

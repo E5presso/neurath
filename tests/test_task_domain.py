@@ -83,8 +83,9 @@ def test_source_scope_correction_and_missing_body():
     original = source()
     with pytest.raises(ContextNotFound):
         original.require_project("another")
+    original.require_correction(original.uid)
     with pytest.raises(InvalidTaskState):
-        original.require_correction(original.uid)
+        source(SourceKind.STATUS).require_correction(original.uid)
     fixed = source(SourceKind.CORRECTION, corrects_id=original.uid)
     fixed.require_correction(original.uid)
     with pytest.raises(InvalidTaskState):

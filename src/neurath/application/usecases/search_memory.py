@@ -9,8 +9,10 @@ from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
 from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionManager
-from sqlalchemy import select
+from sqlalchemy import func, select
 
+from neurath.domain.aggregates.memory import MemoryKind
+from neurath.domain.values.lesson_observation import LessonState
 from neurath.infrastructure.models.memory import MemoryModel
 
 
@@ -24,6 +26,8 @@ class SearchMemoryQuery(AbstractQuery):
         session_id: 선택적인 기록 작성 세션.
         task_id: 선택적인 관련 작업.
         limit: 한 번에 조회할 1~100개 결과 수.
+        kind: 필요한 기억 유형만 선택한다.
+        lesson_state: 교훈의 마지막 적용·보류·철회 상태를 선택한다.
     """
 
     project_id: UUID
@@ -31,6 +35,8 @@ class SearchMemoryQuery(AbstractQuery):
     session_id: UUID | None = None
     task_id: UUID | None = None
     limit: int = 20
+    kind: MemoryKind | None = None
+    lesson_state: LessonState | None = None
 
 
 @UseCase()
@@ -65,6 +71,13 @@ class SearchMemoryUseCase(IAsyncQueryUseCase[SearchMemoryQuery, Sequence[UUID]])
             MemoryModel.project_id == query.project_id,
             MemoryModel.content.contains(query.text, autoescape=True),
         )
+        if query.kind is not None:
+            statement = statement.where(MemoryModel.kind == query.kind.value)
+        if query.lesson_state is not None:
+            statement = statement.where(
+                MemoryModel.kind == MemoryKind.LESSON.value,
+                func.json_extract(MemoryModel.lessons, "$[#-1].state") == query.lesson_state.value,
+            )
         if query.session_id is not None:
             statement = statement.where(MemoryModel.session_id == query.session_id)
         if query.task_id is not None:

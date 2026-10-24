@@ -1078,23 +1078,23 @@ async def test_handoff_reuses_original_assignment_without_old_owner_or_duplicate
         await call(database, "start_provider", "StartProvider", original.uid, sender.uid)
     with pytest.raises(InvalidExecutionState):
         await call(database, "dispatch_delegation", "DispatchDelegation", original.uid, sender.uid)
-    with pytest.raises(InvalidTaskState, match="already has a root assignment"):
-        await call(
-            database,
-            "prepare_delegation",
-            "PrepareDelegation",
-            **vars(
-                PrepareDelegationCommand(
-                    task_id=task.uid,
-                    sender_id=recipient.uid,
-                    role=DelegationRole.EXECUTOR,
-                    scope="scope",
-                    route=DelegationRoute.PROVIDER,
-                    recipient_id=None,
-                    plan=replace(plan, parent_session_id=receiver.session.uid),
-                )
-            ),
-        )
+    distinct = await call(
+        database,
+        "prepare_delegation",
+        "PrepareDelegation",
+        **vars(
+            PrepareDelegationCommand(
+                task_id=task.uid,
+                sender_id=recipient.uid,
+                role=DelegationRole.EXECUTOR,
+                scope="scope",
+                route=DelegationRoute.PROVIDER,
+                recipient_id=None,
+                plan=replace(plan, parent_session_id=receiver.session.uid),
+            )
+        ),
+    )
+    assert distinct.uid != original.uid
     launched = []
 
     def start(self, uid, plan, prompt):

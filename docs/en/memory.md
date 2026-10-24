@@ -4,7 +4,7 @@ Issue #143 separates current enclave facts, sourced historical memories, checkpo
 
 ## Current context and history
 
-Enclaves scope facts (`fact`), assumptions (`assumption`) and decisions (`decision`) by project, session and optional task. Writes and removals require the observed revision: use 0 for creation, then the returned revision. Persistence manages optimistic revisions; individual changes within one atomic request have separate history numbers. A failed change rolls back the entire request, including detailed artifacts.
+Enclaves scope facts (`fact`), assumptions (`assumption`) and decisions (`decision`) by project, session and optional task. The CLI resolves the current host and optimistic revision for writes/removals; explicit revision overrides remain available for stale-write checks. Persistence manages optimistic revisions; individual changes within one atomic request have separate history numbers. A failed change rolls back the entire request, including detailed artifacts.
 
 Removal uses `op: remove`, distinct from setting an empty or null value. Previous values and deletion markers remain in history but never appear as current restored facts. Value objects retain field reassignment protection and read-only Sequence contracts without forced deep immutability.
 
@@ -14,18 +14,18 @@ Current values are limited to 16 KiB of UTF-8 per enclave. A set operation may s
 
 In a candidate environment whose DB has been explicitly initialized, memory operations belong to the spakky-typer `memory` controller; session preview and resume belong to the `session` controller.
 
-- `neurath memory update --project-id ID --session-id ID --expected-revision N --changes JSON`: atomically applies a set/remove array. Optional task-id selects task scope; `--changes -` reads JSON from stdin. A set contains key/value/kind/references and optional details.
-- `neurath memory checkpoint --project-id ID --session-id ID --content TEXT --reference REF`: stores outcomes, decisions, remaining work and next actions as a report. Repeat reference as needed; `--content -` reads stdin. It does not complete tasks.
-- `neurath memory search --project-id ID --text TEXT`: searches recent memory IDs, optionally limited by session-id/task-id and limit. SQL wildcard characters are treated literally.
-- `neurath memory read --project-id ID --memory-id ID`: reads a selected historical body and its sources.
-- `neurath session preview --project-id ID --session-id ID`: previews sources, current tasks, runners, enclaves and memory IDs. A checkpoint is not required; preview never changes ownership.
-- `neurath session resume --project-id ID --source-session-id ID --target-session-id ID --expected-revision N --turn-id ID`: connects existing work to the observed target turn. Equal source and target IDs explicitly resume the same execution.
+- `neurath memory update --changes JSON`: atomically applies a set/remove array. Optional task-id selects task scope; `--changes -` reads JSON from stdin. A set contains key/value/kind/references and optional details.
+- `neurath memory checkpoint --content TEXT --reference REF`: stores outcomes, decisions, remaining work and next actions as a report. Repeat reference as needed; `--content -` reads stdin. It does not complete tasks.
+- `neurath memory search --text TEXT`: searches recent memory IDs, optionally limited by session-id/task-id and limit. SQL wildcard characters are treated literally.
+- `neurath memory read --memory-id ID`: reads a selected historical body and its sources.
+- `neurath session preview`: previews sources, current tasks, runners, enclaves and memory IDs. A checkpoint is not required; preview never changes ownership.
+- `neurath session resume --source-session-id ID --target-session-id ID --expected-revision N --turn-id ID`: connects existing work to the observed target turn. Equal source and target IDs explicitly resume the same execution.
 
 ## Handoff and automatic restoration
 
-Cross-session handoff requires observed termination of the source execution and its children, no remaining writer lease and no running phase. Unknown liveness is not termination. An existing target enclave must be read and reconciled first rather than overwritten. Ownership of tasks, runners and enclaves moves within the same project while attempts, sources and change history remain intact. The source successor link prevents old hooks and explicit execution resume from re-enabling duplicate writing.
+Cross-session handoff requires observed termination of the source execution and its children, no remaining writer lease and no running phase. Unknown liveness is not termination. An existing target enclave or deletion history alone does not block handoff. Disjoint current facts merge; only different current values of the same key conflict. Original change history remains available. Ownership of tasks, runners and enclaves moves within the same project while attempts, sources and change history remain intact. The source successor link remains. An actual new user turn may perform new work without reclaiming the transferred tasks.
 
-The [Codex](https://learn.chatgpt.com/docs/hooks) and [Claude Code](https://code.claude.com/docs/en/hooks#sessionstart) `SessionStart` event with `source: compact` returns current context through `hookSpecificOutput.additionalContext`. Startup and resume reuse that path. Restoration contains session-common facts and unfinished-task facts, requirements, source references and runner state. It excludes other sessions and completed/invalidated task enclaves. Empty state returns `{}`. More than 8,000 characters or a failed read produces a failure response without recording successful restoration. Installation must also account for Codex additionalContextLimit and Claude output limits.
+The [Codex](https://learn.chatgpt.com/docs/hooks) and [Claude Code](https://code.claude.com/docs/en/hooks#sessionstart) `SessionStart` event with `source: compact` returns current context through `hookSpecificOutput.additionalContext`. Startup and resume reuse that path. Restoration contains session-common facts and unfinished-task facts, requirements, source references and runner state. It excludes other sessions and completed/invalidated task enclaves. Empty state returns `{}`. When combined context exceeds 8,000 characters, the complete text is saved atomically in the user data directory and the hook directs the host read tool to load it before proceeding. Nothing is truncated and the user need not shorten or repeat it. Failed reads report unverified bookkeeping without blocking recovery tools. Installation must also account for Codex additionalContextLimit and Claude output limits.
 
 Native validation uses separate temporary databases and validation sessions. It does not install the candidate into existing work sessions, user configuration or original databases.
 

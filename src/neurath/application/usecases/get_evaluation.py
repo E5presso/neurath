@@ -1,18 +1,19 @@
 """평가 조건·관련 후보·전체 원문을 조회하며 새 실행을 만들지 않는다."""
 
+import json
+from hashlib import sha256
 from typing import override
 from uuid import UUID
 
 from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
-from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
 
-from neurath.application.ports.repositories.workflow import IWorkflowRepository
+from neurath.application.ports.services.evaluation_artifact import IEvaluationArtifactService
 from neurath.application.ports.services.evaluation_context import (
     EvaluationContext,
-    IEvaluationContextService,
 )
+from neurath.application.usecases.read_evaluation import ReadEvaluationQuery, ReadEvaluationUseCase
 from neurath.domain.aggregates.workflow import WorkflowRun
 from neurath.domain.values.workflow_definition import PhaseDefinition
 
@@ -51,32 +52,48 @@ class GetEvaluationResult:
 
 @UseCase()
 class GetEvaluationUseCase(IAsyncQueryUseCase[GetEvaluationQuery, GetEvaluationResult]):
-    """현재 후보 조회를 실행 예약·의미 판단과 분리한다."""
+    """짧은 DB 스냅샷을 닫은 뒤 파일·Git을 관찰하여 현재 후보를 구성한다."""
 
-    def __init__(self, workflows: IWorkflowRepository, context: IEvaluationContextService) -> None:
-        """현재 절차와 원장 조회 계약을 받는다.
+    def __init__(self, read: ReadEvaluationUseCase, artifacts: IEvaluationArtifactService) -> None:
+        """원장 조회와 외부 관찰의 독립 경계를 받는다.
 
         Args:
-            workflows: 선택한 실행 조회.
-            context: 관련 요구와 전체 맥락 구성.
+            read: 원문·작업·단계의 짧은 읽기 요청.
+            artifacts: DB 트랜잭션 밖에서 파일과 Git을 관찰한다.
         """
-        self.workflows = workflows
-        self.context = context
+        self.read = read
+        self.artifacts = artifacts
 
-    @transactional
     @override
     async def run(self, query: GetEvaluationQuery) -> GetEvaluationResult:
-        """소유 범위를 확인하고 선택한 평가 단계의 현재 자료를 반환한다.
+        """외부 관찰 동안 DB 연결을 점유하지 않고 후보 지문을 반환한다.
 
         Args:
-            query: 기존 실행과 평가 단계.
+            query: 실제 평가할 기존 실행과 단계.
 
         Returns:
-            GetEvaluationResult: 현재 조건·맥락이며 실행 성공을 뜻하지 않는다.
+            GetEvaluationResult: 원장 스냅샷과 실제 외부 관찰에 연결된 후보.
         """
-        run = await self.workflows.get(query.run_id)
-        run.require_scope(query.project_id, query.session_id)
-        phase = run.evaluation_phase(query.phase_key)
-        return GetEvaluationResult(
-            run=run, phase=phase, context=await self.context.load(run, phase)
+        snapshot = await self.read.run(
+            ReadEvaluationQuery(
+                project_id=query.project_id,
+                session_id=query.session_id,
+                run_id=query.run_id,
+                phase_key=query.phase_key,
+            )
         )
+        target = snapshot.phase.evaluation
+        assert target is not None
+        observed = await self.artifacts.observe(
+            snapshot.phase.directory, (*target.artifacts, *target.verification)
+        )
+        candidate = sha256(
+            json.dumps((snapshot.context.candidate, tuple(observed)), sort_keys=True).encode()
+        ).hexdigest()
+        context = EvaluationContext(
+            candidate=candidate,
+            requirements=snapshot.context.candidate,
+            scope=snapshot.context.scope
+            + f"\nObserved candidate: {json.dumps(tuple(observed), ensure_ascii=False)}",
+        )
+        return GetEvaluationResult(run=snapshot.run, phase=snapshot.phase, context=context)

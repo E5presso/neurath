@@ -78,9 +78,9 @@ async def test_spakky_injects_standard_managers_registry_collector_and_repositor
         manager = scope.get(AsyncSessionManager)
         usecase = scope.get(RegisterSessionUseCase)
         projects = scope.get(IProjectRepository)
-        assert usecase.projects is projects
-        assert usecase.sessions is scope.get(ISessionRepository)
-        assert projects._session_manager is usecase.sessions._session_manager is manager
+        assert usecase.record.projects is projects
+        assert usecase.record.sessions is scope.get(ISessionRepository)
+        assert projects._session_manager is usecase.record.sessions._session_manager is manager
         assert projects._schema_registry is scope.get(SchemaRegistry)
         assert projects._aggregate_collector is scope.get(AggregateCollector)
         assert scope.get(SchemaRegistry).get_type(Project) is ProjectModel

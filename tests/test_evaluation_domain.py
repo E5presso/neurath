@@ -57,7 +57,7 @@ def assignment(**kwargs):
 )
 def test_evaluation_target_rejects_missing_actual_inputs(kwargs):
     with pytest.raises(ValueError):
-        replace(review_phase().evaluation, **kwargs)
+        replace(review_phase().evaluation, **kwargs).require_ready()
 
 
 def test_review_cannot_use_generic_report_execution_or_optional_skip():
@@ -89,8 +89,8 @@ def test_reflection_offered_once_requested_without_token_and_no_reconfirmation()
     flow.choose_reflection(ReflectionChoice.REQUESTED, "사용자 요청")
     flow.choose_reflection(ReflectionChoice.OFFERED, "다시 확인")
     assert flow.reflection_context == "사용자 요청" and flow.current is not None
-    with pytest.raises(InvalidWorkflowState):
-        flow.choose_reflection(ReflectionChoice.UNANSWERED, "이미 요청함")
+    flow.choose_reflection(ReflectionChoice.UNANSWERED, "사용자 선택 철회")
+    assert flow.reflection is ReflectionChoice.UNANSWERED and flow.current is None
 
 
 def test_evaluation_order_and_nonrecursive_assignment():
@@ -118,8 +118,9 @@ def test_bind_candidate_identity_reuse_and_order():
         flow.bind_evaluation(flow.current, delegated, "other")
     attempt = flow.bind_evaluation(flow.current, delegated, "one")
     assert flow.bind_evaluation(flow.current, delegated, "one") == attempt
-    with pytest.raises(InvalidWorkflowState):
-        flow.bind_evaluation(flow.current, assignment(), "one")
+    replacement = flow.bind_evaluation(flow.current, assignment(), "one")
+    assert replacement.delegation_id != attempt.delegation_id
+    assert flow.attempts[0].delegation_id == attempt.delegation_id
 
 
 def ready_review():

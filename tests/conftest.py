@@ -80,3 +80,8 @@ async def storage_scope(database, *, write=True):
 def recovery_record_directory(tmp_path, monkeypatch):
     """시험의 고의적인 장애 기록이 사용자 상태 디렉터리에 기록되지 않게 한다."""
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+    monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
+    monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
+    monkeypatch.delenv("NEURATH_SESSION_ID", raising=False)
+    monkeypatch.delenv("NEURATH_PROVIDER", raising=False)

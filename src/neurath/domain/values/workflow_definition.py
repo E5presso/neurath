@@ -52,8 +52,8 @@ class PhaseDefinition(AbstractValueObject):
             for value in (self.key, self.purpose, self.directory, self.target_revision)
         ):
             raise ValueError("Phase identity, purpose, directory and target revision are required")
-        if not self.arguments or not self.arguments[0].strip():
-            raise ValueError("An executable is required")
+        if self.arguments and not self.arguments[0].strip():
+            raise ValueError("Executable arguments must name a program")
         if (
             not self.checks
             or len(set(self.checks)) != len(self.checks)

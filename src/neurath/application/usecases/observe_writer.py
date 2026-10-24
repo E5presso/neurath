@@ -10,6 +10,11 @@ from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseC
 from spakky.event.event_publisher import IAsyncEventPublisher
 
 from neurath.application.ports.services.writer_observer import IWriterObserverService
+from neurath.application.usecases.read_native_liveness import (
+    ReadNativeLivenessQuery,
+    ReadNativeLivenessUseCase,
+)
+from neurath.domain.enums.liveness import Liveness
 from neurath.domain.events.writer_liveness_observed import WriterLivenessObserved
 
 
@@ -36,14 +41,21 @@ class ObserveWriterCommand(AbstractCommand):
 class ObserveWriterUseCase(IAsyncCommandUseCase[ObserveWriterCommand, None]):
     """실제 작성 호출의 생존을 관찰하고 원래 임대 세대와 함께 발행한다."""
 
-    def __init__(self, observer: IWriterObserverService, publisher: IAsyncEventPublisher) -> None:
+    def __init__(
+        self,
+        native: ReadNativeLivenessUseCase,
+        observer: IWriterObserverService,
+        publisher: IAsyncEventPublisher,
+    ) -> None:
         """실제 호스트 서비스와 관찰 결과 발행자를 받는다.
 
         Args:
-            observer: 요청에 지정한 실제 호스트 대상을 관찰한다.
+            native: 요청 간 보존된 실제 호스트 사건을 읽는다.
+            observer: 직접 관리 중인 프로세스가 있을 때 실제 종료를 관찰한다.
             publisher: 관찰 결과를 후속 저장 유스케이스에 전달한다.
         """
         self.observer = observer
+        self.native = native
         self.publisher = publisher
 
     @override
@@ -53,9 +65,17 @@ class ObserveWriterUseCase(IAsyncCommandUseCase[ObserveWriterCommand, None]):
         Args:
             command: 실제 대상 식별자와 재검사할 요청 범위.
         """
-        live = await asyncio.to_thread(
-            self.observer.observe, command.execution_id, command.turn_id, command.tool_use_id
+        live = await self.native.run(
+            ReadNativeLivenessQuery(
+                execution_id=command.execution_id,
+                turn_id=command.turn_id,
+                tool_use_id=command.tool_use_id,
+            )
         )
+        if live is Liveness.UNKNOWN:
+            live = await asyncio.to_thread(
+                self.observer.observe, command.execution_id, command.turn_id, command.tool_use_id
+            )
         await self.publisher.publish(
             WriterLivenessObserved(
                 writer_id=command.writer_id,

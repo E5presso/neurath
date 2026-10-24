@@ -8,6 +8,7 @@ from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 
 from neurath.domain.aggregates.task import Task
+from neurath.domain.enums.execution_pause_cause import ExecutionPauseCause
 from neurath.domain.enums.execution_status import ExecutionStatus
 from neurath.domain.enums.hook_action import HookAction
 from neurath.domain.enums.task_status import TaskStatus
@@ -28,6 +29,7 @@ class Execution(AbstractAggregateRoot[UUID]):
         reason: 마지막 중지나 취소 원인.
         stop_snapshot: 직전 Stop에서 계속하도록 요청했던 태스크 개정과 상태.
         revision: 저장소가 비교하는 낙관적 버전.
+        pause_cause: 정상 대기·오류·취소를 구분하는 실제 원인.
     """
 
     session_id: UUID
@@ -38,6 +40,7 @@ class Execution(AbstractAggregateRoot[UUID]):
     reason: str
     stop_snapshot: str
     revision: int
+    pause_cause: ExecutionPauseCause | None = None
 
     @classmethod
     @override
@@ -95,12 +98,15 @@ class Execution(AbstractAggregateRoot[UUID]):
 
     @property
     def allows_monitoring(self) -> bool:
-        """실행 중이거나 외부 대기 중일 때 감시의 새 관찰·알림을 허용한다.
+        """명시적인 취소가 아닌 기존 감시를 허용하며 대화 연결 종료와 구분한다.
 
         Returns:
-            bool: 취소·종료된 실행이면 False.
+            bool: 취소된 실행이면 False이며 기존 요청된 감시는 연결 종료 뒤에도 유지한다.
         """
-        return self.status in (ExecutionStatus.RUNNING, ExecutionStatus.PAUSED)
+        return (
+            self.status is not ExecutionStatus.CANCELLED
+            and self.pause_cause is not ExecutionPauseCause.CANCELLATION
+        )
 
     def require_monitoring(self) -> None:
         """취소·종료된 실행에 새 감시를 등록하지 못하게 한다.
@@ -108,7 +114,7 @@ class Execution(AbstractAggregateRoot[UUID]):
         Raises:
             InvalidTaskState: 현재 실행이 감시 등록을 허용하지 않는 경우.
         """
-        if not self.allows_monitoring:
+        if not self.allows_monitoring or self.status is ExecutionStatus.ENDED:
             raise InvalidTaskState("Cannot register monitoring for a stopped execution")
 
     def observe_start(self, source: str) -> None:
@@ -120,7 +126,7 @@ class Execution(AbstractAggregateRoot[UUID]):
         self.start_source = source
 
     def begin_turn(self, turn_id: str) -> None:
-        """새 사용자 턴을 기록하되 취소·일시 중지는 명시적인 재개까지 보존한다.
+        """새 호스트 턴을 시작하며 원 태스크의 취소·요구·소유권은 변경하지 않는다.
 
         Args:
             turn_id: 호스트에서 관찰한 새 턴 식별자.
@@ -134,6 +140,10 @@ class Execution(AbstractAggregateRoot[UUID]):
             return
         self.turn_id = turn_id
         self.stop_snapshot = ""
+        if self.status is not ExecutionStatus.RUNNING:
+            self.status = ExecutionStatus.RUNNING
+            self.reason = ""
+            self.pause_cause = None
 
     def resume(self, turn_id: str) -> None:
         """사용자가 요청한 재개를 현재 턴에 적용한다.
@@ -144,6 +154,7 @@ class Execution(AbstractAggregateRoot[UUID]):
         self.require_turn(turn_id)
         self.status = ExecutionStatus.RUNNING
         self.reason = ""
+        self.pause_cause = None
         self.stop_snapshot = ""
 
     def require_turn(self, turn_id: str) -> None:
@@ -158,16 +169,18 @@ class Execution(AbstractAggregateRoot[UUID]):
         if not turn_id or turn_id != self.turn_id:
             raise InvalidExecutionState("Event does not identify the current turn")
 
-    def pause(self, reason: str) -> None:
+    def pause(self, reason: str, cause: ExecutionPauseCause = ExecutionPauseCause.FAILURE) -> None:
         """태스크를 그대로 둔 채 호스트에 제어권을 반환할 상태로 전이한다.
 
         Args:
             reason: 사용자에게 표시할 중지 원인.
+            cause: 해당 중지를 해소할 실제 사건의 종류.
         """
         if self.status in (ExecutionStatus.CANCELLED, ExecutionStatus.ENDED):
             return
         self.status = ExecutionStatus.PAUSED
         self.reason = reason
+        self.pause_cause = cause
 
     def cancel(self, turn_id: str, reason: str) -> None:
         """실제 중단 사건을 같은 턴에만 기록하고 후속 도구 실행을 막는다.
@@ -206,22 +219,35 @@ class Execution(AbstractAggregateRoot[UUID]):
         Returns:
             HookAction: 정상 종료 허용, 작업 계속 또는 성공과 구별되는 일시 중지.
         """
-        if self.status is not ExecutionStatus.RUNNING:
+        if (
+            self.status in (ExecutionStatus.CANCELLED, ExecutionStatus.ENDED)
+            or self.pause_cause is ExecutionPauseCause.CANCELLATION
+        ):
             return HookAction.PAUSE
         unfinished = tuple(
             t for t in tasks if t.status not in (TaskStatus.SUCCEEDED, TaskStatus.INVALIDATED)
         )
         if not unfinished:
             return HookAction.ALLOW
+        if self.status is ExecutionStatus.PAUSED and any(
+            task.status is not TaskStatus.WAITING for task in unfinished
+        ):
+            self.resume_waiting()
         snapshot = repr(
             (sorted((t.uid, t.revision, t.status.value) for t in unfinished), sorted(progress))
         )
         if repeated and snapshot == self.stop_snapshot:
-            self.pause("No progress after Stop feedback; unfinished work is preserved")
+            self.pause(
+                "No progress after Stop feedback; unfinished work is preserved",
+                ExecutionPauseCause.NO_PROGRESS,
+            )
             return HookAction.PAUSE
         self.stop_snapshot = snapshot
         if all(t.status is TaskStatus.WAITING for t in unfinished):
-            self.pause("External dependencies remain; unfinished work is preserved")
+            self.pause(
+                "External dependencies remain; unfinished work is preserved",
+                ExecutionPauseCause.WAITING,
+            )
             return HookAction.PAUSE
         return HookAction.CONTINUE
 
@@ -232,7 +258,10 @@ class Execution(AbstractAggregateRoot[UUID]):
             turn_id: 사용자 중단 요청이 지정한 실제 턴.
         """
         self.require_turn(turn_id)
-        self.pause("Cancellation requested; actual termination is pending")
+        self.pause(
+            "Cancellation requested; actual termination is pending",
+            ExecutionPauseCause.CANCELLATION,
+        )
         self.add_event(ExecutionCancellationRequested(execution_id=self.uid, turn_id=turn_id))
 
     def require_stopped(self) -> None:
@@ -243,3 +272,20 @@ class Execution(AbstractAggregateRoot[UUID]):
         """
         if self.status not in (ExecutionStatus.CANCELLED, ExecutionStatus.ENDED):
             raise InvalidExecutionState("Source execution has not stopped")
+
+    def resume_waiting(self) -> bool:
+        """외부 의존 해소는 정상 대기만 풀며 실제 취소·장애를 해제하지 않는다.
+
+        Returns:
+            bool: 같은 작업의 정상 대기를 실제로 해소했는지 여부.
+        """
+        if (
+            self.status is not ExecutionStatus.PAUSED
+            or self.pause_cause is not ExecutionPauseCause.WAITING
+        ):
+            return False
+        self.status = ExecutionStatus.RUNNING
+        self.pause_cause = None
+        self.reason = ""
+        self.stop_snapshot = ""
+        return True

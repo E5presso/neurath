@@ -23,6 +23,7 @@ from neurath.domain.aggregates.session import HostSession
 from neurath.domain.aggregates.task import Task
 from neurath.domain.enums.delegation_role import DelegationRole
 from neurath.domain.enums.delegation_route import DelegationRoute
+from neurath.domain.enums.delegation_status import DelegationStatus
 from neurath.domain.errors import InvalidTaskState
 from neurath.domain.values.directory_observation import DirectoryObservation
 from neurath.domain.values.provider_plan import ProviderPlan
@@ -42,6 +43,7 @@ class PrepareDelegationCommand(AbstractCommand):
         plan: 독립 실행의 검증된 모델·정책 계획.
         parent_id: 재위임이면 수신자가 수락한 기존 배정. 원 지시를 바꾸지 않는다.
         candidate: 독립 평가의 내용 지문이며 일반 배정은 빈 문자열.
+        retry_of: 명시적으로 재시도하는 종료된 원 배정.
     """
 
     task_id: UUID
@@ -53,6 +55,7 @@ class PrepareDelegationCommand(AbstractCommand):
     plan: ProviderPlan | None = None
     parent_id: UUID | None = None
     candidate: str = ""
+    retry_of: UUID | None = None
 
 
 @UseCase()
@@ -93,6 +96,9 @@ class PrepareDelegationUseCase(IAsyncCommandUseCase[PrepareDelegationCommand, De
         Args:
             command: 원문·수신 범위와 해당 작업에 필요한 입력.
 
+        Raises:
+            InvalidTaskState: 원 배정이 아직 실행 중이거나 다른 요청을 재시도하려는 경우.
+
         Returns:
             Delegation: 요청한 범위에서 저장 또는 조회한 결과.
 
@@ -124,6 +130,17 @@ class PrepareDelegationUseCase(IAsyncCommandUseCase[PrepareDelegationCommand, De
             plan=plan,
             parent_id=command.parent_id,
         )
+        if command.retry_of is not None:
+            prior = await self.delegations.get(command.retry_of)
+            if (
+                prior.task_id != task.uid
+                or prior.sender_id != sender.uid
+                or prior.status not in (DelegationStatus.COMPLETED, DelegationStatus.STOPPED)
+            ):
+                raise InvalidTaskState(
+                    "Retry requires the same owner's observed completed or stopped assignment"
+                )
+            candidate.request_key = f"{candidate.request_identity}:retry:{prior.uid}"
         existing = candidate.find_reusable(await self.delegations.find_by_task_id(task.uid))
         if existing is not None:
             return existing

@@ -10,12 +10,10 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
-    Index,
     Integer,
     String,
     UniqueConstraint,
     Uuid,
-    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -34,6 +32,7 @@ class DelegationModel(AbstractMappableTable[Delegation]):
     """Delegation의 저장 상태와 낙관적 개정을 왕복한다.
 
     Attributes:
+        request_key: 수신 경로·범위를 구분하는 동일 요청의 키.
         id: 도메인의 안정적인 식별자.
         version: 프레임워크가 관리하는 변경 토큰.
         created_at: 최초 생성 UTC 시각.
@@ -72,24 +71,9 @@ class DelegationModel(AbstractMappableTable[Delegation]):
 
     __tablename__ = "core_delegations"
     __table_args__ = (
-        UniqueConstraint(
-            "task_id",
-            "definition_number",
-            "sender_id",
-            "role",
-            "candidate",
-            name="uq_core_delegation_candidate",
-        ),
-        Index(
-            "uq_core_root_delegation",
-            "task_id",
-            "definition_number",
-            "role",
-            "candidate",
-            unique=True,
-            sqlite_where=text("parent_id IS NULL"),
-        ),
+        UniqueConstraint("task_id", "request_key", name="uq_core_delegation_request"),
     )
+    request_key: Mapped[str] = mapped_column(String, nullable=False)
     id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True)
     version: Mapped[UUID] = mapped_column(Uuid(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -160,6 +144,7 @@ class DelegationModel(AbstractMappableTable[Delegation]):
             role=domain.role.value,
             scope=domain.scope,
             candidate=domain.candidate,
+            request_key=domain.request_identity,
             route=domain.route.value,
             status=domain.status.value,
             message_id=domain.message_id,
@@ -204,6 +189,7 @@ class DelegationModel(AbstractMappableTable[Delegation]):
             role=DelegationRole(self.role),
             scope=self.scope,
             candidate=self.candidate,
+            request_key=self.request_key,
             route=DelegationRoute(self.route),
             status=DelegationStatus(self.status),
             message_id=self.message_id,

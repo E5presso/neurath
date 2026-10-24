@@ -9,12 +9,12 @@ from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import event, inspect
-from sqlalchemy.engine import URL, Connection, Engine
+from sqlalchemy.engine import URL, Connection, Engine, ExceptionContext
 from sqlalchemy.engine.interfaces import DBAPIConnection
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import ConnectionPoolEntry, NullPool
 
-from neurath.domain.errors import StorageNotReady
+from neurath.domain.errors import RevisionConflict, StorageNotReady
 
 
 def user_database_path() -> Path:
@@ -48,7 +48,7 @@ def create_database_engine(
 
     Args:
         path: 명시적인 데이터베이스 경로이며 None이면 사용자 단위 기본 경로.
-        write: 쓰기를 허용하고 읽기 전에 쓰기 권한을 예약할지 여부.
+        write: 연결에서 데이터 변경을 허용할지 여부.
         create: 명시적 초기화 과정에서 데이터베이스 파일을 생성할지 여부.
         timeout: SQLite가 데이터베이스 잠금을 기다리는 시간(초).
         migration: 명시적 스키마 이전 연결에서만 외래 키 검사를 Alembic의 전후 검사로 맡긴다.
@@ -109,13 +109,13 @@ def configure_sqlite_engine(
 ) -> None:
     """외래 키·읽기 전용 설정과 트랜잭션 시작 이벤트를 엔진에 등록한다.
 
-    쓰기 요청은 BEGIN IMMEDIATE로 첫 조회 전에 쓰기 잠금을 예약한다. 읽기는
+    조회 시 쓰기 잠금을 예약하지 않고 변경 시 SQLite의 트랜잭션을 사용한다. 읽기는
     BEGIN과 query_only를 사용한다. check_schema=True이면 시작한 트랜잭션에서
     현재 패키지의 Alembic head와 저장된 revision을 대조한다.
 
     Args:
         engine: 프레임워크 또는 마이그레이션이 생성한 엔진.
-        write: 상태 조회 전에 쓰기 권한을 예약할지 여부.
+        write: 데이터 변경을 허용할지 여부.
         check_schema: 일반 요청의 트랜잭션에서 Alembic 스키마를 검사할지 여부.
         migration: SQLite 테이블 재생성을 위해 트랜잭션 시작 전에 외래 키 집행을 해제한다.
     """
@@ -137,15 +137,32 @@ def configure_sqlite_engine(
             cursor.close()
 
     def begin(connection: Connection) -> None:
-        """쓰기에는 BEGIN IMMEDIATE, 읽기에는 BEGIN을 실행하고 선택적으로 스키마를 검사한다.
+        """일반 요청은 지연 시작하고 명시적 스키마 이전만 쓰기 예약 후 실행한다.
 
         Args:
             connection: SQLite 트랜잭션 동작을 설정할 연결.
         """
-        connection.exec_driver_sql("BEGIN IMMEDIATE" if write else "BEGIN")
+        connection.exec_driver_sql("BEGIN IMMEDIATE" if migration else "BEGIN")
         if check_schema:
             verify_schema(connection)
 
+    def conflict(context: ExceptionContext) -> Exception | None:
+        """SQLite의 쓰기 경합을 현재 원장을 다시 읽어야 하는 충돌로 표현한다.
+
+        Args:
+            context: SQLAlchemy가 관찰한 원 드라이버 오류.
+
+        Returns:
+            Exception | None: 재조회가 필요한 충돌이며 다른 오류는 원래대로 전파한다.
+        """
+        code = getattr(context.original_exception, "sqlite_errorcode", None)
+        if isinstance(code, int) and code & 255 in (5, 6):
+            return RevisionConflict(
+                "Concurrent SQLite update; reread current state and repeat this request"
+            )
+        return None
+
+    event.listen(engine, "handle_error", conflict, retval=True)
     event.listen(engine, "connect", configure)
     event.listen(engine, "begin", begin)
 

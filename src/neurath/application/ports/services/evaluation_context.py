@@ -15,10 +15,12 @@ class EvaluationContext:
     Attributes:
         candidate: 관련 요구·대상·자료만으로 만든 안정적인 지문.
         scope: 원문·정정·전체 TODO·산출물·검증 자료를 포함한 메시지.
+        requirements: 외부 관찰 전에 읽은 요구·단계 정의 지문.
     """
 
     candidate: str
     scope: str
+    requirements: str = ""
 
 
 class IEvaluationContextService(ABC):

@@ -397,7 +397,7 @@ class WorkflowRun(AbstractAggregateRoot[UUID]):
             reason: 방법 변경 또는 사용자 정정의 이유.
 
         Raises:
-            InvalidWorkflowState: 이유가 없거나 요구 정정 없이 필수 단계를 삭제한 경우.
+            InvalidWorkflowState: 변경 이유가 없는 경우.
         """
         if not reason.strip():
             raise InvalidWorkflowState("Workflow revision requires a reason")
@@ -406,14 +406,6 @@ class WorkflowRun(AbstractAggregateRoot[UUID]):
             and task_definition_number == self.revisions[-1].task_definition_number
         ):
             return
-        required = {phase.key for phase in self.definition.phases if phase.skip_condition is None}
-        retained = {phase.key for phase in definition.phases if phase.skip_condition is None}
-        if task_definition_number == self.revisions[
-            -1
-        ].task_definition_number and not required.issubset(retained):
-            raise InvalidWorkflowState(
-                "Required phases need an actual task correction before removal"
-            )
         self.revisions = tuple(self.revisions) + (
             WorkflowRevision(
                 definition=deepcopy(definition),
@@ -449,6 +441,8 @@ class WorkflowRun(AbstractAggregateRoot[UUID]):
         """
         if self.phase_for(attempt).evaluation is not None:
             raise InvalidWorkflowState("Evaluation uses the existing collaboration route")
+        if not self.phase_for(attempt).arguments:
+            return
         self.add_event(
             PhaseExecutionRequested(
                 project_id=self.project_id,
@@ -458,6 +452,20 @@ class WorkflowRun(AbstractAggregateRoot[UUID]):
                 attempt=attempt,
                 fresh=fresh,
             )
+        )
+
+    def requires_evaluation(self, phase: PhaseDefinition) -> bool:
+        """현재 사용자 선택에서 결과 보고에 필요한 평가만 구분한다.
+
+        Args:
+            phase: 현재 정의의 단계.
+
+        Returns:
+            bool: 결과 평가 또는 사용자가 계속 요청한 회고 평가이면 True.
+        """
+        return phase.evaluation is not None and (
+            phase.evaluation.kind is EvaluationKind.RESULT
+            or self.reflection is ReflectionChoice.REQUESTED
         )
 
     def evaluation_phase(self, key: str) -> PhaseDefinition:
@@ -488,6 +496,7 @@ class WorkflowRun(AbstractAggregateRoot[UUID]):
         """
         if phase.evaluation is None:
             raise InvalidWorkflowState("Phase is not an evaluation")
+        phase.evaluation.require_ready()
         if (
             phase.evaluation.kind is EvaluationKind.REFLECTION
             and self.reflection is not ReflectionChoice.REQUESTED
@@ -520,11 +529,18 @@ class WorkflowRun(AbstractAggregateRoot[UUID]):
             raise InvalidWorkflowState("Reflection requires an ordinary choice and its context")
         if choice is ReflectionChoice.OFFERED and self.reflection is not ReflectionChoice.UNASKED:
             return
-        if (
-            self.reflection is ReflectionChoice.REQUESTED
-            and choice is not ReflectionChoice.REQUESTED
-        ):
-            raise InvalidWorkflowState("Requested reflection must preserve its unfinished work")
+        if choice in (ReflectionChoice.DECLINED, ReflectionChoice.UNANSWERED):
+            for attempt in tuple(self.attempts):
+                phase = self.phase_for(attempt)
+                if (
+                    phase.evaluation is not None
+                    and phase.evaluation.kind is EvaluationKind.REFLECTION
+                    and attempt.status in (PhaseStatus.RUNNING, PhaseStatus.WAITING)
+                ):
+                    retired = replace(attempt, status=PhaseStatus.SKIPPED, skip_reason=reason)
+                    self.attempts = tuple(
+                        retired if item.number == attempt.number else item for item in self.attempts
+                    )
         self.reflection = choice
         self.reflection_context = reason
 
@@ -556,8 +572,6 @@ class WorkflowRun(AbstractAggregateRoot[UUID]):
                 PhaseStatus.WAITING,
             ):
                 continue
-            if old.candidate == candidate:
-                raise InvalidWorkflowState("Reconcile the original evaluation assignment")
             retired = replace(
                 old,
                 status=PhaseStatus.FAILED,
@@ -622,6 +636,7 @@ class WorkflowRun(AbstractAggregateRoot[UUID]):
         if not rationale.strip() or not references or any(not ref.strip() for ref in references):
             raise InvalidWorkflowState("Accept or reject findings against original evidence")
         phase = self.phase_for(attempt)
+        self.require_evaluation(phase)
         result = PhaseResult(
             status=PhaseStatus.SUCCEEDED if accepted else PhaseStatus.FAILED,
             target_revision=phase.target_revision,

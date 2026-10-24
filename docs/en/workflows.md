@@ -2,7 +2,7 @@
 
 [Documentation](index.md) · [한국어](../ko/workflows.md)
 
-These are planned workflows under the [product specification](specification.md). The hook CLI is implemented; business CLI commands and installed host wiring remain subsequent work. Available internal APIs are documented in the [project/session foundation](core-foundation.md) and [task ledger](task-ledger.md).
+These workflows connect the [product specification](specification.md) to the current CLI, skills, and hooks. Integration tests cover current-context resolution and ledger transitions. Native approvals, scheduling, and actual model delivery remain separately reported validation items.
 
 ## Request work and inspect progress
 

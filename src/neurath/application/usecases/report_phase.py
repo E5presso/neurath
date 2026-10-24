@@ -12,6 +12,7 @@ from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.application.ports.repositories.workflow import IWorkflowRepository
 from neurath.domain.aggregates.workflow import WorkflowRun
 from neurath.domain.enums.task_status import TaskStatus
+from neurath.domain.errors import InvalidWorkflowState
 from neurath.domain.values.external_wait import ExternalWait
 from neurath.domain.values.phase_attempt import PhaseResult, PhaseStatus
 
@@ -32,7 +33,7 @@ class ReportPhaseCommand(AbstractCommand):
     project_id: UUID
     session_id: UUID
     run_id: UUID
-    attempt_number: int
+    attempt_number: int | None
     result: PhaseResult
     notify_waiting: bool = False
 
@@ -75,19 +76,32 @@ class ReportPhaseUseCase(IAsyncCommandUseCase[ReportPhaseCommand, ReportPhaseRes
         Args:
             command: run·시도 ID와 실제 대상 개정·검사·근거를 가진 결과.
 
+        Raises:
+            InvalidWorkflowState: 보고할 현재 단계가 없는 경우.
+
         Returns:
             ReportPhaseResult: 결과가 저장된 run. 옛 정의의 결과는 보존하되 현재 단계에 자동 적용하지 않는다.
         """
         run = await self.workflows.get(command.run_id)
         run.require_scope(command.project_id, command.session_id)
-        run.report(command.attempt_number, command.result, notify_waiting=command.notify_waiting)
+        number = command.attempt_number
+        if number is None:
+            phase = run.current
+            if phase is None:
+                raise InvalidWorkflowState("Workflow is already complete")
+            previous = run.latest(phase)
+            if previous is None or previous.status is PhaseStatus.FAILED:
+                number = run.begin().number
+            else:
+                number = previous.number
+        run.report(number, command.result, notify_waiting=command.notify_waiting)
         task = await self.tasks.get(run.task_id)
         if (
-            not run.applies_to_current(command.attempt_number)
+            not run.applies_to_current(number)
             or task.definition.number != run.revisions[-1].task_definition_number
         ):
             return ReportPhaseResult(run=(await self.workflows.save(run)))
-        request_id = f"{run.uid}:{command.attempt_number}"
+        request_id = f"{run.uid}:{number}"
         if command.result.status is PhaseStatus.WAITING and task.status is TaskStatus.ACTIVE:
             task.wait(
                 ExternalWait(

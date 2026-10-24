@@ -150,5 +150,6 @@ class RequestSource(AbstractAggregateRoot[UUID]):
         Raises:
             InvalidTaskState: 현재 요구를 정정하는 출처가 아닌 경우.
         """
-        if self.kind is not SourceKind.CORRECTION or self.corrects_id != current_source_id:
+        self.require_requirement()
+        if self.kind is SourceKind.CORRECTION and self.corrects_id != current_source_id:
             raise InvalidTaskState("Correction must refer to the current requirement source")

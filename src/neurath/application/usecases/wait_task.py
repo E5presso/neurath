@@ -8,9 +8,12 @@ from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
+from neurath.application.ports.repositories.execution import IExecutionRepository
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.domain.aggregates.task import Task
+from neurath.domain.errors import InvalidExecutionState
 from neurath.domain.values.external_wait import ExternalWait
+from neurath.domain.values.task_monitor import MonitorKind
 
 
 @immutable
@@ -23,6 +26,8 @@ class WaitTaskCommand(AbstractCommand):
         task_id: 현재 시도를 외부 의존 대기로 전환할 태스크 ID.
         expected_revision: 수정 전에 읽은 Task.revision. 요구 개정 번호와는 별개다.
         condition: 대상·해소 조건·후속 범위·관찰을 가진 대기 값. resolution은 None이어야 한다.
+        monitor: 사용자가 요청한 외부 감시의 종류이며 일반 대기는 None.
+        poll_budget: 요청된 감시의 유한 관찰 횟수.
     """
 
     project_id: UUID
@@ -30,6 +35,8 @@ class WaitTaskCommand(AbstractCommand):
     task_id: UUID
     expected_revision: int
     condition: ExternalWait
+    monitor: MonitorKind | None = None
+    poll_budget: int = 100
 
 
 @immutable
@@ -51,13 +58,15 @@ class WaitTaskUseCase(IAsyncCommandUseCase[WaitTaskCommand, WaitTaskResult]):
     대기 정보를 저장할 뿐 외부 상태를 조회하거나 감시 작업을 시작하지 않는다.
     """
 
-    def __init__(self, tasks: ITaskRepository) -> None:
+    def __init__(self, tasks: ITaskRepository, executions: IExecutionRepository) -> None:
         """활성 태스크에 외부 대기를 추가할 저장소를 받는다.
 
         Args:
             tasks: 현재 활성 태스크를 조회하고 대기 이력·waiting 상태를 저장한다.
+            executions: 요청된 감시의 현재 실제 소유 실행을 확인한다.
         """
         self.tasks = tasks
+        self.executions = executions
 
     @transactional
     @override
@@ -69,9 +78,22 @@ class WaitTaskUseCase(IAsyncCommandUseCase[WaitTaskCommand, WaitTaskResult]):
 
         Returns:
             WaitTaskResult: 대기 이력이 추가된 waiting 태스크.
+
+        Raises:
+            InvalidExecutionState: 감시를 요청했지만 실제 실행이 관찰되지 않은 경우.
         """
         task = await self.tasks.get(command.task_id)
         task.require_scope(command.project_id, command.session_id)
         task.require_revision(command.expected_revision)
         task.wait(command.condition)
+        if command.monitor is not None:
+            execution = await self.executions.find_by_session_id_and_agent_id(
+                command.session_id, ""
+            )
+            if execution is None:
+                raise InvalidExecutionState("Monitoring requires an observed host execution")
+            execution.require_monitoring()
+            task.register_monitor(
+                execution.uid, command.monitor, command.condition.target, command.poll_budget
+            )
         return WaitTaskResult(task=(await self.tasks.save(task)))

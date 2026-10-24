@@ -25,14 +25,13 @@
 | [#151 — [Distribution] CLI·스킬·훅 설치와 릴리스 가이드 자동 생성](https://github.com/E5presso/neurath/issues/151) | [#148](https://github.com/E5presso/neurath/issues/148), [#149](https://github.com/E5presso/neurath/issues/149), [#139](https://github.com/E5presso/neurath/issues/139), [#150](https://github.com/E5presso/neurath/issues/150), [#147](https://github.com/E5presso/neurath/issues/147) | A35, A77, A78, A79, A80 | B25, B26 |
 | [#152 — [Delivery] 전체 요구 검증·문서 동기화·세 프로젝트 업데이트와 종료](https://github.com/E5presso/neurath/issues/152) | [#151](https://github.com/E5presso/neurath/issues/151), [#138](https://github.com/E5presso/neurath/issues/138), [#146](https://github.com/E5presso/neurath/issues/146), [#145](https://github.com/E5presso/neurath/issues/145), [#142](https://github.com/E5presso/neurath/issues/142) | A39, A40, A41, A55, A57, A62 | B27 |
 
-요구사항 검증 84개와 기능 결과 27개는 각각 주 담당 티켓에 연결했습니다. CLI 구현은 #148, 기본 스킬 14개는 #149가 담당합니다. 리뷰에 따른 memory/session 분리와 현재 CLI 경로 20개는 [공개 목록](interfaces.md)에 반영했습니다. 과거 작업 128개는 B 결과 기준을 통해 같은 담당 티켓으로 연결하고, 과거 스킬 33개의 공개/내부/호스트/전문 도구 배치는 기능 대응표를 유지합니다.
+요구사항 검증과 기능 결과 27개는 각각 주 담당 티켓에 연결했습니다. CLI 구현은 #148, 기본 스킬 14개는 #149가 담당합니다. 리뷰에 따른 memory/session 분리와 현재 기능별 CLI 경로는 [공개 목록](interfaces.md)에 반영했습니다. 과거 작업 128개는 B 결과 기준을 통해 같은 담당 티켓으로 연결하고, 과거 스킬 33개의 공개/내부/호스트/전문 도구 배치는 기능 대응표를 유지합니다.
 
 ## 구현 순서
 
-1. 코어 저장·요청 처리 → 태스크·runner·호스트 실행 기반.
-2. 기억·협업·뉴스룸·외부 감시·복구 및 독립 결과/회고 평가.
-3. CLI 통합 → 스킬 정의 → rules 진입과 실제 시작.
-4. 자료 이전과 배포·가이드 설치 → 전체 검증·세 프로젝트 적용·종료.
+내부 라이브러리별 완료를 제품 완료로 취급하지 않습니다. 각 변경에서 원문→현재 태스크→선택 스킬→호스트 수행→기억/협업/대기→실제 결과 평가→종료의 흐름을 먼저 확인하고 필요한 내부 구현을 함께 연결합니다. CLI·rules·훅·설치 가이드를 별도 마지막 단계로 미루지 않습니다.
+
+PR #163의 감사 수정은 이 연결을 함께 제공합니다. 아래 티켓 번호는 원래 추적 관계이며 GitHub 이슈의 완료·병합·실배포 상태를 뜻하지 않습니다. 다른 형식의 과거 DB 변환과 세 프로젝트의 실제 전환은 해당 자료의 보존·활성화 근거로 별도 확인합니다.
 
 ## 코어 기반 구현
 

@@ -10,6 +10,7 @@ def main() -> None:
     root = Path(__file__).resolve().parents[1]
     for arguments in (
         ["tools/static_quality.py"],
+        ["tools/generate_cli_guide.py", "--check"],
         [
             "-m",
             "pytest",

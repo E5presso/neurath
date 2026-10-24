@@ -54,7 +54,6 @@ def outcome(status=PhaseStatus.SUCCEEDED, **changes):
         {"purpose": ""},
         {"directory": ""},
         {"target_revision": ""},
-        {"arguments": ()},
         {"arguments": ("",)},
         {"checks": ()},
         {"checks": (" ",)},
@@ -219,23 +218,21 @@ def test_wrong_attempt_target_and_oversized_output_do_not_advance():
     assert run.current is not None
 
 
-def test_revision_preserves_unaffected_waiting_attempt_and_rejects_required_removal():
+def test_method_revision_preserves_waiting_attempt_without_user_requirement_correction():
     run = workflow(phase(), phase("docs"))
     a = run.begin()
     run.report(a.number, outcome(PhaseStatus.WAITING))
     changed = definition(phase(), replace(phase("docs"), target_revision="source-2"))
     with pytest.raises(InvalidWorkflowState):
         run.revise(changed, 1, "")
-    with pytest.raises(InvalidWorkflowState):
-        run.revise(definition(phase()), 1, "단계 제거")
-    with pytest.raises(InvalidWorkflowState):
-        run.revise(definition(phase(skip_condition="skip"), phase("docs")), 1, "필수 조건 제거")
+    run.revise(definition(phase()), 1, "중복 단계 제거")
+    run.revise(definition(phase(skip_condition="skip"), phase("docs")), 1, "방법의 선택 조건 변경")
     run.revise(changed, 2, "문서 요구만 정정")
     run.report(a.number, outcome())
     assert run.current.key == "docs"
     assert run.attempts[0].definition_number == 1
     run.revise(changed, 2, "같은 정의")
-    assert len(run.revisions) == 2
+    assert len(run.revisions) == 4
     run.revise(definition(phase()), 3, "태스크 범위 정정")
     run.require_complete(3)
 

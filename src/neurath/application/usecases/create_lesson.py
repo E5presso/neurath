@@ -6,17 +6,11 @@ from uuid import UUID
 
 from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
-from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
-from neurath.application.ports.repositories.memory import IMemoryRepository
-from neurath.application.ports.repositories.workflow import IWorkflowRepository
-from neurath.application.ports.services.evaluation_context import IEvaluationContextService
-from neurath.domain.aggregates.memory import Memory, MemoryKind
-from neurath.domain.enums.reflection_choice import ReflectionChoice
-from neurath.domain.values.evaluation_target import EvaluationKind
-from neurath.domain.values.lesson_observation import LessonObservation, LessonState
-from neurath.domain.values.phase_attempt import PhaseStatus
+from neurath.application.usecases.get_evaluation import GetEvaluationQuery, GetEvaluationUseCase
+from neurath.application.usecases.save_lesson import SaveLessonCommand, SaveLessonUseCase
+from neurath.domain.aggregates.memory import Memory
 
 
 @immutable
@@ -42,66 +36,45 @@ class CreateLessonCommand(AbstractCommand):
 
 @UseCase()
 class CreateLessonUseCase(IAsyncCommandUseCase[CreateLessonCommand, Memory]):
-    """제안만으로 교훈을 만들지 않고 실제 요청과 평가를 확인한다."""
+    """외부 후보 관찰을 마친 뒤 원장 변경을 짧은 트랜잭션에 반영한다."""
 
-    def __init__(
-        self,
-        workflows: IWorkflowRepository,
-        memories: IMemoryRepository,
-        context: IEvaluationContextService,
-    ) -> None:
-        """회고 실행과 출처 있는 기억의 저장 계약을 받는다.
+    def __init__(self, read: GetEvaluationUseCase, record: SaveLessonUseCase) -> None:
+        """관찰과 원자 저장의 작업 단위를 분리해 받는다.
 
         Args:
-            workflows: 회고 요청과 독립 보고를 조회한다.
-            memories: 교훈 후보와 이력을 보존한다.
-            context: 현재 회고 후보의 유효성을 대조한다.
+            read: 트랜잭션 밖에서 현재 파일·Git 후보를 관찰한다.
+            record: 관찰 중 관련 원장이 바뀌지 않았는지 확인하고 저장한다.
         """
-        self.workflows = workflows
-        self.memories = memories
-        self.context = context
+        self.read = read
+        self.record = record
 
-    @transactional
     @override
     async def run(self, command: CreateLessonCommand) -> Memory:
-        """수락된 독립 회고에 연결해 아직 적용하지 않은 교훈을 만든다.
+        """현재 후보를 관찰한 뒤 같은 요구 개정에만 변경을 반영한다.
 
         Args:
-            command: 실제 회고 범위의 개선 후보와 근거.
+            command: 요청 범위와 실제 보고 또는 연결 정보.
 
         Returns:
-            Memory: 조회 가능한 proposed 교훈과 원 회고 참조.
-
-        Raises:
-            ValueError: 사용자 요청 또는 현재 성공한 회고 평가가 없는 경우.
+            Memory: 원자적으로 반영한 현재 원장.
         """
-        run = await self.workflows.get(command.run_id)
-        run.require_scope(command.project_id, command.session_id)
-        phase = run.evaluation_phase(command.phase_key)
-        attempt = run.latest(phase)
-        if (
-            run.reflection is not ReflectionChoice.REQUESTED
-            or phase.evaluation is None
-            or phase.evaluation.kind is not EvaluationKind.REFLECTION
-            or attempt is None
-            or attempt.status is not PhaseStatus.SUCCEEDED
-        ):
-            raise ValueError("Lessons require requested and independently evaluated reflection")
-        if attempt.candidate != (await self.context.load(run, phase)).candidate:
-            raise ValueError("Reflection candidate changed before creating a lesson")
-        memory = Memory.create(
-            run.project_id,
-            run.session_id,
-            run.task_id,
-            MemoryKind.LESSON,
-            command.content,
-            (*command.references, f"workflow:{run.uid}:{attempt.number}"),
-        )
-        memory.observe_lesson(
-            LessonObservation(
-                state=LessonState.PROPOSED,
-                reason=run.reflection_context,
-                references=memory.references,
+        snapshot = await self.read.run(
+            GetEvaluationQuery(
+                project_id=command.project_id,
+                session_id=command.session_id,
+                run_id=command.run_id,
+                phase_key=command.phase_key,
             )
         )
-        return await self.memories.save(memory)
+        return await self.record.run(
+            SaveLessonCommand(
+                project_id=command.project_id,
+                session_id=command.session_id,
+                run_id=command.run_id,
+                phase_key=command.phase_key,
+                content=command.content,
+                references=command.references,
+                observed=snapshot.context,
+                run_version=snapshot.run.version,
+            )
+        )

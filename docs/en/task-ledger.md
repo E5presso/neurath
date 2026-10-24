@@ -3,7 +3,7 @@
 [Documentation](index.md) · [Core foundation](core-foundation.md) · [한국어](../ko/task-ledger.md)
 
 #140 connects original requirements, corrections, current work and attempt submissions/results
-in one SQLite ledger. These are internal Python request APIs. The hook CLI is provided by #142; business CLI remains subsequent work; #141 adds the [phase runner](workflow-runner.md).
+in one SQLite ledger. The async request APIs connect to `task create/update/report`, native hooks, and the [phase runner](workflow-runner.md).
 
 ## Domain and persistence
 

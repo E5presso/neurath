@@ -12,6 +12,7 @@ from neurath.domain.aggregates.request_source import RequestSource
 from neurath.domain.enums.task_status import TaskStatus
 from neurath.domain.errors import ContextNotFound, InvalidTaskState, RevisionConflict
 from neurath.domain.events.task_definition_changed import TaskDefinitionChanged
+from neurath.domain.events.task_resumed import TaskResumed
 from neurath.domain.values.external_wait import ExternalWait
 from neurath.domain.values.task_attempt import Outcome, SubmittedResult, TaskAttempt, TaskResult
 from neurath.domain.values.task_definition import TaskDefinition
@@ -350,6 +351,7 @@ class Task(AbstractAggregateRoot[UUID]):
         self.waits = tuple(self.waits[:-1]) + (replace(self.waits[-1], resolution=resolution),)
         self.status = TaskStatus.ACTIVE
         self.cancel_monitors("Original external wait resolved")
+        self.add_event(TaskResumed(task_id=self.uid))
 
     def invalidate(self, source: RequestSource, reason: str) -> None:
         """정정 출처를 새 개정에 연결하고 태스크를 invalidated로 바꾼다.

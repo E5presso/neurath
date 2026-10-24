@@ -697,7 +697,7 @@ async def test_registration_scope_revision_duplicate_and_current_owner_guards(da
     await native(database, m.actor, "SessionEnd")
     with pytest.raises(InvalidTaskState, match="stopped"):
         await run(RegisterMonitorUseCase, RegisterMonitorCommand(**values), database_path=database)
-    assert await call(database, m, PrepareMonitorPollUseCase) is None
+    assert await call(database, m, PrepareMonitorPollUseCase) is not None
     async with storage_scope(database) as scope:
         task = await scope.get(ITaskRepository).get(m.task.uid)
         task.update_monitor(replace(task.monitor(1), owner_execution_id=other_execution.uid))
@@ -941,7 +941,7 @@ async def test_monitor_context_abstract_fallback_fails_explicitly():
         ("running", True, False),
         ("paused", True, False),
         ("cancelled", False, True),
-        ("ended", False, False),
+        ("ended", True, False),
     ],
 )
 def test_execution_owns_monitoring_permission_and_session_scope(status, allowed, cancelled):
@@ -955,7 +955,7 @@ def test_execution_owns_monitoring_permission_and_session_scope(status, allowed,
         owner.require_session(uuid7())
     assert owner.allows_monitoring is allowed
     assert owner.is_cancelled is cancelled
-    if allowed:
+    if allowed and status != "ended":
         owner.require_monitoring()
     else:
         with pytest.raises(InvalidTaskState):

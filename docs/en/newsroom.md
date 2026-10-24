@@ -22,7 +22,7 @@ The body query use case is read-only. The CLI calls internal `RecordArticleReadU
 
 ## Active subscribers and hook headlines
 
-A peer subscribes by including `newsroom` in `SubscribePeerUseCase.topics` from #144. That input replaces the entire topic list, so other retained topics must also be included. Unsubscribing discards not-yet-submitted article notifications in the same transaction. Resubscribing does not revive old headlines. General subscription and collaboration business CLI commands remain subsequent work.
+A peer subscribes by including `newsroom` in `SubscribePeerUseCase.topics` from #144. That input replaces the entire topic list, so other retained topics must also be included. Unsubscribing discards not-yet-submitted article notifications in the same transaction. Resubscribing does not revive old headlines. New native peers receive project newsroom headlines by default; existing choices remain unchanged. `newsroom subscribe --disabled` opts the current conversation out while preserving other topics. Ordinary commands resolve the current peer automatically.
 
 Publication and revision snapshot the same project's currently active subscribers. Inactive peers receive no queued news; publication starts neither external messaging nor a provider run. The next eligible actual hook submits only the article ID, current revision, and title once. If another correction preceded the hook, obsolete headlines are not replayed. Each hook submits at most ten headlines; remaining headlines are processed by subsequent hooks while activity continues.
 

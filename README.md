@@ -15,8 +15,7 @@ Git history. Existing installed distributions and user databases are not changed
 by editing or validating this checkout.
 
 This foundation is not an installable replacement for the running harness.
-`setup` exits with an explanatory message; no obsolete console entry point is
-published. CLI, migration, and installation work remains in the approved plan.
+Use `./setup --provider codex --directory <project>` or `neurath maintenance install` to install the current CLI, rules, 14 skills, and hooks. Unrelated instructions/hooks/skills are preserved and existing DB/settings receive recovery copies. Verify native hook trust and execution separately. Unrecognized historical databases are never initialized or erased.
 
 - [Foundation architecture, API, and boundaries](docs/en/core-foundation.md)
 - [Development and enforced quality checks](CONTRIBUTING.md)

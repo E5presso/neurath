@@ -7,11 +7,11 @@ from typing import override
 
 from spakky.core.pod.annotations.pod import Pod
 
-from neurath.application.ports.services.evaluation_artifact import IEvaluationArtifactService
 from neurath.application.ports.services.evaluation_context import (
     EvaluationContext,
     IEvaluationContextService,
 )
+from neurath.domain.aggregates.request_source import SourceKind
 from neurath.domain.aggregates.workflow import WorkflowRun
 from neurath.domain.errors import InvalidWorkflowState
 from neurath.domain.values.workflow_definition import PhaseDefinition
@@ -28,18 +28,15 @@ class SQLAlchemyEvaluationContextService(IEvaluationContextService):
         self,
         tasks: SQLAlchemyTaskRepository,
         sources: SQLAlchemyRequestSourceRepository,
-        artifacts: IEvaluationArtifactService,
     ) -> None:
         """현재 요청의 SQLAlchemy 저장소를 받는다.
 
         Args:
             tasks: 전체 TODO와 관련 요구를 조회한다.
             sources: 최초 원문과 정정 이력을 조회한다.
-            artifacts: 실제 파일 내용과 현재 HEAD를 관찰한다.
         """
         self.tasks = tasks
         self.sources = sources
-        self.artifacts = artifacts
 
     @override
     async def load(self, run: WorkflowRun, phase: PhaseDefinition) -> EvaluationContext:
@@ -67,23 +64,31 @@ class SQLAlchemyEvaluationContextService(IEvaluationContextService):
         related = tuple(task for task in tasks if task.uid in selected)
         if {task.uid for task in related} != selected:
             raise InvalidWorkflowState("Evaluation scope contains unavailable work")
-        originals = {}
+        own_sources = await self.sources.find_by_session_id(run.session_id)
+        originals = {source.uid: source.body for source in own_sources}
+        assigned_sources = {
+            definition.source_id for task in tasks for definition in task.definitions
+        }
+        unassigned = [
+            (source.uid, source.body)
+            for source in own_sources
+            if source.uid not in assigned_sources
+            and source.kind not in (SourceKind.STATUS, SourceKind.SUMMARY)
+        ]
         for task in tasks:
-            source = await self.sources.get(task.definition.source_id)
-            originals[source.uid] = source.body
-            while source.corrects_id is not None:
-                source = await self.sources.get(source.corrects_id)
+            for definition in task.definitions:
+                source = await self.sources.get(definition.source_id)
                 originals[source.uid] = source.body
-        observed = await self.artifacts.observe(
-            phase.directory, (*target.artifacts, *target.verification)
-        )
+                while source.corrects_id is not None:
+                    source = await self.sources.get(source.corrects_id)
+                    originals[source.uid] = source.body
         payload = json.dumps(
             {
                 "target": phase.target_revision,
                 "purpose": phase.purpose,
                 "checks": phase.checks,
-                "observed": observed,
                 "evaluation": asdict(target),
+                "unassigned_requests": unassigned,
                 "requirements": [(task.uid, asdict(task.definition)) for task in related],
             },
             default=encode_uuid,
@@ -99,7 +104,6 @@ Original user sources and corrections (source IDs retain their provenance):
 {chr(10).join(f"Source {uid}: {body}" for uid, body in originals.items())}
 Full current TODO, including incomplete and failed work:
 {chr(10).join(f"{task.uid} / definition {task.definition.number} / {task.status}: {task.definition.title}; required: {task.definition.required_result}" for task in tasks)}
-Current observed candidate: {json.dumps(observed, ensure_ascii=False)}
 Actual artifacts: {json.dumps(target.artifacts, ensure_ascii=False)}
 Verification and problem evidence: {json.dumps(target.verification, ensure_ascii=False)}
 Compare original intent, latest corrections and actual artifacts, including requirements omitted from TODO and out-of-scope changes.

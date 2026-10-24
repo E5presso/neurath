@@ -2,19 +2,19 @@
 
 [한국어](../ko/result-evaluation.md) · [Phase runner](workflow-runner.md) · [Acceptance](acceptance.md)
 
-#138 connects evaluation phases owned by `WorkflowRun`, actual independent reports owned by `Delegation`, and external waits and success reporting owned by `Task`. It adds no evaluation task, approval ledger, or token. This page describes the current internal APIs and isolated validation boundary. Shipping default skills and integrating business CLI commands remain in #149 and #148.
+#138 connects evaluation phases owned by `WorkflowRun`, actual independent reports owned by `Delegation`, and external waits and success reporting owned by `Task`. It adds no evaluation task, approval ledger, or token. `workflow start/report/revise` and `collaboration delegate/observe` connect the actual host flow, original sources, full TODO, and current candidate.
 
 ## Execution and report consumption
 
 Set `PhaseDefinition.evaluation` to an `EvaluationTarget`. `RESULT` evaluates the user outcome and cannot have a skip condition. `REFLECTION` is an optional branch activated only by a user request. The target consists of the existing `target_revision`, related `task_ids`, and actual `artifacts` and `verification` references. The linked task is always in scope.
 
-1. `GetEvaluationUseCase` reads conditions, scope, and the current candidate. It includes original sources and corrections, the session's complete TODO, and actual artifact and verification references. The TODO preserves successful, failed, and unfinished states.
+1. `GetEvaluationUseCase` reads conditions, scope, and the current candidate. It includes original sources that have not yet been assigned to TODOs as well as corrections, the session's complete TODO, and actual artifact and verification references. The TODO preserves successful, failed, and unfinished states.
 2. `RequestEvaluationUseCase` checks phase order, reflection choice, and supported models and policies. It uses the existing `PrepareDelegationUseCase`, commits the phase attempt and external wait through `BindEvaluationUseCase`, then uses the existing peer, native child, or provider route. External execution holds no database write lock.
 3. Peers and children submit their original reports through the existing acceptance and reporting path. Providers require actual completion, native session identity, output, and an execution reference. Request, delivery, failure, and unknown outcome are not successful reports.
 4. `ConsumeEvaluationUseCase` compares the saved actual report against the current candidate. The executor records acceptance or rejection with original-source and verification evidence. Incorrect findings can be rejected with evidence; suggestions do not become new user instructions.
 5. Confirmed shortfalls are handled in the same task list, through existing work or follow-up work using the original source. The existing workflow revision path reopens relevant implementation phases and evaluates changed results. `ReportResultUseCase` rejects success until evaluation succeeds. The evaluator does not complete the task directly.
 
-The same candidate reuses its saved assignment and report. Reading a waiting or failed evaluation does not create another model execution. Evaluation assignments cannot recursively delegate another evaluation. A waiting attempt whose candidate changed is retained as failed history before a new candidate is attached; its original assignment and late report remain available. User cancellation and requirement corrections use the existing collaboration cancellation boundaries.
+Only the same recipient, role, scope, route, and candidate reuse an assignment. Another reviewer or scope is a distinct legitimate request. An observed terminal assignment can be explicitly retried with `--retry-of`. Reading a waiting or failed evaluation does not create another model execution. Evaluation assignments cannot recursively delegate another evaluation. A waiting attempt whose candidate changed is retained as failed history before a new candidate is attached; its original assignment and late report remain available. User cancellation and requirement corrections use the existing collaboration cancellation boundaries.
 
 ## Comparing related changes
 
@@ -30,9 +30,11 @@ Stop deterministically checks the existing latest task ledger. Evaluation waitin
 
 `ChooseReflectionUseCase` stores offered, requested, declined, or unanswered choices and their actual utterance or problem context on `WorkflowRun`. A problem is offered once, and an existing request is not reconfirmed. Unrequested, merely offered, declined, and unanswered reflection phases do not block original task completion. Only a request or ordinary acceptance activates the same independent evaluation path. There is no user-facing approval object or special token.
 
+A requested reflection can be withdrawn. Existing reflection assignments receive stop requests and the associated task wait is resolved; late reports cannot complete a withdrawn branch. File/Git observation occurs outside DB transactions, followed by a fresh ledger revision and candidate check before saving.
+
 ## Lesson lifecycle
 
-`CreateLessonUseCase` creates a sourced `MemoryKind.LESSON` only after a successful current reflection evaluation requested by the user. `ObserveLessonUseCase` can add observations from later sessions in the same project.
+`memory propose-lesson` calls `CreateLessonUseCase` to create a sourced `MemoryKind.LESSON` only after a successful current reflection evaluation requested by the user. `memory observe-lesson` uses `ObserveLessonUseCase` to record actual effects in later related sessions. `memory search/read` filters kind and lesson state. Applied project lessons are recalled at startup/compaction as historical context subordinate to current instructions.
 
 - `PROPOSED` preserves the improvement candidate and scope without applying it.
 - `VALIDATED` requires evidence for both the original failure case and a normal control.

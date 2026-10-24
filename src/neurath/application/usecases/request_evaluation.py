@@ -45,6 +45,7 @@ class RequestEvaluationCommand(AbstractCommand):
         route: 실제 피어·자식·provider 경로.
         recipient_id: 관찰한 수신 피어이며 provider 시작 전에는 None.
         plan: 명시적으로 선택한 provider 모델·정책.
+        retry_of: 종료를 확인한 배정을 명시적으로 재시도할 때의 원 ID.
     """
 
     project_id: UUID
@@ -55,6 +56,7 @@ class RequestEvaluationCommand(AbstractCommand):
     route: DelegationRoute
     recipient_id: UUID | None = None
     plan: ProviderPlan | None = None
+    retry_of: UUID | None = None
 
 
 @UseCase()
@@ -114,16 +116,23 @@ class RequestEvaluationUseCase(IAsyncCommandUseCase[RequestEvaluationCommand, De
         evaluation.run.require_evaluation(evaluation.phase)
         previous = evaluation.run.latest(evaluation.phase)
         if (
-            previous is not None
+            command.retry_of is None
+            and previous is not None
             and previous.delegation_id is not None
             and previous.candidate == evaluation.context.candidate
         ):
             existing = await self.delegation.run(
                 GetDelegationQuery(delegation_id=previous.delegation_id, peer_id=command.sender_id)
             )
-            if existing.message_id is not None or existing.provider_requested:
-                return existing
-            return await self._dispatch(existing, command.sender_id)
+            recipient = None if existing.plan is not None else existing.recipient_id
+            if (recipient, existing.route, existing.plan) == (
+                command.recipient_id,
+                command.route,
+                command.plan,
+            ):
+                if existing.message_id is not None or existing.provider_requested:
+                    return existing
+                return await self._dispatch(existing, command.sender_id)
         if command.plan is not None:
             capabilities = await self.discover.run(
                 DiscoverProviderQuery(provider=command.plan.provider)
@@ -143,6 +152,7 @@ class RequestEvaluationUseCase(IAsyncCommandUseCase[RequestEvaluationCommand, De
                 route=command.route,
                 recipient_id=command.recipient_id,
                 plan=command.plan,
+                retry_of=command.retry_of,
             )
         )
         await self.bind.run(
