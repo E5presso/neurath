@@ -8,8 +8,10 @@ from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
+from neurath.application.ports.repositories.request_source import IRequestSourceRepository
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.application.ports.services.monitor_context import IMonitorContextService
+from neurath.domain.aggregates.request_source import RequestSource, SourceKind
 from neurath.domain.values.task_monitor import TaskMonitor
 
 
@@ -28,6 +30,7 @@ class RecordMonitorObservationCommand(AbstractCommand):
         state: 완결된 외부 상태이며 출력 조각이면 None.
         reference: 실제 관찰 근거.
         error: 관찰 실패와 필요한 조작.
+        transition_event_id: 실제 전환 큐 사건이며 일반 콜백은 None.
     """
 
     project_id: UUID
@@ -40,6 +43,7 @@ class RecordMonitorObservationCommand(AbstractCommand):
     state: str | None
     reference: str
     error: str = ""
+    transition_event_id: UUID | None = None
 
 
 @UseCase()
@@ -48,15 +52,22 @@ class RecordMonitorObservationUseCase(
 ):
     """외부 관찰 후 최신 취소·요구 개정을 대조하여 사건만 저장한다."""
 
-    def __init__(self, tasks: ITaskRepository, context: IMonitorContextService) -> None:
+    def __init__(
+        self,
+        tasks: ITaskRepository,
+        context: IMonitorContextService,
+        sources: IRequestSourceRepository,
+    ) -> None:
         """태스크 저장소와 감시 범위 대조 서비스를 주입받는다.
 
         Args:
             tasks: 관찰과 변화 사건 저장.
             context: 감시 범위·자원 소유·최신 취소를 대조한다.
+            sources: 전환 사건의 기술 요약을 기존 기록에 보존한다.
         """
         self.tasks = tasks
         self.context = context
+        self.sources = sources
 
     @transactional
     @override
@@ -90,4 +101,15 @@ Read the exact event before ACK. ACK is not dependency resolution or task succes
         )
         task.update_monitor(monitor)
         await self.tasks.save(task)
+        if command.transition_event_id is not None:
+            await self.sources.save(
+                RequestSource.create(
+                    command.project_id,
+                    command.session_id,
+                    SourceKind.SUMMARY,
+                    "Transition monitor callback processed against current ownership and cancellation; observation state retained, host delivery and task success are not inferred.",
+                    "migration monitor receipt",
+                    f"migration-monitor:{command.transition_event_id}",
+                )
+            )
         return monitor

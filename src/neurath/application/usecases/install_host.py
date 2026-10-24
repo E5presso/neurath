@@ -18,11 +18,13 @@ class InstallHostCommand(AbstractCommand):
         provider: Codex 또는 Claude 호스트.
         directory: 사용자 홈 또는 프로젝트 루트.
         data_home: 격리 검증용으로 선택한 데이터 홈 또는 사용자 기본값.
+        preview: 실제 적용 전 읽기 계획만 요청할지 여부.
     """
 
     provider: ProviderKind
     directory: str
     data_home: str | None = None
+    preview: bool = False
 
 
 @UseCase()
@@ -48,5 +50,5 @@ class InstallHostUseCase(IAsyncCommandUseCase[InstallHostCommand, InstallationRe
             InstallationResult: 실제 파일 변경·복구 사본과 다음 호스트 확인.
         """
         return await self.installation.install(
-            command.provider, command.directory, command.data_home
+            command.provider, command.directory, command.data_home, preview=command.preview
         )

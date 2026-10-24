@@ -1,4 +1,5 @@
 #!/bin/sh
 set -eu
 neurath_project_root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-exec uv run --locked --project "$neurath_project_root" neurath maintenance install "$@"
+export PYTHONPATH="$neurath_project_root${PYTHONPATH:+:$PYTHONPATH}"
+exec uv run --locked --project "$neurath_project_root" python -m tools.setup_distribution "$@"

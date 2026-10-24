@@ -5,6 +5,7 @@ import os
 import re
 import shlex
 import sys
+import tomllib
 from pathlib import Path
 from typing import override
 from uuid import uuid4
@@ -15,7 +16,13 @@ from spakky.core.pod.annotations.pod import Pod
 from neurath.application.ports.services.installation import IInstallationService, InstallationResult
 from neurath.application.ports.services.skill_catalog import ISkillCatalogService, SkillDescription
 from neurath.domain.enums.provider_kind import ProviderKind
-from neurath.infrastructure.database import initialize_database, sqlite_url, user_database_path
+from neurath.infrastructure.database import (
+    create_database_engine,
+    initialize_database,
+    sqlite_url,
+    user_database_path,
+    verify_schema,
+)
 
 
 @Pod()
@@ -98,7 +105,12 @@ class PosixInstallationService(IInstallationService):
 
     @override
     async def install(
-        self, provider: ProviderKind, directory: str, data_home: str | None
+        self,
+        provider: ProviderKind,
+        directory: str,
+        data_home: str | None,
+        *,
+        preview: bool = False,
     ) -> InstallationResult:
         """검증된 소유 영역을 계획한 뒤 백업·적용하며 실패 시 설정을 복원한다.
 
@@ -106,6 +118,7 @@ class PosixInstallationService(IInstallationService):
             provider: 설치할 실제 호스트.
             directory: 사용자 홈 또는 프로젝트 루트.
             data_home: 격리된 데이터 홈 또는 사용자 기본값.
+            preview: 파일·DB 변경 없이 계획만 반환할지 여부.
 
         Returns:
             InstallationResult: 파일 적용 결과와 실제 호스트 활성화 안내.
@@ -135,7 +148,9 @@ class PosixInstallationService(IInstallationService):
 export XDG_DATA_HOME={shlex.quote(str(home))}
 export SPAKKY_SQLALCHEMY__CONNECTION_STRING={shlex.quote(sqlite_url(database, "rw").render_as_string(hide_password=False))}
 export NEURATH_PROVIDER={shlex.quote(provider.value)}
-exec {shlex.quote(sys.executable)} -m neurath.entrypoint "$@"
+export NEURATH_COMMAND={shlex.quote(str(executable))}
+export NEURATH_INSTALL_ROOT={shlex.quote(str(root))}
+exec {shlex.quote(sys.executable)} -I -m neurath.entrypoint "$@"
 """
         if executable.exists() and "# neurath-managed executable" not in executable.read_text():
             raise FileExistsError(f"Unowned executable was preserved: {executable}")
@@ -196,15 +211,34 @@ exec {shlex.quote(sys.executable)} -m neurath.entrypoint "$@"
                 group["matcher"] = "Edit|Write|apply_patch"
             hooks[name] = [*retained, group]
         planned[hooks_path] = json.dumps(document, ensure_ascii=False, indent=2) + "\n"
+        legacy_files, legacy_retained = self._legacy_mcp(root, provider)
+        planned.update(legacy_files)
         planned = {
             path.resolve() if path.is_symlink() else path: body for path, body in planned.items()
         }
         originals = {path: path.read_bytes() if path.exists() else None for path in planned}
         changed = [path for path, body in planned.items() if originals[path] != body.encode()]
+        if preview:
+            return InstallationResult(
+                command=str(executable),
+                database=str(database),
+                changed_files=tuple(str(path) for path in changed),
+                backups=(),
+                host_action="Preview only; no files, database or native host were changed. "
+                + legacy_retained,
+                planned_files={str(path): body for path, body in planned.items()},
+            )
         backups = []
         if database.exists():
+            engine = create_database_engine(database, write=False)
+            try:
+                async with engine.begin() as connection:
+                    await connection.run_sync(verify_schema)
+            finally:
+                await engine.dispose()
             backups.append(await self._backup_database(database))
-        await initialize_database(database)
+        else:
+            await initialize_database(database)
         temporary_files: list[Path] = []
         try:
             for path in changed:
@@ -238,8 +272,64 @@ exec {shlex.quote(sys.executable)} -m neurath.entrypoint "$@"
             database=str(database),
             changed_files=tuple(str(path) for path in changed),
             backups=tuple(backups),
-            host_action="Files applied. Native hook trust and sandbox access remain the host's decisions. Review changed hooks with /hooks if requested, then verify SessionStart and a real CLI request; no trust hashes or permissions were forged.",
+            host_action="Files applied. Native hook trust and sandbox access remain the host's decisions. Review changed hooks with /hooks if requested, then verify SessionStart and a real CLI request; no trust hashes or permissions were forged. "
+            + legacy_retained,
         )
+
+    @staticmethod
+    def _legacy_mcp(root: Path, provider: ProviderKind) -> tuple[dict[Path, str], str]:
+        """정확히 식별한 옛 Neurath 명령 등록만 제거하고 불명확한 항목은 안내한다.
+
+        Args:
+            root: 요청한 설정 루트.
+            provider: 실제 호스트.
+
+        Returns:
+            tuple[dict[Path, str], str]: 소유 등록의 변경 파일과 미인식 항목 안내.
+        """
+        path = root / (".codex/config.toml" if provider is ProviderKind.CODEX else ".mcp.json")
+        if not path.exists():
+            return {}, ""
+        content = path.read_text()
+        data = tomllib.loads(content) if provider is ProviderKind.CODEX else json.loads(content)
+        servers = data.get("mcp_servers" if provider is ProviderKind.CODEX else "mcpServers", {})
+        entry = servers.get("neurath")
+        if entry is None:
+            return {}, ""
+        executable = entry.get("command", "")
+        arguments = entry.get("args", [])
+        launcher = Path(executable).expanduser()
+        owned_path = any(
+            launcher.is_relative_to(root / name)
+            for name in (".neurath", ".codex/neurath", ".claude/neurath")
+        )
+        owned = (
+            owned_path
+            and launcher.is_file()
+            and "# neurath-managed" in launcher.read_text(errors="replace")
+            and arguments
+            and arguments[0] in {"mcp", "serve"}
+        )
+        retained = "Legacy MCP entry named neurath was retained because ownership is unverified. Read that exact entry and replace only its Neurath invocation with the installed grouped CLI; do not retry cached MCP calls."
+        if not owned:
+            return {}, retained
+        if provider is ProviderKind.CLAUDE:
+            del servers["neurath"]
+            return {path: json.dumps(data, ensure_ascii=False, indent=2) + "\n"}, ""
+        headers = list(re.finditer(r"(?m)^\[[^\n]+\][ \t]*(?:#.*)?$", content))
+        spans = [
+            (
+                match.start(),
+                headers[index + 1].start() if index + 1 < len(headers) else len(content),
+            )
+            for index, match in enumerate(headers)
+            if re.fullmatch(r"\[mcp_servers\.neurath(?:\.[^\]]+)?\][ \t]*(?:#.*)?", match.group())
+        ]
+        if not spans:
+            return {}, retained
+        for start, end in reversed(spans):
+            content = content[:start] + content[end:]
+        return {path: content}, ""
 
     @staticmethod
     def _skill_header(existing: str, name: str, description: str) -> str:
@@ -283,6 +373,16 @@ exec {shlex.quote(sys.executable)} -m neurath.entrypoint "$@"
         """
         command = shlex.quote(str(executable))
         workflow = entry.workflow
+        distribution = (
+            f"""## 정확한 배포본 업데이트
+
+`{command} maintenance version`과 `distribution verify`로 현재 실행을 읽고 `distribution check`로 공식 릴리스 없음·조회 실패·정확한 artifact 일치를 구분한다. 같은 버전도 wheel SHA와 원 소스 commit이 다르면 별도 후보다. 요청한 소스 개정은 해당 checkout에서 `tools/build_release.py`로 빌드한 wheel과 `distribution prepare --source-commit`으로 대조한다. 개발 checkout의 변경분을 clean commit 배포로 표현하지 않는다.
+선택 wheel은 `distribution prepare --wheel ... --store ...`로 고정 환경에 준비하고 `distribution plan --candidate ... --provider ... --directory ... --data-home ...`의 실제 변경 전후와 공유 DB 호환성을 확인한다. 이미 요청한 업데이트에 추가 인간 동의·토큰을 요구하지 않는다. 비호환이면 plan의 기존 migration fence/recover/복구 사본 initialize/replay 경로를 같은 범위에서 계속 수행하며 사용자에게 내부 장부 수정을 떠넘기지 않는다.
+`distribution apply` 뒤 실제 설치 명령의 `distribution verify`와 `distribution guide`를 호출해 같은 배포의 현재 안내를 읽고 원 작업을 조회한다. 파일 적용·stdout 전달·모델의 사용·네이티브 활성화를 구분한다. CLI 업데이트라는 이유로 호스트 앱 재시작을 강제하지 않는다. 실패 시 해당 receipt의 `distribution recover`를 사용하고 새 DB 기록·전환 큐를 유지한다. 옛 MCP 호출이 캐시돼 있으면 현재 그룹 CLI로 전환하며 같은 실패를 반복하지 않는다.
+"""
+            if workflow.skill == "update-neurath"
+            else ""
+        )
         inputs = "\n".join(f"- {item}" for item in entry.required_inputs)
         outcomes = "\n".join(f"- {item}" for item in entry.outcomes)
         branches = "\n".join(f"- {item}" for item in entry.branches)
@@ -325,6 +425,8 @@ exec {shlex.quote(sys.executable)} -m neurath.entrypoint "$@"
 기존 run은 `workflow show --run-id ...`로 고정 정의·시도·미완료를 읽는다. 다른 스킬이나 finish-session을 이어 수행할 때 새 완료 원장을 만들지 않는다. `workflow revise --run-id ... --reason ... --definition ...`으로 필요한 단계만 추가·정정하고 기존 필수 결과와 동일한 평가 phase를 보존한다. 수행 방법을 바꾸기 위해 새 인간 지시를 요구하지 않는다.
 결과 평가 phase가 있으면 실제 원문·전체 TODO·산출물·검증을 관찰된 독립 피어 또는 명시한 provider에게 `collaboration delegate --role reviewer`로 전달한다. 같은 유효 평가를 재사용하고 검토자를 재귀 평가하지 않는다. 실제 보고를 읽고 `workflow report --accepted/--rejected`로 판단하며 미달은 같은 TODO에서 보완한다. 배정·전달·프로세스 종료만으로 원 작업을 성공 처리하지 않는다.
 실제 결과는 `task report`, 인계 보고는 `memory checkpoint`, 현재 사실은 `memory update`로 연결한다. 재개는 `session resume`을 사용한다. 커밋·워크트리·PR·이슈는 호스트 도구, 의존성·그래프는 선택한 전문 도구로 수행한다. 스킬은 원 요청의 범위나 기존 호스트 권한을 확대하지 않는다.
+
+{distribution}
 """
 
     @staticmethod
