@@ -19,6 +19,7 @@ def main() -> None:
             "tests/test_quality_hook.py",
             "tests/test_domain.py",
             "tests/test_dependency_lifecycle.py",
+            "tests/test_fixture_isolation.py",
             "tests/test_core_boundaries.py",
             "tests/test_coverage_gate.py",
             "tests/test_task_domain.py",

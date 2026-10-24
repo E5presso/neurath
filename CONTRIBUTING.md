@@ -57,3 +57,11 @@ Production services end with `Service`; repositories end with `Repository`. Inte
 `tools/architecture.py` scans all source modules and resolves ports, registration decorators, aliases and indirect inheritance. Missing suffixes, missing interface `I`, and missing or mismatched technology prefixes fail shared pre-commit and required CI. Current technology prefixes are `Git`, `Subprocess`, `Stderr`, `Posix` and `SQLAlchemy`. Add the corresponding prefix and positive/negative regression fixtures when introducing another technology; individual implementation classes are not allowlisted.
 
 Use cases require only the `UseCase` suffix. Keep names such as `CreateTaskUseCase` without a technology prefix, and retain the existing Spakky `IAsyncCommandUseCase`/`IAsyncQueryUseCase` contracts instead of adding per-use-case interfaces for naming purposes. The same gate detects missing suffixes through decorators and direct or indirect inheritance.
+
+## Integration-test startup cost and isolation
+
+Ordinary use-case and hook scenarios reuse a real application through `request_context`/`request_application` within one test. Reuse applies only to sequential calls on the same event loop, database and read policy; the framework still opens and closes each operation's transaction and database session. Overlapping, nested and different-loop calls create fresh applications. Applications stop and dispose on both successful and failed test teardown.
+
+Use `spakky_context`/`scanned_application` when testing direct repositories, scanning/DI, application lifecycle or restart. Those paths and separate-process tests retain fresh applications. `storage_scope` also stays fresh so context-scoped AggregateCollector and repository lifetimes retain their original checks.
+
+The default `database` fixture clones a pristine schema built by real migrations into independent files using SQLite backup. The source opens read-only and existing destinations cannot be overwritten. Initialization, migration and downgrade tests still invoke the real migration paths directly. `tests/test_fixture_isolation.py` checks database, read-policy, session, lifecycle, failure and overlapping-call isolation.

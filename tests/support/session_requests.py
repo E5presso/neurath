@@ -1,4 +1,4 @@
-"""통합 시험에서 Git 관찰과 요청 컨테이너·트랜잭션을 실제로 실행한다.
+"""통합 시험에서 Git 관찰과 실제 앱의 유스케이스·트랜잭션을 실행한다.
 
 Git 관찰을 DB 트랜잭션 전에 마친다. Transaction은 성공 시 커밋하고 실패 시
 롤백하며, 테스트 fixture가 앱 종료 시 프레임워크 자원을 정리한다.
@@ -22,7 +22,7 @@ from neurath.application.usecases.register_session import (
     RegisterSessionResult,
     RegisterSessionUseCase,
 )
-from tests.support.application import spakky_context
+from tests.support.application import request_context
 
 
 async def register_session(
@@ -43,7 +43,7 @@ async def register_session(
     Returns:
         RegisterSessionResult: 기존 또는 새로 등록한 호스트 세션 컨텍스트.
     """
-    async with spakky_context(database_path, write=True) as scope:
+    async with request_context(database_path, write=True) as scope:
         observation = scope.get(IDirectoryObserverService).observe(working_directory)
         request = RegisterSessionCommand(
             observation=observation, provider=provider, host_session_id=host_session_id
@@ -65,7 +65,7 @@ async def get_session_context(
         GetSessionContextResult: 명시적으로 지정한 세션의 현재 상태.
     """
     request = GetSessionContextQuery(project_id=project_id, session_id=session_id)
-    async with spakky_context(database_path, write=False) as scope:
+    async with request_context(database_path, write=False) as scope:
         return await scope.get(GetSessionContextUseCase).run(request)
 
 
@@ -89,7 +89,7 @@ async def move_session(
     Returns:
         MoveSessionResult: 이동 후 프로젝트와 세션. 같은 경로라면 기존 revision을 유지한다.
     """
-    async with spakky_context(database_path, write=True) as scope:
+    async with request_context(database_path, write=True) as scope:
         observation = scope.get(IDirectoryObserverService).observe(working_directory)
         request = MoveSessionCommand(
             project_id=project_id,

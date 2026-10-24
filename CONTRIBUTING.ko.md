@@ -57,3 +57,11 @@ omit·커스텀 제외·`pragma: no cover`·`pragma: no branch`로 수치를 맞
 `tools/architecture.py`가 전체 소스의 포트와 등록 데코레이터, 별칭·간접 상속을 추적합니다. 접미사 누락, 인터페이스의 `I` 누락, 기술 접두어 누락·불일치는 공통 pre-commit과 필수 CI를 실패시킵니다. 현재 기술 접두어는 `Git`·`Subprocess`·`Stderr`·`Posix`·`SQLAlchemy`입니다. 다른 기술을 도입할 때는 해당 접두어와 정상·실패 회귀 시험을 함께 추가합니다. 새 구현 클래스마다 허용 목록에 올리는 방식은 사용하지 않습니다.
 
 유스케이스에는 `UseCase` 접미사만 강제합니다. `CreateTaskUseCase`처럼 이름을 유지하며 기술 접두어를 붙이지 않습니다. 명명 규칙을 이유로 개별 인터페이스를 추가하지 않고 기존 Spakky `IAsyncCommandUseCase`·`IAsyncQueryUseCase` 계약을 사용합니다. 데코레이터·직접 및 간접 상속으로 유스케이스를 찾아 접미사 누락을 같은 검사에서 거절합니다.
+
+## 통합 시험의 초기화 비용과 격리
+
+일반 유스케이스·훅 시나리오는 `request_context`/`request_application`으로 시험별 실제 앱을 재사용합니다. 같은 이벤트 루프·DB·읽기 정책의 순차 호출에만 적용하며 트랜잭션과 DB 세션은 매 작업에서 프레임워크가 열고 닫습니다. 동시·중첩 호출이나 다른 이벤트 루프는 새 앱으로 실행합니다. 앱은 시험의 성공·실패와 관계없이 종료·dispose합니다.
+
+직접 저장소, 스캔·DI, 앱 수명, 재시작을 검사할 때는 `spakky_context`/`scanned_application`을 사용합니다. 이 경로와 별도 프로세스 시험은 앱을 새로 만듭니다. `storage_scope`도 새 앱을 유지하여 컨텍스트별 AggregateCollector와 저장소 수명을 원래대로 검사합니다.
+
+기본 `database` fixture는 실제 마이그레이션으로 만든 빈 스키마를 SQLite backup으로 독립 파일에 복제합니다. 원본은 읽기 전용으로 열고 기존 대상 파일을 덮어쓰지 않습니다. 초기화·이전·downgrade 시험은 실제 마이그레이션을 직접 호출합니다. `tests/test_fixture_isolation.py`는 DB·읽기 정책·세션·앱 수명·실패·동시 호출 격리를 검증합니다.
