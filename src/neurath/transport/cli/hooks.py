@@ -25,6 +25,10 @@ from neurath.application.usecases.publish_host_environment import (
     PublishHostEnvironmentCommand,
     PublishHostEnvironmentUseCase,
 )
+from neurath.application.usecases.queue_transition_event import (
+    QueueTransitionEventCommand,
+    QueueTransitionEventUseCase,
+)
 from neurath.application.usecases.receive_hook import (
     ReceiveHookCommand,
     ReceiveHookResult,
@@ -56,6 +60,7 @@ class HookCliController:
     def __init__(
         self,
         usecase: ReceiveHookUseCase,
+        transition: QueueTransitionEventUseCase,
         connection: AsyncConnectionManager,
         recovery: RecordRecoveryFailureUseCase,
         context_output: PreserveContextOutputUseCase,
@@ -67,6 +72,7 @@ class HookCliController:
 
         Args:
             usecase: 세션 등록·훅 적용·트랜잭션을 담당하는 유스케이스.
+            transition: 실제 전환 중 사건의 내구성 보존.
             connection: 명령을 실행한 이벤트 루프에서 정리할 비동기 엔진.
             recovery: DB·출력 장애를 별도로 기록할 경로.
             context_output: 호스트 한도를 넘는 맥락을 보존할 경로.
@@ -75,6 +81,7 @@ class HookCliController:
             monitor: 같은 대화에 예약된 감시의 실제 변화만 조회한다.
         """
         self.usecase = usecase
+        self.transition = transition
         self.connection = connection
         self.recovery = recovery
         self.context_output = context_output
@@ -226,6 +233,18 @@ class HookCliController:
             tuple[dict[str, object], RecordHookOutputCommand | None]: 호스트 응답과 출력 후 제출 기록.
         """
         command = replace(self.decode(provider, payload), bypass=bypass)
+        queued = await self.transition.run(
+            QueueTransitionEventCommand(hook=command, payload=payload)
+        )
+        if queued is not None:
+            message = f"Neurath store transition: event {queued} is durably queued. Work completion and host response delivery remain unverified; ordinary host tools remain available for compatible recovery and migration replay."
+            if command.event in (HookEvent.STOP, HookEvent.SUBAGENT_STOP):
+                return {
+                    "systemMessage": f"{message} Harness enforcement is suspended for this stop: return control to the user without another recovery turn. Pending work and events remain unfinished; this is not task completion."
+                }, None
+            if command.prompt.startswith("NEURATH_MONITOR_TICK "):
+                return {"continue": False, "stopReason": message}, None
+            return {"systemMessage": message}, None
         callback = re.fullmatch(
             r"NEURATH_MONITOR_TICK ([0-9a-fA-F-]{36}) ([1-9][0-9]*)", command.prompt.strip()
         )

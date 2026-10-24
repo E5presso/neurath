@@ -73,6 +73,7 @@ class ReceiveHookCommand(AbstractCommand):
         prompt: 실제 호스트가 전달한 원문이며 없는 경우 빈 문자열.
         write_target: 구조화된 동기 파일 도구가 가리키는 실제 파일 경로.
         write_targets: apply_patch 등 한 동기 호출의 모든 실제 파일 경로.
+        migration_event_id: 전환 큐의 실제 사건 식별자이며 일반 훅은 None.
     """
 
     provider: str
@@ -93,6 +94,7 @@ class ReceiveHookCommand(AbstractCommand):
     prompt: str = ""
     write_target: str = ""
     write_targets: Sequence[str] = ()
+    migration_event_id: UUID | None = None
 
 
 @immutable
@@ -204,6 +206,26 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
                 if resource not in resources:
                     resources.append(resource)
         session = await self._register_host(command, observation)
+        if command.migration_event_id is not None:
+            replay_reference = f"migration-event:{command.migration_event_id}"
+            if any(
+                source.reference == replay_reference
+                for source in await self.sources.find_by_session_id(session.uid)
+            ):
+                return ReceiveHookResult(
+                    action=HookAction.ALLOW,
+                    message="Stored transition event was already applied; original response delivery is unverified",
+                )
+            await self.sources.save(
+                RequestSource.create(
+                    session.project_id,
+                    session.uid,
+                    SourceKind.SUMMARY,
+                    "Transition event accepted for one normal hook transaction; original host response delivery remains unverified.",
+                    "migration replay receipt",
+                    replay_reference,
+                )
+            )
         execution = await self._load_execution(session.uid, command.agent_id)
         # 일부 호스트는 턴 ID를 제공하지 않는다. 내부 관찰 순번을 보존하며
         # 이를 네이티브 턴 ID나 사용자의 별도 승인으로 해석하지 않는다.

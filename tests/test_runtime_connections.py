@@ -375,7 +375,7 @@ async def test_hook_conflict_retry_is_bounded_and_does_not_repeat_output():
     usecase.run = AsyncMock(
         side_effect=[RevisionConflict("busy"), RevisionConflict("busy"), result]
     )
-    controller = HookCliController(usecase, None, None, None, None, None, None)
+    controller = HookCliController(usecase, None, None, None, None, None, None, None)
     command = ReceiveHookCommand(
         provider="codex",
         host_session_id="observed",

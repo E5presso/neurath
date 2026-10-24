@@ -222,3 +222,5 @@ Agents persist current facts, hypotheses, decisions and evidence with `memory up
 [Monitoring observations, events, notifications, and candidate boundaries](monitoring.md).
 
 [#138: Result evaluation and reflection implementation](result-evaluation.md)
+
+For historical inspection, preservation, selective resumption, and writer cutover, see [preserving migration](migration.md). `migration inspect/prepare/read/resume/recall/fence/recover/replay` use the same application boundaries without promoting historical records into current authority.
