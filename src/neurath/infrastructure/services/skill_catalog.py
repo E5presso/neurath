@@ -119,17 +119,17 @@ class PosixSkillCatalogService(ISkillCatalogService):
                     key=item["key"],
                     purpose=item["purpose"]
                     + (f"\n결과 조건: {item['result']}" if "result" in item else ""),
-                    arguments=item.get("arguments", ()),
+                    arguments=tuple(item.get("arguments", ())),
                     directory=directory,
                     target_revision=item.get("target_revision", "current"),
-                    checks=item["checks"],
+                    checks=tuple(item["checks"]),
                     skip_condition=item.get("skip_condition"),
                     evaluation=None
                     if evaluation is None
                     else EvaluationTarget(
                         kind=EvaluationKind(evaluation["kind"]),
-                        artifacts=evaluation.get("artifacts", ()),
-                        verification=evaluation.get("verification", ()),
+                        artifacts=tuple(evaluation.get("artifacts", ())),
+                        verification=tuple(evaluation.get("verification", ())),
                     ),
                 )
             )
