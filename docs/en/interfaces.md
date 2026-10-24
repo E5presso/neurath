@@ -152,3 +152,5 @@ Agents persist current facts, hypotheses, decisions and evidence with `memory up
 ## #146 Monitoring
 
 [Monitoring observations, events, notifications, and candidate boundaries](monitoring.md).
+
+[#138: Result evaluation and reflection implementation](result-evaluation.md)

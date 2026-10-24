@@ -208,3 +208,5 @@ B entries define the mapped operation outcomes. A39 must exercise each replaceme
 | B25 | Plans bind owned configuration before/after and distribution; apply preserves user configuration and verifies writer cutover; recovery retains new records and verifies reads/resumption. |
 | B26 | Distinguish official release observation/notice/preparation/selection/application; previously authorized updates require no redundant selection. Necessary choices bind intent/target/scope; activation requires new host evidence and recovery preserves new data. |
 | B27 | Reading/preparing private drafts does not publish. Match actual user authority to content/destination without redundant consent; reconcile uncertain submission remotely and retain original work on reporting failure. |
+
+[#138: Result evaluation and reflection implementation](result-evaluation.md)

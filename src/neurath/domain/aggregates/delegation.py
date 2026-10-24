@@ -48,6 +48,7 @@ class Delegation(AbstractAggregateRoot[UUID]):
         provider_error: 실패·미확인 관찰의 설명.
         native_session_id: 실제 출력에서 관찰한 호스트 세션 ID.
         revision: 저장소 낙관적 버전.
+        candidate: 독립 평가의 내용 지문이며 일반 배정은 빈 문자열.
     """
 
     task_id: UUID
@@ -73,6 +74,7 @@ class Delegation(AbstractAggregateRoot[UUID]):
     provider_error: str | None = None
     native_session_id: str | None = None
     revision: int = 1
+    candidate: str = ""
 
     @classmethod
     @override
@@ -91,6 +93,8 @@ class Delegation(AbstractAggregateRoot[UUID]):
         Raises:
             ValueError: 요구 개정·범위가 없거나 경로별 필수 정보가 잘못된 경우.
         """
+        if self.candidate and self.role is not DelegationRole.REVIEWER:
+            raise ValueError("Evaluation candidates require a reviewer")
         if self.definition_number < 1 or not self.scope.strip():
             raise ValueError("Delegation requires a current definition and scope")
         if (self.route is DelegationRoute.PROVIDER) != (self.plan is not None):
@@ -361,6 +365,32 @@ class Delegation(AbstractAggregateRoot[UUID]):
         self.native_session_id = native_session_id
         self.recipient_id = peer_id
 
+    def evaluation_report(self) -> DelegationReport:
+        """실제 완료한 독립 실행 또는 수신자의 원 보고만 평가 근거로 반환한다.
+
+        Returns:
+            DelegationReport: 원 보고 또는 실제 provider 출력과 실행 참조.
+
+        Raises:
+            InvalidTaskState: 완료·출력·실제 실행 관찰이 빠진 경우.
+        """
+        if self.status is not DelegationStatus.COMPLETED:
+            raise InvalidTaskState("Evaluation has no completed report")
+        if self.plan is None:
+            if self.report is None:
+                raise InvalidTaskState("Evaluation has no completed report")
+            return self.report
+        if (
+            self.provider_status is not ProviderStatus.COMPLETED
+            or not self.native_session_id
+            or not self.execution_reference
+            or not self.provider_output.strip()
+        ):
+            raise InvalidTaskState("Provider evaluation has not completed successfully")
+        return DelegationReport(
+            summary=self.provider_output, references=(self.execution_reference,)
+        )
+
     def require_redelegation(self, task: Task, sender_id: UUID) -> None:
         """수락한 최신 배정의 수신자만 그 범위에서 다시 위임할 수 있게 한다.
 
@@ -371,6 +401,8 @@ class Delegation(AbstractAggregateRoot[UUID]):
         Raises:
             InvalidTaskState: 아직 수락하지 않았거나 이미 끝낸 배정인 경우.
         """
+        if self.candidate:
+            raise InvalidTaskState("Evaluation assignments cannot recursively delegate evaluation")
         self.require_recipient(sender_id)
         self.require_current(task)
         if self.status not in (DelegationStatus.ACCEPTED, DelegationStatus.RUNNING):
@@ -390,7 +422,8 @@ class Delegation(AbstractAggregateRoot[UUID]):
         """
         for existing in assignments:
             if (
-                existing.definition_number != self.definition_number
+                existing.candidate != self.candidate
+                or existing.definition_number != self.definition_number
                 or existing.role is not self.role
             ):
                 continue
@@ -403,7 +436,7 @@ class Delegation(AbstractAggregateRoot[UUID]):
             recipient_id = None if existing.plan is not None else existing.recipient_id
             if (
                 recipient_id != self.recipient_id
-                or existing.scope != self.scope
+                or (not self.candidate and existing.scope != self.scope)
                 or existing.route is not self.route
                 or existing.plan != self.plan
             ):

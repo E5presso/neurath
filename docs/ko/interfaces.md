@@ -152,3 +152,5 @@ Typer가 제공하는 명령/도움말 정의를 입력으로 Neurath의 릴리�
 ## #146 Monitoring
 
 [감시 관찰·사건·알림과 후보 실행 경계](monitoring.md).
+
+[#138: 결과 평가·회고 구현](result-evaluation.md)

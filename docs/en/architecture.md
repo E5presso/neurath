@@ -179,3 +179,5 @@ In-flight runs retain their pinned definition/current attempt/remaining outcomes
 CLI definitions → release-time guide generation/validation → package CLI and prompt → installer refreshes the managed harness region. Generation is a release task, not a new runtime ledger or resident service. Skills/host shell → CLI → existing use cases/storage.
 
 Determine next-action constraints from relevant current core task/phase/assignment/writer state. Reject operations violating applicable prerequisites or premature termination at the supported host boundary and return the necessary next action; proceed when conditions hold. Existing recovery rules prevent self-lockout of reads/diagnostics/state repair and repeated fault blocking. Prompt guidance alone is not enforcement; hooks create no separate requirement/consent/completion ledger.
+
+[#138: Result evaluation and reflection implementation](result-evaluation.md)

@@ -47,6 +47,7 @@ class DelegationModel(AbstractMappableTable[Delegation]):
         recipient_id: 수신 피어이며 독립 실행 준비 시 None.
         role: 수행자 또는 검토자.
         scope: 위임받은 명시적 범위.
+        candidate: 독립 평가의 관련 내용 지문.
         route: 피어·네이티브 자식·provider 경로.
         status: str,
         message_id: 배정을 전달하는 원 메시지 ID.
@@ -71,12 +72,20 @@ class DelegationModel(AbstractMappableTable[Delegation]):
 
     __tablename__ = "core_delegations"
     __table_args__ = (
-        UniqueConstraint("task_id", "definition_number", "sender_id", "role"),
+        UniqueConstraint(
+            "task_id",
+            "definition_number",
+            "sender_id",
+            "role",
+            "candidate",
+            name="uq_core_delegation_candidate",
+        ),
         Index(
             "uq_core_root_delegation",
             "task_id",
             "definition_number",
             "role",
+            "candidate",
             unique=True,
             sqlite_where=text("parent_id IS NULL"),
         ),
@@ -100,6 +109,7 @@ class DelegationModel(AbstractMappableTable[Delegation]):
     )
     role: Mapped[str] = mapped_column(String, nullable=False)
     scope: Mapped[str] = mapped_column(String, nullable=False)
+    candidate: Mapped[str] = mapped_column(String, nullable=False)
     route: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False)
     message_id: Mapped[UUID | None] = mapped_column(
@@ -149,6 +159,7 @@ class DelegationModel(AbstractMappableTable[Delegation]):
             recipient_id=domain.recipient_id,
             role=domain.role.value,
             scope=domain.scope,
+            candidate=domain.candidate,
             route=domain.route.value,
             status=domain.status.value,
             message_id=domain.message_id,
@@ -192,6 +203,7 @@ class DelegationModel(AbstractMappableTable[Delegation]):
             recipient_id=self.recipient_id,
             role=DelegationRole(self.role),
             scope=self.scope,
+            candidate=self.candidate,
             route=DelegationRoute(self.route),
             status=DelegationStatus(self.status),
             message_id=self.message_id,

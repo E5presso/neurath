@@ -43,3 +43,5 @@
 [태스크 원장 구현](task-ledger.md)은 #140의 현재 범위이며 후속 runner·호스트·CLI의 완료를 뜻하지 않습니다.
 
 [단계 실행 구현](workflow-runner.md)은 #141의 현재 내부 API·로컬 실행·복구 범위입니다.
+
+[#138: 결과 평가·회고 구현](result-evaluation.md)

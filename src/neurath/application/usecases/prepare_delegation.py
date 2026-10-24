@@ -41,6 +41,7 @@ class PrepareDelegationCommand(AbstractCommand):
         recipient_id: 실제 등록된 수신 피어.
         plan: 독립 실행의 검증된 모델·정책 계획.
         parent_id: 재위임이면 수신자가 수락한 기존 배정. 원 지시를 바꾸지 않는다.
+        candidate: 독립 평가의 내용 지문이며 일반 배정은 빈 문자열.
     """
 
     task_id: UUID
@@ -51,6 +52,7 @@ class PrepareDelegationCommand(AbstractCommand):
     recipient_id: UUID | None = None
     plan: ProviderPlan | None = None
     parent_id: UUID | None = None
+    candidate: str = ""
 
 
 @UseCase()
@@ -117,6 +119,7 @@ class PrepareDelegationUseCase(IAsyncCommandUseCase[PrepareDelegationCommand, De
             recipient_id=command.recipient_id,
             role=command.role,
             scope=command.scope,
+            candidate=command.candidate,
             route=command.route,
             plan=plan,
             parent_id=command.parent_id,

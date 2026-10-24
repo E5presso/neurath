@@ -7,6 +7,8 @@ from typing import override
 from spakky.core.common.mutability import immutable
 from spakky.domain.models.value_object import AbstractValueObject
 
+from neurath.domain.values.evaluation_target import EvaluationKind, EvaluationTarget
+
 
 @immutable
 class PhaseDefinition(AbstractValueObject):
@@ -23,6 +25,7 @@ class PhaseDefinition(AbstractValueObject):
         timeout: 프로세스를 기다릴 최대 초.
         output_limit: 결과에 보존할 출력의 최대 바이트 수.
         max_attempts: 같은 대상·태스크 요구에서 이 단계에 허용할 실제 실행 횟수.
+        evaluation: 독립 평가 단계의 관련 범위와 자료이며 일반 실행은 None.
     """
 
     key: str
@@ -35,6 +38,7 @@ class PhaseDefinition(AbstractValueObject):
     timeout: float = 60.0
     output_limit: int = 65536
     max_attempts: int = 3
+    evaluation: EvaluationTarget | None = None
 
     @override
     def validate(self) -> None:
@@ -63,6 +67,12 @@ class PhaseDefinition(AbstractValueObject):
             or self.max_attempts < 1
         ):
             raise ValueError("Execution limits must be positive")
+        if (
+            self.evaluation is not None
+            and self.evaluation.kind is EvaluationKind.RESULT
+            and self.skip_condition is not None
+        ):
+            raise ValueError("Result evaluation cannot be skipped")
         if self.skip_condition is not None and not self.skip_condition.strip():
             raise ValueError("An optional phase requires its skip condition")
 

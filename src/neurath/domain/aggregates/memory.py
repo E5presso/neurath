@@ -9,6 +9,7 @@ from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 
 from neurath.domain.events.checkpoint_graph_requested import CheckpointGraphRequested
+from neurath.domain.values.lesson_observation import LessonObservation, LessonState
 
 
 class GraphUpdateStatus(StrEnum):
@@ -32,11 +33,13 @@ class MemoryKind(StrEnum):
         ARTIFACT: enclave가 참조하는 상세 자료.
         CHECKPOINT: 결과·판단·남은 일과 다음 행동을 적은 보고.
         HANDOFF: 실제 인수로 변경한 소유 범위의 기록.
+        LESSON: 요청된 회고에서 생성한 검증·적용 이력.
     """
 
     ARTIFACT = "artifact"
     CHECKPOINT = "checkpoint"
     HANDOFF = "handoff"
+    LESSON = "lesson"
 
 
 @mutable
@@ -53,6 +56,8 @@ class Memory(AbstractAggregateRoot[UUID]):
         graph_directory: 커밋 후 갱신을 요청한 경로이며 요청이 없으면 None.
         graph_reference: 외부 갱신 성공 후 기록한 그래프 참조.
         graph_error: 외부 갱신 실패의 관찰이며 결과 미기록은 None.
+        lessons: 요청된 회고의 교훈 상태와 후속 효과 이력.
+        revision: 동시 효과 기록을 보존할 낙관적 저장 버전.
     """
 
     project_id: UUID
@@ -64,6 +69,29 @@ class Memory(AbstractAggregateRoot[UUID]):
     graph_directory: str | None = None
     graph_reference: str | None = None
     graph_error: str | None = None
+    lessons: Sequence[LessonObservation] = ()
+    revision: int = 1
+
+    def observe_lesson(self, observation: LessonObservation) -> None:
+        """실제 검증 후에만 적용하며 이후 악화는 교훈 철회로 남긴다.
+
+        Args:
+            observation: 원 실패·정상 대조·효과 또는 보류·철회의 관찰.
+
+        Raises:
+            ValueError: 교훈 기록이 아니거나 검증 전에 적용하려는 경우.
+        """
+        if self.kind is not MemoryKind.LESSON:
+            raise ValueError("Only requested reflection creates lesson history")
+        current = self.lessons[-1].state if self.lessons else LessonState.PROPOSED
+        if observation.state is LessonState.APPLIED and current not in (
+            LessonState.VALIDATED,
+            LessonState.APPLIED,
+        ):
+            raise ValueError("Validate a lesson before applying it")
+        if observation.effective is False and observation.state is not LessonState.WITHDRAWN:
+            raise ValueError("An ineffective lesson must be withdrawn")
+        self.lessons = (*self.lessons, observation)
 
     @property
     def graph_status(self) -> GraphUpdateStatus | None:

@@ -471,8 +471,8 @@ async def test_incident_migration_preserves_data_and_refuses_loss(database):
     )
     engine = create_database_engine(database, write=True, migration=True)
     try:
-        async with engine.begin() as connection:
-            with pytest.raises(RuntimeError, match="preserved"):
+        with pytest.raises(RuntimeError, match="preserved"):
+            async with engine.begin() as connection:
                 await connection.run_sync(
                     lambda conn: alembic_command.downgrade(migration_config(conn), "core_0011")
                 )

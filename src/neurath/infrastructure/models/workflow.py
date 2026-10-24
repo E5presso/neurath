@@ -1,7 +1,7 @@
 """워크플로의 정의 개정·단계·시도를 선언형 소유 관계로 매핑한다."""
 
 from datetime import UTC, datetime
-from typing import Self, override
+from typing import Self, TypedDict, override
 from uuid import UUID
 
 from spakky.plugins.sqlalchemy.orm.table import AbstractMappableTable, AbstractTable, Table
@@ -18,12 +18,30 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from neurath.domain.aggregates.workflow import WorkflowRun
+from neurath.domain.enums.reflection_choice import ReflectionChoice
+from neurath.domain.values.evaluation_target import EvaluationKind, EvaluationTarget
 from neurath.domain.values.phase_attempt import PhaseAttempt, PhaseResult, PhaseStatus
 from neurath.domain.values.workflow_definition import (
     PhaseDefinition,
     WorkflowDefinition,
     WorkflowRevision,
 )
+
+
+class EvaluationData(TypedDict):
+    """단계 정의의 JSON 저장 구조다.
+
+    Attributes:
+        kind: 평가 목적.
+        task_ids: 관련 내부 ID의 JSON 문자열.
+        artifacts: 산출물 참조.
+        verification: 실제 검증 참조.
+    """
+
+    kind: str
+    task_ids: list[str]
+    artifacts: list[str]
+    verification: list[str]
 
 
 @Table(WorkflowRun)
@@ -39,6 +57,8 @@ class WorkflowModel(AbstractMappableTable[WorkflowRun]):
         project_id: 연결 태스크의 프로젝트 ID.
         session_id: run을 소유한 세션 ID.
         task_id: 이 절차로 수행하는 태스크 ID.
+        reflection: 회고 사용자 선택 분기.
+        reflection_context: 관찰 문제 또는 실제 선택의 근거.
         revisions: 이전 정의도 함께 보존하는 개정 목록.
         attempts: 실행·결과·생략 시도 목록.
     """
@@ -60,6 +80,9 @@ class WorkflowModel(AbstractMappableTable[WorkflowRun]):
     task_id: Mapped[UUID] = mapped_column(
         Uuid(), ForeignKey("core_tasks.id"), unique=True, nullable=False
     )
+
+    reflection: Mapped[str] = mapped_column(String, nullable=False)
+    reflection_context: Mapped[str] = mapped_column(String, nullable=False)
 
     __mapper_args__ = {"version_id_col": revision}
     revisions: Mapped[list[WorkflowRevisionModel]] = relationship(
@@ -89,6 +112,8 @@ class WorkflowModel(AbstractMappableTable[WorkflowRun]):
             project_id=domain.project_id,
             session_id=domain.session_id,
             task_id=domain.task_id,
+            reflection=domain.reflection,
+            reflection_context=domain.reflection_context,
             revisions=[
                 WorkflowRevisionModel.from_value(value, domain.uid, number)
                 for number, value in enumerate(domain.revisions, 1)
@@ -112,6 +137,8 @@ class WorkflowModel(AbstractMappableTable[WorkflowRun]):
             project_id=self.project_id,
             session_id=self.session_id,
             task_id=self.task_id,
+            reflection=ReflectionChoice(self.reflection),
+            reflection_context=self.reflection_context,
             revisions=tuple(value.to_value() for value in self.revisions),
             attempts=tuple(value.to_value() for value in self.attempts),
         )
@@ -207,6 +234,7 @@ class PhaseDefinitionModel(AbstractTable):
         timeout: 실행 제한 시간(초).
         output_limit: 보존할 출력 바이트 한도.
         max_attempts: 실제 실행 시도의 최대 횟수.
+        evaluation: 선택적 독립 평가 범위와 자료.
     """
 
     __tablename__ = "core_workflow_phases"
@@ -229,6 +257,9 @@ class PhaseDefinitionModel(AbstractTable):
     timeout: Mapped[float] = mapped_column(Float, nullable=False)
     output_limit: Mapped[int] = mapped_column(Integer, nullable=False)
     max_attempts: Mapped[int] = mapped_column(Integer, nullable=False)
+    evaluation: Mapped[EvaluationData | None] = mapped_column(
+        JSON(none_as_null=True), nullable=True
+    )
 
     @classmethod
     def from_value(
@@ -259,6 +290,14 @@ class PhaseDefinitionModel(AbstractTable):
             timeout=value.timeout,
             output_limit=value.output_limit,
             max_attempts=value.max_attempts,
+            evaluation=None
+            if value.evaluation is None
+            else {
+                "kind": value.evaluation.kind.value,
+                "task_ids": [str(uid) for uid in value.evaluation.task_ids],
+                "artifacts": list(value.evaluation.artifacts),
+                "verification": list(value.evaluation.verification),
+            },
         )
 
     def to_value(self) -> PhaseDefinition:
@@ -278,6 +317,14 @@ class PhaseDefinitionModel(AbstractTable):
             timeout=self.timeout,
             output_limit=self.output_limit,
             max_attempts=self.max_attempts,
+            evaluation=None
+            if self.evaluation is None
+            else EvaluationTarget(
+                kind=EvaluationKind(self.evaluation["kind"]),
+                task_ids=tuple(UUID(uid) for uid in self.evaluation["task_ids"]),
+                artifacts=tuple(self.evaluation["artifacts"]),
+                verification=tuple(self.evaluation["verification"]),
+            ),
         )
 
 
@@ -298,6 +345,8 @@ class PhaseAttemptModel(AbstractTable):
         checks: 실제로 충족한 검사 이름.
         output: 한도 안에서 보존한 출력.
         exit_code: 관찰한 종료 코드. 미확인이면 None.
+        delegation_id: 기존 협업 배정의 참조.
+        candidate: 배정 당시의 관련 요구·산출물 지문.
     """
 
     __tablename__ = "core_workflow_attempts"
@@ -319,6 +368,8 @@ class PhaseAttemptModel(AbstractTable):
     checks: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     output: Mapped[str] = mapped_column(String, nullable=False)
     exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    delegation_id: Mapped[UUID | None] = mapped_column(Uuid(), ForeignKey("core_delegations.id"))
+    candidate: Mapped[str] = mapped_column(String, nullable=False)
 
     @classmethod
     def from_value(cls, value: PhaseAttempt, run_id: UUID) -> Self:
@@ -339,6 +390,8 @@ class PhaseAttemptModel(AbstractTable):
             phase_key=value.phase_key,
             status=value.status.value,
             skip_reason=value.skip_reason,
+            delegation_id=value.delegation_id,
+            candidate=value.candidate,
             result_target=None if result is None else result.target_revision,
             summary=None if result is None else result.summary,
             evidence=[] if result is None else list(result.evidence),
@@ -371,4 +424,6 @@ class PhaseAttemptModel(AbstractTable):
             status=PhaseStatus(self.status),
             result=result,
             skip_reason=self.skip_reason,
+            delegation_id=self.delegation_id,
+            candidate=self.candidate,
         )

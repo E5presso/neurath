@@ -1,14 +1,35 @@
 """출처 있는 기억 본문을 현재 enclave와 별도 테이블에 보존한다."""
 
 from datetime import UTC, datetime
-from typing import Self, override
+from typing import Self, TypedDict, override
 from uuid import UUID
 
 from spakky.plugins.sqlalchemy.orm.table import AbstractMappableTable, Table
-from sqlalchemy import JSON, DateTime, ForeignKey, String, Uuid
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from neurath.domain.aggregates.memory import Memory, MemoryKind
+from neurath.domain.values.lesson_observation import LessonObservation, LessonState
+
+
+class LessonData(TypedDict):
+    """교훈 관찰의 JSON 저장 구조다.
+
+    Attributes:
+        state: 현재 적용 상태.
+        reason: 효과 또는 보류·철회 이유.
+        references: 관찰 근거.
+        failure_case: 실패 사례 확인 근거.
+        normal_case: 정상 대조 확인 근거.
+        effective: 실제 효과이며 미확인은 None.
+    """
+
+    state: str
+    reason: str
+    references: list[str]
+    failure_case: str
+    normal_case: str
+    effective: bool | None
 
 
 @Table(Memory)
@@ -29,6 +50,8 @@ class MemoryModel(AbstractMappableTable[Memory]):
         graph_directory: 커밋된 외부 갱신 요청의 경로.
         graph_reference: 저장된 갱신 성공 참조.
         graph_error: 저장된 갱신 실패 관찰.
+        lessons: 교훈의 적용·보류·효과 관찰 이력.
+        revision: 동시 변경을 거절하는 낙관적 저장 버전.
     """
 
     __tablename__ = "core_memories"
@@ -45,6 +68,9 @@ class MemoryModel(AbstractMappableTable[Memory]):
     graph_directory: Mapped[str | None] = mapped_column(String)
     graph_reference: Mapped[str | None] = mapped_column(String)
     graph_error: Mapped[str | None] = mapped_column(String)
+    lessons: Mapped[list[LessonData]] = mapped_column(JSON, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    __mapper_args__ = {"version_id_col": revision}
 
     @classmethod
     @override
@@ -71,6 +97,18 @@ class MemoryModel(AbstractMappableTable[Memory]):
             graph_directory=domain.graph_directory,
             graph_reference=domain.graph_reference,
             graph_error=domain.graph_error,
+            revision=domain.revision,
+            lessons=[
+                {
+                    "state": item.state.value,
+                    "reason": item.reason,
+                    "references": list(item.references),
+                    "failure_case": item.failure_case,
+                    "normal_case": item.normal_case,
+                    "effective": item.effective,
+                }
+                for item in domain.lessons
+            ],
         )
 
     @override
@@ -94,4 +132,16 @@ class MemoryModel(AbstractMappableTable[Memory]):
             graph_directory=self.graph_directory,
             graph_reference=self.graph_reference,
             graph_error=self.graph_error,
+            revision=self.revision,
+            lessons=tuple(
+                LessonObservation(
+                    state=LessonState(item["state"]),
+                    reason=item["reason"],
+                    references=tuple(item["references"]),
+                    failure_case=item["failure_case"],
+                    normal_case=item["normal_case"],
+                    effective=item["effective"],
+                )
+                for item in self.lessons
+            ),
         )

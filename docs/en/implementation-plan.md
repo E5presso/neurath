@@ -43,3 +43,5 @@ CLI, migration, or deployment completion; those remain in their assigned tickets
 [Task ledger implementation](task-ledger.md) is the current #140 scope, not completion of subsequent runner/host/CLI work.
 
 [Phase runner implementation](workflow-runner.md) describes the #141 internal APIs, local execution and reconciliation boundary.
+
+[#138: Result evaluation and reflection implementation](result-evaluation.md)
