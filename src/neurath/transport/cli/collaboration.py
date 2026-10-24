@@ -11,6 +11,14 @@ from spakky.plugins.sqlalchemy.persistency.connection_manager import AsyncConnec
 from spakky.plugins.typer.stereotypes.cli_controller import CliController, command
 from typer import Option, echo
 
+from neurath.application.usecases.acknowledge_message import (
+    AcknowledgeMessageCommand,
+    AcknowledgeMessageUseCase,
+)
+from neurath.application.usecases.close_conversation import (
+    CloseConversationCommand,
+    CloseConversationUseCase,
+)
 from neurath.application.usecases.dispatch_work_assignment import (
     DispatchWorkAssignmentCommand,
     DispatchWorkAssignmentUseCase,
@@ -34,6 +42,7 @@ from neurath.application.usecases.resolve_session_context import (
     ResolveSessionContextQuery,
     ResolveSessionContextUseCase,
 )
+from neurath.application.usecases.send_message import SendMessageCommand, SendMessageUseCase
 from neurath.application.usecases.send_peer_message import (
     SendPeerMessageCommand,
     SendPeerMessageUseCase,
@@ -54,6 +63,9 @@ class CollaborationCliController:
         context: ResolveSessionContextUseCase,
         peers: GetCollaborationContextUseCase,
         send: SendPeerMessageUseCase,
+        reply: SendMessageUseCase,
+        acknowledge: AcknowledgeMessageUseCase,
+        close: CloseConversationUseCase,
         read: ReadMessageUseCase,
         receipt: RecordMessageReadUseCase,
         dispatch: DispatchWorkAssignmentUseCase,
@@ -66,6 +78,9 @@ class CollaborationCliController:
             context: 현재 호스트와 피어.
             peers: 관찰된 동료 주소.
             send: 원 메시지의 멱등 저장.
+            reply: 원 대화의 답장 저장.
+            acknowledge: 읽은 메시지의 수신 확인.
+            close: 원 대화 종료와 미완료 보존.
             read: 본문 조회.
             receipt: 출력 뒤 읽음 기록.
             dispatch: 기존 작업 배정과 평가 단계 연결.
@@ -75,6 +90,9 @@ class CollaborationCliController:
         self.context = context
         self.peers = peers
         self.send = send
+        self.reply = reply
+        self.acknowledge = acknowledge
+        self.close = close
         self.read = read
         self.receipt = receipt
         self.dispatch = dispatch
@@ -122,6 +140,7 @@ class CollaborationCliController:
         title: Annotated[str, Option("--title")],
         body: Annotated[str, Option("--body")],
         key: Annotated[str, Option("--key")] = "",
+        reply_to: UUID | None = None,
     ) -> None:
         """원문 메시지를 지정 동료에게 전달하도록 저장한다.
 
@@ -130,6 +149,7 @@ class CollaborationCliController:
             title: 제목 알림.
             body: 본문이며 -는 stdin.
             key: 동일 메시지 재전송을 구분하는 호출 키.
+            reply_to: 원 대화로 답장할 수신 메시지 ID.
 
         Raises:
             ValueError: 현재 발신 피어가 관찰되지 않은 경우.
@@ -142,23 +162,55 @@ class CollaborationCliController:
             if scope.peer is None:
                 raise ValueError("The current host peer has not been observed")
             receiver = await self._recipient(scope.peer.uid, recipient)
-            result = await self.send.run(
-                SendPeerMessageCommand(
-                    sender_id=scope.peer.uid,
-                    recipient_id=receiver.id,
-                    key=key
-                    or sha256(
-                        repr(
-                            (scope.execution.turn_id if scope.execution else "", title, content)
-                        ).encode()
-                    ).hexdigest(),
-                    title=title,
-                    body=content,
-                )
+            message_key = (
+                key
+                or sha256(
+                    repr(
+                        (scope.execution.turn_id if scope.execution else "", title, content)
+                        if reply_to is None
+                        else (
+                            scope.execution.turn_id if scope.execution else "",
+                            title,
+                            content,
+                            reply_to,
+                        )
+                    ).encode()
+                ).hexdigest()
             )
+            if reply_to is None:
+                result = await self.send.run(
+                    SendPeerMessageCommand(
+                        sender_id=scope.peer.uid,
+                        recipient_id=receiver.id,
+                        key=message_key,
+                        title=title,
+                        body=content,
+                    )
+                )
+            else:
+                original = await self.read.run(
+                    ReadMessageQuery(message_id=reply_to, peer_id=scope.peer.uid)
+                )
+                result = await self.reply.run(
+                    SendMessageCommand(
+                        conversation_id=original.conversation_id,
+                        sender_id=scope.peer.uid,
+                        recipient_id=receiver.id,
+                        key=message_key,
+                        title=title,
+                        body=content,
+                        reply_to=reply_to,
+                    )
+                )
             echo(
                 json.dumps(
-                    {"id": result.uid, "status": result.status, "submitted_to_host": False},
+                    {
+                        "id": result.uid,
+                        "conversation_id": result.conversation_id,
+                        "reply_to": result.reply_to,
+                        "status": result.status,
+                        "submitted_to_host": False,
+                    },
                     default=encode_uuid,
                 )
             )
@@ -187,6 +239,8 @@ class CollaborationCliController:
                     {
                         "id": result.uid,
                         "sender": result.sender_id,
+                        "conversation_id": result.conversation_id,
+                        "reply_to": result.reply_to,
                         "title": result.title,
                         "body": result.body,
                     },
@@ -197,6 +251,61 @@ class CollaborationCliController:
             await self.receipt.run(
                 RecordMessageReadCommand(message_id=message_id, peer_id=scope.peer.uid)
             )
+        finally:
+            await self.connection.dispose()
+
+    @command("ack")
+    async def acknowledge_message(
+        self, message_id: Annotated[UUID, Option("--message-id")]
+    ) -> None:
+        """읽은 메시지의 수신을 확인하며 작업 수락이나 성공으로 바꾸지 않는다.
+
+        Args:
+            message_id: 실제로 읽은 원 메시지.
+
+        Raises:
+            ValueError: 현재 호스트 피어를 관찰하지 못한 경우.
+        """
+        try:
+            scope = await self.context.run(ResolveSessionContextQuery())
+            if scope.peer is None:
+                raise ValueError("The current host peer has not been observed")
+            result = await self.acknowledge.run(
+                AcknowledgeMessageCommand(message_id=message_id, peer_id=scope.peer.uid)
+            )
+            echo(
+                json.dumps(
+                    {
+                        "id": result.uid,
+                        "conversation_id": result.conversation_id,
+                        "acknowledged": result.acknowledged,
+                    },
+                    default=encode_uuid,
+                )
+            )
+        finally:
+            await self.connection.dispose()
+
+    @command("close")
+    async def close_conversation(
+        self, conversation_id: Annotated[UUID, Option("--conversation-id")]
+    ) -> None:
+        """참여 중인 대화만 종료하고 원 메시지·미완료 작업을 보존한다.
+
+        Args:
+            conversation_id: 종료할 원 대화 ID.
+
+        Raises:
+            ValueError: 현재 호스트 피어를 관찰하지 못한 경우.
+        """
+        try:
+            scope = await self.context.run(ResolveSessionContextQuery())
+            if scope.peer is None:
+                raise ValueError("The current host peer has not been observed")
+            result = await self.close.run(
+                CloseConversationCommand(conversation_id=conversation_id, peer_id=scope.peer.uid)
+            )
+            echo(json.dumps({"id": result.uid, "closed": result.closed}, default=encode_uuid))
         finally:
             await self.connection.dispose()
 

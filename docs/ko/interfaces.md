@@ -106,8 +106,10 @@ CLI Controller는 기능별 그룹을 명시하고 업무 명령은 그 그룹 �
 | `workflow revise` | 정당한 절차 변경·재시도·분기 반영; 원문과 필수 결과 유지 | write |
 | `collaboration delegate` | 기존 작업을 피어 또는 provider에 배정·실행 연결. 필요 모델/정책은 명시; 같은 배정 재전달로 중복 실행 없음 | write |
 | `collaboration observe` | 같은 원 배정의 실제 보고·provider 결과를 조회하거나 유한하게 기다림. 새 모델 실행 없음 | read+observed state |
-| `collaboration send` | 수신자/구독 대상에 전달; 답장은 원 메시지 참조 | write |
+| `collaboration send` | 수신자/구독 대상에 전달; `--reply-to MESSAGE_ID`로 같은 원 대화에 답장 | write |
 | `collaboration read` | 선택 본문을 읽고 확인된 전체 전달만 읽음 기록; 이해/수락을 뜻하지 않음 | read+receipt |
+| `collaboration ack` | 실제 읽은 메시지의 명시적 수신 확인; 작업 수락/성공과 구분 | write |
+| `collaboration close` | 원 대화만 종료하고 메시지·미완료 작업 보존 | write |
 | `neurath memory search` | 관련 기억·학습·체크포인트·인계 후보 검색 | read |
 | `neurath memory read` | 선택한 과거 기억 기록과 근거 조회 | read |
 | `neurath session preview` | 원 세션의 원문·현재 작업·runner·enclave를 인수 전에 조회; 소유권 불변 | read |

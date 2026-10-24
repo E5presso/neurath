@@ -106,8 +106,10 @@ Unimplemented action names below identify capabilities rather than instruct root
 | `workflow revise` | Apply justified procedure revisions/retry/branch while preserving originals and required outcomes | write |
 | `collaboration delegate` | Assign/connect existing work to peer or provider with explicit necessary model/policy; redelivery cannot duplicate execution | write |
 | `collaboration observe` | Read or boundedly wait for the original assignment/report; never launch a new model | read+observed state |
-| `collaboration send` | Send to recipients/subscribers; replies reference original message | write |
+| `collaboration send` | Send to recipients/subscribers; `--reply-to MESSAGE_ID` keeps replies in the original conversation | write |
 | `collaboration read` | Read selected body; only confirmed full delivery produces read receipt, not understanding/acceptance | read+receipt |
+| `collaboration ack` | Explicitly acknowledge a read message, separate from work acceptance/success | write |
+| `collaboration close` | Close the original conversation while preserving messages and unfinished work | write |
 | `neurath memory search` | Search related memory/lessons/checkpoints/handoff candidates | read |
 | `neurath memory read` | Read a selected historical memory and its evidence | read |
 | `neurath session preview` | Preview a source session, originals, current tasks, runner and enclave without changing ownership | read |

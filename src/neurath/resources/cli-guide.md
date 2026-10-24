@@ -16,6 +16,8 @@ When preserved unfinished work or accepted evaluation would be affected by a sta
 Do not represent a response-only turn as task cancellation, an external dependency wait, or success. The next actual work turn resumes the same preserved task/run; a current authorized resumption can use `session resume`. Simple conversation without affected work requires no task, workflow, or extra interpretation procedure.
 An observed host address identifies its session even when a tool runs from another cwd. Context reports the original session directory and actual invocation directory separately. If that address has multiple observed project links, use the observed provider and returned project ID with `context show --provider/--project-id`; do not merge unrelated projects or invent a new session.
 
+For an existing peer conversation, send a reply with `collaboration send --recipient ADDRESS --title ... --body ... --reply-to MESSAGE_ID`; use the returned conversation_id and reply_to rather than starting another conversation. `collaboration read` submits the full original then records read; `collaboration ack --message-id ID` explicitly acknowledges a read message. `collaboration close --conversation-id ID` closes only that conversation, preserving messages and unfinished tasks. None of these means assignment acceptance or task success.
+For a real storage failure, `maintenance record-failure --detail ... --reference ...` preserves an independent journal even while the core is unavailable. After restoring the core in the authorized repair scope, `maintenance repair` (or `--journal PATH`) connects original journal entries idempotently; do not ask the user to re-enter symptoms. `maintenance failures` and `failure --incident-id ID` only read. Report actual reproduction/fix/regression with `maintenance repair --incident-id ID --kind KIND --detail ... --reference ...`; regression requires --passed or --failed, and --resolve EXPLANATION only succeeds after ordered passing evidence. `maintenance diagnose --incident-id ID` explicitly records real re-observation. `maintenance handoff-failure --incident-id ID --destination ...` or --replacement-id links unresolved work without claiming resolution. Preserve the original journal and task state; no approval token or new lease is required.
 Context lists default to 20 items (maximum 100). Follow each non-null cursor with the same session, section and task filter plus `--after ID`; collect that cursor's named list independently until its cursor is null. The sources section returns `{sources, next_after_id}`. Memory search also returns `next_after_id`; a full final page may require one empty follow-up. A page is not the complete TODO or all original instructions. `--task-id` filters only the current section and retains session-wide original-source references.
 Use `maintenance version` to inspect the invoked distribution without opening the store. JSON stdout is the result; successful command execution alone is not task success.
 
@@ -41,6 +43,12 @@ Read an existing run with `workflow show --run-id ID`; its definition and attemp
 
 ## Commands
 
+- `collaboration ack` — 읽은 메시지의 수신을 확인하며 작업 수락이나 성공으로 바꾸지 않는다.
+  - `--message-id`: required
+  - `--auth-token`: optional
+- `collaboration close` — 참여 중인 대화만 종료하고 원 메시지·미완료 작업을 보존한다.
+  - `--conversation-id`: required
+  - `--auth-token`: optional
 - `collaboration delegate` — 원 작업의 수행 또는 현재 후보의 독립 평가를 실제 수신 경로에 연결한다.
   - `--task-id`: required
   - `--scope`: required
@@ -65,6 +73,7 @@ Read an existing run with `workflow show --run-id ID`; its definition and attemp
   - `--title`: required
   - `--body`: required
   - `--key`: optional
+  - `--reply-to`: optional
   - `--auth-token`: optional
 - `context show` — 현재 호스트의 실제 원문과 다음 작업을 필요한 영역별로 반환한다.
   - `--session`: optional
@@ -114,6 +123,19 @@ Read an existing run with `workflow show --run-id ID`; its definition and attemp
   - `--directory`: optional
   - `--provider`: optional
   - `--host-session-id`: optional
+  - `--incident-id`: optional
+  - `--auth-token`: optional
+- `maintenance failure` — 원 장애의 증상·재현·수정·회귀·이관 이력을 변경 없이 읽는다.
+  - `--incident-id`: required
+  - `--auth-token`: optional
+- `maintenance failures` — 기존 장애를 읽기만 하며 journal 연결은 명시적 repair로 수행한다.
+  - `--after`: optional
+  - `--limit`: optional
+  - `--auth-token`: optional
+- `maintenance handoff-failure` — 미해결 사건을 이관하거나 기존 대체 사건에 연결하고 해결로 기록하지 않는다.
+  - `--incident-id`: required
+  - `--destination`: optional
+  - `--replacement-id`: optional
   - `--auth-token`: optional
 - `maintenance initialize` — 원본을 보존하고 명시적으로 현재 저장소 스키마를 준비한다.
   - `--database`: optional
@@ -127,6 +149,15 @@ Read an existing run with `workflow show --run-id ID`; its definition and attemp
 - `maintenance record-failure` — 업무 명령을 실행할 수 없어도 원인과 남은 일을 복구 기록에 남긴다.
   - `--detail`: required
   - `--reference`: required
+  - `--auth-token`: optional
+- `maintenance repair` — journal을 코어에 복원하거나 기존 장애에 실제 수리 근거·해결을 기록한다.
+  - `--journal`: optional
+  - `--incident-id`: optional
+  - `--kind`: optional choices=observation,reproduction,fix,regression
+  - `--detail`: optional
+  - `--reference`: optional repeatable
+  - `--passed`: optional
+  - `--resolve`: optional
   - `--auth-token`: optional
 - `maintenance version` — DB를 열지 않고 현재 호출된 배포본의 설치 버전을 반환한다.
   - `--auth-token`: optional
