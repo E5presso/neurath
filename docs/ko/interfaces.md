@@ -59,9 +59,9 @@ CLI는 에이전트가 직접 전달해야 하는 의도 또는 직접 조회할
 
 ### 배포 정의·설치 본문·runner 연결
 
-`resources/skills.json`은 14개 스킬별 목적·적용/제외 조건·필요 입력·상황별 분기·최종 결과와 단계의 결과 조건·검사 이름을 함께 정의합니다. 같은 catalog가 설치용 `SKILL.md`와 기존 `WorkflowDefinition`을 만듭니다. `define-spec`은 수용 기준과 실행 순서·의존성·검증 계획을 함께 남기며, `implement-spec`은 UI 작업일 때 화면·상태·상호작용·접근성 검증을 수행합니다. UI가 없을 때 이를 수행한 것으로 기록하지 않습니다.
+`resources/skills.json`은 14개 스킬별 목적·적용/제외 조건·필요 입력·상황별 분기·최종 결과와 단계의 결과 조건·검사 이름을 함께 정의합니다. 같은 catalog가 Neurath 소유 기본 `SKILL.md`와 기존 `WorkflowDefinition`을 만듭니다. 보존된 사용자·프로젝트 override의 원문은 이 catalog와 별개입니다. `define-spec`은 수용 기준과 실행 순서·의존성·검증 계획을 함께 남기며, `implement-spec`은 UI 작업일 때 화면·상태·상호작용·접근성 검증을 수행합니다. UI가 없을 때 이를 수행한 것으로 기록하지 않습니다.
 
-설치 파일은 첫 줄부터 YAML frontmatter의 `name`과 구체적인 선택·제외 `description`을 제공하고 이어서 스킬 본문을 둡니다. Codex는 `.agents/skills`, Claude는 `.claude/skills`의 해당 폴더를 사용합니다. 관리 스킬을 갱신할 때 다른 frontmatter 항목과 관리 영역 밖 사용자 본문을 보존합니다. 다른 프로젝트/사용자 스킬은 수정하지 않으며 같은 경로의 비관리 스킬과 충돌하면 덮어쓰지 않습니다. 형식 근거는 [공식 Codex 스킬 문서](https://learn.chatgpt.com/docs/build-skills)와 [Claude 스킬 문서](https://code.claude.com/docs/en/skills)입니다. 파일 형식·설치를 검증한 사실과 실제 호스트의 발견·선택·모델 수행은 구분합니다.
+설치 파일은 첫 줄부터 YAML frontmatter의 `name`과 구체적인 선택·제외 `description`을 제공하고 이어서 스킬 본문을 둡니다. Codex는 `.agents/skills`, Claude는 `.claude/skills`의 해당 폴더를 사용합니다. 관리 스킬을 갱신할 때 다른 frontmatter 항목과 관리 영역 밖 사용자 본문을 보존합니다. 다른 프로젝트/사용자 스킬은 수정하지 않으며 같은 경로의 비관리 스킬과 충돌하면 해당 기본 스킬 파일만 건너뛰고 나머지 설치를 계속합니다. 원문을 그대로 우선 보존하며 preview/apply의 `skill_overrides`와 설치 guide에 실제 원본 경로·기본 catalog와의 차이를 명시합니다. 선택된 전문 스킬은 이름이 기본 스킬과 같아도 원문을 읽고 `workflow start --skill NAME --definition @file.json`의 기존 custom 경로로 실제 단계와 `source`를 전달합니다. 사용자에게 파일 삭제·이름 변경이나 승인 토큰을 요구하지 않습니다. 관리 스킬 본문은 호스트에 중립적이며 `<current-host-command>`를 현재 host guide의 실제 명령으로 바꿔 호출합니다. `.claude/skills`가 `.agents/skills`를 가리켜도 호스트별 절대 경로로 공유 파일을 덮지 않습니다. 형식 근거는 [공식 Codex 스킬 문서](https://learn.chatgpt.com/docs/build-skills)와 [Claude 스킬 문서](https://code.claude.com/docs/en/skills)입니다. 파일 형식·설치를 검증한 사실과 실제 호스트의 발견·선택·모델 수행은 구분합니다.
 
 스킬을 읽는 것만으로 run이나 단계 결과가 생기지 않습니다. 이미 현재 요청을 수행하는 태스크와 run이 있으면 재사용합니다. 실제 수행할 일이 원장에 없을 때만 `task create`를 호출하고, 새 절차를 선택했을 때 `workflow start`를 사용합니다. `workflow show --run-id UUID`는 기존 고정 정의·입력·시도·현재 단계를 읽습니다. 패키지나 원문 파일 변경은 진행 중인 run을 덮어쓰지 않습니다. 정의가 달라진 `start`는 기존 run을 변경하지 않고 명시적 `workflow revise` 경로를 안내합니다. 이름이 바뀐 옛 스킬의 run도 저장된 정의로 계속 읽고 보고할 수 있습니다.
 

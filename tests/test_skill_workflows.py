@@ -111,16 +111,17 @@ async def test_broken_owned_frontmatter_preserves_everything(tmp_path):
     assert path.read_text() == original and not (tmp_path / "data").exists()
 
 
+@pytest.mark.parametrize("skill", ["project-check", "design-ui"])
 @pytest.mark.parametrize("transport", ["stdin", "file", "inline"])
 async def test_selected_project_skill_runs_actual_host_phase_and_keeps_snapshot(
-    database, host, transport
+    database, host, transport, skill
 ):
     directory = host[0]
     source = directory / "SKILL.md"
-    original = "---\nname: project-check\ndescription: Verify the project artifact\n---\nRead the input, create output, verify content."
+    original = f"---\nname: {skill}\ndescription: Verify the project artifact\n---\nRead the input, create output, verify content."
     source.write_text(original)
     spec = {
-        "skill": "project-check",
+        "skill": skill,
         "version": "custom-1",
         "source": "SKILL.md",
         "inputs": {"input": "request:original"},
@@ -147,7 +148,7 @@ async def test_selected_project_skill_runs_actual_host_phase_and_keeps_snapshot(
             "--task-id",
             task["id"],
             "--skill",
-            "project-check",
+            skill,
             "--definition",
             value,
         ],
@@ -186,7 +187,7 @@ async def test_selected_project_skill_runs_actual_host_phase_and_keeps_snapshot(
             "--task-id",
             task["id"],
             "--skill",
-            "project-check",
+            skill,
             "--definition",
             f"@{definition}",
         ],

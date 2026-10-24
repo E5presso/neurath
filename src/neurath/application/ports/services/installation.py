@@ -18,6 +18,7 @@ class InstallationResult:
         changed_files: 실제 갱신한 Neurath 소유 파일/영역.
         backups: 변경 전 보존한 파일과 DB 스냅샷.
         host_action: 호스트가 별도로 요구하는 실제 활성화 안내.
+        skill_overrides: 같은 이름의 기본 스킬 대신 보존한 사용자·프로젝트 원문 경로.
         planned_files: 내부 배포 계획이 요청한 파일 본문이며 일반 적용은 None.
     """
 
@@ -26,6 +27,7 @@ class InstallationResult:
     changed_files: Sequence[str]
     backups: Sequence[str]
     host_action: str
+    skill_overrides: Mapping[str, str]
     planned_files: Mapping[str, str] | None = None
 
 

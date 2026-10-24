@@ -126,7 +126,7 @@ class PosixInstallationService(IInstallationService):
 
         Raises:
             ValueError: 실제 디렉터리가 없거나 설정이 올바른 객체가 아닌 경우.
-            FileExistsError: Neurath 소유가 아닌 실행 파일·스킬을 덮어써야 하는 경우.
+            FileExistsError: Neurath 소유가 아닌 실행 파일·가이드를 덮어써야 하는 경우.
             Exception: 파일 적용 실패 시 원래 설정을 복원한 뒤 원 오류를 전파한다.
         """
         root = Path(directory).expanduser().resolve(strict=True)
@@ -171,14 +171,25 @@ exec {shlex.quote(sys.executable)} -I -m neurath.entrypoint "$@"
             guide_path: f"{guide_marker}\n{instructions}",
             rules: self._managed(existing_rules, routing),
         }
+        overrides: dict[str, str] = {}
         for entry in catalog:
             name = entry.workflow.skill
             path = skills / name / "SKILL.md"
             old = path.read_text() if path.exists() else ""
-            if old and "<!-- neurath:begin -->" not in old:
-                raise FileExistsError(f"Existing user skill was preserved: {path}")
+            if path.exists() and not any(
+                marker in old for marker in ("<!-- neurath:begin -->", "<!-- neurath:end -->")
+            ):
+                overrides[name] = str(path.resolve())
+                instructions = "\n".join(
+                    f"- [{name}](<{path}>) — Preserved user/project override. Read this actual source; packaged catalog metadata does not describe it. Use `workflow start --task-id ID --skill {name} --definition @file.json` with its faithful phases and source."
+                    if line.startswith(f"- [{name}](")
+                    else line
+                    for line in instructions.split("\n")
+                )
+                continue
             initial = self._skill_header(old, name, f"{entry.use_when}. 제외: {entry.exclude}")
-            planned[path] = self._managed(initial, self._skill_body(entry, executable))
+            planned[path] = self._managed(initial, self._skill_body(entry))
+        planned[guide_path] = f"{guide_marker}\n{instructions}"
         hooks_path = config / ("hooks.json" if provider is ProviderKind.CODEX else "settings.json")
         document: dict[str, object] = (
             json.loads(hooks_path.read_text()) if hooks_path.exists() else {}
@@ -244,6 +255,7 @@ exec {shlex.quote(sys.executable)} -I -m neurath.entrypoint "$@"
                 database=str(database),
                 changed_files=tuple(str(path) for path in changed),
                 backups=(),
+                skill_overrides=overrides,
                 host_action="Preview only; no files, database or native host were changed. "
                 + legacy_retained,
                 planned_files={str(path): body for path, body in planned.items()},
@@ -292,6 +304,7 @@ exec {shlex.quote(sys.executable)} -I -m neurath.entrypoint "$@"
             database=str(database),
             changed_files=tuple(str(path) for path in changed),
             backups=tuple(backups),
+            skill_overrides=overrides,
             host_action="Files applied. Native hook trust and sandbox access remain the host's decisions. Review changed hooks with /hooks if requested, then verify SessionStart and a real CLI request; no trust hashes or permissions were forged. "
             + legacy_retained,
         )
@@ -619,17 +632,16 @@ exec {shlex.quote(sys.executable)} -I -m neurath.entrypoint "$@"
         return f"---\n{fields}\n---\n{body}"
 
     @staticmethod
-    def _skill_body(entry: SkillDescription, executable: Path) -> str:
+    def _skill_body(entry: SkillDescription) -> str:
         """각 스킬의 실제 선택·입력·단계·결과와 기존 CLI 사용을 연결한다.
 
         Args:
             entry: runner와 같은 원천에서 읽은 스킬 계약.
-            executable: 설치된 CLI 경로.
 
         Returns:
             str: 해당 요청에 필요한 절차와 결과 조건.
         """
-        command = shlex.quote(str(executable))
+        command = "<current-host-command>"
         workflow = entry.workflow
         distribution = (
             f"""## 정확한 배포본 업데이트
@@ -676,6 +688,8 @@ exec {shlex.quote(sys.executable)} -I -m neurath.entrypoint "$@"
 {outcomes}
 
 ## 기존 작업에 연결
+
+이 파일은 여러 호스트가 공유할 수 있는 절차다. 프로젝트의 `AGENTS.md`/`CLAUDE.md` 관리 영역에서 현재 대화를 실행하는 호스트의 guide를 먼저 읽는다. 그 guide의 `Use this installed command`에 나온 실제 명령으로 아래 `<current-host-command>`를 대체하고 모든 CLI 호출에 같은 명령을 사용한다. 이 표기를 그대로 실행하거나 다른 호스트 wrapper·새 세션 신원을 추정하지 않는다.
 
 `{command} context show`와 `context show --section sources`의 모든 관련 페이지를 읽는다. 스킬을 읽은 것만으로 수행·완료를 기록하지 않는다. 단순 대화에는 task나 workflow가 필요 없다.
 이미 있는 작업을 선택한다. 실제 수행할 일이 원장에 없을 때만 `task create --title ... --result ...`로 연결한다. 새 절차는 `workflow start --task-id ... --skill {workflow.skill}`로 시작한다. 현재 단계의 작업은 호스트의 추론·파일·명령·네이티브 협업 도구로 수행한다.

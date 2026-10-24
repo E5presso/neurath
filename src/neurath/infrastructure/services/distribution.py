@@ -365,6 +365,7 @@ class PosixDistributionService(IDistributionService):
             "preview": str(record),
             "changed_files": preview["changed_files"],
             "applied": False,
+            "skill_overrides": preview.get("skill_overrides", {}),
             "database_transition": preview["database_transition"],
             "continuation": [
                 "Identify every managed CLI sharing this database; retain their current immutable runtimes.",

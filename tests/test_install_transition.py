@@ -457,3 +457,93 @@ async def test_manifest_owned_rules_symlink_outside_root_preserves_user_target(t
     )
     assert rules.is_symlink() and shared.read_text().startswith("User policy before.")
     assert "User policy after." in shared.read_text() and "lease.acquire" not in shared.read_text()
+
+
+@pytest.mark.parametrize(
+    "order", [(ProviderKind.CODEX, ProviderKind.CLAUDE), (ProviderKind.CLAUDE, ProviderKind.CODEX)]
+)
+@pytest.mark.parametrize(
+    "custom",
+    [
+        "",
+        "---\nname: design-ui\ndescription: Specialist design\n---\nKeep the actual visual design procedure.",
+    ],
+)
+async def test_shared_skills_keep_specialist_and_use_current_host_guide(tmp_path, order, custom):
+    root = tmp_path / "project"
+    skills = root / ".agents/skills"
+    path = skills / "design-ui/SKILL.md"
+    path.parent.mkdir(parents=True)
+    path.write_text(custom)
+    (root / "AGENTS.md").write_text("Keep project policy\n")
+    (root / "CLAUDE.md").symlink_to("AGENTS.md")
+    (root / ".claude").mkdir()
+    (root / ".claude/skills").symlink_to("../.agents/skills")
+    service = PosixInstallationService(PosixSkillCatalogService())
+    first_body = None
+    for provider in (*order, *reversed(order)):
+        preview = await service.install(provider, str(root), str(tmp_path / "data"), preview=True)
+        assert preview.skill_overrides == {"design-ui": str(path.resolve())}
+        assert str(path) not in preview.planned_files
+        result = await service.install(provider, str(root), str(tmp_path / "data"))
+        assert result.skill_overrides == preview.skill_overrides
+        command = guided_command(root, provider)
+        body = (skills / "implement-spec/SKILL.md").read_text()
+        assert str(root) not in body and "<current-host-command> context show" in body
+        assert "Use this installed command" in body
+        if first_body is not None:
+            assert body == first_body
+        first_body = body
+        guide = (
+            root / (".codex" if provider is ProviderKind.CODEX else ".claude") / "neurath/guide.md"
+        ).read_text()
+        row = next(line for line in guide.splitlines() if line.startswith("- [design-ui]"))
+        assert "Preserved user/project override" in row and "--definition" in row
+        assert path.read_text() == custom
+        environment = dict(
+            os.environ,
+            NEURATH_SESSION_ID=f"shared-skills-{provider.value}",
+            NEURATH_PROVIDER=provider.value,
+        )
+        payload = {
+            "session_id": environment["NEURATH_SESSION_ID"],
+            "cwd": str(root),
+            "hook_event_name": "UserPromptSubmit",
+            "prompt": "Use existing specialist work",
+        }
+        subprocess.run(
+            [command, "hook", "handle", "--provider", provider.value],
+            cwd=root,
+            env=environment,
+            input=json.dumps(payload),
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        context = subprocess.run(
+            [command, "context", "show"],
+            cwd=root,
+            env=environment,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        assert json.loads(context.stdout)["host"]["provider"] == provider.value
+    assert (root / ".claude/skills").is_symlink()
+    assert (root / ".claude/skills/implement-spec/SKILL.md").samefile(
+        skills / "implement-spec/SKILL.md"
+    )
+    entries = service.catalog.list(str(root))
+    assert len(entries) == 14 and len(list(skills.glob("*/SKILL.md"))) == 14
+    assert next(item for item in entries if item.workflow.skill == "design-ui").purpose not in row
+
+
+async def test_malformed_owned_skill_end_marker_is_still_rejected(tmp_path):
+    path = tmp_path / ".agents/skills/qa/SKILL.md"
+    path.parent.mkdir(parents=True)
+    path.write_text("<!-- neurath:end -->")
+    with pytest.raises(ValueError, match="boundaries"):
+        await PosixInstallationService(PosixSkillCatalogService()).install(
+            ProviderKind.CODEX, str(tmp_path), str(tmp_path / "data")
+        )
+    assert path.read_text() == "<!-- neurath:end -->" and not (tmp_path / "data").exists()
