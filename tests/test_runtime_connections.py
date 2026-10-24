@@ -358,6 +358,7 @@ async def test_abstract_boundaries_fail_instead_of_silently_succeeding():
         (IHostEnvironmentService, "read", ()),
         (IHostEnvironmentService, "publish", ("claude", "real")),
         (ISkillCatalogService, "load", ("qa", "/tmp")),
+        (ISkillCatalogService, "list", ("/tmp",)),
     ):
         with pytest.raises(NotImplementedError):
             getattr(contract, name)(None, *arguments)

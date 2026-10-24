@@ -51,6 +51,36 @@ CLI는 에이전트가 직접 전달해야 하는 의도 또는 직접 조회할
 
 작업 묶음을 마무리하는 스킬은 [결과 평가 phase](architecture.md#3-skills와-phase-runner의-실행-계약)를 수행합니다. 스킬을 중첩해도 같은 유효 평가를 재사용합니다.
 
+### 배포 정의·설치 본문·runner 연결
+
+`resources/skills.json`은 14개 스킬별 목적·적용/제외 조건·필요 입력·상황별 분기·최종 결과와 단계의 결과 조건·검사 이름을 함께 정의합니다. 같은 catalog가 설치용 `SKILL.md`와 기존 `WorkflowDefinition`을 만듭니다. `define-spec`은 수용 기준과 실행 순서·의존성·검증 계획을 함께 남기며, `implement-spec`은 UI 작업일 때 화면·상태·상호작용·접근성 검증을 수행합니다. UI가 없을 때 이를 수행한 것으로 기록하지 않습니다.
+
+설치 파일은 첫 줄부터 YAML frontmatter의 `name`과 구체적인 선택·제외 `description`을 제공하고 이어서 스킬 본문을 둡니다. Codex는 `.agents/skills`, Claude는 `.claude/skills`의 해당 폴더를 사용합니다. 관리 스킬을 갱신할 때 다른 frontmatter 항목과 관리 영역 밖 사용자 본문을 보존합니다. 다른 프로젝트/사용자 스킬은 수정하지 않으며 같은 경로의 비관리 스킬과 충돌하면 덮어쓰지 않습니다. 형식 근거는 [공식 Codex 스킬 문서](https://learn.chatgpt.com/docs/build-skills)와 [Claude 스킬 문서](https://code.claude.com/docs/en/skills)입니다. 파일 형식·설치를 검증한 사실과 실제 호스트의 발견·선택·모델 수행은 구분합니다.
+
+스킬을 읽는 것만으로 run이나 단계 결과가 생기지 않습니다. 이미 현재 요청을 수행하는 태스크와 run이 있으면 재사용합니다. 실제 수행할 일이 원장에 없을 때만 `task create`를 호출하고, 새 절차를 선택했을 때 `workflow start`를 사용합니다. `workflow show --run-id UUID`는 기존 고정 정의·입력·시도·현재 단계를 읽습니다. 패키지나 원문 파일 변경은 진행 중인 run을 덮어쓰지 않습니다. 정의가 달라진 `start`는 기존 run을 변경하지 않고 명시적 `workflow revise` 경로를 안내합니다. 이름이 바뀐 옛 스킬의 run도 저장된 정의로 계속 읽고 보고할 수 있습니다.
+
+`workflow report`는 실제 호스트 작업 뒤 현재 단계의 `checks` 항목만 반복 `--check`로 전달합니다. 일반 단계의 보고는 독립 결과 평가를 통과시킬 수 없습니다. 하위 절차나 `finish-session`을 이어 수행할 때 같은 run을 `revise`하고 유효한 동일 평가 phase와 시도를 보존합니다. 관련 요구·후보가 바뀌면 기존 평가 경로가 재평가를 요구하며, 단순 마무리 때문에 새 평가 태스크를 만들거나 검토자를 재귀 평가하지 않습니다. 원 작업의 요구 변경과 수행 방법 변경은 구분합니다.
+
+### 선택한 프로젝트·사용자 전문 스킬
+
+기본 목록 밖의 스킬도 호스트가 원본 `SKILL.md`를 읽어 선택한 절차를 기존 runner로 수행할 수 있습니다. 에이전트는 원 스킬의 의미를 보존한 명시적 정의를 `workflow start --task-id UUID --skill project-check --definition @workflow.json`으로 전달합니다. `--definition -`는 stdin, JSON 문자열은 인라인 입력입니다. 원본 스킬을 Neurath 형식으로 덮어쓰거나 사용자에게 상태 관리를 맡길 필요는 없습니다.
+
+```json
+{
+  "version": "project-1",
+  "source": ".agents/skills/project-check/SKILL.md",
+  "inputs": {"target": "requested artifact"},
+  "phases": [
+    {"key": "inspect", "purpose": "Read the selected inputs", "checks": ["scope"]},
+    {"key": "verify", "purpose": "Perform the project check", "result": "Verified actual output", "checks": ["content"]}
+  ]
+}
+```
+
+`version`과 `phases`는 필수이며 각 단계는 `key`, `purpose`, `checks`를 가집니다. `inputs`는 선택적 문자열 값 객체이고, `source`를 지정하면 실제 작업 폴더 기준 또는 절대 경로의 스킬 원문과 경로를 run 입력에 고정합니다. 원문 읽기나 JSON 형식·중복 단계·검사 조건 검증이 실패하면 태스크 시작이나 run 저장이 없습니다. 알려지지 않은 이름에 정의도 없으면 기본 목록과 기존 run 조회/정정 경로를 안내하며 임의 절차를 만들지 않습니다.
+
+일반 호스트 수행 단계는 실행 인자 없이 진행할 수 있습니다. 실제 작업은 호스트 도구로 수행하고 근거를 보고합니다. 선택 절차에 필요한 독립 평가는 기존 evaluation phase로 연결하며 전문 스킬이라는 이유로 일반 작업에 일괄 추가하지 않습니다. 기본에서 제외한 커밋·워크트리·이슈/PR, 의존성 관리, Graphify, 복구는 기존 호스트·전문 도구와 `session resume` 경로로 수행합니다.
+
 ## 3. CLI 전용 인터페이스
 
 **기술 스택은 Python + spakky-typer (Typer)입니다.** `neurath` 진입점과 업무·관리 명령을 Typer 애플리케이션으로 정의합니다. Python 타입 힌트와 Typer의 명령·인자·옵션·도움말 정의를 사용하고, 실제 도메인 동작은 기존 Application 유스케이스에 위임합니다. Typer 의존성은 CLI 전송 계층에 두며 Domain에 넣지 않습니다. [공식 Typer 문서](https://typer.tiangolo.com/).

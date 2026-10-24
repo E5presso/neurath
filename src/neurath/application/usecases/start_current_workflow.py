@@ -24,10 +24,12 @@ class StartCurrentWorkflowCommand(AbstractCommand):
     Attributes:
         task_id: 현재 작업 목록의 실제 작업.
         skill: 요청에 맞게 선택한 스킬.
+        definition: 명시적으로 전달한 전문 절차 JSON 또는 None.
     """
 
     task_id: UUID
     skill: str
+    definition: str | None = None
 
 
 @UseCase()
@@ -65,7 +67,9 @@ class StartCurrentWorkflowUseCase(IAsyncCommandUseCase[StartCurrentWorkflowComma
             WorkflowRun: 상태만 저장한 runner이며 실제 코딩은 호스트가 수행한다.
         """
         scope = await self.context.run(ResolveSessionContextQuery())
-        definition = self.catalog.load(command.skill, scope.session.working_directory)
+        definition = self.catalog.load(
+            command.skill, scope.session.working_directory, command.definition
+        )
         task = (
             await self.tasks.run(
                 GetTaskQuery(
