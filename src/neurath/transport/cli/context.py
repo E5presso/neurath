@@ -11,6 +11,10 @@ from spakky.plugins.sqlalchemy.persistency.connection_manager import AsyncConnec
 from spakky.plugins.typer.stereotypes.cli_controller import CliController, command
 from typer import BadParameter, Option, echo
 
+from neurath.application.usecases.discover_provider import (
+    DiscoverProviderQuery,
+    DiscoverProviderUseCase,
+)
 from neurath.application.usecases.get_collaboration_context import (
     GetCollaborationContextQuery,
     GetCollaborationContextUseCase,
@@ -36,12 +40,14 @@ class ContextSection(StrEnum):
         SOURCES: TODO와 독립적인 원문·정정.
         COLLABORATION: 실제 피어·인박스·배정.
         MEMORY: 과거 보고와 적용 중인 교훈의 참조.
+        PROVIDER: 추론 없는 실제 모델·정책 조회.
     """
 
     CURRENT = "current"
     SOURCES = "sources"
     COLLABORATION = "collaboration"
     MEMORY = "memory"
+    PROVIDER = "provider"
 
 
 def _page[T](
@@ -74,6 +80,7 @@ class ContextCliController:
     def __init__(
         self,
         resolve: ResolveSessionContextUseCase,
+        discover: DiscoverProviderUseCase,
         preview: PreviewSessionUseCase,
         collaboration: GetCollaborationContextUseCase,
         memories: SearchMemoryUseCase,
@@ -83,12 +90,14 @@ class ContextCliController:
 
         Args:
             resolve: 호스트 주소에서 내부 범위를 찾는다.
+            discover: 현재 세션·DB와 독립적인 공급자 조회.
             preview: 현재 원문·작업·사실·절차를 읽는다.
             collaboration: 실제 메시지와 배정의 현재 상태.
             memories: 적용 중인 교훈과 과거 보고 조회.
             connection: 요청 이벤트 루프의 연결 정리.
         """
         self.resolve = resolve
+        self.discover = discover
         self.preview = preview
         self.collaboration = collaboration
         self.memories = memories
@@ -100,7 +109,10 @@ class ContextCliController:
         session: Annotated[str, Option("--session", help="다른 관찰된 호스트 세션 주소")] = "",
         section: ContextSection = ContextSection.CURRENT,
         provider: Annotated[
-            ProviderKind | None, Option("--provider", help="같은 관찰 주소의 호스트 종류만 구분")
+            ProviderKind | None,
+            Option(
+                "--provider", help="provider 영역의 조회 공급자 또는 같은 관찰 주소의 호스트 종류"
+            ),
         ] = None,
         project_id: Annotated[
             UUID | None, Option("--project-id", help="같은 관찰 주소의 복수 프로젝트 연결만 구분")
@@ -118,7 +130,7 @@ class ContextCliController:
         Args:
             session: 미지정이면 호스트 환경의 현재 세션.
             section: 필요한 정보 영역.
-            provider: 같은 주소가 여러 호스트에 있을 때 선택할 실제 공급자.
+            provider: provider 영역의 조회 대상 또는 같은 주소의 실제 호스트.
             project_id: 관찰된 같은 주소가 여러 프로젝트에 있을 때만 지정할 범위.
             task_id: 현재 세션이 소유한 작업의 요약·절차·사실로 제한.
             limit: 목록별 최대 출력 수.
@@ -131,6 +143,12 @@ class ContextCliController:
         try:
             if task_id is not None and section is not ContextSection.CURRENT:
                 raise BadParameter("--task-id is available with --section current")
+            if section is ContextSection.PROVIDER:
+                if provider is None:
+                    raise BadParameter("--section provider requires --provider")
+                result = await self.discover.run(DiscoverProviderQuery(provider=provider))
+                echo(json.dumps(asdict(result), default=encode_uuid, ensure_ascii=False))
+                return
             scope = await self.resolve.run(
                 ResolveSessionContextQuery(
                     session=session,

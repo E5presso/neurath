@@ -285,7 +285,9 @@ def test_claude_worker_uses_explicit_plan_and_real_session(provider_environment)
 
 
 @pytest.mark.parametrize("provider", ["codex", "claude"])
-def test_discovery_uses_control_protocol_without_a_model_prompt(tmp_path, monkeypatch, provider):
+async def test_discovery_uses_control_protocol_without_a_model_prompt(
+    tmp_path, monkeypatch, provider
+):
     monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ["PATH"])
     if provider == "codex":
         script = """import sys,json
@@ -309,6 +311,19 @@ sys.stdin.read()
     assert discover_models(provider) == ("first", "second")
     caps = SubprocessProviderService().discover(provider)
     assert caps.models == ("first", "second") and "inherit" not in caps.policies
+    from tests.test_cli import invoke
+
+    result = await invoke(
+        tmp_path / "uninitialized.sqlite3",
+        ["context", "show", "--section", "provider", "--provider", provider],
+    )
+    assert result.exit_code == 0, result.exception
+    assert json.loads(result.stdout)["models"] == ["first", "second"]
+    missing = await invoke(
+        tmp_path / "uninitialized.sqlite3", ["context", "show", "--section", "provider"]
+    )
+    assert missing.exit_code == 2
+    assert not (tmp_path / "uninitialized.sqlite3").exists()
 
 
 @pytest.mark.parametrize(
@@ -1175,3 +1190,35 @@ print(json.dumps({{"type":"turn.completed"}}),flush=True)
     assert service.observe(uid).status is ProviderStatus.COMPLETED
     assert not process_identity(process["pid"])
     assert not service._is_running(service._directory(uid))
+
+
+@pytest.mark.parametrize("section", [["--section", "provider"], ["--section=provider"]])
+def test_public_catalog_has_no_database_or_native_binding_requirement(
+    tmp_path, monkeypatch, section
+):
+    monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ["PATH"])
+    executable(
+        tmp_path,
+        "codex",
+        """import sys,json
+request=json.loads(sys.stdin.readline());assert request['method']=='initialize'
+print(json.dumps({'id':1,'result':{}}),flush=True)
+assert json.loads(sys.stdin.readline())['method']=='initialized'
+assert json.loads(sys.stdin.readline())['method']=='model/list'
+print(json.dumps({'id':2,'result':{'data':[{'model':'catalog-only'}],'nextCursor':None}}),flush=True)
+assert sys.stdin.read()==''
+""",
+    )
+    monkeypatch.setenv("SPAKKY_SQLALCHEMY__CONNECTION_STRING", "invalid://unavailable")
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "missing-data"))
+    for key in ("NEURATH_SESSION_ID", "CODEX_THREAD_ID", "CLAUDE_SESSION_ID"):
+        monkeypatch.delenv(key, raising=False)
+    command = [str(Path(sys.executable).with_name("neurath")), "context", "show", *section]
+    result = subprocess.run(
+        [*command, "--provider", "codex"], cwd=tmp_path, capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["models"] == ["catalog-only"]
+    assert not (tmp_path / "missing-data").exists()
+    missing = subprocess.run(command, cwd=tmp_path, capture_output=True, text=True)
+    assert missing.returncode == 2 and "requires" in missing.stderr

@@ -106,7 +106,7 @@ CLI Controller는 기능별 그룹을 명시하고 업무 명령은 그 그룹 �
 | `workflow revise` | 정당한 절차 변경·재시도·분기 반영; 원문과 필수 결과 유지 | write |
 | `collaboration delegate` | 기존 작업을 피어 또는 provider에 배정·실행 연결. 필요 모델/정책은 명시; 같은 배정 재전달로 중복 실행 없음 | write |
 | `collaboration observe` | 같은 원 배정의 실제 보고·provider 결과를 조회하거나 유한하게 기다림. 새 모델 실행 없음 | read+observed state |
-| `collaboration send` | 수신자/구독 대상에 전달; `--reply-to MESSAGE_ID`로 같은 원 대화에 답장 | write |
+| `collaboration send` | 지정 수신자에게 전달; `--reply-to MESSAGE_ID`로 같은 원 대화에 답장 | write |
 | `collaboration read` | 선택 본문을 읽고 확인된 전체 전달만 읽음 기록; 이해/수락을 뜻하지 않음 | read+receipt |
 | `collaboration ack` | 실제 읽은 메시지의 명시적 수신 확인; 작업 수락/성공과 구분 | write |
 | `collaboration close` | 원 대화만 종료하고 메시지·미완료 작업 보존 | write |
@@ -126,13 +126,13 @@ CLI는 같은 애플리케이션 유스케이스를 직접 호출합니다. MCP 
 
 일반 업무 명령은 호출 시 선택된 설치 버전으로 실행합니다. 업데이트 이후 새 호출은 새 배포본을 사용하고, 진행 중 호출은 안전한 경계까지 처리·정리합니다. 코어는 상주 상태를 보유하지 않습니다. 진행 중인 호스트 실행의 버전 전환·인계는 해당 실행의 계약으로 확인합니다. CLI 사용만으로 모든 상주 실행이 자동 교체되거나 진행 중인 대화의 지침이 바뀐다고 주장하지 않습니다.
 
-요청된 회고의 교훈은 `memory propose-lesson`과 `memory observe-lesson`으로 후보·실제 효과를 기록하고 `memory search/read`로 조회합니다. 이 명령은 회고 승인이나 실제 코드 적용을 대신하지 않습니다. `monitor status/tick`은 현재 감시의 읽기/단일 관찰 경로이며, 실제 후속 실행은 [감시 콜백](monitoring.md)을 사용합니다. 설치·초기화·진단·독립 장애 기록은 `maintenance`, 호스트 사건은 `hook` 그룹입니다.
+요청된 회고의 교훈은 `memory propose-lesson`과 `memory observe-lesson`으로 후보·실제 효과를 기록하고 `memory search/read`로 조회합니다. 이 명령은 회고 승인이나 실제 코드 적용을 대신하지 않습니다. `monitor status/tick/cancel`은 현재 감시의 읽기/단일 관찰/감시만 취소 경로이며, 실제 후속 실행은 [감시 콜백](monitoring.md)을 사용합니다. 설치·초기화·진단·독립 장애 기록은 `maintenance`, 호스트 사건은 `hook` 그룹입니다.
 
 `newsroom subscribe --enabled/--disabled`는 현재 대화의 제목 알림 설정이며 다른 주제·배정·이력을 변경하지 않습니다. 새 네이티브 피어의 기본 수신과 기존 구독 선택을 구분합니다.
 
 ### 범위와 다음 페이지
 
-`context show`는 현재 호스트 세션을 자동 선택합니다. `--session`은 관찰된 다른 호스트 세션 주소를, `--section`은 `current/sources/collaboration/memory`를 선택합니다. `current --task-id UUID`는 선택 세션이 소유한 작업과 관련 runner·사실로 좁힙니다. 세션 공통 사실과 원문 참조는 유지하므로 TODO에 빠진 요구도 확인할 수 있습니다. 다른 세션의 작업이나 다른 section의 작업 필터는 오류입니다.
+`context show`는 현재 호스트 세션을 자동 선택합니다. `--session`은 관찰된 다른 호스트 세션 주소를, `--section`은 `current/sources/collaboration/memory/provider`를 선택합니다. `current --task-id UUID`는 선택 세션이 소유한 작업과 관련 runner·사실로 좁힙니다. 세션 공통 사실과 원문 참조는 유지하므로 TODO에 빠진 요구도 확인할 수 있습니다. 다른 세션의 작업이나 다른 section의 작업 필터는 오류입니다.
 
 목록별 기본 출력은 20개, `--limit`은 1~100개입니다. 현재 맥락은 기존 인수 미리보기의 읽기 전용 스냅샷에서 출력 페이지를 구성하며 DB 조회량 전체를 제한하는 계약은 아닙니다. 항목의 본문을 중간에서 잘라 원문이나 현재 사실을 훼손하지 않습니다. 목록이 나뉘면 다음 커서를 반드시 반환합니다.
 
@@ -230,3 +230,13 @@ Typer가 제공하는 명령/도움말 정의를 입력으로 Neurath의 릴리�
 배포 후보·공식 릴리스 관찰·같은 버전의 다른 artifact 적용·공유 DB·복구 절차는 [배포 안내](distribution.md)를 따릅니다.
 
 현재 원문의 상태/요구 구분, 이번 턴만 제어권 반환, tool cwd와 관찰 세션의 관계는 [현재 턴 의도](turn-intent.md)를 따릅니다. 에이전트의 판단을 `session interpret`로 연결하며 사용자의 모드 선택이나 추가 승인을 요구하지 않습니다.
+
+### 모델 조회·주제 발행·감시 취소
+
+`context show --section provider --provider codex|claude`는 실제 모델·지원 정책을 추론 없이 조회합니다. 현재 native 세션이나 초기화된 업무 DB는 필요하지 않습니다. `context show --section collaboration`의 배정 `plan`과 `collaboration observe --delegation-id UUID`는 저장된 모델·정책·작업 폴더를 반환합니다. 조회는 새 모델 실행이 아닙니다.
+
+`collaboration subscribe --topic TOPIC --enabled/--disabled`는 현재 피어의 해당 주제만 변경합니다. `collaboration publish --conversation-id UUID --topic TOPIC --title TITLE --body BODY --key KEY`는 기존 대화의 활성 구독자에게 발행합니다. `--body -`는 stdin이며 같은 키의 재시도는 원 발행을 조회합니다. 직접 송신·답장, 뉴스룸과 다른 주제 구독은 별도로 유지합니다.
+
+`monitor cancel --task-id UUID --monitor-number N`은 현재 실행·세대를 내부에서 조회해 감시만 취소합니다. 원 태스크의 waiting, 외부 의존, 사건, 잔여 예산과 미확인 자원은 보존합니다. 원 작업 재개·취소 또는 호스트 예약의 실제 중단 확인을 대신하지 않습니다.
+
+발행 응답의 `published=false`와 빈 `messages`는 활성 수신자가 없어 발행이 저장되지 않았다는 뜻입니다. 이 경우 같은 키로 나중에 호출해 실제 수신자가 생기면 첫 발행이 됩니다. `published=true`인 저장된 발행의 재시도만 원 봉투·수신자 목록을 고정하며, 자동 재시도나 모델 호출은 수행하지 않습니다.

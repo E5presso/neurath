@@ -9,10 +9,10 @@
 | 이전 이름 | 새 경로 | 노출 | 이유 | 결과 계약 |
 | --- | --- | --- | --- | --- |
 | `harness_bypass` | maintenance CLI | internal/config/CLI | CLI/런타임 장애 때도 필요한 관리 CLI 복구 경로 | B01 |
-| `session_status` | context show | CLI | 동일 현재 실행의 조회 중복 통합 | B02 |
-| `session_inspect` | context show | CLI | 동일 현재 실행의 조회 중복 통합 | B02 |
-| `turn_inspect` | context show | CLI | 동일 현재 실행의 조회 중복 통합 | B02 |
-| `worktree_inspect` | context show | CLI | 동일 현재 실행의 조회 중복 통합 | B02 |
+| `session_status` | maintenance diagnose / context show | CLI | 동일 현재 실행의 조회 중복 통합 | B02 |
+| `session_inspect` | maintenance diagnose / context show | CLI | 동일 현재 실행의 조회 중복 통합 | B02 |
+| `turn_inspect` | maintenance diagnose | CLI | 동일 현재 실행의 조회 중복 통합 | B02 |
+| `worktree_inspect` | maintenance diagnose | CLI | 동일 현재 실행의 조회 중복 통합 | B02 |
 | `worktree_claim` | runtime writer lifecycle | internal | 실제 작성 시작/종료에서 조정·해제; 모델이 임대 토큰을 수작업으로 조립하지 않음 | B03 |
 | `worktree_release` | runtime writer lifecycle | internal | 실제 작성 시작/종료에서 조정·해제; 모델이 임대 토큰을 수작업으로 조립하지 않음 | B03 |
 | `worktree_isolation` | host worktree / Git / filesystem | host | 체크아웃 생성·보존·정리는 호스트 도구; 충돌 조정만 Neurath 내부 | B03 |
@@ -22,11 +22,11 @@
 | `task_start` | task update | CLI | 작업 시작/배정 수락 등 역할별 전이 통합 | B04 |
 | `task_resolve` | task report | CLI | 현재 작업/단계 결과 평가에 검토 수용 포함; 별도 완료 투표 제거 | B04 |
 | `phase_start` | workflow start | CLI | 선택 절차 또는 검토 반복을 같은 run으로 시작 | B05 |
-| `phase_current` | context show | CLI | 절차/시도/조건/반복 이력 통합 조회 | B05 |
+| `phase_current` | workflow show | CLI | 절차/시도/조건/반복 이력 통합 조회 | B05 |
 | `phase_evidence_prepare` | workflow validation and evidence binding | internal | 실행 전 입력 검증과 결과 연결은 runner 책임 | B05 |
-| `phase_complete` | task report | CLI | 실제 단계/회차 결과를 현재 시도에 반영 | B05 |
+| `phase_complete` | workflow report | CLI | 실제 단계/회차 결과를 현재 시도에 반영 | B05 |
 | `phase_finalize` | workflow finalization | internal | 마지막 결과 반영과 종결을 함께 처리 | B05 |
-| `adaptive_read` | context show | CLI | 절차/시도/조건/반복 이력 통합 조회 | B06 |
+| `adaptive_read` | workflow show | CLI | 절차/시도/조건/반복 이력 통합 조회 | B06 |
 | `adaptive_preflight` | workflow validation and evidence binding | internal | 실행 전 입력 검증과 결과 연결은 runner 책임 | B06 |
 | `adaptive_replace` | workflow revise | CLI | 방법/범위 정정 경로 통합; 원문 변경 권한은 없음 | B06 |
 | `adaptive_override_goal` | workflow revise | CLI | 방법/범위 정정 경로 통합; 원문 변경 권한은 없음 | B06 |
@@ -34,27 +34,27 @@
 | `delegation_prepare` | assignment validation | internal | 배정 호출에서 대상/범위/검토 조건 검증 | B07 |
 | `delegation_assign` | collaboration delegate | CLI | 실제 작업/검토 배정 통합 | B07 |
 | `evaluation_prepare` | assignment validation | internal | 배정 호출에서 대상/범위/검토 조건 검증 | B08 |
-| `evaluation_read` | context show | CLI | 절차/시도/조건/반복 이력 통합 조회 | B08 |
+| `evaluation_read` | workflow show / collaboration observe | CLI | 절차/시도/조건/반복 이력 통합 조회 | B08 |
 | `evaluation_execute` | host execution tools | host | 검사는 실제 호스트 실행; Neurath는 시도/결과 관찰 | B08 |
-| `evaluation_report` | task report | CLI | 수행자/검토자의 출처 있는 결과 보고 | B08 |
-| `evaluation_consume` | task report | CLI | 현재 작업/단계 결과 평가에 검토 수용 포함; 별도 완료 투표 제거 | B08 |
+| `evaluation_report` | task report --delegation-id | CLI | 수행자/검토자의 출처 있는 결과 보고 | B08 |
+| `evaluation_consume` | workflow report --accepted / --rejected | CLI | 현재 작업/단계 결과 평가에 검토 수용 포함; 별도 완료 투표 제거 | B08 |
 | `evaluation_loop_open` | workflow start | CLI | 선택 절차 또는 검토 반복을 같은 run으로 시작 | B09 |
-| `evaluation_loop_read` | context show | CLI | 절차/시도/조건/반복 이력 통합 조회 | B09 |
-| `evaluation_loop_round` | task report | CLI | 실제 단계/회차 결과를 현재 시도에 반영 | B09 |
+| `evaluation_loop_read` | workflow show | CLI | 절차/시도/조건/반복 이력 통합 조회 | B09 |
+| `evaluation_loop_round` | workflow report | CLI | 실제 단계/회차 결과를 현재 시도에 반영 | B09 |
 | `evaluation_loop_close` | workflow finalization | internal | 마지막 결과 반영과 종결을 함께 처리 | B09 |
 | `review_begin` | collaboration delegate | CLI | 실제 작업/검토 배정 통합 | B10 |
-| `review_report` | task report | CLI | 수행자/검토자의 출처 있는 결과 보고 | B10 |
-| `review_consume` | task report | CLI | 현재 작업/단계 결과 평가에 검토 수용 포함; 별도 완료 투표 제거 | B10 |
+| `review_report` | task report --delegation-id | CLI | 수행자/검토자의 출처 있는 결과 보고 | B10 |
+| `review_consume` | workflow report --accepted / --rejected | CLI | 현재 작업/단계 결과 평가에 검토 수용 포함; 별도 완료 투표 제거 | B10 |
 | `review_abort` | task update | CLI | 배정 취소로 처리하고 결과/이력 보존 | B10 |
 | `review_publish` | host GitHub / review tools | host | 원격 리뷰/댓글의 게시·조회는 제공 도구 사용 | B10 |
 | `review_comments` | host GitHub / review tools | host | 원격 리뷰/댓글의 게시·조회는 제공 도구 사용 | B10 |
-| `provider_models` | context show | CLI | 모델/지원 정책을 한 조회에서 반환 | B11 |
+| `provider_models` | context show --section provider --provider | CLI | 모델/지원 정책을 한 조회에서 반환 | B11 |
 | `provider_plan` | provider validation and routing | internal | collaboration delegate 전에 필요한 설정/경로를 검증·보존; 준비를 실행으로 표시하지 않음 | B11 |
-| `provider_plan_read` | context show | CLI | 고정 계획과 실제 실행 상태를 함께 조회 | B11 |
-| `provider_capabilities` | context show | CLI | 모델/지원 정책을 한 조회에서 반환 | B11 |
+| `provider_plan_read` | context show --section collaboration / collaboration observe | CLI | 고정 계획과 실제 실행 상태를 함께 조회 | B11 |
+| `provider_capabilities` | context show --section provider --provider | CLI | 모델/지원 정책을 한 조회에서 반환 | B11 |
 | `provider_route` | provider validation and routing | internal | collaboration delegate 전에 필요한 설정/경로를 검증·보존; 준비를 실행으로 표시하지 않음 | B11 |
 | `provider_run` | collaboration delegate | CLI | 지원 제공자의 실제 실행에 필요한 진입점 | B12 |
-| `provider_status` | context show | CLI | 고정 계획과 실제 실행 상태를 함께 조회 | B12 |
+| `provider_status` | collaboration observe | CLI | 고정 계획과 실제 실행 상태를 함께 조회 | B12 |
 | `provider_cancel` | task update | CLI | 대상 실행의 실제 중단 제어 | B12 |
 | `provider_recover` | provider recovery | internal | 재연결 시 원 run 대조; 명시적 수리는 session resume | B12 |
 | `collaboration_register` | peer connection lifecycle | internal | 실제 연결의 주소/신원으로 등록·갱신 | B13 |
@@ -63,7 +63,7 @@
 | `collaboration_send` | collaboration send | CLI | 수신자/구독자/답장 참조만 다른 동일 전달 동작 | B14 |
 | `collaboration_reply` | collaboration send | CLI | 수신자/구독자/답장 참조만 다른 동일 전달 동작 | B13 |
 | `collaboration_message` | collaboration read | CLI | 선택한 실제 본문 읽기 | B13 |
-| `collaboration_ack` | message transport and receipt | internal | 읽기/전송 결과가 수신 기록 생성; 유한한 실제 실패 복구를 어댑터가 수행 | B13 |
+| `collaboration_ack` | collaboration ack | CLI | 읽은 원 메시지 수신 확인; 태스크 수락/성공과 구분 | B13 |
 | `collaboration_forward` | message transport and receipt | internal | 읽기/전송 결과가 수신 기록 생성; 유한한 실제 실패 복구를 어댑터가 수행 | B14 |
 | `collaboration_submitted` | message transport and receipt | internal | 읽기/전송 결과가 수신 기록 생성; 유한한 실제 실패 복구를 어댑터가 수행 | B14 |
 | `collaboration_assign` | collaboration delegate | CLI | 실제 작업/검토 배정 통합 | B15 |
@@ -71,10 +71,10 @@
 | `collaboration_report` | task report | CLI | 수행자/검토자의 출처 있는 결과 보고 | B15 |
 | `collaboration_task` | context show | CLI | 작업과 배정을 같은 원장에서 조회 | B15 |
 | `collaboration_conversation` | context show | CLI | 메시지·대화·실제 전달 상태 통합 조회 | B16 |
-| `collaboration_close` | project notification settings / lifecycle | internal/config/CLI | 호스트 도구로 관리하는 프로젝트 알림 설정과 내부 수명주기 | B16 |
-| `collaboration_subscribe` | project notification settings | internal/config/CLI | 호스트 도구로 관리하는 프로젝트 알림 설정과 내부 수명주기 | B16 |
-| `collaboration_unsubscribe` | project notification settings | internal/config/CLI | 호스트 도구로 관리하는 프로젝트 알림 설정과 내부 수명주기 | B16 |
-| `collaboration_publish` | collaboration send | CLI | 수신자/구독자/답장 참조만 다른 동일 전달 동작 | B16 |
+| `collaboration_close` | collaboration close | CLI | 대화만 닫고 원문·미완료 작업 보존 | B16 |
+| `collaboration_subscribe` | collaboration subscribe --topic --enabled | CLI | 선택 주제만 추가하고 뉴스룸·다른 주제 보존 | B16 |
+| `collaboration_unsubscribe` | collaboration subscribe --topic --disabled | CLI | 선택 주제만 해제하고 원 메시지 보존 | B16 |
+| `collaboration_publish` | collaboration publish --conversation-id --topic | CLI | 기존 대화의 활성 구독자에게 발행; 원 발행 재시도 수신자 보존 | B16 |
 | `delivery_status` | context show | CLI | 메시지·대화·실제 전달 상태 통합 조회 | B14 |
 | `delivery_redrive` | message transport and receipt | internal | 읽기/전송 결과가 수신 기록 생성; 유한한 실제 실패 복구를 어댑터가 수행 | B14 |
 | `newsroom_headlines` | newsroom list | CLI | 제목/개정 목록 조회 | B17 |
@@ -95,37 +95,37 @@
 | `learning_status` | memory search / memory read | CLI | 관련 이력/교훈을 유형·상태로 검색 후 상세 조회 | B20 |
 | `learning_pending` | memory search / memory read | CLI | 관련 이력/교훈을 유형·상태로 검색 후 상세 조회 | B20 |
 | `learning_history` | memory search / memory read | CLI | 관련 이력/교훈을 유형·상태로 검색 후 상세 조회 | B20 |
-| `learning_defer` | reflection / versioned lesson source | internal/config/CLI | 출처 있는 교훈 자료와 회고 수명주기에 보류/철회 반영 | B20 |
-| `diagnostics_integrity` | context show / maintenance CLI | CLI | 하네스 진단의 입력 범위만 구분 | B21 |
-| `diagnostics_project` | context show / maintenance CLI | CLI | 하네스 진단의 입력 범위만 구분 | B21 |
-| `diagnostics_profile` | context show / maintenance CLI | CLI | 하네스 진단의 입력 범위만 구분 | B21 |
-| `diagnostics_continuation` | context show / maintenance CLI | CLI | 하네스 진단의 입력 범위만 구분 | B21 |
-| `incident_record` | incident / observation lifecycle | internal | 실제 장애·실행·복구 사건으로 기록; 임의 정상화 도구 제거 | B22 |
-| `incident_validate` | context show / maintenance CLI | CLI | 하네스 진단의 입력 범위만 구분 | B22 |
-| `incident_resolve` | incident / observation lifecycle | internal | 실제 장애·실행·복구 사건으로 기록; 임의 정상화 도구 제거 | B22 |
-| `incident_escalate` | incident / observation lifecycle | internal | 실제 장애·실행·복구 사건으로 기록; 임의 정상화 도구 제거 | B22 |
-| `incident_refresh` | incident / observation lifecycle | internal | 실제 장애·실행·복구 사건으로 기록; 임의 정상화 도구 제거 | B22 |
-| `incident_supersede` | incident / observation lifecycle | internal | 실제 장애·실행·복구 사건으로 기록; 임의 정상화 도구 제거 | B22 |
+| `learning_defer` | memory observe-lesson --state deferred | CLI | 실제 이유를 가진 교훈 보류 관찰; 원 이력 보존 | B20 |
+| `diagnostics_integrity` | maintenance diagnose | CLI | 하네스 진단의 입력 범위만 구분 | B21 |
+| `diagnostics_project` | maintenance diagnose | CLI | 하네스 진단의 입력 범위만 구분 | B21 |
+| `diagnostics_profile` | maintenance diagnose | CLI | 하네스 진단의 입력 범위만 구분 | B21 |
+| `diagnostics_continuation` | maintenance diagnose | CLI | 하네스 진단의 입력 범위만 구분 | B21 |
+| `incident_record` | maintenance record-failure / maintenance repair | CLI | 실제 장애·실행·복구 사건으로 기록; 임의 정상화 도구 제거 | B22 |
+| `incident_validate` | maintenance repair --incident-id --kind | CLI | 하네스 진단의 입력 범위만 구분 | B22 |
+| `incident_resolve` | maintenance repair --incident-id --resolve | CLI | 실제 장애·실행·복구 사건으로 기록; 임의 정상화 도구 제거 | B22 |
+| `incident_escalate` | maintenance handoff-failure --destination | CLI | 실제 장애·실행·복구 사건으로 기록; 임의 정상화 도구 제거 | B22 |
+| `incident_refresh` | maintenance diagnose --incident-id | CLI | 실제 장애·실행·복구 사건으로 기록; 임의 정상화 도구 제거 | B22 |
+| `incident_supersede` | maintenance handoff-failure --replacement-id | CLI | 실제 장애·실행·복구 사건으로 기록; 임의 정상화 도구 제거 | B22 |
 | `process_evidence_record` | incident / observation lifecycle | internal | 실제 장애·실행·복구 사건으로 기록; 임의 정상화 도구 제거 | B22 |
 | `monitor_start` | task dependency lifecycle | internal/config/CLI | 실제 요청된 작업의 외부 의존성에서 내부 감시 시작 | B23 |
-| `monitor_status` | context show | CLI | 감시/사건/실제 상태 통합 조회 | B23 |
-| `monitor_cancel` | task update | CLI | 감시 종료 의도 | B23 |
+| `monitor_status` | monitor status | CLI | 감시/사건/실제 상태 통합 조회 | B23 |
+| `monitor_cancel` | monitor cancel | CLI | 감시 종료 의도 | B23 |
 | `monitor_recover` | monitor lifecycle | internal | 사건 소비·대기·재개/인계는 실제 작업/호스트 사건에서 처리 | B23 |
-| `monitor_readback` | context show | CLI | 감시/사건/실제 상태 통합 조회 | B23 |
-| `monitor_event` | context show | CLI | 감시/사건/실제 상태 통합 조회 | B24 |
+| `monitor_readback` | monitor status | CLI | 감시/사건/실제 상태 통합 조회 | B23 |
+| `monitor_event` | monitor status | CLI | 감시/사건/실제 상태 통합 조회 | B24 |
 | `monitor_ack` | monitor lifecycle | internal | 사건 소비·대기·재개/인계는 실제 작업/호스트 사건에서 처리 | B24 |
 | `monitor_external_wait` | monitor lifecycle | internal | 사건 소비·대기·재개/인계는 실제 작업/호스트 사건에서 처리 | B24 |
 | `monitor_handoff` | monitor lifecycle | internal | 사건 소비·대기·재개/인계는 실제 작업/호스트 사건에서 처리 | B24 |
-| `installation_plan` | maintenance CLI + update-neurath / session resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B25 |
-| `installation_apply` | maintenance CLI + update-neurath / session resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B25 |
-| `installation_recover` | maintenance CLI + update-neurath / session resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B25 |
-| `releases_status` | maintenance CLI + update-neurath / session resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
-| `releases_check` | maintenance CLI + update-neurath / session resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
-| `releases_notice` | maintenance CLI + update-neurath / session resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
-| `releases_prepare` | maintenance CLI + update-neurath / session resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
-| `releases_choose` | maintenance CLI + update-neurath / session resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
-| `releases_apply` | maintenance CLI + update-neurath / session resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
-| `releases_recover` | maintenance CLI + update-neurath / session resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
+| `installation_plan` | distribution plan | CLI | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B25 |
+| `installation_apply` | distribution apply | CLI | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B25 |
+| `installation_recover` | distribution recover / migration recover | CLI | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B25 |
+| `releases_status` | distribution verify / distribution check | CLI | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
+| `releases_check` | distribution check | CLI | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
+| `releases_notice` | distribution check | CLI | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
+| `releases_prepare` | distribution prepare | CLI | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
+| `releases_choose` | distribution plan --candidate | CLI | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
+| `releases_apply` | distribution apply | CLI | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
+| `releases_recover` | distribution recover / migration recover | CLI | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
 | `maintenance_choice_read` | maintenance CLI + update-neurath / session resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
 | `maintenance_choice_prepare` | maintenance CLI + update-neurath / session resume | CLI+skill | 자신을 교체/복구하는 경로는 CLI 밖에서도 작동; 추가 승인 객체 API 제거 | B26 |
 | `reporting_status` | host artifact / GitHub tools | host | 일반 초안/외부 제출은 기존 도구와 실제 사용자 권한 사용; Neurath 전용 게시/승인 원장 불필요 | B27 |

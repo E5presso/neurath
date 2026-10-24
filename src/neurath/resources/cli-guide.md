@@ -1,4 +1,4 @@
-# Neurath 0.4.0 CLI
+# Neurath 0.4.1 CLI
 
 Neurath preserves the current request, work, context and collaboration across host events. The host agent performs the actual reasoning, editing, tools and native delegation.
 Use this installed command: `@NEURATH_COMMAND@`. The host session and project are resolved automatically. Never invent native identities or ask the user to re-enter existing instructions. No Neurath approval token is required.
@@ -65,6 +65,13 @@ Read an existing run with `workflow show --run-id ID`; its definition and attemp
   - `--delegation-id`: required
   - `--wait`: optional
   - `--auth-token`: optional
+- `collaboration publish` — 기존 대화의 활성 구독자에게 원 발행을 저장하고 재시도 대상을 보존한다.
+  - `--conversation-id`: required
+  - `--topic`: required
+  - `--title`: required
+  - `--body`: required
+  - `--key`: optional
+  - `--auth-token`: optional
 - `collaboration read` — 원 메시지 전체를 출력한 뒤에만 읽음 기록을 반영한다.
   - `--message-id`: required
   - `--auth-token`: optional
@@ -75,9 +82,13 @@ Read an existing run with `workflow show --run-id ID`; its definition and attemp
   - `--key`: optional
   - `--reply-to`: optional
   - `--auth-token`: optional
+- `collaboration subscribe` — 선택한 주제만 구독·해제하고 뉴스룸과 다른 주제는 보존한다.
+  - `--topic`: required
+  - `--enabled`: optional
+  - `--auth-token`: optional
 - `context show` — 현재 호스트의 실제 원문과 다음 작업을 필요한 영역별로 반환한다.
   - `--session`: optional
-  - `--section`: optional choices=current,sources,collaboration,memory
+  - `--section`: optional choices=current,sources,collaboration,memory,provider
   - `--provider`: optional choices=codex,claude
   - `--project-id`: optional
   - `--task-id`: optional
@@ -242,6 +253,10 @@ Read an existing run with `workflow show --run-id ID`; its definition and attemp
   - `--archive-id`: required
   - `--key`: required
   - `--workflow-key`: optional
+  - `--auth-token`: optional
+- `monitor cancel` — 현재 감시만 취소하고 원 작업·대기·사건·미확인 자원을 보존한다.
+  - `--task-id`: required
+  - `--monitor-number`: required
   - `--auth-token`: optional
 - `monitor status` — 실제 관찰과 정확한 사건·실패·잔여 예산을 부작용 없이 조회한다.
   - `--project-id`: optional

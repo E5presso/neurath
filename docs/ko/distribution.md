@@ -1,6 +1,6 @@
 # 배포본 준비·업데이트·복구
 
-Neurath는 wheel SHA-256으로 배포본을 구분합니다. 같은 `0.4.0`이라도 소스 commit이나 실제 artifact가 다르면 다른 후보이며, 버전 문자열만으로 이미 최신이라고 판단하지 않습니다. 후보 준비·파일 적용·새 CLI 실행·모델이 안내를 읽은 것·네이티브 호스트 활성화는 각각 다른 결과입니다.
+Neurath는 wheel SHA-256으로 배포본을 구분합니다. 같은 `0.4.1`이라도 소스 commit이나 실제 artifact가 다르면 다른 후보이며, 버전 문자열만으로 이미 최신이라고 판단하지 않습니다. 후보 준비·파일 적용·새 CLI 실행·모델이 안내를 읽은 것·네이티브 호스트 활성화는 각각 다른 결과입니다.
 
 ## 소스와 공식 릴리스
 
@@ -8,7 +8,7 @@ Neurath는 wheel SHA-256으로 배포본을 구분합니다. 같은 `0.4.0`이�
 neurath distribution check --installed /path/to/.codex/neurath/distribution.json
 uv run --locked python tools/generate_cli_guide.py --check
 uv run --locked python tools/build_release.py --output release-candidate
-neurath distribution prepare --wheel release-candidate/neurath-0.4.0-py3-none-any.whl \
+neurath distribution prepare --wheel release-candidate/neurath-0.4.1-py3-none-any.whl \
   --store /path/to/data/neurath/distributions --source-commit FULL_COMMIT_SHA
 ```
 
@@ -33,7 +33,7 @@ neurath distribution apply --candidate /path/to/distributions/WHEEL_SHA \
 
 사용자 지침·프로젝트 전문 스킬·다른 확장 설정은 보존합니다. 같은 이름의 비관리 전문 스킬은 원문 그대로 우선하며 해당 기본 파일만 설치에서 제외합니다. 나머지 CLI·guide·hooks·스킬 갱신은 계속하고 `skill_overrides`에 보존 경로를 보고합니다. 설치 guide는 그 원문과 packaged catalog를 구분하며 선택된 전문 절차는 기존 `--definition` 경로를 사용합니다. 공유 가능한 관리 SKILL.md는 현재 호스트 guide의 실제 명령을 참조하므로 `.claude/skills -> ../.agents/skills`에서도 설치 순서에 영향을 받지 않습니다. 과거 MCP 등록은 요청한 루트의 관리 launcher 표지와 정확한 옛 명령이 확인된 항목만 제거합니다. 표지가 없는 구형 `.neurath/run`은 `install.json`의 launcher SHA·Python·실행 대상과 설정 파일 SHA, 정확한 hook/MCP 인자를 함께 대조합니다. 확인된 handler만 바꾸고 혼합 그룹의 다른 handler와 속성은 보존합니다. 정확한 옛 hook 호출이 있지만 소유 대조가 실패하면 계획·적용 모두 새 handler를 추가하기 전에 실패하여 이중 집행을 만들지 않습니다. 구형 `neurath:managed` 블록은 manifest 소유 항목과 명확한 경계·기존 MCP 본문을 확인해 교체합니다. 블록 밖 사용자 수정으로 전체 파일 SHA가 달라져도 그 정책은 보존하며, 경계나 소유가 불명확하면 원문을 보존하고 오류를 반환합니다. 이름만 Neurath인 불명확한 등록은 유지하고 실제 항목을 확인해 현재 그룹 CLI로 바꾸도록 안내합니다. 캐시된 옛 MCP 호출을 계속 재시도하거나 새 MCP 서버를 만들지 않습니다.
 
-0.4.0은 구형 공개 0.3.1과 구분되는 새 배포 버전입니다. 새 세션의 rules는 `.codex/neurath/guide.md` 또는 `.claude/neurath/guide.md`의 같은 배포 가이드를 먼저 읽도록 연결합니다. 공유 `AGENTS.md`/`CLAUDE.md`에는 프로젝트 상대 링크만 쓰고 symlink와 사용자 본문을 보존합니다. 호스트별 가이드는 각각의 CLI와 14개 스킬을 가리키므로 설치 순서나 재설치로 다른 호스트의 명령을 사용하지 않습니다. 진행 세션은 `distribution guide`로 실제 현재 안내 본문을 다시 읽습니다. 반환은 stdout 제출 근거이며 모델이 내용을 사용했는지나 호스트가 훅을 활성화했는지는 별도로 확인합니다. CLI 업데이트만으로 호스트 앱 재시작을 선행 조건으로 요구하지 않습니다. 호스트 신뢰 hash·네이티브 identity·권한을 직접 만들지 않습니다.
+0.4.1 후보는 0.4.0의 공개 조회·구독·감시 취소 연결을 보완하는 patch 버전입니다. 새 세션의 rules는 `.codex/neurath/guide.md` 또는 `.claude/neurath/guide.md`의 같은 배포 가이드를 먼저 읽도록 연결합니다. 공유 `AGENTS.md`/`CLAUDE.md`에는 프로젝트 상대 링크만 쓰고 symlink와 사용자 본문을 보존합니다. 호스트별 가이드는 각각의 CLI와 14개 스킬을 가리키므로 설치 순서나 재설치로 다른 호스트의 명령을 사용하지 않습니다. 진행 세션은 `distribution guide`로 실제 현재 안내 본문을 다시 읽습니다. 반환은 stdout 제출 근거이며 모델이 내용을 사용했는지나 호스트가 훅을 활성화했는지는 별도로 확인합니다. CLI 업데이트만으로 호스트 앱 재시작을 선행 조건으로 요구하지 않습니다. 호스트 신뢰 hash·네이티브 identity·권한을 직접 만들지 않습니다.
 
 ## 공유 DB와 실패 복구
 

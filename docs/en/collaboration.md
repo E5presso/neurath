@@ -1,6 +1,6 @@
 # Collaboration and provider execution
 
-This document describes the collaboration library and existing hook integration from #144. Public business CLI options and generated guides belong to #148. Model execution and fulfillment of the user's task are separate outcomes.
+This document describes the collaboration library, hook integration, and public `collaboration` CLI group. See the [CLI guide](interfaces.md) for current options and execution paths. Model execution and fulfillment of the user's task are separate outcomes.
 
 ## Peers and messages
 
@@ -33,3 +33,5 @@ Cancellation checks the managed PID, start time, and process group before signal
 ## Verification boundary
 
 Regression tests exercise actual SQLite and framework transactions, isolated process execution, retries, late responses, preserved sources and definitions, and cancellation races. Fixture results and observations from installed providers are recorded separately. Verifying this candidate does not imply installation into user projects or activation of an existing desktop connection.
+
+`collaboration publish` returns `published=false` and stores no publication when there are no recipients. A later call with the same key and selected recipients is the first publication; retries of a stored publication retain its original recipients.

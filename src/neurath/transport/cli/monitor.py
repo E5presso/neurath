@@ -9,6 +9,7 @@ from spakky.plugins.sqlalchemy.persistency.connection_manager import AsyncConnec
 from spakky.plugins.typer.stereotypes.cli_controller import CliController, command
 from typer import Option, echo
 
+from neurath.application.usecases.cancel_monitor import CancelMonitorCommand, CancelMonitorUseCase
 from neurath.application.usecases.get_monitor import GetMonitorQuery, GetMonitorUseCase
 from neurath.application.usecases.resolve_session_context import (
     ResolveSessionContextQuery,
@@ -25,6 +26,7 @@ class MonitorCliController:
     def __init__(
         self,
         tick: TickMonitorUseCase,
+        cancel: CancelMonitorUseCase,
         status: GetMonitorUseCase,
         connection: AsyncConnectionManager,
         context: ResolveSessionContextUseCase,
@@ -33,11 +35,13 @@ class MonitorCliController:
 
         Args:
             tick: 커밋된 예약 뒤 외부 관찰·알림·결과 저장.
+            cancel: 원 작업·대기를 유지하는 감시 취소.
             status: 첫 관찰·사건·실패·필요한 조작 조회.
             connection: 명령 이벤트 루프에서 정리할 연결.
             context: 현재 호스트 범위를 자동 조회한다.
         """
         self.tick = tick
+        self.cancel = cancel
         self.status = status
         self.connection = connection
         self.context = context
@@ -132,6 +136,42 @@ class MonitorCliController:
                     session_id=session_id,
                     task_id=task_id,
                     monitor_number=monitor_number,
+                )
+            )
+            echo(json.dumps(asdict(result), default=encode_uuid, ensure_ascii=False))
+        finally:
+            await self.connection.dispose()
+
+    @command("cancel")
+    async def cancel_monitor(
+        self,
+        task_id: Annotated[UUID, Option("--task-id")],
+        monitor_number: Annotated[int, Option("--monitor-number")],
+    ) -> None:
+        """현재 감시만 취소하고 원 작업·대기·사건·미확인 자원을 보존한다.
+
+        Args:
+            task_id: 현재 세션의 외부 대기 태스크.
+            monitor_number: 중단할 감시 순번.
+        """
+        try:
+            project_id, session_id = await self._scope(None, None)
+            current = await self.status.run(
+                GetMonitorQuery(
+                    project_id=project_id,
+                    session_id=session_id,
+                    task_id=task_id,
+                    monitor_number=monitor_number,
+                )
+            )
+            result = await self.cancel.run(
+                CancelMonitorCommand(
+                    project_id=project_id,
+                    session_id=session_id,
+                    task_id=task_id,
+                    monitor_number=monitor_number,
+                    execution_id=current.owner_execution_id,
+                    generation=current.generation,
                 )
             )
             echo(json.dumps(asdict(result), default=encode_uuid, ensure_ascii=False))

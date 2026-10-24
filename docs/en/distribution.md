@@ -1,6 +1,6 @@
 # Preparing, updating, and recovering distributions
 
-Neurath identifies distributions by wheel SHA-256. Two artifacts or source commits at `0.4.0` can be different candidates; a matching version string does not establish that an installation is current. Candidate preparation, file application, a new CLI invocation, model use of updated instructions, and native host activation are separate results.
+Neurath identifies distributions by wheel SHA-256. Two artifacts or source commits at `0.4.1` can be different candidates; a matching version string does not establish that an installation is current. Candidate preparation, file application, a new CLI invocation, model use of updated instructions, and native host activation are separate results.
 
 ## Source and official releases
 
@@ -8,7 +8,7 @@ Neurath identifies distributions by wheel SHA-256. Two artifacts or source commi
 neurath distribution check --installed /path/to/.codex/neurath/distribution.json
 uv run --locked python tools/generate_cli_guide.py --check
 uv run --locked python tools/build_release.py --output release-candidate
-neurath distribution prepare --wheel release-candidate/neurath-0.4.0-py3-none-any.whl \
+neurath distribution prepare --wheel release-candidate/neurath-0.4.1-py3-none-any.whl \
   --store /path/to/data/neurath/distributions --source-commit FULL_COMMIT_SHA
 ```
 
@@ -33,7 +33,7 @@ A private `plan` preview contains the actual file changes and selected distribut
 
 User instructions, specialist skills, and other extension settings are preserved. An unowned same-name specialist skill takes precedence unchanged; only that default file is skipped. CLI, guide, hooks, and other skills continue updating, with preserved paths reported in `skill_overrides`. The installed guide distinguishes that source from the packaged catalog and routes the selected specialist through existing `--definition`. Shared managed SKILL.md instructions refer to the current host guide’s actual command, so `.claude/skills -> ../.agents/skills` remains independent of installation order. Historical MCP registrations are removed only when the requested root's managed launcher marker and exact legacy command establish ownership. For an unmarked historical `.neurath/run`, match the launcher SHA, Python and execution target in `install.json`, the configuration file SHA, and exact hook/MCP arguments. Replace only verified handlers, preserving unrelated handlers and properties in mixed groups. When an exact old hook invocation exists but ownership checks fail, planning and application fail before adding a competing handler. Replace old `neurath:managed` blocks using the manifest ownership entry, clear boundaries, and known MCP body. Preserve outside user edits even when they change the whole-file SHA; unclear boundaries or ownership preserve the original and return an error. An ambiguous entry merely named Neurath remains intact, with guidance to inspect that entry and replace its actual Neurath invocation with the grouped CLI. Do not repeatedly retry cached MCP calls or introduce a replacement MCP server.
 
-Version 0.4.0 distinguishes this distribution from the historical public 0.3.1. Installed rules direct new sessions to first read the matching `.codex/neurath/guide.md` or `.claude/neurath/guide.md`. Shared `AGENTS.md`/`CLAUDE.md` uses project-relative links and preserves the symlink and user text. Each guide points to its own CLI and 14 skills, independently of installation order or reinstallation. Running sessions can reread the actual current guide with `distribution guide`. Its result establishes stdout submission; actual model use and native hook activation require separate observation. A CLI update does not impose a host-app restart. Do not fabricate trust hashes, native identity, or permissions.
+The 0.4.1 candidate is a patch for the public discovery, subscription, and monitoring-cancellation connections in 0.4.0. Installed rules direct new sessions to first read the matching `.codex/neurath/guide.md` or `.claude/neurath/guide.md`. Shared `AGENTS.md`/`CLAUDE.md` uses project-relative links and preserves the symlink and user text. Each guide points to its own CLI and 14 skills, independently of installation order or reinstallation. Running sessions can reread the actual current guide with `distribution guide`. Its result establishes stdout submission; actual model use and native hook activation require separate observation. A CLI update does not impose a host-app restart. Do not fabricate trust hashes, native identity, or permissions.
 
 ## Shared databases and failure recovery
 

@@ -33,6 +33,10 @@ from neurath.application.usecases.observe_delegation import (
     ObserveDelegationUseCase,
 )
 from neurath.application.usecases.prepare_delegation import PrepareDelegationCommand
+from neurath.application.usecases.publish_message import (
+    PublishMessageCommand,
+    PublishMessageUseCase,
+)
 from neurath.application.usecases.read_message import ReadMessageQuery, ReadMessageUseCase
 from neurath.application.usecases.record_message_read import (
     RecordMessageReadCommand,
@@ -47,6 +51,7 @@ from neurath.application.usecases.send_peer_message import (
     SendPeerMessageCommand,
     SendPeerMessageUseCase,
 )
+from neurath.application.usecases.subscribe_peer import SubscribePeerCommand, SubscribePeerUseCase
 from neurath.domain.enums.delegation_role import DelegationRole
 from neurath.domain.enums.delegation_route import DelegationRoute
 from neurath.domain.enums.provider_kind import ProviderKind
@@ -63,6 +68,8 @@ class CollaborationCliController:
         context: ResolveSessionContextUseCase,
         peers: GetCollaborationContextUseCase,
         send: SendPeerMessageUseCase,
+        publish: PublishMessageUseCase,
+        subscription: SubscribePeerUseCase,
         reply: SendMessageUseCase,
         acknowledge: AcknowledgeMessageUseCase,
         close: CloseConversationUseCase,
@@ -78,6 +85,8 @@ class CollaborationCliController:
             context: 현재 호스트와 피어.
             peers: 관찰된 동료 주소.
             send: 원 메시지의 멱등 저장.
+            publish: 기존 대화의 활성 구독자 발행.
+            subscription: 현재 피어의 명시 주제 설정.
             reply: 원 대화의 답장 저장.
             acknowledge: 읽은 메시지의 수신 확인.
             close: 원 대화 종료와 미완료 보존.
@@ -90,6 +99,8 @@ class CollaborationCliController:
         self.context = context
         self.peers = peers
         self.send = send
+        self.publish = publish
+        self.subscription = subscription
         self.reply = reply
         self.acknowledge = acknowledge
         self.close = close
@@ -209,6 +220,110 @@ class CollaborationCliController:
                         "conversation_id": result.conversation_id,
                         "reply_to": result.reply_to,
                         "status": result.status,
+                        "submitted_to_host": False,
+                    },
+                    default=encode_uuid,
+                )
+            )
+        finally:
+            await self.connection.dispose()
+
+    @command("subscribe")
+    async def configure_subscription(
+        self,
+        topic: Annotated[str, Option("--topic")],
+        enabled: Annotated[bool, Option("--enabled/--disabled")] = True,
+    ) -> None:
+        """선택한 주제만 구독·해제하고 뉴스룸과 다른 주제는 보존한다.
+
+        Args:
+            topic: 명시적으로 변경할 주제.
+            enabled: 앞으로 이 주제의 발행을 받을지 여부.
+
+        Raises:
+            ValueError: 주제가 비었거나 현재 피어가 관찰되지 않은 경우.
+        """
+        try:
+            if not topic.strip():
+                raise ValueError("Subscription topic must be non-empty")
+            scope = await self.context.run(ResolveSessionContextQuery())
+            if scope.peer is None:
+                raise ValueError("The current host peer has not been observed")
+            topics = [item for item in scope.peer.subscriptions if item != topic]
+            if enabled:
+                topics.append(topic)
+            peer = await self.subscription.run(
+                SubscribePeerCommand(peer_id=scope.peer.uid, topics=topics)
+            )
+            echo(json.dumps({"topics": peer.subscriptions}, ensure_ascii=False))
+        finally:
+            await self.connection.dispose()
+
+    @command("publish")
+    async def publish_message(
+        self,
+        conversation_id: Annotated[UUID, Option("--conversation-id")],
+        topic: Annotated[str, Option("--topic")],
+        title: Annotated[str, Option("--title")],
+        body: Annotated[str, Option("--body")],
+        key: Annotated[str, Option("--key")] = "",
+    ) -> None:
+        """기존 대화의 활성 구독자에게 원 발행을 저장하고 재시도 대상을 보존한다.
+
+        Args:
+            conversation_id: 현재 피어가 참여하는 원 대화.
+            topic: 수신자가 명시적으로 구독한 주제.
+            title: 제목 알림.
+            body: 원문 본문이며 -는 stdin.
+            key: 원 발행 재시도에 재사용할 키.
+
+        Raises:
+            ValueError: 본문·제목이 비었거나 현재 피어가 관찰되지 않은 경우.
+        """
+        try:
+            content = sys.stdin.read() if body == "-" else body
+            if not content.strip() or not title.strip():
+                raise ValueError("A publication requires its title and body")
+            scope = await self.context.run(ResolveSessionContextQuery())
+            if scope.peer is None:
+                raise ValueError("The current host peer has not been observed")
+            message_key = (
+                key
+                or sha256(
+                    repr(
+                        (
+                            scope.execution.turn_id if scope.execution else "",
+                            conversation_id,
+                            topic,
+                            title,
+                            content,
+                        )
+                    ).encode()
+                ).hexdigest()
+            )
+            messages = await self.publish.run(
+                PublishMessageCommand(
+                    conversation_id=conversation_id,
+                    sender_id=scope.peer.uid,
+                    topic=topic,
+                    key=message_key,
+                    title=title,
+                    body=content,
+                )
+            )
+            echo(
+                json.dumps(
+                    {
+                        "messages": [
+                            {
+                                "id": item.uid,
+                                "recipient_id": item.recipient_id,
+                                "status": item.status,
+                            }
+                            for item in messages
+                        ],
+                        "key": message_key,
+                        "published": bool(messages),
                         "submitted_to_host": False,
                     },
                     default=encode_uuid,
@@ -429,6 +544,7 @@ class CollaborationCliController:
                         "id": result.uid,
                         "status": result.status,
                         "provider_status": result.provider_status,
+                        "plan": None if result.plan is None else asdict(result.plan),
                         "report": None if result.report is None else asdict(result.report),
                         "provider_output": result.provider_output,
                         "provider_error": result.provider_error,

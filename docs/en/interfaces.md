@@ -106,7 +106,7 @@ Unimplemented action names below identify capabilities rather than instruct root
 | `workflow revise` | Apply justified procedure revisions/retry/branch while preserving originals and required outcomes | write |
 | `collaboration delegate` | Assign/connect existing work to peer or provider with explicit necessary model/policy; redelivery cannot duplicate execution | write |
 | `collaboration observe` | Read or boundedly wait for the original assignment/report; never launch a new model | read+observed state |
-| `collaboration send` | Send to recipients/subscribers; `--reply-to MESSAGE_ID` keeps replies in the original conversation | write |
+| `collaboration send` | Send to the selected recipient; `--reply-to MESSAGE_ID` keeps replies in the original conversation | write |
 | `collaboration read` | Read selected body; only confirmed full delivery produces read receipt, not understanding/acceptance | read+receipt |
 | `collaboration ack` | Explicitly acknowledge a read message, separate from work acceptance/success | write |
 | `collaboration close` | Close the original conversation while preserving messages and unfinished work | write |
@@ -126,13 +126,13 @@ CLI commands call the same application use cases directly, without MCP registrat
 
 Business invocations run the selected installed version. New invocations use the updated distribution after cutover; settle in-flight calls at safe boundaries. The core retains no resident state. Verify version transition/handoff for in-flight host execution under its execution contract. CLI use alone does not automatically replace every resident process or rewrite an ongoing conversation's instructions.
 
-`memory propose-lesson` and `memory observe-lesson` preserve candidates and actual effects from requested reflection; `memory search/read` retrieves them. These commands are neither approval nor actual code application. `monitor status/tick` reads or observes a current monitor; native follow-up uses the [monitor callback](monitoring.md). `maintenance` owns installation, initialization, diagnostics, and independent failure journaling; `hook` owns host events. Ordinary calls resolve current project/session/peer/revision rather than requiring human bookkeeping.
+`memory propose-lesson` and `memory observe-lesson` preserve candidates and actual effects from requested reflection; `memory search/read` retrieves them. These commands are neither approval nor actual code application. `monitor status/tick/cancel` reads, observes, or cancels only a current monitor; native follow-up uses the [monitor callback](monitoring.md). `maintenance` owns installation, initialization, diagnostics, and independent failure journaling; `hook` owns host events. Ordinary calls resolve current project/session/peer/revision rather than requiring human bookkeeping.
 
 `newsroom subscribe --enabled/--disabled` configures headlines for the current conversation without changing other topics, assignments, or history. New-native-peer defaults do not overwrite existing subscription choices.
 
 ### Scope and continuation
 
-`context show` resolves the current host session automatically. `--session` selects another observed host session address; `--section` selects `current/sources/collaboration/memory`. In `current`, `--task-id UUID` narrows tasks and related runners/facts to a task owned by the selected session. Shared session facts and original-source references remain available so requirements omitted from TODO can still be found. A task belonging to another session, or a task filter in another section, is an error.
+`context show` resolves the current host session automatically. `--session` selects another observed host session address; `--section` selects `current/sources/collaboration/memory/provider`. In `current`, `--task-id UUID` narrows tasks and related runners/facts to a task owned by the selected session. Shared session facts and original-source references remain available so requirements omitted from TODO can still be found. A task belonging to another session, or a task filter in another section, is an error.
 
 Each list defaults to 20 items; `--limit` accepts 1–100. Current context pages are output projections of the existing read-only handoff preview snapshot, not a bound on the entire database read. Bodies are not truncated mid-content. A list with remaining items always supplies a continuation cursor.
 
@@ -230,3 +230,13 @@ For historical inspection, preservation, selective resumption, and writer cutove
 For distribution candidates, official release observation, same-version artifact updates, shared databases, and recovery, see [distribution](distribution.md).
 
 For original-source interpretation, current-turn control return, and observed sessions across tool directories, see [current-turn intent](turn-intent.md). The agent connects its judgment through `session interpret` without requiring a user-selected mode or additional approval.
+
+### Model discovery, topic publication, and monitoring cancellation
+
+`context show --section provider --provider codex|claude` discovers actual models and supported policies without inference. It needs neither a current native session nor an initialized business database. Delegation `plan` in `context show --section collaboration` and `collaboration observe --delegation-id UUID` returns the stored model, policy, and working directory. Reading does not start a model.
+
+`collaboration subscribe --topic TOPIC --enabled/--disabled` changes only that topic for the current peer. `collaboration publish --conversation-id UUID --topic TOPIC --title TITLE --body BODY --key KEY` publishes to active subscribers in the existing conversation. `--body -` reads stdin; retrying the same key reads the original publication. Direct sends, replies, newsroom, and other subscriptions remain separate.
+
+`monitor cancel --task-id UUID --monitor-number N` reads the current execution and generation internally and cancels only monitoring. It preserves the waiting task, external dependency, events, remaining budget, and unconfirmed resources. It does not resume/cancel the task or confirm actual host schedule termination.
+
+A publication response with `published=false` and empty `messages` means that no publication was stored because there were no active recipients. A later call with the same key and actual recipients becomes the first publication. Only retries of a stored publication (`published=true`) pin its original envelope and recipient list. No automatic retry or model call is added.
