@@ -107,3 +107,13 @@ Neurath는 사용자의 지시를 과도하게 확대하거나 필요한 일을 
 - 회고는 사용자 요청 때 수행하고 철회를 처리한다. 적용된 교훈은 다음 관련 세션에서 회상하되 현재 지시보다 낮은 과거 맥락이다. 상태를 APPLIED로 저장한 것만으로 실제 개선을 주장하지 않는다.
 - 메시지·기사·감시의 stdout 제출과 본문 읽음·ACK·작업 성공을 구분한다. 요청된 감시는 같은 호스트 대화의 콜백을 사용하며, 같은 상태의 콜백이 모델 작업을 계속 만들면 실패다. 네이티브 스케줄 등록과 훅 계약은 실제 호스트에서 따로 검증한다.
 - `tests/test_host_flow.py`와 `tests/test_host_installation.py`는 현재 맥락 자동 조회·원문→작업→절차→결과→Stop·감시→재개·기억·설정 보존의 회귀 시험이다. `tools/generate_cli_guide.py --check`로 실제 정의와 설치 프롬프트 일치를 검사한다. 구조·라인/분기 100%는 이 상호작용 검증을 대체하지 않는다.
+
+
+<!-- neurath:begin -->
+# Neurath host guides
+
+Read only the guide for the host running this conversation. Follow existing user/project instructions. Each guide contains that host's installed CLI, skill selection, and recovery instructions; do not use another host's wrapper or infer a new session identity.
+
+- codex: [Read the codex CLI and skills guide](<.codex/neurath/guide.md>).
+- claude: [Read the claude CLI and skills guide](<.claude/neurath/guide.md>).
+<!-- neurath:end -->
