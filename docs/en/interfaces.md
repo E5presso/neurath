@@ -51,6 +51,36 @@ Do not ship `recover-session`. Existing **`session resume` CLI** handles explici
 
 The skill completing a body of work runs the [outcome-evaluation phase](architecture.md#3-skills-and-phase-runner-contract). Nested skills reuse the same valid evaluation.
 
+### Packaged definitions, installed instructions, and the runner
+
+`resources/skills.json` contains the purpose, selection/exclusion conditions, required inputs, conditional branches, outcomes, and phase-specific result criteria and check names for each of the 14 skills. The same catalog produces installed `SKILL.md` instructions and existing `WorkflowDefinition` values. `define-spec` includes acceptance criteria, execution order, dependencies, and verification planning. `implement-spec` includes actual screen, state, interaction, and accessibility checks when UI is involved; it does not claim those checks for work without UI.
+
+Installed files begin on the first line with YAML frontmatter containing `name` and a specific selection/exclusion `description`, followed by the instructions. Codex uses the corresponding folder under `.agents/skills`; Claude uses `.claude/skills`. Updating an owned skill preserves unrelated frontmatter fields and user text outside the managed block. Other project/user skills are untouched; an unowned skill at the same path is preserved rather than overwritten. See the [official Codex skill documentation](https://learn.chatgpt.com/docs/build-skills) and [Claude skill documentation](https://code.claude.com/docs/en/skills). Validating file format and installation does not prove native host discovery, selection, or model execution.
+
+Reading a skill creates neither a run nor a phase result. Reuse the task and run already handling the current request. Call `task create` only for actual work missing from the ledger, and `workflow start` when starting a newly selected procedure. `workflow show --run-id UUID` reads the stored definition, inputs, attempts, and current phase. Package and source-file changes never overwrite an ongoing run. A different definition passed to `start` leaves the existing run intact and directs the caller to explicit `workflow revise`. Runs using older skill names remain readable and reportable from their stored definitions.
+
+After actual host work, `workflow report` repeats `--check` for the current phase's verified `checks`. A normal phase report cannot pass independent result evaluation. Continue nested or finishing procedures by revising the same run while preserving an unchanged valid evaluation phase and its attempts. Related requirement/candidate changes require reevaluation through the existing evaluation path. Finishing alone does not create another evaluation task or recursively evaluate a reviewer. Changing the method is distinct from changing the user's goal.
+
+### Selected project and user skills
+
+The host can read and select an original `SKILL.md` outside the built-in list and execute its procedure through the existing runner. The agent passes an explicit definition faithful to that skill with `workflow start --task-id UUID --skill project-check --definition @workflow.json`. `--definition -` reads stdin; a JSON string is accepted inline. This does not require rewriting the original skill into a Neurath file or making the user manage internal state.
+
+```json
+{
+  "version": "project-1",
+  "source": ".agents/skills/project-check/SKILL.md",
+  "inputs": {"target": "requested artifact"},
+  "phases": [
+    {"key": "inspect", "purpose": "Read the selected inputs", "checks": ["scope"]},
+    {"key": "verify", "purpose": "Perform the project check", "result": "Verified actual output", "checks": ["content"]}
+  ]
+}
+```
+
+`version` and `phases` are required; each phase supplies `key`, `purpose`, and `checks`. Optional `inputs` maps names to string values. Optional `source` identifies an absolute path or a path relative to the actual working directory; the source text and resolved path are snapshotted in the run's inputs. A source read failure, malformed JSON, duplicate phase, or invalid check definition starts no task and saves no run. An unknown name without a definition returns the built-in choices and existing-run read/revision paths instead of inventing a procedure.
+
+Ordinary host phases can have no executable arguments. The host performs the work with its tools and reports actual evidence. A selected procedure's required independent evaluation uses the existing evaluation phase; specialized skills do not automatically impose it on every operation. Commits, worktrees, issues/PRs, dependency management, Graphify, and recovery remain available through host/specialist tools and `session resume`.
+
 ## 3. CLI-only interface
 
 **The CLI stack is Python + spakky-typer (Typer).** Define the `neurath` entrypoint and business/maintenance commands as a Typer application. Use Python type hints and Typer command/argument/option/help definitions; delegate domain behavior to Application use cases. Keep Typer dependencies in the CLI transport layer, outside Domain. [Official Typer documentation](https://typer.tiangolo.com/).

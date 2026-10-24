@@ -2,16 +2,18 @@
 
 import json
 import os
+import re
 import shlex
 import sys
 from pathlib import Path
-from typing import cast, override
+from typing import override
 from uuid import uuid4
 
 import aiosqlite
 from spakky.core.pod.annotations.pod import Pod
 
 from neurath.application.ports.services.installation import IInstallationService, InstallationResult
+from neurath.application.ports.services.skill_catalog import ISkillCatalogService, SkillDescription
 from neurath.domain.enums.provider_kind import ProviderKind
 from neurath.infrastructure.database import initialize_database, sqlite_url, user_database_path
 
@@ -19,6 +21,14 @@ from neurath.infrastructure.database import initialize_database, sqlite_url, use
 @Pod()
 class PosixInstallationService(IInstallationService):
     """기존 스킬·훅·지침을 덮어쓰지 않는 로컬 설치 어댑터다."""
+
+    def __init__(self, catalog: ISkillCatalogService) -> None:
+        """runner와 같은 스킬 선택·단계 계약을 받는다.
+
+        Args:
+            catalog: 배포 스킬 지침과 실제 실행 정의.
+        """
+        self.catalog = catalog
 
     @override
     async def initialize(self, database: str | None) -> str:
@@ -119,7 +129,7 @@ class PosixInstallationService(IInstallationService):
         executable = managed / "neurath"
         source = Path(__file__).parents[2] / "resources"
         guide = (source / "cli-guide.md").read_text()
-        catalog = cast(dict[str, list[str]], json.loads((source / "skills.json").read_text()))
+        catalog = self.catalog.list(str(root))
         wrapper = f"""#!/bin/sh
 # neurath-managed executable
 export XDG_DATA_HOME={shlex.quote(str(home))}
@@ -136,15 +146,14 @@ exec {shlex.quote(sys.executable)} -m neurath.entrypoint "$@"
             rules: self._managed(rules.read_text() if rules.exists() else "", instructions),
         }
         skills = root / (".agents/skills" if provider is ProviderKind.CODEX else ".claude/skills")
-        for name, phases in catalog.items():
+        for entry in catalog:
+            name = entry.workflow.skill
             path = skills / name / "SKILL.md"
             old = path.read_text() if path.exists() else ""
             if old and "<!-- neurath:begin -->" not in old:
                 raise FileExistsError(f"Existing user skill was preserved: {path}")
-            description = phases[0]
-            initial = old or f"---\nname: {name}\ndescription: {description}\n---\n"
-            body = self._skill_body(name, phases, executable)
-            planned[path] = self._managed(initial, body)
+            initial = self._skill_header(old, name, f"{entry.use_when}. 제외: {entry.exclude}")
+            planned[path] = self._managed(initial, self._skill_body(entry, executable))
         hooks_path = config / ("hooks.json" if provider is ProviderKind.CODEX else "settings.json")
         document: dict[str, object] = (
             json.loads(hooks_path.read_text()) if hooks_path.exists() else {}
@@ -231,33 +240,89 @@ exec {shlex.quote(sys.executable)} -m neurath.entrypoint "$@"
         )
 
     @staticmethod
-    def _skill_body(name: str, phases: list[str], executable: Path) -> str:
-        """공유 CLI 가이드와 실제 단계 정의를 스킬의 수행 지침에 연결한다.
+    def _skill_header(existing: str, name: str, description: str) -> str:
+        """첫 줄의 정식 메타데이터를 갱신하고 다른 필드와 사용자 본문을 보존한다.
 
         Args:
-            name: 선택할 스킬 이름.
-            phases: 실제 배포 절차의 목적 목록.
+            existing: 관리 스킬의 기존 내용.
+            name: 스킬 선택 이름.
+            description: 구체적인 선택·제외 조건.
+
+        Returns:
+            str: 이름·설명을 갱신하고 다른 내용을 보존한 문서.
+
+        Raises:
+            ValueError: 기존 frontmatter의 끝이 없는 경우.
+        """
+        metadata = ""
+        body = existing
+        if existing.startswith("---\n"):
+            header, separator, body = existing[4:].partition("\n---\n")
+            if not separator:
+                raise ValueError("Skill frontmatter is incomplete; original file was preserved")
+            metadata = re.sub(
+                r"(?m)^(?:name|description):[^\n]*(?:\n[ \t]+[^\n]*)*\n?", "", header
+            ).strip()
+        fields = f"name: {json.dumps(name, ensure_ascii=False)}\ndescription: {json.dumps(description, ensure_ascii=False)}"
+        if metadata:
+            fields += "\n" + metadata
+        return f"---\n{fields}\n---\n{body}"
+
+    @staticmethod
+    def _skill_body(entry: SkillDescription, executable: Path) -> str:
+        """각 스킬의 실제 선택·입력·단계·결과와 기존 CLI 사용을 연결한다.
+
+        Args:
+            entry: runner와 같은 원천에서 읽은 스킬 계약.
             executable: 설치된 CLI 경로.
 
         Returns:
-            str: 사용자 범위와 호스트 실행을 유지하는 스킬 본문.
+            str: 해당 요청에 필요한 절차와 결과 조건.
         """
         command = shlex.quote(str(executable))
-        steps = "\n".join(f"{index}. {purpose}" for index, purpose in enumerate(phases, 1))
-        return f"""# {name}
-Use this skill only when it matches the user's request. Read the original instruction and current project rules. Simple answers and status questions do not require a task or workflow.
-Read current state with `{command} context show`; original sources with `context show --section sources`. Hooks preserve observed input; do not ask the user to re-enter it or fabricate provenance.
-For a work item, use `task create --title ... --result ...`, then `workflow start --task-id ... --skill {name}`. The host agent performs reasoning, file edits, commands and native delegation with its own tools. Neurath records the state; it does not replace the host's tool permissions.
+        workflow = entry.workflow
+        inputs = "\n".join(f"- {item}" for item in entry.required_inputs)
+        outcomes = "\n".join(f"- {item}" for item in entry.outcomes)
+        branches = "\n".join(f"- {item}" for item in entry.branches)
+        steps = "\n".join(
+            f"{index}. **{phase.key}**: {phase.purpose}\n   확인할 조건: {', '.join(phase.checks)}"
+            for index, phase in enumerate(workflow.phases, 1)
+        )
+        return f"""# {workflow.skill}
+
+{entry.purpose}
+
+## 선택과 제외
+
+사용: {entry.use_when}
+제외: {entry.exclude}
+
+## 필요한 입력
+
+기존 원문·선택 자료에서 다음을 확인한다. 이미 있는 정보를 사용자에게 다시 입력시키지 않는다.
+
+{inputs}
+
+## 수행과 결과 조건
 
 {steps}
 
-After actual work, report the current stage with `workflow report --run-id ... --summary ... --reference ... --check done`. Revise methods when necessary while retaining the original result and its evaluation. Do not manufacture a user correction to change the implementation method.
-For a result-review phase, use an observed native peer or explicitly selected provider through `collaboration delegate --role reviewer` with actual artifact and verification references. Native children are created with the host's existing tool, not a second Neurath session. Reviewers read original sources and the full TODO, report unmet items and evidence, and do not spawn recursive reviewers.
-Read the stored report, accept or reject its findings with evidence using `workflow report --accepted/--rejected`, fix confirmed unmet work in the same TODO, then `task report` the actual result. Delivery or a process exit is not success of the original goal.
-Save useful current facts with `memory update --changes ...`; keep details in memory references. Hooks restore the current context after compaction. Do not make the user manage internal IDs or repair bookkeeping.
-Offer reflection once only when problems occurred. Requested reflection may be withdrawn; refusal or silence must not block the original work. Apply only requested improvements using the host's file tools, verify the original failure and normal controls, and preserve source-linked lessons. Prior lessons never override current user instructions.
-Only watch external work when requested. Use the host's existing scheduler on the same conversation and the monitor callback returned by Neurath; unchanged polls must not launch model work. Stop or update the watcher when the original task changes or finishes.
-Do not merge, publish, install into unrelated projects, or expand authority merely because this skill is running. Use already-given user authorization and report actual evidence, failures and remaining work.
+## 상황별 분기
+
+{branches}
+
+## 최종 결과
+
+{outcomes}
+
+## 기존 작업에 연결
+
+`{command} context show`와 `context show --section sources`의 모든 관련 페이지를 읽는다. 스킬을 읽은 것만으로 수행·완료를 기록하지 않는다. 단순 대화에는 task나 workflow가 필요 없다.
+이미 있는 작업을 선택한다. 실제 수행할 일이 원장에 없을 때만 `task create --title ... --result ...`로 연결한다. 새 절차는 `workflow start --task-id ... --skill {workflow.skill}`로 시작한다. 현재 단계의 작업은 호스트의 추론·파일·명령·네이티브 협업 도구로 수행한다.
+호스트에서 실제 확인한 뒤 `workflow report --run-id ... --summary ... --reference ... --check <현재 단계 checks의 항목>`으로 보고한다. 여러 조건이면 --check를 반복하며 확인하지 않은 조건은 통과시키지 않는다.
+기존 run은 `workflow show --run-id ...`로 고정 정의·시도·미완료를 읽는다. 다른 스킬이나 finish-session을 이어 수행할 때 새 완료 원장을 만들지 않는다. `workflow revise --run-id ... --reason ... --definition ...`으로 필요한 단계만 추가·정정하고 기존 필수 결과와 동일한 평가 phase를 보존한다. 수행 방법을 바꾸기 위해 새 인간 지시를 요구하지 않는다.
+결과 평가 phase가 있으면 실제 원문·전체 TODO·산출물·검증을 관찰된 독립 피어 또는 명시한 provider에게 `collaboration delegate --role reviewer`로 전달한다. 같은 유효 평가를 재사용하고 검토자를 재귀 평가하지 않는다. 실제 보고를 읽고 `workflow report --accepted/--rejected`로 판단하며 미달은 같은 TODO에서 보완한다. 배정·전달·프로세스 종료만으로 원 작업을 성공 처리하지 않는다.
+실제 결과는 `task report`, 인계 보고는 `memory checkpoint`, 현재 사실은 `memory update`로 연결한다. 재개는 `session resume`을 사용한다. 커밋·워크트리·PR·이슈는 호스트 도구, 의존성·그래프는 선택한 전문 도구로 수행한다. 스킬은 원 요청의 범위나 기존 호스트 권한을 확대하지 않는다.
 """
 
     @staticmethod

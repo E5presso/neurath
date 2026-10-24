@@ -3,6 +3,7 @@
 import json
 import sys
 from dataclasses import asdict
+from pathlib import Path
 from typing import Annotated, cast
 from uuid import UUID
 
@@ -90,6 +91,8 @@ class WorkflowCliController:
                     "task_id": run.task_id,
                     "revision": run.revision,
                     "skill": run.definition.skill,
+                    "definition": asdict(run.definition),
+                    "attempts": [asdict(attempt) for attempt in run.attempts],
                     "current": None if run.current is None else asdict(run.current),
                     "reflection": run.reflection,
                     "steps_complete": run.current is None,
@@ -104,16 +107,50 @@ class WorkflowCliController:
         self,
         task_id: Annotated[UUID, Option("--task-id")],
         skill: Annotated[str, Option("--skill")],
+        definition: Annotated[
+            str | None, Option("--definition", help="전문 절차 JSON; -는 stdin, @경로는 파일")
+        ] = None,
     ) -> None:
         """현재 작업에 요청에 맞게 선택한 실제 스킬 절차를 연결한다.
 
         Args:
             task_id: 현재 작업 목록에서 선택한 작업.
-            skill: 기본 배포 스킬 이름.
+            skill: 선택한 기본 또는 전문 스킬 이름.
+            definition: 전문 절차 JSON 또는 기본 스킬을 고를 None.
         """
         try:
+            content = definition
+            if definition == "-":
+                content = sys.stdin.read()
+            elif definition is not None and definition.startswith("@"):
+                content = Path(definition[1:]).read_text()
             self._output(
-                await self.start.run(StartCurrentWorkflowCommand(task_id=task_id, skill=skill))
+                await self.start.run(
+                    StartCurrentWorkflowCommand(task_id=task_id, skill=skill, definition=content)
+                )
+            )
+        finally:
+            await self.connection.dispose()
+
+    @command("show")
+    async def show_workflow(self, run_id: Annotated[UUID, Option("--run-id")]) -> None:
+        """패키지·스킬 파일이 바뀌어도 기존 고정 정의와 시도를 변경 없이 읽는다.
+
+        Args:
+            run_id: 현재 세션이 소유한 기존 실행.
+        """
+        try:
+            scope = await self.context.run(ResolveSessionContextQuery())
+            self._output(
+                (
+                    await self.read.run(
+                        GetWorkflowQuery(
+                            project_id=scope.session.project_id,
+                            session_id=scope.session.uid,
+                            run_id=run_id,
+                        )
+                    )
+                ).run
             )
         finally:
             await self.connection.dispose()

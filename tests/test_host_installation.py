@@ -11,6 +11,7 @@ from click import unstyle
 
 from neurath.domain.enums.provider_kind import ProviderKind
 from neurath.infrastructure.services.installation import PosixInstallationService
+from neurath.infrastructure.services.skill_catalog import PosixSkillCatalogService
 
 
 @pytest.mark.parametrize("provider", list(ProviderKind))
@@ -32,7 +33,7 @@ async def test_install_preserves_user_content_and_is_idempotent(tmp_path, provid
         )
     )
     original = hooks.read_bytes()
-    service = PosixInstallationService()
+    service = PosixInstallationService(PosixSkillCatalogService())
     installed = await service.install(provider, str(root), str(tmp_path / "data"))
     assert installed.changed_files and len(installed.backups) == 2
     assert rule.read_text().startswith("User's original instructions\n")
@@ -110,7 +111,7 @@ async def test_invalid_install_plan_leaves_user_files_and_database_unchanged(tmp
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content)
     with pytest.raises((ValueError, FileExistsError)):
-        await PosixInstallationService().install(
+        await PosixInstallationService(PosixSkillCatalogService()).install(
             ProviderKind.CODEX, str(tmp_path), str(tmp_path / "data")
         )
     assert path.read_text() == content
@@ -131,7 +132,7 @@ async def test_install_rollback_restores_previous_settings(tmp_path, monkeypatch
 
     monkeypatch.setattr(os, "replace", fail_second)
     with pytest.raises(OSError, match="disk unavailable"):
-        await PosixInstallationService().install(
+        await PosixInstallationService(PosixSkillCatalogService()).install(
             ProviderKind.CODEX, str(tmp_path), str(tmp_path / "data")
         )
     assert original.read_text() == "user instructions"
@@ -140,7 +141,7 @@ async def test_install_rollback_restores_previous_settings(tmp_path, monkeypatch
 
 
 async def test_initialize_preserves_corrupt_database_and_supports_user_default(tmp_path):
-    service = PosixInstallationService()
+    service = PosixInstallationService(PosixSkillCatalogService())
     default = Path(await service.initialize(None))
     assert default.exists()
     assert await service.initialize(str(default)) == str(default)
@@ -160,7 +161,9 @@ async def test_install_preserves_instruction_symlink_and_uses_default_data_home(
     original.write_text("shared user instruction")
     link = tmp_path / "AGENTS.md"
     link.symlink_to(original)
-    installed = await PosixInstallationService().install(ProviderKind.CODEX, str(tmp_path), None)
+    installed = await PosixInstallationService(PosixSkillCatalogService()).install(
+        ProviderKind.CODEX, str(tmp_path), None
+    )
     assert link.is_symlink() and original.read_text().startswith("shared user instruction")
     assert Path(installed.database).is_file()
 

@@ -88,7 +88,7 @@ async def test_original_prompt_to_agent_workflow_result_and_stop(database, host)
                 "--reference",
                 str(artifact),
                 "--check",
-                "done",
+                flow["current"]["checks"][0],
             ],
         )
     assert flow["steps_complete"]
@@ -366,7 +366,7 @@ async def prepare_review(database, host, *, reflection=False):
                 "--reference",
                 str(artifact),
                 "--check",
-                "done",
+                flow["current"]["checks"][0],
             ],
         )
     if reflection:
@@ -1092,7 +1092,7 @@ async def test_unknown_skill_and_registered_agent_attempt_are_not_programs(datab
             "--reference",
             "fixture:source",
             "--check",
-            "done",
+            flow["current"]["checks"][0],
         ],
     )
     assert result["current"]["key"] == "step-2"
