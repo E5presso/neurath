@@ -2,7 +2,7 @@
 
 [문서 목록](index.md) · [태스크 원장](task-ledger.md) · [단계 실행](workflow-runner.md) · [English](../en/host-runtime.md)
 
-이 모듈은 #142의 요청별 런타임 라이브러리입니다. 현재 설치된 Codex·Claude 설정을 바꾸지 않습니다. 훅 진입점은 spakky-typer로 제공합니다. 나머지 업무 CLI·관리 명령·설치 연결은 #148·#147·#151에서 이어갑니다.
+이 모듈은 #142의 요청별 런타임 라이브러리입니다. 현재 설치된 Codex·Claude 설정을 바꾸지 않습니다. 훅 진입점은 spakky-typer로 제공합니다. 관리 명령은 [복구 문서](recovery.md), 나머지 업무 CLI·설치 연결은 #148·#151에서 이어갑니다.
 
 ## 실행과 작성의 구분
 
@@ -41,7 +41,7 @@ Claude의 동기 `Bash` 결과는 `stdout`·`stderr`·`interrupted` 계약을 �
 
 `CancelExecutionUseCase`는 추가 쓰기를 중지하고 `ExecutionCancellationRequested`를 기록합니다. `RecoverWriterUseCase`는 현재 임대 세대를 검사하고 `WriterRecoveryRequested`를 기록합니다. 커밋 뒤 이벤트 어댑터가 InterruptExecution 또는 ObserveWriter 유스케이스를 호출합니다. 해당 유스케이스가 DB 잠금 없이 호스트를 관찰하고 결과 이벤트를 발행합니다. 이벤트 어댑터는 그 결과를 ConfirmCancellation 또는 ReleaseWriter의 입력으로 변환하여 호출합니다. 이때 턴·소유자·세대를 다시 대조합니다. 요청의 반환값은 관찰 완료를 뜻하지 않으며 최신 DB 상태가 종료·회수의 근거입니다. 핸들러 실패 시 paused/활성 임대를 보존합니다.
 
-DB·훅 장애는 `continue:false`와 복구 안내로 반환합니다. 관리 경로의 명시적 `--bypass`는 DB 없이 동작하며 원장을 바꾸지 않습니다. 이 인자를 네이티브 승인으로 사용하지 않습니다. 반환된 `stopReason`·TODO는 호스트에 전달할 본문이며 JSON 생성만으로 사용자가 알림을 수신했다고 기록하지 않습니다. 알림 전달·관리 UI의 연결은 #146·#147·#151의 범위입니다.
+DB·훅 장애는 `continue:false`와 복구 안내로 반환합니다. 명시적 `--bypass`는 차단만 중지하고 가능한 턴·중단·종료 관찰을 유지합니다. DB 장애에서는 기록 미확인을 표시하며 독립 복구 기록을 시도합니다. 이 인자를 네이티브 승인으로 사용하지 않습니다. 반환된 `stopReason`·TODO는 호스트에 전달할 본문이며 JSON 생성만으로 사용자가 알림을 수신했다고 기록하지 않습니다. 운영 진단과 복원 검증은 [복구 명령](recovery.md), 설치 연결은 #151의 범위입니다.
 
 ## 저장과 검증
 
@@ -49,6 +49,6 @@ DB·훅 장애는 `continue:false`와 복구 안내로 반환합니다. 관리 �
 
 회귀 시험은 실제 SQLite 동시 취득·재시작·늦은 결과·취소·명시적 재개·자식 읽기·phase 진전·외부 대기·DB 장애·우회를 확인합니다. 실제 프로세스로 중단 대상 분리와 종료 관찰을 검증합니다. 이 시험을 통과한 것을 사용자 호스트에 설치·활성화됐다는 증거로 보고하지 않습니다.
 
-SQLite 기본 URL은 `sqlite+aiosqlite`입니다. 명시적 연결 설정은 Spakky의 `SPAKKY_SQLALCHEMY__CONNECTION_STRING`을 사용하며, Spakky의 기본 비동기 지원을 끄지 않습니다. 도움말과 `--bypass`는 DB 트랜잭션을 열지 않습니다. 설치 스크립트가 사용자 훅에 이 명령을 연결하는 작업은 아직 수행하지 않았습니다.
+SQLite 기본 URL은 `sqlite+aiosqlite`입니다. 명시적 연결 설정은 Spakky의 `SPAKKY_SQLALCHEMY__CONNECTION_STRING`을 사용하며, Spakky의 기본 비동기 지원을 끄지 않습니다. 도움말은 DB 트랜잭션을 열지 않습니다. `--bypass`는 가능한 수명 관찰을 저장하지만 저장 실패가 우회를 막지 않습니다. 설치 스크립트가 사용자 훅에 이 명령을 연결하는 작업은 아직 수행하지 않았습니다.
 
 CLI 진입점은 공식 Typer 가이드에 따라 `neurath.cli:cli`입니다. 모듈 전역의 Typer 객체를 컨테이너에서 가져오며 프로세스 종료 시 앱을 정리합니다. 비동기 엔진은 명령의 이벤트 루프에서 정리합니다. 호스트 JSON의 사건 문자열은 transport에서 `HookEvent`로 변환하며 지원하지 않는 사건은 DB 작업 전에 거절합니다.

@@ -2,7 +2,7 @@
 
 [Documentation](index.md) · [Task ledger](task-ledger.md) · [Phase execution](workflow-runner.md) · [한국어](../ko/host-runtime.md)
 
-This is the request-scoped runtime library for #142. It does not modify installed Codex or Claude settings. The hook entry point uses spakky-typer. Remaining business CLI commands, management commands and installation wiring belong to #148, #147 and #151.
+This is the request-scoped runtime library for #142. It does not modify installed Codex or Claude settings. The hook entry point uses spakky-typer. Management commands are documented in [recovery](recovery.md); remaining business CLI and installation wiring belong to #148 and #151.
 
 ## Execution and writing
 
@@ -41,7 +41,7 @@ Claude synchronous `Bash` responses use the `stdout`, `stderr` and `interrupted`
 
 `CancelExecutionUseCase` pauses further writes and records `ExecutionCancellationRequested`. `RecoverWriterUseCase` checks the current lease generation and records `WriterRecoveryRequested`. After commit, the event adapter invokes InterruptExecution or ObserveWriter. Those use cases observe the host outside DB locks and publish result events. The adapter maps each result to ConfirmCancellation or ReleaseWriter, which rechecks turn, owner and generation in a new transaction. The request response is not confirmation of termination or release; the latest persisted state is authoritative. Handler failure retains the paused execution or active lease.
 
-Database and hook failures return `continue:false` with recovery guidance. Explicit management `--bypass` works without a healthy DB and does not mutate the ledger or substitute for native permission. Returned TODO and `stopReason` are host-delivery content; producing JSON does not record that the user received a notification. Delivery and management UI integration belong to #146, #147 and #151.
+Database and hook failures return `continue:false` with recovery guidance. Explicit `--bypass` suspends enforcement while retaining observable turns, cancellation, and termination. Database failure reports unverified bookkeeping and attempts an independent recovery record; bypass does not grant native permission. Returned TODO and `stopReason` are host-delivery content; producing JSON does not record that the user received a notification. Operational diagnostics and restoration verification are documented in [recovery](recovery.md); installation wiring belongs to #151.
 
 ## Persistence and verification
 
@@ -49,6 +49,6 @@ Database and hook failures return `continue:false` with recovery guidance. Expli
 
 Regression tests exercise actual SQLite concurrency, restart, late outcomes, cancellation, explicit resume, child reads, phase progress, external waiting, database failures and bypass. Real processes verify targeted interruption and liveness. Passing these tests does not prove installation or activation in the user's host.
 
-The default SQLite URL uses `sqlite+aiosqlite`. Explicit connections use Spakky’s `SPAKKY_SQLALCHEMY__CONNECTION_STRING`; Spakky’s default asynchronous support remains enabled. Help and `--bypass` open no database transaction. Wiring this command into installed user hooks has not been performed.
+The default SQLite URL uses `sqlite+aiosqlite`. Explicit connections use Spakky’s `SPAKKY_SQLALCHEMY__CONNECTION_STRING`; Spakky’s default asynchronous support remains enabled. Help opens no database transaction. Bypass attempts lifecycle recording, but failed storage does not prevent bypass. Wiring this command into installed user hooks has not been performed.
 
 The CLI entry point is `neurath.cli:cli`, following the official Typer guide. The module exposes the container-provided Typer object and registers application cleanup at process exit. The async engine is disposed in the command event loop. Transport converts native event strings to `HookEvent`; unsupported events are rejected before database work.

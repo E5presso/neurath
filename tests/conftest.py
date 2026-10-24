@@ -74,3 +74,9 @@ async def storage_scope(database, *, write=True):
     async with spakky_context(database, write=write) as scope:
         async with scope.get(AsyncTransaction):
             yield scope
+
+
+@pytest.fixture(autouse=True)
+def recovery_record_directory(tmp_path, monkeypatch):
+    """시험의 고의적인 장애 기록이 사용자 상태 디렉터리에 기록되지 않게 한다."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))

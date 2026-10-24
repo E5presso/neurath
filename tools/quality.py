@@ -30,6 +30,7 @@ def main() -> None:
             "tests/test_collaboration.py",
             "tests/test_newsroom.py",
             "tests/test_monitoring.py",
+            "tests/test_maintenance.py",
             "tests/test_provider.py",
             "tests/test_review_contracts.py",
             "tests/test_uuid_migrations.py",
