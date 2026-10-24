@@ -92,6 +92,32 @@ Business invocations run the selected installed version. New invocations use the
 
 `newsroom subscribe --enabled/--disabled` configures headlines for the current conversation without changing other topics, assignments, or history. New-native-peer defaults do not overwrite existing subscription choices.
 
+### Scope and continuation
+
+`context show` resolves the current host session automatically. `--session` selects another observed host session address; `--section` selects `current/sources/collaboration/memory`. In `current`, `--task-id UUID` narrows tasks and related runners/facts to a task owned by the selected session. Shared session facts and original-source references remain available so requirements omitted from TODO can still be found. A task belonging to another session, or a task filter in another section, is an error.
+
+Each list defaults to 20 items; `--limit` accepts 1–100. Current context pages are output projections of the existing read-only handoff preview snapshot, not a bound on the entire database read. Bodies are not truncated mid-content. A list with remaining items always supplies a continuation cursor.
+
+| Query | Continuation cursor | Order |
+| --- | --- | --- |
+| `context show` | `tasks/workflows/facts/source_ids` in `next_after_ids` | Existing query order: tasks by creation time then UUID; runners/facts by UUID; sources by creation time then UUID |
+| `context show --section sources` | `next_after_id` in `{sources, next_after_id}` | Creation time then UUID ascending |
+| `context show --section collaboration` | Inbox `next_after_id`, peers `next_peer_after_id`, assignments `next_delegation_after_id` | UUID ascending per list |
+| `context show --section memory` | `memory_ids/applied_lessons` in `next_after_ids` | Newest creation first, UUID ascending for ties |
+| `memory search` | `next_after_id` | Newest creation first, UUID ascending for ties |
+
+Continue each list independently. Keep the same session, section, task/search filter and limit, pass that list's cursor as `--after UUID`, and collect **only that list** until its cursor is `null`. A full final page of memory search or applied lessons may be followed by an empty page. Do not merge different lists' cursors or treat a first page as the entire TODO or all original instructions. Recheck the latest first page when new tasks or corrections arrive between requests. To carry pagination metadata, the sources response now wraps the former bare array in an object with `sources` and a cursor.
+
+```sh
+neurath context show --section sources --limit 10
+neurath context show --section sources --limit 10 --after <next_after_id>
+neurath context show --task-id <task_uuid> --limit 10
+neurath memory search --text "handoff" --limit 10 --after <next_after_id>
+neurath maintenance version
+```
+
+`maintenance version` returns the name and version of the invoked installed distribution as JSON without opening or initializing the store. It works when the database is missing or corrupt. A version query does not establish host activation or update completion.
+
 ## 4. Execution paths behind removed tools
 
 - `context show` provides bounded session/task/phase/fact/peer/model/message-headline/monitor projections. Default to concise current-work context, not unrelated history. Sections select documented read areas, never arbitrary internal methods. Large memory/message/article bodies remain explicitly selected reads.

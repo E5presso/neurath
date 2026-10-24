@@ -9,9 +9,10 @@ from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
 from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionManager
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 
 from neurath.domain.aggregates.memory import MemoryKind
+from neurath.domain.errors import ContextNotFound
 from neurath.domain.values.lesson_observation import LessonState
 from neurath.infrastructure.models.memory import MemoryModel
 
@@ -26,6 +27,7 @@ class SearchMemoryQuery(AbstractQuery):
         session_id: 선택적인 기록 작성 세션.
         task_id: 선택적인 관련 작업.
         limit: 한 번에 조회할 1~100개 결과 수.
+        after_id: 직전 페이지 마지막 기억이며 처음이면 None.
         kind: 필요한 기억 유형만 선택한다.
         lesson_state: 교훈의 마지막 적용·보류·철회 상태를 선택한다.
     """
@@ -35,6 +37,7 @@ class SearchMemoryQuery(AbstractQuery):
     session_id: UUID | None = None
     task_id: UUID | None = None
     limit: int = 20
+    after_id: UUID | None = None
     kind: MemoryKind | None = None
     lesson_state: LessonState | None = None
 
@@ -64,6 +67,7 @@ class SearchMemoryUseCase(IAsyncQueryUseCase[SearchMemoryQuery, Sequence[UUID]])
 
         Raises:
             ValueError: 결과 개수가 1~100 범위 밖인 경우.
+            ContextNotFound: 커서가 선택한 프로젝트에 없는 경우.
         """
         if not 1 <= query.limit <= 100:
             raise ValueError("Search limit must be between 1 and 100")
@@ -82,6 +86,20 @@ class SearchMemoryUseCase(IAsyncQueryUseCase[SearchMemoryQuery, Sequence[UUID]])
             statement = statement.where(MemoryModel.session_id == query.session_id)
         if query.task_id is not None:
             statement = statement.where(MemoryModel.task_id == query.task_id)
+        if query.after_id is not None:
+            cursor = await self.session_manager.session.scalar(
+                select(MemoryModel.created_at).where(
+                    MemoryModel.project_id == query.project_id, MemoryModel.id == query.after_id
+                )
+            )
+            if cursor is None:
+                raise ContextNotFound("Memory cursor is outside the selected project")
+            statement = statement.where(
+                or_(
+                    MemoryModel.created_at < cursor,
+                    and_(MemoryModel.created_at == cursor, MemoryModel.id > query.after_id),
+                )
+            )
         rows = await self.session_manager.session.scalars(
             statement.order_by(MemoryModel.created_at.desc(), MemoryModel.id).limit(query.limit)
         )

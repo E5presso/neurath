@@ -94,13 +94,21 @@ class CollaborationCliController:
         Raises:
             ValueError: 주소가 없거나 여러 동료에 해당하는 경우.
         """
-        current = await self.peers.run(GetCollaborationContextQuery(peer_id=sender_id, limit=100))
-        matched = [
-            peer
-            for peer in current.peers
-            if address in (peer.host_session_id, peer.agent_id, str(peer.id))
-            and peer.id != sender_id
-        ]
+        matched: list[PeerAddress] = []
+        after = None
+        while True:
+            current = await self.peers.run(
+                GetCollaborationContextQuery(peer_id=sender_id, limit=100, after_id=after)
+            )
+            matched.extend(
+                peer
+                for peer in current.peers
+                if address in (peer.host_session_id, peer.agent_id, str(peer.id))
+                and peer.id != sender_id
+            )
+            after = current.next_peer_after_id
+            if after is None:
+                break
         if len(matched) != 1:
             raise ValueError(
                 "Select one observed peer from context show --section collaboration; create native children with the host's own delegation tool"

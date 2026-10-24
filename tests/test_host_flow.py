@@ -66,9 +66,9 @@ async def test_original_prompt_to_agent_workflow_result_and_stop(database, host)
     initial = await invoke(database, ["context", "show"])
     assert initial["host"]["turn"].startswith("observed:")
     sources = await invoke(database, ["context", "show", "--section", "sources"])
-    assert sources[0]["body"] == payload["prompt"]
+    assert sources["sources"][0]["body"] == payload["prompt"]
     task = await create(database)
-    assert task["source_id"] == sources[0]["id"]
+    assert task["source_id"] == sources["sources"][0]["id"]
     flow = await invoke(database, ["workflow", "start", "--task-id", task["id"], "--skill", "qa"])
     assert flow["current"]["arguments"] == []
     assert (await client.handle(dict(payload, hook_event_name="Stop")))["decision"] == "block"
@@ -185,7 +185,9 @@ async def test_monitor_wait_callback_change_receipt_and_resume_are_one_flow(data
     assert (await client.handle(dict(payload, hook_event_name="Stop")))["continue"] is False
     assert (await client.handle(callback))["continue"] is False
     assert (await client.handle(callback))["continue"] is False
-    assert len(await invoke(database, ["context", "show", "--section", "sources"])) == 1
+    assert (
+        len((await invoke(database, ["context", "show", "--section", "sources"]))["sources"]) == 1
+    )
     target.write_text('{"state":"running"}\n{"state":"done"}\n')
     changed = await client.handle(callback)
     assert "state done" in changed["hookSpecificOutput"]["additionalContext"]
@@ -605,6 +607,13 @@ async def test_requested_reflection_cli_applies_and_recalls_only_validated_lesso
     )
     memories = await invoke(database, ["context", "show", "--section", "memory"])
     assert lesson["id"] in memories["applied_lessons"]
+    page = await invoke(database, ["context", "show", "--section", "memory", "--limit", "1"])
+    assert page["next_after_ids"]["applied_lessons"] == lesson["id"]
+    tail = await invoke(
+        database,
+        ["context", "show", "--section", "memory", "--limit", "1", "--after", lesson["id"]],
+    )
+    assert tail["applied_lessons"] == [] and tail["next_after_ids"]["applied_lessons"] is None
     await invoke(
         database,
         [
@@ -726,7 +735,7 @@ async def test_task_correction_cancellation_and_method_revision_use_observed_sou
             "--result",
             "Output",
             "--source-id",
-            sources[0]["id"],
+            sources["sources"][0]["id"],
         ],
     )
     assert task["status"] == "pending"
@@ -1003,7 +1012,7 @@ async def test_missing_original_and_ambiguous_scope_require_observation_not_fabr
             "--result",
             "result",
             "--source-id",
-            sources[0]["id"],
+            sources["sources"][0]["id"],
         ],
     )
     await invoke(
@@ -1130,3 +1139,240 @@ async def test_monitor_current_context_and_error_callback_are_bounded(database, 
         dict(payload, prompt="NEURATH_MONITOR_TICK 00000000-0000-0000-0000-000000000001 1")
     )
     assert invalid["continue"] is False and "could not be processed" in invalid["stopReason"]
+
+
+async def test_context_pages_preserve_originals_tasks_and_current_task_scope(database, host):
+    _, client, payload = host
+    task_ids = []
+    for number in range(3):
+        await client.handle(dict(payload, prompt=f"Preserve requirement {number}"))
+        task = await create(database, start=False)
+        task_ids.append(task["id"])
+        await invoke(database, ["workflow", "start", "--task-id", task["id"], "--skill", "qa"])
+    # 보존된 UUID4 원문은 ID 정렬에서 정정 뒤에 올 수 있다.
+    legacy_id = UUID("ffffffff-ffff-4fff-bfff-ffffffffffff")
+    with sqlite3.connect(database) as fixture:
+        fixture.execute("PRAGMA foreign_keys=ON")
+        fixture.execute(
+            "UPDATE core_request_sources SET id=? WHERE body=?", (legacy_id.hex, payload["prompt"])
+        )
+        fixture.execute(
+            "UPDATE core_request_sources SET kind='correction', corrects_id=? WHERE body=?",
+            (legacy_id.hex, "Preserve requirement 0"),
+        )
+        assert fixture.execute("PRAGMA foreign_key_check").fetchall() == []
+    before = database.read_bytes()
+    first = await invoke(database, ["context", "show", "--limit", "2"])
+    assert [task["id"] for task in first["tasks"]] == task_ids[:2]
+    assert first["next_after_ids"]["tasks"] == task_ids[1]
+    second = await invoke(database, ["context", "show", "--limit", "2", "--after", task_ids[1]])
+    assert [task["id"] for task in second["tasks"]] == task_ids[2:]
+    assert second["next_after_ids"]["tasks"] is None
+    selected = await invoke(database, ["context", "show", "--task-id", task_ids[1]])
+    assert [task["id"] for task in selected["tasks"]] == [task_ids[1]]
+    assert [flow["task_id"] for flow in selected["workflows"]] == [task_ids[1]]
+    source_page = await invoke(
+        database, ["context", "show", "--section", "sources", "--limit", "2"]
+    )
+    sources = source_page["sources"]
+    source_page = await invoke(
+        database,
+        [
+            "context",
+            "show",
+            "--section",
+            "sources",
+            "--limit",
+            "2",
+            "--after",
+            source_page["next_after_id"],
+        ],
+    )
+    sources += source_page["sources"]
+    assert sources[0]["id"] == str(legacy_id)
+    assert sources[1]["kind"] == "correction" and sources[1]["corrects_id"] == str(legacy_id)
+    assert source_page["next_after_id"] is None
+    assert [source["body"] for source in sources] == [
+        payload["prompt"],
+        *[f"Preserve requirement {number}" for number in range(3)],
+    ]
+    for extra in (
+        ["--limit", "0"],
+        ["--limit", "101"],
+        ["--after", "bad"],
+        ["--task-id", str(UUID(int=1))],
+        ["--section", "sources", "--task-id", task_ids[0]],
+    ):
+        await invoke(database, ["context", "show", *extra], succeeds=False)
+    assert before == database.read_bytes()
+
+
+async def test_context_and_memory_search_continue_all_pages_without_writes(database, host):
+    ids = []
+    for number in range(3):
+        saved = await invoke(
+            database,
+            ["memory", "checkpoint", "--content", f"Report {number}", "--reference", "fixture:148"],
+        )
+        ids.append(saved["id"])
+    before = database.read_bytes()
+    first = await invoke(database, ["context", "show", "--section", "memory", "--limit", "2"])
+    assert first["memory_ids"] == ids[::-1][:2]
+    second = await invoke(
+        database,
+        [
+            "context",
+            "show",
+            "--section",
+            "memory",
+            "--limit",
+            "2",
+            "--after",
+            first["next_after_ids"]["memory_ids"],
+        ],
+    )
+    assert second["memory_ids"] == ids[:1]
+    assert second["next_after_ids"]["memory_ids"] is None
+    search = await invoke(database, ["memory", "search", "--limit", "2"])
+    assert search["memory_ids"] == ids[::-1][:2]
+    rest = await invoke(
+        database, ["memory", "search", "--limit", "2", "--after", search["next_after_id"]]
+    )
+    assert rest["memory_ids"] == ids[:1] and rest["next_after_id"] is None
+    await invoke(database, ["memory", "search", "--after", str(UUID(int=1))], succeeds=False)
+    assert before == database.read_bytes()
+
+
+async def test_collaboration_pages_enumerate_peers_assignments_without_read_receipts(
+    database, host
+):
+    _, client, payload = host
+    await client.handle(
+        dict(payload, session_id="second-peer", prompt="Help with the existing request")
+    )
+    for number in range(2):
+        task = await create(database)
+        await invoke(
+            database,
+            [
+                "collaboration",
+                "delegate",
+                "--task-id",
+                task["id"],
+                "--recipient",
+                "second-peer",
+                "--scope",
+                "Existing request",
+            ],
+        )
+        await invoke(
+            database,
+            [
+                "collaboration",
+                "send",
+                "--recipient",
+                "second-peer",
+                "--title",
+                f"Message {number}",
+                "--body",
+                "Unread body",
+            ],
+        )
+    before = database.read_bytes()
+    first = await invoke(
+        database, ["context", "show", "--section", "collaboration", "--limit", "1"]
+    )
+    assert first["next_peer_after_id"] and first["next_delegation_after_id"]
+    next_peers = await invoke(
+        database,
+        [
+            "context",
+            "show",
+            "--section",
+            "collaboration",
+            "--limit",
+            "1",
+            "--after",
+            first["next_peer_after_id"],
+        ],
+    )
+    assert len(next_peers["peers"]) == 1 and next_peers["next_peer_after_id"] is None
+    next_assignments = await invoke(
+        database,
+        [
+            "context",
+            "show",
+            "--section",
+            "collaboration",
+            "--limit",
+            "1",
+            "--after",
+            first["next_delegation_after_id"],
+        ],
+    )
+    assert (
+        len(next_assignments["delegations"]) == 1
+        and next_assignments["next_delegation_after_id"] is None
+    )
+    inbox = await invoke(
+        database,
+        [
+            "context",
+            "show",
+            "--session",
+            "second-peer",
+            "--section",
+            "collaboration",
+            "--limit",
+            "1",
+        ],
+    )
+    assert inbox["next_after_id"] and not inbox["inbox"][0]["read"]
+    rest = await invoke(
+        database,
+        [
+            "context",
+            "show",
+            "--session",
+            "second-peer",
+            "--section",
+            "collaboration",
+            "--limit",
+            "1",
+            "--after",
+            inbox["next_after_id"],
+        ],
+    )
+    assert rest["inbox"] and not rest["inbox"][0]["read"]
+    assert before == database.read_bytes()
+
+
+async def test_message_recipient_on_later_peer_page_remains_reachable(database, host):
+    _, client, payload = host
+    for number in range(100):
+        await client.handle(
+            dict(
+                payload,
+                session_id=f"observed-peer-{number}",
+                hook_event_name="SessionStart",
+                source="startup",
+            )
+        )
+    sent = await invoke(
+        database,
+        [
+            "collaboration",
+            "send",
+            "--recipient",
+            "observed-peer-99",
+            "--title",
+            "Selected peer",
+            "--body",
+            "Original request",
+        ],
+    )
+    inbox = await invoke(
+        database, ["context", "show", "--session", "observed-peer-99", "--section", "collaboration"]
+    )
+    assert [item["id"] for item in inbox["inbox"]] == [sent["id"]]
+    assert not inbox["inbox"][0]["read"]

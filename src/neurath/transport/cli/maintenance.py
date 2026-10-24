@@ -2,6 +2,7 @@
 
 import json
 from dataclasses import asdict
+from importlib.metadata import version
 from typing import Annotated
 
 from spakky.plugins.typer.stereotypes.cli_controller import CliController, command
@@ -43,6 +44,11 @@ class MaintenanceCliController:
         self.recovery = recovery
         self.install = install
         self.initialize = initialize
+
+    @command("version")
+    async def show_version(self) -> None:
+        """DB를 열지 않고 현재 호출된 배포본의 설치 버전을 반환한다."""
+        echo(json.dumps({"name": "neurath", "version": version("neurath")}))
 
     @command("diagnose")
     async def inspect(
