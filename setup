@@ -2,4 +2,4 @@
 set -eu
 neurath_project_root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 export PYTHONPATH="$neurath_project_root${PYTHONPATH:+:$PYTHONPATH}"
-exec uv run --locked --project "$neurath_project_root" python -m tools.setup_distribution "$@"
+exec uv run --locked --project "$neurath_project_root" python "$neurath_project_root/tools/setup_distribution.py" "$@"

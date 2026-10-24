@@ -23,6 +23,7 @@ def main() -> None:
         prepared = subprocess.check_output(
             [
                 sys.executable,
+                "-I",
                 "-m",
                 "neurath.entrypoint",
                 "distribution",
@@ -38,6 +39,7 @@ def main() -> None:
     subprocess.run(
         [
             sys.executable,
+            "-I",
             "-m",
             "neurath.entrypoint",
             "distribution",

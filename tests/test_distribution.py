@@ -700,3 +700,16 @@ def test_stale_wheel_guide_is_rejected_before_host_installation(tmp_path, releas
             str(next((tmp_path / "wheel").glob("*.whl"))), str(tmp_path / "runtimes"), None
         )
     assert not list((tmp_path / "runtimes").glob("*/candidate.json"))
+
+
+def test_setup_preserves_cwd_and_does_not_import_the_calling_projects_tools(tmp_path):
+    root = Path(__file__).parents[1]
+    (tmp_path / "tools").mkdir()
+    (tmp_path / "tools/__init__.py").write_text(
+        "raise AssertionError('Caller tools must not be imported')\n"
+    )
+    result = subprocess.run(
+        [str(root / "setup"), "--help"], cwd=tmp_path, capture_output=True, text=True
+    )
+    assert result.returncode == 0 and "--provider" in result.stdout
+    assert not list(tmp_path.glob(".codex"))
