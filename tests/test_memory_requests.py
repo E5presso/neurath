@@ -26,12 +26,12 @@ from neurath.application.usecases.update_enclave import (
 from neurath.domain.aggregates.enclave import Enclave
 from neurath.domain.aggregates.memory import Memory, MemoryKind
 from neurath.domain.aggregates.workflow import WorkflowRun
-from neurath.domain.enclave_records import EnclaveFact, EnclaveKind
 from neurath.domain.errors import (
     ContextNotFound,
     RevisionConflict,
 )
-from neurath.domain.workflow_records import PhaseDefinition, WorkflowDefinition
+from neurath.domain.values.enclave_fact import EnclaveFact, EnclaveKind
+from neurath.domain.values.workflow_definition import PhaseDefinition, WorkflowDefinition
 from neurath.infrastructure.database import sqlite_url
 from neurath.transport.cli.memory import MemoryCliController
 from tests.conftest import storage_scope
@@ -419,7 +419,7 @@ async def test_handoff_without_checkpoint_preserves_work_and_fences_original_ses
     )
     from neurath.domain.aggregates.workflow import WorkflowRun
     from neurath.domain.errors import InvalidExecutionState
-    from neurath.domain.workflow_records import PhaseDefinition, WorkflowDefinition
+    from neurath.domain.values.workflow_definition import PhaseDefinition, WorkflowDefinition
 
     source = memory_actor
     target = await register_session(
@@ -511,7 +511,7 @@ async def test_handoff_without_checkpoint_preserves_work_and_fences_original_ses
 
     from neurath.application.usecases.execute_phase import ExecutePhaseCommand, ExecutePhaseUseCase
     from neurath.application.usecases.start_task import StartTaskCommand, StartTaskUseCase
-    from neurath.domain.workflow_records import PhaseStatus
+    from neurath.domain.values.phase_attempt import PhaseStatus
 
     current_task = next(item for item in after.tasks if item.uid == task.uid)
     await run(
@@ -587,7 +587,7 @@ async def test_handoff_refuses_missing_native_execution_active_writer_and_target
     with pytest.raises(InvalidExecutionState, match="write termination"):
         await run(ResumeSessionUseCase, command, database_path=database)
     from neurath.application.ports.repositories.writer import IWriterRepository
-    from neurath.domain.runtime_records import Liveness
+    from neurath.domain.enums.liveness import Liveness
 
     async with storage_scope(database) as scope:
         writer = await scope.get(IWriterRepository).find_by_resource(
@@ -607,7 +607,7 @@ def test_transfer_domain_guards_preserve_owner_and_running_attempt():
     from neurath.domain.aggregates.workflow import WorkflowRun
     from neurath.domain.aggregates.writer import Writer
     from neurath.domain.errors import InvalidExecutionState, InvalidWorkflowState
-    from neurath.domain.workflow_records import PhaseDefinition, WorkflowDefinition
+    from neurath.domain.values.workflow_definition import PhaseDefinition, WorkflowDefinition
 
     source = HostSession.create("project", "codex", "source", "/work")
     target = HostSession.create("project", "claude", "target", "/work")
@@ -669,7 +669,7 @@ async def test_new_abstract_repository_lookups_fail_explicitly():
 async def test_cli_graph_paths_use_existing_tool_and_record_validated_reference(
     database, memory_actor, monkeypatch
 ):
-    from neurath.infrastructure.graph import SubprocessGraphService
+    from neurath.infrastructure.services.graph import SubprocessGraphService
 
     monkeypatch.setattr(
         SubprocessGraphService, "query", lambda self, directory, question: "related document"
@@ -712,7 +712,7 @@ async def test_cli_graph_paths_use_existing_tool_and_record_validated_reference(
 async def test_completed_workflow_context_and_terminal_task_enclave_scope(database, memory_actor):
     from neurath.application.ports.repositories.workflow import IWorkflowRepository
     from neurath.domain.aggregates.workflow import WorkflowRun
-    from neurath.domain.workflow_records import PhaseDefinition, WorkflowDefinition
+    from neurath.domain.values.workflow_definition import PhaseDefinition, WorkflowDefinition
 
     actor = memory_actor
     task = await create(database, actor)

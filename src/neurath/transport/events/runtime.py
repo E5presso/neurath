@@ -12,12 +12,10 @@ from neurath.application.usecases.interrupt_execution import (
 )
 from neurath.application.usecases.observe_writer import ObserveWriterCommand, ObserveWriterUseCase
 from neurath.application.usecases.release_writer import ReleaseWriterCommand, ReleaseWriterUseCase
-from neurath.domain.runtime_events import (
-    ExecutionCancellationRequested,
-    ExecutionInterruptionObserved,
-    WriterLivenessObserved,
-    WriterRecoveryRequested,
-)
+from neurath.domain.events.execution_cancellation_requested import ExecutionCancellationRequested
+from neurath.domain.events.execution_interruption_observed import ExecutionInterruptionObserved
+from neurath.domain.events.writer_liveness_observed import WriterLivenessObserved
+from neurath.domain.events.writer_recovery_requested import WriterRecoveryRequested
 
 
 @EventHandler()

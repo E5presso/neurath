@@ -19,15 +19,10 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from neurath.domain.aggregates.task import Task
-from neurath.domain.task_records import (
-    ExternalWait,
-    Outcome,
-    SubmittedResult,
-    TaskAttempt,
-    TaskDefinition,
-    TaskResult,
-    TaskStatus,
-)
+from neurath.domain.enums.task_status import TaskStatus
+from neurath.domain.values.external_wait import ExternalWait
+from neurath.domain.values.task_attempt import Outcome, SubmittedResult, TaskAttempt, TaskResult
+from neurath.domain.values.task_definition import TaskDefinition
 from neurath.infrastructure.models.monitoring import TaskMonitorModel
 
 

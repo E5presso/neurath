@@ -20,14 +20,13 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from neurath.domain.aggregates.delegation import Delegation
-from neurath.domain.delegation_records import (
-    DelegationReport,
-    DelegationRole,
-    DelegationRoute,
-    DelegationStatus,
-    ProviderPlan,
-)
-from neurath.domain.provider import ProviderKind, ProviderStatus
+from neurath.domain.enums.delegation_role import DelegationRole
+from neurath.domain.enums.delegation_route import DelegationRoute
+from neurath.domain.enums.delegation_status import DelegationStatus
+from neurath.domain.enums.provider_kind import ProviderKind
+from neurath.domain.enums.provider_status import ProviderStatus
+from neurath.domain.values.delegation_report import DelegationReport
+from neurath.domain.values.provider_plan import ProviderPlan
 
 
 @Table(Delegation)

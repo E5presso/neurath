@@ -10,7 +10,7 @@ from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseC
 from spakky.event.event_publisher import IAsyncEventPublisher
 
 from neurath.application.ports.services.graph import IGraphService
-from neurath.domain.memory_events import CheckpointGraphObserved
+from neurath.domain.events.checkpoint_graph_observed import CheckpointGraphObserved
 
 
 @immutable

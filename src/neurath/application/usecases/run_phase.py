@@ -10,8 +10,9 @@ from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseC
 from spakky.event.event_publisher import IAsyncEventPublisher
 
 from neurath.application.ports.services.phase_executor import IPhaseExecutorService
-from neurath.domain.workflow_events import PhaseExecutionObserved
-from neurath.domain.workflow_records import PhaseAttempt, PhaseDefinition, PhaseResult, PhaseStatus
+from neurath.domain.events.phase_execution_observed import PhaseExecutionObserved
+from neurath.domain.values.phase_attempt import PhaseAttempt, PhaseResult, PhaseStatus
+from neurath.domain.values.workflow_definition import PhaseDefinition
 
 
 @immutable

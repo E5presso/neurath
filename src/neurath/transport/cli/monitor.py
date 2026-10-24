@@ -10,8 +10,7 @@ from spakky.plugins.typer.stereotypes.cli_controller import CliController, comma
 from typer import Option, echo
 
 from neurath.application.usecases.get_monitor import GetMonitorQuery, GetMonitorUseCase
-from neurath.application.usecases.monitor_lifecycle import MonitorCommand
-from neurath.application.usecases.tick_monitor import TickMonitorUseCase
+from neurath.application.usecases.tick_monitor import TickMonitorCommand, TickMonitorUseCase
 from neurath.serialization import encode_uuid
 
 
@@ -58,7 +57,7 @@ class MonitorCliController:
         """
         try:
             result = await self.tick.run(
-                MonitorCommand(
+                TickMonitorCommand(
                     project_id=project_id,
                     session_id=session_id,
                     task_id=task_id,

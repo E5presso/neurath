@@ -9,7 +9,7 @@ from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
 
 from neurath.application.ports.repositories.task import ITaskRepository
-from neurath.domain.monitoring import TaskMonitor
+from neurath.domain.values.task_monitor import TaskMonitor
 
 
 @immutable

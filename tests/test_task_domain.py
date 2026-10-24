@@ -6,15 +6,11 @@ import pytest
 
 from neurath.domain.aggregates.request_source import RequestSource, SourceKind
 from neurath.domain.aggregates.task import Task
+from neurath.domain.enums.task_status import TaskStatus
 from neurath.domain.errors import ContextNotFound, InvalidTaskState, RevisionConflict
-from neurath.domain.task_records import (
-    ExternalWait,
-    Outcome,
-    SubmittedResult,
-    TaskDefinition,
-    TaskResult,
-    TaskStatus,
-)
+from neurath.domain.values.external_wait import ExternalWait
+from neurath.domain.values.task_attempt import Outcome, SubmittedResult, TaskResult
+from neurath.domain.values.task_definition import TaskDefinition
 
 
 def source(kind=SourceKind.PROMPT, *, corrects_id=None, project_id="project", author=None):

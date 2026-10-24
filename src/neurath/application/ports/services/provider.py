@@ -1,11 +1,48 @@
 """실제 provider의 모델 조회·실행·관찰·중단을 위한 외부 경계다."""
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from uuid import UUID
 
-from neurath.application.provider_records import ProviderCapabilities, ProviderObservation
-from neurath.domain.delegation_records import ProviderPlan
-from neurath.domain.provider import ProviderKind
+from spakky.core.common.mutability import immutable
+
+from neurath.domain.enums.provider_kind import ProviderKind
+from neurath.domain.enums.provider_status import ProviderStatus
+from neurath.domain.values.provider_plan import ProviderPlan
+
+
+@immutable
+class ProviderCapabilities:
+    """설치된 호스트에서 조회한 모델과 이 어댑터가 지원하는 명시적 정책이다.
+
+    Attributes:
+        provider: 실제 공급자.
+        models: 조회 시점에 사용 가능한 구체 모델 ID.
+        policies: 이 경로로 전달 가능한 명시적 권한 정책.
+    """
+
+    provider: ProviderKind
+    models: Sequence[str]
+    policies: Sequence[str]
+
+
+@immutable
+class ProviderObservation:
+    """원 실행 기록을 읽은 결과이며 작업 목표 달성을 뜻하지 않는다.
+
+    Attributes:
+        reference: 배정에 고정된 실행 자료 디렉터리.
+        status: running·completed·failed·unknown·stopped 중 실제 관찰 상태.
+        native_session_id: 실제 호스트가 출력한 세션 ID이며 미관찰이면 None.
+        output: 원 실행이 출력한 결과 본문.
+        error: 실행 실패·불확실성의 설명이며 없으면 None.
+    """
+
+    reference: str
+    status: ProviderStatus
+    native_session_id: str | None = None
+    output: str = ""
+    error: str | None = None
 
 
 class IProviderService(ABC):

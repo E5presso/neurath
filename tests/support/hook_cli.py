@@ -6,7 +6,7 @@ import json
 from typer import Typer
 from typer.testing import CliRunner
 
-from neurath.domain.provider import ProviderKind
+from neurath.domain.enums.provider_kind import ProviderKind
 from neurath.infrastructure.database import sqlite_url
 from neurath.transport.cli.hooks import HookCliController
 from tests.support.application import scanned_application

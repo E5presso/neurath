@@ -17,10 +17,8 @@ from sqlalchemy import text
 
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.application.ports.repositories.workflow import IWorkflowRepository
-from neurath.application.ports.services.phase_executor import (
-    IPhaseExecutorService,
-    IWorkflowNotifierService,
-)
+from neurath.application.ports.services.phase_executor import IPhaseExecutorService
+from neurath.application.ports.services.workflow_notifier import IWorkflowNotifierService
 from neurath.application.usecases.execute_phase import ExecutePhaseCommand, ExecutePhaseUseCase
 from neurath.application.usecases.get_workflow import GetWorkflowQuery, GetWorkflowUseCase
 from neurath.application.usecases.notify_phase_wait import NotifyPhaseWaitUseCase
@@ -34,19 +32,14 @@ from neurath.application.usecases.revise_workflow import (
 from neurath.application.usecases.run_phase import RunPhaseUseCase
 from neurath.application.usecases.skip_phase import SkipPhaseCommand, SkipPhaseUseCase
 from neurath.application.usecases.start_workflow import StartWorkflowCommand, StartWorkflowUseCase
+from neurath.domain.enums.task_status import TaskStatus
 from neurath.domain.errors import InvalidWorkflowState, RevisionConflict
-from neurath.domain.task_records import Outcome, TaskResult, TaskStatus
-from neurath.domain.workflow_records import (
-    PhaseDefinition,
-    PhaseResult,
-    PhaseStatus,
-    WorkflowDefinition,
-)
+from neurath.domain.values.phase_attempt import PhaseResult, PhaseStatus
+from neurath.domain.values.task_attempt import Outcome, TaskResult
+from neurath.domain.values.workflow_definition import PhaseDefinition, WorkflowDefinition
 from neurath.infrastructure.database import create_database_engine, initialize_database
-from neurath.infrastructure.phase_executor import (
-    StderrWorkflowNotifierService,
-    SubprocessPhaseExecutorService,
-)
+from neurath.infrastructure.services.phase_executor import SubprocessPhaseExecutorService
+from neurath.infrastructure.services.workflow_notifier import StderrWorkflowNotifierService
 from tests.conftest import storage_scope
 from tests.support.application import spakky_context
 from tests.support.requests import run
@@ -783,7 +776,7 @@ async def test_waiting_workflow_does_not_block_independent_task(database, work, 
 
 
 async def test_report_does_not_resume_unrelated_external_wait(database, work):
-    from neurath.domain.task_records import ExternalWait
+    from neurath.domain.values.external_wait import ExternalWait
 
     _, _, flow = work
     prepared = (

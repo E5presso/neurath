@@ -37,7 +37,7 @@ import sys
 from neurath.application.usecases.get_task import GetTaskQuery, GetTaskUseCase
 from neurath.application.usecases.start_workflow import StartWorkflowCommand, StartWorkflowUseCase
 from neurath.application.usecases.execute_phase import ExecutePhaseCommand, ExecutePhaseResult, ExecutePhaseUseCase
-from neurath.domain.workflow_records import PhaseDefinition, WorkflowDefinition
+from neurath.domain.values.workflow_definition import PhaseDefinition, WorkflowDefinition
 from spakky.core.pod.interfaces.container import IContainer
 
 

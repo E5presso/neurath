@@ -11,7 +11,7 @@ from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseC
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.application.ports.repositories.workflow import IWorkflowRepository
 from neurath.domain.aggregates.workflow import WorkflowRun
-from neurath.domain.workflow_records import PhaseStatus
+from neurath.domain.values.phase_attempt import PhaseStatus
 
 
 @immutable

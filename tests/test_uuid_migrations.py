@@ -19,7 +19,7 @@ from neurath.application.usecases.prepare_phase import PreparePhaseCommand, Prep
 from neurath.domain.aggregates.memory import Memory, MemoryKind
 from neurath.domain.aggregates.project import Project
 from neurath.domain.errors import StorageNotReady
-from neurath.domain.observations import DirectoryObservation
+from neurath.domain.values.directory_observation import DirectoryObservation
 from neurath.infrastructure.database import create_database_engine, initialize_database
 from tests.conftest import storage_scope
 from tests.support.requests import run

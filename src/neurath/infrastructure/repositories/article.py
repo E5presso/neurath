@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from neurath.application.ports.repositories.article import IArticleRepository
 from neurath.domain.aggregates.article import Article
-from neurath.domain.article_records import ArticleNoticeStatus
+from neurath.domain.values.article_notice import ArticleNoticeStatus
 from neurath.infrastructure.models.article import ArticleModel, ArticleNoticeModel
 
 

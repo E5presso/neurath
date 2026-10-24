@@ -116,3 +116,20 @@ Git/worktree/clone 구분과 명시적·동시 초기화를 검증합니다. 이
 내부 aggregate ID와 관련 Command·Query·저장소 참조는 `UUID`로 전달하고 새 ID는 시간 순서로 정렬되는 `uuid7()`로 생성합니다. ORM은 SQLAlchemy의 `Uuid()`를 사용합니다. `core_0009`는 기존 UUID4·UUID7 값과 참조를 재발급하지 않고 SQLite의 키 저장 표현을 32자리 hex로 이전합니다. 관계형 참조·복합 제약·인덱스·트리거와 미완료 이력을 보존하며, 이전 전후 외래 키 검사에 실패하면 자료·스키마·revision을 함께 롤백합니다. 외부 호스트 ID와 JSON·원문·산출물 참조는 원래 문자열을 유지하며, JSON·CLI 경계에서 내부 UUID를 정규 문자열로 표현합니다.
 
 불변 입력·결과·관찰 계약은 Spakky `@immutable`과 키워드 인자를 사용합니다. 필드 재할당을 막는 계약이며 내부 목록까지 깊게 동결하는 계약은 아닙니다. 도메인 값 객체의 동등성은 해당 프레임워크 계약을 유지합니다.
+
+## 패키지와 모듈 책임
+
+[Ports and Adapters 원문](https://alistair.cockburn.us/hexagonal-architecture/)은 외부 기술과 애플리케이션 내부의 경계를 정의하며 고정된 디렉터리 이름을 요구하지 않습니다. Neurath는 이 경계를 다음 패키지 규칙으로 구체화합니다.
+
+| 패키지 | 소유 책임 |
+| --- | --- |
+| `domain/aggregates`, `values`, `enums`, `events` | 식별자와 상태 전이, 값과 검증, 상태 구분, 커밋된 도메인 사건 |
+| `application/usecases` | 모듈당 한 작업과 그 작업의 전용 Command/Query·Result |
+| `application/services` | 여러 작업에서 필요한 애플리케이션 조정. 감시 범위·현재 실행 대조 등 |
+| `application/ports/repositories`, `services` | 외부 저장·실행 계약. 포트 응답 자료형은 해당 계약과 같은 모듈 |
+| `infrastructure/models`, `repositories`, `services`, `migrations` | ORM, 저장소 구현, 외부 기술 어댑터, Alembic revision |
+| `transport/cli`, `events` | CLI와 커밋 후 사건을 유스케이스 입력으로 바꾸는 인바운드 어댑터 |
+
+구성 루트·SQLite 설정·외부 프로토콜·JSON 직렬화는 그 기술 경계의 모듈로 유지합니다. 도메인 값은 소유 aggregate와 함께 둘 수도 있습니다. 여러 역할을 가진 records 묶음을 `application` 바로 아래에 두지 않습니다.
+
+`tools/architecture.py`는 새 파일까지 탐색해 프레임워크 구성요소의 소속, 모듈당 한 유스케이스와 선언 참조 그래프의 연결성을 검사합니다. 연결된 입출력·유스케이스, aggregate·소유 값, 부모·자식 매핑은 함께 둡니다. 공통 import·외부 기반 타입·데코레이터나 docstring의 문자열 언급은 연결로 인정하지 않으며, 지역 변수의 같은 이름도 전역 참조로 오인하지 않습니다. Alembic의 upgrade/downgrade는 한 revision의 콜백 계약입니다. 정상·실패 fixture와 실제 패키지 스캔 시험을 pre-commit·CI에 공유합니다. 그래프 연결은 기계적으로 확인할 수 있는 최소 조건이며 실제 책임의 타당성은 코드 검토로 확인합니다.

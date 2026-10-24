@@ -32,14 +32,10 @@ from neurath.application.usecases.start_task import StartTaskCommand, StartTaskU
 from neurath.application.usecases.submit_result import SubmitResultCommand, SubmitResultUseCase
 from neurath.application.usecases.wait_task import WaitTaskCommand, WaitTaskUseCase
 from neurath.domain.aggregates.request_source import SourceKind
+from neurath.domain.enums.task_status import TaskStatus
 from neurath.domain.errors import ContextNotFound, InvalidTaskState, RevisionConflict
-from neurath.domain.task_records import (
-    ExternalWait,
-    Outcome,
-    SubmittedResult,
-    TaskResult,
-    TaskStatus,
-)
+from neurath.domain.values.external_wait import ExternalWait
+from neurath.domain.values.task_attempt import Outcome, SubmittedResult, TaskResult
 from neurath.infrastructure.repositories.request_source import SQLAlchemyRequestSourceRepository
 from neurath.infrastructure.repositories.task import SQLAlchemyTaskRepository
 from tests.conftest import storage_scope

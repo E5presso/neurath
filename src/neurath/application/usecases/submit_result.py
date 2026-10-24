@@ -10,7 +10,7 @@ from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseC
 
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.domain.aggregates.task import Task
-from neurath.domain.task_records import SubmittedResult
+from neurath.domain.values.task_attempt import SubmittedResult
 
 
 @immutable

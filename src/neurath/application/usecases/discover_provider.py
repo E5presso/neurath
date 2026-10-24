@@ -7,9 +7,8 @@ from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
 
-from neurath.application.ports.services.provider import IProviderService
-from neurath.application.provider_records import ProviderCapabilities
-from neurath.domain.provider import ProviderKind
+from neurath.application.ports.services.provider import IProviderService, ProviderCapabilities
+from neurath.domain.enums.provider_kind import ProviderKind
 
 
 @immutable

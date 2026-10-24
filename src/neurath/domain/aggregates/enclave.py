@@ -7,8 +7,8 @@ from uuid import UUID, uuid7
 from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 
-from neurath.domain.enclave_records import EnclaveChange, EnclaveFact
 from neurath.domain.errors import ContextNotFound, RevisionConflict
+from neurath.domain.values.enclave_fact import EnclaveChange, EnclaveFact
 
 
 @mutable

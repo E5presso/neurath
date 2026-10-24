@@ -10,7 +10,7 @@ from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 from spakky.domain.models.value_object import AbstractValueObject
 
 from neurath.domain.errors import ProjectIdentityConflict
-from neurath.domain.observations import DirectoryObservation
+from neurath.domain.values.directory_observation import DirectoryObservation
 
 
 class ProjectKind(StrEnum):

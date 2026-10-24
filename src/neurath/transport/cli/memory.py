@@ -24,7 +24,7 @@ from neurath.application.usecases.update_enclave import (
     UpdateEnclaveUseCase,
 )
 from neurath.domain.aggregates.memory import GraphUpdateStatus
-from neurath.domain.enclave_records import EnclaveFact, EnclaveKind
+from neurath.domain.values.enclave_fact import EnclaveFact, EnclaveKind
 from neurath.serialization import encode_uuid
 
 

@@ -21,8 +21,8 @@ from neurath.application.usecases.search_memory import SearchMemoryQuery, Search
 from neurath.domain.aggregates.memory import GraphUpdateStatus, Memory, MemoryKind
 from neurath.domain.errors import ContextNotFound, InvalidExecutionState
 from neurath.infrastructure.database import create_database_engine, initialize_database
-from neurath.infrastructure.graph import SubprocessGraphService
 from neurath.infrastructure.repositories.memory import SQLAlchemyMemoryRepository
+from neurath.infrastructure.services.graph import SubprocessGraphService
 from neurath.transport.cli.memory import MemoryCliController
 from tests.conftest import storage_scope
 from tests.support.application import spakky_context

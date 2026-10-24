@@ -6,9 +6,9 @@ from uuid import UUID, uuid7
 from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 
+from neurath.domain.enums.liveness import Liveness
 from neurath.domain.errors import InvalidExecutionState
-from neurath.domain.runtime_events import WriterRecoveryRequested
-from neurath.domain.runtime_records import Liveness
+from neurath.domain.events.writer_recovery_requested import WriterRecoveryRequested
 
 
 @mutable

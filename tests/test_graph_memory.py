@@ -7,7 +7,7 @@ import pytest
 
 from neurath.application.ports.services.graph import IGraphService
 from neurath.application.usecases.query_graph import QueryGraphQuery, QueryGraphUseCase
-from neurath.infrastructure.graph import SubprocessGraphService
+from neurath.infrastructure.services.graph import SubprocessGraphService
 
 
 def document_graph():

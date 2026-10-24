@@ -9,15 +9,12 @@ from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 
 from neurath.domain.aggregates.peer import Peer
-from neurath.domain.article_records import (
-    ArticleComment,
-    ArticleNotice,
-    ArticleNoticeStatus,
-    ArticleRead,
-    ArticleRevision,
-    ArticleUse,
-)
 from neurath.domain.errors import ContextNotFound, InvalidTaskState, RevisionConflict
+from neurath.domain.values.article_comment import ArticleComment
+from neurath.domain.values.article_notice import ArticleNotice, ArticleNoticeStatus
+from neurath.domain.values.article_read import ArticleRead
+from neurath.domain.values.article_revision import ArticleRevision
+from neurath.domain.values.article_use import ArticleUse
 
 
 @mutable

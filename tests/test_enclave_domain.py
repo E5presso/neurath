@@ -3,8 +3,8 @@
 import pytest
 
 from neurath.domain.aggregates.enclave import Enclave
-from neurath.domain.enclave_records import EnclaveFact, EnclaveKind
 from neurath.domain.errors import ContextNotFound, RevisionConflict
+from neurath.domain.values.enclave_fact import EnclaveFact, EnclaveKind
 
 
 def fact(value="current", kind=EnclaveKind.FACT, key="constraint"):

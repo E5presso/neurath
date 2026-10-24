@@ -10,9 +10,9 @@ from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseC
 
 from neurath.application.ports.repositories.execution import IExecutionRepository
 from neurath.application.ports.repositories.task import ITaskRepository
+from neurath.domain.enums.execution_status import ExecutionStatus
 from neurath.domain.errors import ContextNotFound, InvalidTaskState
-from neurath.domain.monitoring import MonitorKind, TaskMonitor
-from neurath.domain.runtime_records import ExecutionStatus
+from neurath.domain.values.task_monitor import MonitorKind, TaskMonitor
 
 
 @immutable

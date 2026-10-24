@@ -21,13 +21,11 @@ from neurath.domain.aggregates.peer import Peer
 from neurath.domain.aggregates.project import Project
 from neurath.domain.aggregates.session import HostSession
 from neurath.domain.aggregates.task import Task
-from neurath.domain.delegation_records import (
-    DelegationRole,
-    DelegationRoute,
-    ProviderPlan,
-)
+from neurath.domain.enums.delegation_role import DelegationRole
+from neurath.domain.enums.delegation_route import DelegationRoute
 from neurath.domain.errors import InvalidTaskState
-from neurath.domain.observations import DirectoryObservation
+from neurath.domain.values.directory_observation import DirectoryObservation
+from neurath.domain.values.provider_plan import ProviderPlan
 
 
 @immutable

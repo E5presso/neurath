@@ -2,6 +2,7 @@
 
 import ast
 import re
+import symtable
 from pathlib import Path
 
 
@@ -351,6 +352,8 @@ class ArchitectureChecker:
         location = f"{module}:{node.lineno}"
         for suffix, namespace in roles.items():
             if module.startswith(namespace):
+                if "abc.ABC" not in ancestors and not node.name.endswith(suffix):
+                    continue
                 if not (
                     node.name.startswith("I")
                     and node.name[1:2].isupper()
@@ -362,7 +365,9 @@ class ArchitectureChecker:
             contracts = {
                 parent.rsplit(".", 1)[1][1:]
                 for parent in ancestors
-                if parent.startswith(namespace) and parent in self.classes
+                if parent.startswith(namespace)
+                and parent in self.classes
+                and "abc.ABC" in self._ancestors(parent)
             }
             stereotype = (
                 "spakky.data.stereotype.repository.Repository"
@@ -380,6 +385,136 @@ class ArchitectureChecker:
                 errors.append(
                     f"{location} IMPLEMENTATION_NAME: replace interface I with a concrete technology; end with {suffix}"
                 )
+        return errors
+
+    def _check_module(self, module: str, tree: ast.Module) -> list[str]:
+        """모듈 선언의 실제 전역 참조를 연결해 분리된 책임과 유스케이스 묶음을 찾는다.
+
+        공통 import·데코레이터·외부 기반 타입의 공유는 로컬 선언 사이의 연결이 아니다.
+        함수 인자·지역 변수의 동명 참조도 연결하지 않는다. Alembic revision은 하나의
+        이전을 upgrade/downgrade 콜백으로 정의하는 프레임워크 모듈 계약이다.
+
+        Args:
+            module: 검사할 절대 모듈 이름.
+            tree: 해당 모듈의 구문 트리.
+
+        Returns:
+            list[str]: 독립 선언 군집·복수 유스케이스·불명확한 계층 소속의 진단.
+        """
+        declarations: dict[str, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef] = {}
+        pending: list[ast.AST] = list(tree.body)
+        while pending:
+            node = pending.pop()
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                declarations[node.name] = node
+                continue
+            pending.extend(ast.iter_child_nodes(node))
+        if not declarations:
+            return []
+        errors: list[str] = []
+        if module.rsplit(".", 1)[0] in {"neurath.application", "neurath.domain"} and module not in {
+            "neurath.domain.errors",
+        }:
+            errors.append(
+                f"{module}:1 PACKAGE_LAYOUT: place declarations in their responsibility package"
+            )
+        usecases = [
+            name
+            for name, node in declarations.items()
+            if isinstance(node, ast.ClassDef)
+            and (
+                any(
+                    self._name(
+                        module, decorator.func if isinstance(decorator, ast.Call) else decorator
+                    )
+                    == "spakky.core.stereotype.usecase.UseCase"
+                    for decorator in node.decorator_list
+                )
+                or any(
+                    parent.rsplit(".", 1)[-1]
+                    in {
+                        "ICommandUseCase",
+                        "IAsyncCommandUseCase",
+                        "IQueryUseCase",
+                        "IAsyncQueryUseCase",
+                    }
+                    for parent in self._ancestors(f"{module}.{name}")
+                )
+            )
+        ]
+        if len(usecases) > 1:
+            errors.append(
+                f"{module}:1 MODULE_USECASE: each use case owns its input and result in one module: {', '.join(sorted(usecases))}"
+            )
+        if module.startswith("neurath.infrastructure.migrations.versions."):
+            return errors
+        symbols = symtable.symtable(self.sources[module], module, "exec")
+        links: dict[str, set[str]] = {name: set() for name in declarations}
+        for name, node in declarations.items():
+            scopes = [
+                scope
+                for scope in symbols.get_children()
+                if scope.get_name() == name and scope.get_lineno() == node.lineno
+            ]
+            references: set[str] = set()
+            while scopes:
+                scope = scopes.pop()
+                references.update(
+                    symbol.get_name()
+                    for symbol in scope.get_symbols()
+                    if symbol.is_referenced() and symbol.is_global()
+                )
+                scopes.extend(scope.get_children())
+            # 기반 클래스·데코레이터·기본 인자는 선언을 둘러싼 모듈 스코프에서 평가한다.
+            outer = (
+                [*node.bases, *node.decorator_list, *node.keywords]
+                if isinstance(node, ast.ClassDef)
+                else [*node.decorator_list, *node.args.defaults, *node.args.kw_defaults]
+            )
+            references.update(
+                item.id
+                for expression in outer
+                if expression is not None
+                for item in ast.walk(expression)
+                if isinstance(item, ast.Name) and isinstance(item.ctx, ast.Load)
+            )
+            # 문자열 전방 참조는 타입 위치만 읽으며 본문·docstring은 연결 근거로 쓰지 않는다.
+            annotations = [
+                item.annotation
+                for item in ast.walk(node)
+                if isinstance(item, (ast.AnnAssign, ast.arg)) and item.annotation is not None
+            ] + [
+                item.returns
+                for item in ast.walk(node)
+                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and item.returns is not None
+            ]
+            references.update(
+                item.value
+                for annotation in annotations
+                for item in ast.walk(annotation)
+                if isinstance(item, ast.Constant) and isinstance(item.value, str)
+            )
+            for reference in references:
+                target = self._name(module, ast.Name(id=reference)).removeprefix(module + ".")
+                if target in declarations and target != name:
+                    links[name].add(target)
+                    links[target].add(name)
+        remaining = set(declarations)
+        clusters: list[str] = []
+        while remaining:
+            group = {remaining.pop()}
+            frontier = list(group)
+            while frontier:
+                neighbours = links[frontier.pop()] & remaining
+                remaining.difference_update(neighbours)
+                group.update(neighbours)
+                frontier.extend(neighbours)
+            clusters.append(", ".join(sorted(group)))
+        if len(clusters) > 1:
+            errors.append(
+                f"{module}:1 MODULE_COHESION: disconnected declaration clusters: {' | '.join(sorted(clusters))}"
+            )
         return errors
 
     def _check_class(self, module: str, node: ast.ClassDef) -> list[str]:
@@ -425,6 +560,48 @@ class ArchitectureChecker:
             self._name(module, item.func if isinstance(item, ast.Call) else item)
             for item in node.decorator_list
         }
+        locations = {
+            "spakky.core.stereotype.usecase.UseCase": "neurath.application.usecases.",
+            "spakky.event.stereotype.event_handler.EventHandler": "neurath.transport.events.",
+            "spakky.plugins.typer.stereotypes.cli_controller.CliController": "neurath.transport.cli.",
+            "spakky.plugins.sqlalchemy.orm.table.Table": "neurath.infrastructure.models.",
+            "spakky.data.stereotype.repository.Repository": "neurath.infrastructure.repositories.",
+        }
+        for decorator, package in locations.items():
+            if decorator in decorators and not module.startswith(package):
+                errors.append(f"{location} COMPONENT_PACKAGE: {node.name} belongs to {package}")
+        if ancestors & usecase_contracts and not module.startswith("neurath.application.usecases."):
+            errors.append(f"{location} COMPONENT_PACKAGE: use cases belong to application.usecases")
+        if "spakky.domain.models.event.AbstractDomainEvent" in ancestors and not module.startswith(
+            "neurath.domain.events."
+        ):
+            errors.append(f"{location} COMPONENT_PACKAGE: domain events belong to domain.events")
+        if (
+            "spakky.domain.models.aggregate_root.AbstractAggregateRoot" in ancestors
+            and not module.startswith("neurath.domain.aggregates.")
+        ):
+            errors.append(f"{location} COMPONENT_PACKAGE: aggregates belong to domain.aggregates")
+        if (
+            "spakky.domain.models.value_object.AbstractValueObject" in ancestors
+            and not module.startswith(("neurath.domain.values.", "neurath.domain.aggregates."))
+        ):
+            errors.append(f"{location} COMPONENT_PACKAGE: shared values belong to domain.values")
+        for kind, suffix in (("services", "Service"), ("repositories", "Repository")):
+            ports = {
+                parent
+                for parent in ancestors
+                if parent.startswith(f"neurath.application.ports.{kind}.")
+                and parent.rsplit(".", 1)[-1].startswith("I")
+                and parent.endswith(suffix)
+            }
+            if (
+                ports
+                and not module.startswith(f"neurath.application.ports.{kind}.")
+                and not module.startswith(f"neurath.infrastructure.{kind}.")
+            ):
+                errors.append(
+                    f"{location} COMPONENT_PACKAGE: {suffix} adapters belong to infrastructure.{kind}"
+                )
         if (
             "spakky.plugins.typer.stereotypes.cli_controller.CliController" in decorators
             and not module.startswith("neurath.transport.")
@@ -560,6 +737,7 @@ class ArchitectureChecker:
         errors: list[str] = []
         protocols = {"typing.Protocol", "typing_extensions.Protocol"}
         for module, tree in self.trees.items():
+            errors.extend(self._check_module(module, tree))
             for line, source_line in enumerate(self.sources[module].splitlines(), 1):
                 if not re.search(r"#\s*pragma:\s*no\s*(cover|branch)", source_line):
                     continue

@@ -13,49 +13,64 @@ import pytest
 from alembic import command as alembic_command
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from neurath.application.monitor_records import MonitorDelivery, MonitorObservation
 from neurath.application.ports.repositories.task import ITaskRepository
-from neurath.application.ports.services.monitor import (
+from neurath.application.ports.services.monitor_notifier import (
     IMonitorNotifierService,
+    MonitorDelivery,
+)
+from neurath.application.ports.services.monitor_observer import (
     IMonitorObserverService,
+    MonitorObservation,
+)
+from neurath.application.usecases.acknowledge_monitor_event import (
+    AcknowledgeMonitorEventCommand,
+    AcknowledgeMonitorEventUseCase,
 )
 from neurath.application.usecases.cancel_execution import (
     CancelExecutionCommand,
     CancelExecutionUseCase,
 )
+from neurath.application.usecases.cancel_monitor import CancelMonitorCommand, CancelMonitorUseCase
 from neurath.application.usecases.get_monitor import GetMonitorQuery, GetMonitorUseCase
-from neurath.application.usecases.monitor_lifecycle import (
-    AcknowledgeMonitorEventUseCase,
-    CancelMonitorUseCase,
-    MonitorCommand,
-    MonitorEventCommand,
+from neurath.application.usecases.prepare_monitor_notice import (
+    PrepareMonitorNoticeCommand,
     PrepareMonitorNoticeUseCase,
+)
+from neurath.application.usecases.prepare_monitor_poll import (
+    PrepareMonitorPollCommand,
     PrepareMonitorPollUseCase,
+)
+from neurath.application.usecases.record_monitor_notice import (
     RecordMonitorNoticeCommand,
     RecordMonitorNoticeUseCase,
+)
+from neurath.application.usecases.record_monitor_observation import (
     RecordMonitorObservationCommand,
     RecordMonitorObservationUseCase,
+)
+from neurath.application.usecases.recover_monitor import (
     RecoverMonitorCommand,
     RecoverMonitorUseCase,
-    ResolveMonitorEventCommand,
-    ResolveMonitorEventUseCase,
 )
 from neurath.application.usecases.register_monitor import (
     RegisterMonitorCommand,
     RegisterMonitorUseCase,
 )
-from neurath.application.usecases.resume_session import ResumeSessionCommand, ResumeSessionUseCase
-from neurath.application.usecases.tick_monitor import TickMonitorUseCase
-from neurath.application.usecases.wait_task import WaitTaskCommand, WaitTaskUseCase
-from neurath.domain.errors import ContextNotFound, InvalidTaskState, RevisionConflict
-from neurath.domain.monitoring import MonitorKind, NoticeStatus, TaskMonitor
-from neurath.domain.runtime_records import Liveness
-from neurath.domain.task_records import ExternalWait, TaskStatus
-from neurath.infrastructure.database import create_database_engine, sqlite_url
-from neurath.infrastructure.monitor import (
-    StderrMonitorNotifierService,
-    SubprocessMonitorObserverService,
+from neurath.application.usecases.resolve_monitor_event import (
+    ResolveMonitorEventCommand,
+    ResolveMonitorEventUseCase,
 )
+from neurath.application.usecases.resume_session import ResumeSessionCommand, ResumeSessionUseCase
+from neurath.application.usecases.tick_monitor import TickMonitorCommand, TickMonitorUseCase
+from neurath.application.usecases.wait_task import WaitTaskCommand, WaitTaskUseCase
+from neurath.domain.enums.liveness import Liveness
+from neurath.domain.enums.task_status import TaskStatus
+from neurath.domain.errors import ContextNotFound, InvalidTaskState, RevisionConflict
+from neurath.domain.values.external_wait import ExternalWait
+from neurath.domain.values.task_monitor import MonitorKind, NoticeStatus, TaskMonitor
+from neurath.infrastructure.database import create_database_engine, sqlite_url
+from neurath.infrastructure.services.monitor_notifier import StderrMonitorNotifierService
+from neurath.infrastructure.services.monitor_observer import SubprocessMonitorObserverService
 from tests.conftest import storage_scope
 from tests.support.application import scanned_application
 from tests.support.requests import run
@@ -112,7 +127,7 @@ async def monitored(database, repository, tmp_path):
     return SimpleNamespace(actor=actor, task=task, owner=owner, output=output, monitor=monitor)
 
 
-def command(m, cls=MonitorCommand, **fields):
+def command(m, cls=TickMonitorCommand, **fields):
     return cls(
         project_id=m.task.project_id,
         session_id=m.task.owner_session_id,
@@ -124,8 +139,14 @@ def command(m, cls=MonitorCommand, **fields):
     )
 
 
-async def call(database, m, usecase, cls=MonitorCommand, **fields):
-    return await run(usecase, command(m, cls, **fields), database_path=database)
+async def call(database, m, usecase, cls=None, **fields):
+    inputs = {
+        TickMonitorUseCase: TickMonitorCommand,
+        PrepareMonitorPollUseCase: PrepareMonitorPollCommand,
+        PrepareMonitorNoticeUseCase: PrepareMonitorNoticeCommand,
+        CancelMonitorUseCase: CancelMonitorCommand,
+    }
+    return await run(usecase, command(m, cls or inputs[usecase], **fields), database_path=database)
 
 
 async def stored(database, m):
@@ -160,7 +181,7 @@ async def test_first_same_fragment_and_pr_wait_never_call_model_or_create_events
     def forbidden(*args, **kwargs):
         raise AssertionError("monitor must not invoke a model")
 
-    from neurath.infrastructure.provider import SubprocessProviderService
+    from neurath.infrastructure.services.provider import SubprocessProviderService
 
     monkeypatch.setattr(SubprocessProviderService, "start", forbidden)
     first = await call(database, m, TickMonitorUseCase)
@@ -216,9 +237,15 @@ async def test_exact_event_ack_delivery_confirmation_and_resolution_are_distinct
     m = monitored
     event = (await changed(database, m)).events[0]
     with pytest.raises(ContextNotFound):
-        await call(database, m, AcknowledgeMonitorEventUseCase, MonitorEventCommand, event_number=9)
+        await call(
+            database,
+            m,
+            AcknowledgeMonitorEventUseCase,
+            AcknowledgeMonitorEventCommand,
+            event_number=9,
+        )
     result = await call(
-        database, m, AcknowledgeMonitorEventUseCase, MonitorEventCommand, event_number=1
+        database, m, AcknowledgeMonitorEventUseCase, AcknowledgeMonitorEventCommand, event_number=1
     )
     assert result.events[0].acknowledged and not result.events[0].resolved
     assert (await task_stored(database, m)).waits[-1].resolution is None
@@ -322,7 +349,7 @@ async def test_real_hook_interrupt_and_explicit_cancel_stop_new_observation(
     assert not (await stored(database, m)).active
     assert (await call(database, m, TickMonitorUseCase)).initial_state is None
     from neurath.application.usecases.receive_hook import ReceiveHookCommand, ReceiveHookUseCase
-    from neurath.domain.runtime_records import HookEvent
+    from neurath.domain.enums.hook_event import HookEvent
 
     await run(
         ReceiveHookUseCase,
@@ -783,7 +810,9 @@ async def test_submitted_failure_history_survives_success_and_ended_owner_never_
     assert current.events[0].delivery_errors == ("restore notification access",)
     await native(database, m.actor, "SessionEnd")
     assert (
-        await call(database, m, PrepareMonitorNoticeUseCase, MonitorEventCommand, event_number=1)
+        await call(
+            database, m, PrepareMonitorNoticeUseCase, PrepareMonitorNoticeCommand, event_number=1
+        )
         is None
     )
 

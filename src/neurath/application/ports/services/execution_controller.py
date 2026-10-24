@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from uuid import UUID
 
-from neurath.domain.runtime_records import Liveness
+from neurath.domain.enums.liveness import Liveness
 
 
 class IExecutionControllerService(ABC):

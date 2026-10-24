@@ -8,17 +8,16 @@ from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 
 from neurath.domain.aggregates.task import Task
-from neurath.domain.collaboration_events import ProviderExecutionRequested, ProviderStopRequested
-from neurath.domain.delegation_records import (
-    DelegationReport,
-    DelegationRole,
-    DelegationRoute,
-    DelegationStatus,
-    ProviderPlan,
-)
+from neurath.domain.enums.delegation_role import DelegationRole
+from neurath.domain.enums.delegation_route import DelegationRoute
+from neurath.domain.enums.delegation_status import DelegationStatus
+from neurath.domain.enums.provider_status import ProviderStatus
+from neurath.domain.enums.task_status import TaskStatus
 from neurath.domain.errors import ContextNotFound, InvalidTaskState
-from neurath.domain.provider import ProviderStatus
-from neurath.domain.task_records import TaskStatus
+from neurath.domain.events.provider_execution_requested import ProviderExecutionRequested
+from neurath.domain.events.provider_stop_requested import ProviderStopRequested
+from neurath.domain.values.delegation_report import DelegationReport
+from neurath.domain.values.provider_plan import ProviderPlan
 
 
 @mutable

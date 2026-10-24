@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 
-from neurath.domain.observations import DirectoryObservation
+from neurath.domain.values.directory_observation import DirectoryObservation
 
 
 class IDirectoryObserverService(ABC):

@@ -2,31 +2,63 @@
 
 import asyncio
 from typing import override
+from uuid import UUID
 
+from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
-from spakky.domain.application.command import IAsyncCommandUseCase
+from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
-from neurath.application.monitor_records import MonitorDelivery, MonitorObservation
-from neurath.application.ports.services.monitor import (
+from neurath.application.ports.services.monitor_notifier import (
     IMonitorNotifierService,
+    MonitorDelivery,
+)
+from neurath.application.ports.services.monitor_observer import (
     IMonitorObserverService,
+    MonitorObservation,
 )
 from neurath.application.usecases.get_monitor import GetMonitorQuery, GetMonitorUseCase
-from neurath.application.usecases.monitor_lifecycle import (
-    MonitorCommand,
-    MonitorEventCommand,
+from neurath.application.usecases.prepare_monitor_notice import (
+    PrepareMonitorNoticeCommand,
     PrepareMonitorNoticeUseCase,
+)
+from neurath.application.usecases.prepare_monitor_poll import (
+    PrepareMonitorPollCommand,
     PrepareMonitorPollUseCase,
+)
+from neurath.application.usecases.record_monitor_notice import (
     RecordMonitorNoticeCommand,
     RecordMonitorNoticeUseCase,
+)
+from neurath.application.usecases.record_monitor_observation import (
     RecordMonitorObservationCommand,
     RecordMonitorObservationUseCase,
 )
-from neurath.domain.monitoring import NoticeStatus, TaskMonitor
+from neurath.domain.values.task_monitor import NoticeStatus, TaskMonitor
+
+
+@immutable
+class TickMonitorCommand(AbstractCommand):
+    """현재 원장·실행·자원 세대가 일치해야 하는 감시 작업이다.
+
+    Attributes:
+        project_id: 태스크의 프로젝트.
+        session_id: 현재 소유 세션.
+        task_id: 외부 의존을 소유한 태스크.
+        monitor_number: 정확한 감시 순번.
+        execution_id: 현재 자원 소유 실행.
+        generation: 조회 시 확인한 자원 세대.
+    """
+
+    project_id: UUID
+    session_id: UUID
+    task_id: UUID
+    monitor_number: int
+    execution_id: UUID
+    generation: int
 
 
 @UseCase()
-class TickMonitorUseCase(IAsyncCommandUseCase[MonitorCommand, TaskMonitor]):
+class TickMonitorUseCase(IAsyncCommandUseCase[TickMonitorCommand, TaskMonitor]):
     """모델 실행 없이 한 번 관찰하고 변화 사건의 유한 알림만 제출한다."""
 
     def __init__(
@@ -59,7 +91,7 @@ class TickMonitorUseCase(IAsyncCommandUseCase[MonitorCommand, TaskMonitor]):
         self.notifier = notifier
 
     @override
-    async def run(self, command: MonitorCommand) -> TaskMonitor:
+    async def run(self, command: TickMonitorCommand) -> TaskMonitor:
         """원장 커밋 후 한 번 관찰하며 같은 상태에는 알림을 새로 작성하지 않는다.
 
         Args:
@@ -68,7 +100,16 @@ class TickMonitorUseCase(IAsyncCommandUseCase[MonitorCommand, TaskMonitor]):
         Returns:
             TaskMonitor: 첫 관찰·최신 상태·정확한 사건·실패와 필요한 조작.
         """
-        prepared = await self.prepare.run(command)
+        prepared = await self.prepare.run(
+            PrepareMonitorPollCommand(
+                project_id=command.project_id,
+                session_id=command.session_id,
+                task_id=command.task_id,
+                monitor_number=command.monitor_number,
+                execution_id=command.execution_id,
+                generation=command.generation,
+            )
+        )
         query = GetMonitorQuery(
             project_id=command.project_id,
             session_id=command.session_id,
@@ -82,7 +123,7 @@ class TickMonitorUseCase(IAsyncCommandUseCase[MonitorCommand, TaskMonitor]):
             if event.notice_status not in (NoticeStatus.WRITTEN, NoticeStatus.FAILED):
                 continue
             await self._notify(
-                MonitorEventCommand(
+                PrepareMonitorNoticeCommand(
                     project_id=command.project_id,
                     session_id=command.session_id,
                     task_id=command.task_id,
@@ -96,7 +137,7 @@ class TickMonitorUseCase(IAsyncCommandUseCase[MonitorCommand, TaskMonitor]):
         return await self.query.run(query)
 
     async def _observe(
-        self, command: MonitorCommand, prepared: TaskMonitor, query: GetMonitorQuery
+        self, command: TickMonitorCommand, prepared: TaskMonitor, query: GetMonitorQuery
     ) -> None:
         """예약 후 최신 취소를 다시 확인하고 관찰 실패도 원장에 보존한다.
 
@@ -134,7 +175,7 @@ class TickMonitorUseCase(IAsyncCommandUseCase[MonitorCommand, TaskMonitor]):
             )
         )
 
-    async def _notify(self, command: MonitorEventCommand, query: GetMonitorQuery) -> None:
+    async def _notify(self, command: PrepareMonitorNoticeCommand, query: GetMonitorQuery) -> None:
         """커밋된 알림 시도만 제출하며 실패·결과 불명을 모델 호출로 재시도하지 않는다.
 
         Args:
@@ -169,7 +210,7 @@ Evidence: {event.reference}""",
         await self._record_notice(command, event.attempts, result)
 
     async def _record_notice(
-        self, command: MonitorEventCommand, attempt: int, result: MonitorDelivery
+        self, command: PrepareMonitorNoticeCommand, attempt: int, result: MonitorDelivery
     ) -> None:
         """취소 뒤에도 이미 시작한 정확한 제출의 결과는 보존한다.
 

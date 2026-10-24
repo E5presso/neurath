@@ -9,7 +9,7 @@ from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseC
 
 from neurath.application.ports.repositories.project import IProjectRepository
 from neurath.domain.aggregates.project import Project
-from neurath.domain.observations import DirectoryObservation
+from neurath.domain.values.directory_observation import DirectoryObservation
 
 
 @immutable

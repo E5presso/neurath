@@ -12,8 +12,8 @@ import neurath.domain.aggregates
 from neurath.application.ports.repositories.project import IProjectRepository
 from neurath.application.usecases.close_conversation import CloseConversationCommand
 from neurath.domain.aggregates.project import Project
-from neurath.domain.observations import DirectoryObservation
-from neurath.domain.provider import ProviderKind
+from neurath.domain.enums.provider_kind import ProviderKind
+from neurath.domain.values.directory_observation import DirectoryObservation
 from neurath.infrastructure.provider_worker import _execution_arguments
 from neurath.serialization import encode_uuid
 from tests.conftest import storage_scope
@@ -63,9 +63,9 @@ class MutableBuffer:
     value: str
 @immutable
 class Request:
-    value: str
+    buffer: MutableBuffer
 """
-    assert ArchitectureChecker({"neurath.application.requests": source}).check() == []
+    assert ArchitectureChecker({"neurath.application.services.requests": source}).check() == []
 
 
 def test_commands_use_keyword_only_immutable_fields():
@@ -131,7 +131,7 @@ def test_missing_provider_parent_is_rejected_instead_of_inventing_an_identity():
 )
 def test_unknown_provider_never_falls_through_to_claude(function, args):
     from neurath.infrastructure import provider_protocol
-    from neurath.infrastructure.provider import SubprocessProviderService
+    from neurath.infrastructure.services.provider import SubprocessProviderService
 
     functions = {
         "arguments": provider_protocol._discovery_arguments,
@@ -147,9 +147,9 @@ def test_unknown_provider_never_falls_through_to_claude(function, args):
 def test_initial_notifications_do_not_claim_a_model_catalog_or_process_start(tmp_path, monkeypatch):
     import json
 
-    from neurath.domain.provider import ProviderStatus
-    from neurath.infrastructure.provider import SubprocessProviderService
+    from neurath.domain.enums.provider_status import ProviderStatus
     from neurath.infrastructure.provider_protocol import _parse_page
+    from neurath.infrastructure.services.provider import SubprocessProviderService
 
     assert _parse_page(ProviderKind.CODEX, {"method": "notification"}) is None
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
@@ -169,7 +169,8 @@ def test_reusing_root_assignment_does_not_confuse_another_senders_child_assignme
     from dataclasses import replace
 
     from neurath.domain.aggregates.delegation import Delegation
-    from neurath.domain.delegation_records import DelegationRole, DelegationRoute
+    from neurath.domain.enums.delegation_role import DelegationRole
+    from neurath.domain.enums.delegation_route import DelegationRoute
 
     root = Delegation(
         uid=uuid7(),

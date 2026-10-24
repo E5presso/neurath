@@ -13,10 +13,11 @@ from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.application.usecases.receive_hook import ReceiveHookCommand, ReceiveHookUseCase
 from neurath.domain.aggregates.article import Article
 from neurath.domain.aggregates.peer import Peer
-from neurath.domain.article_records import ArticleNoticeStatus, ArticleRevision
+from neurath.domain.enums.hook_event import HookEvent
+from neurath.domain.enums.task_status import TaskStatus
 from neurath.domain.errors import ContextNotFound, InvalidTaskState, RevisionConflict
-from neurath.domain.runtime_records import HookEvent
-from neurath.domain.task_records import TaskStatus
+from neurath.domain.values.article_notice import ArticleNoticeStatus
+from neurath.domain.values.article_revision import ArticleRevision
 from tests import test_collaboration
 from tests.conftest import storage_scope
 from tests.support.requests import run

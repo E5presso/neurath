@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
-from neurath.domain.provider import ProviderKind
+from neurath.domain.enums.provider_kind import ProviderKind
 
 
 def process_identity(pid: int) -> str:

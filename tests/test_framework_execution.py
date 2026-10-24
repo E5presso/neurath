@@ -19,14 +19,10 @@ from neurath.application.usecases.register_session import (
     RegisterSessionCommand,
     RegisterSessionUseCase,
 )
-from neurath.domain.observations import DirectoryObservation
-from neurath.domain.task_records import Outcome, SubmittedResult, TaskResult
-from neurath.domain.workflow_records import (
-    PhaseDefinition,
-    PhaseResult,
-    PhaseStatus,
-    WorkflowDefinition,
-)
+from neurath.domain.values.directory_observation import DirectoryObservation
+from neurath.domain.values.phase_attempt import PhaseResult, PhaseStatus
+from neurath.domain.values.task_attempt import Outcome, SubmittedResult, TaskResult
+from neurath.domain.values.workflow_definition import PhaseDefinition, WorkflowDefinition
 from tests.support.application import spakky_context
 from tests.test_task_requests import snapshot
 

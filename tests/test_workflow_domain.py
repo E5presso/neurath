@@ -6,12 +6,8 @@ import pytest
 
 from neurath.domain.aggregates.workflow import WorkflowRun
 from neurath.domain.errors import ContextNotFound, InvalidWorkflowState, RevisionConflict
-from neurath.domain.workflow_records import (
-    PhaseDefinition,
-    PhaseResult,
-    PhaseStatus,
-    WorkflowDefinition,
-)
+from neurath.domain.values.phase_attempt import PhaseResult, PhaseStatus
+from neurath.domain.values.workflow_definition import PhaseDefinition, WorkflowDefinition
 
 
 def phase(key="build", **changes):

@@ -7,7 +7,7 @@ from spakky.plugins.sqlalchemy.orm.table import AbstractTable, Table
 from sqlalchemy import JSON, Boolean, ForeignKey, ForeignKeyConstraint, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from neurath.domain.monitoring import MonitorEvent, MonitorKind, NoticeStatus, TaskMonitor
+from neurath.domain.values.task_monitor import MonitorEvent, MonitorKind, NoticeStatus, TaskMonitor
 
 
 @Table()

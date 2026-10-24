@@ -7,7 +7,7 @@ from uuid import UUID, uuid7
 from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 
-from neurath.domain.delegation_records import DelegationRoute
+from neurath.domain.enums.delegation_route import DelegationRoute
 from neurath.domain.errors import InvalidTaskState
 
 

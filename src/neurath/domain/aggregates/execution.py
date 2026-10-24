@@ -8,10 +8,11 @@ from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 
 from neurath.domain.aggregates.task import Task
+from neurath.domain.enums.execution_status import ExecutionStatus
+from neurath.domain.enums.hook_action import HookAction
+from neurath.domain.enums.task_status import TaskStatus
 from neurath.domain.errors import InvalidExecutionState
-from neurath.domain.runtime_events import ExecutionCancellationRequested
-from neurath.domain.runtime_records import ExecutionStatus, HookAction
-from neurath.domain.task_records import TaskStatus
+from neurath.domain.events.execution_cancellation_requested import ExecutionCancellationRequested
 
 
 @mutable

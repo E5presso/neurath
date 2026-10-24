@@ -9,18 +9,13 @@ from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 
 from neurath.domain.aggregates.request_source import RequestSource
-from neurath.domain.collaboration_events import TaskDefinitionChanged
+from neurath.domain.enums.task_status import TaskStatus
 from neurath.domain.errors import ContextNotFound, InvalidTaskState, RevisionConflict
-from neurath.domain.monitoring import MonitorKind, TaskMonitor
-from neurath.domain.task_records import (
-    ExternalWait,
-    Outcome,
-    SubmittedResult,
-    TaskAttempt,
-    TaskDefinition,
-    TaskResult,
-    TaskStatus,
-)
+from neurath.domain.events.task_definition_changed import TaskDefinitionChanged
+from neurath.domain.values.external_wait import ExternalWait
+from neurath.domain.values.task_attempt import Outcome, SubmittedResult, TaskAttempt, TaskResult
+from neurath.domain.values.task_definition import TaskDefinition
+from neurath.domain.values.task_monitor import MonitorKind, TaskMonitor
 
 
 @mutable

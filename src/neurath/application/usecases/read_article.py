@@ -13,7 +13,9 @@ from neurath.application.ports.repositories.article import IArticleRepository
 from neurath.application.ports.repositories.peer import IPeerRepository
 from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.application.ports.repositories.task import ITaskRepository
-from neurath.domain.article_records import ArticleComment, ArticleRevision, ArticleUse
+from neurath.domain.values.article_comment import ArticleComment
+from neurath.domain.values.article_revision import ArticleRevision
+from neurath.domain.values.article_use import ArticleUse
 
 
 @immutable

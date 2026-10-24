@@ -10,7 +10,7 @@ from typing import cast
 
 from spakky.core.common.mutability import immutable
 
-from neurath.domain.provider import ProviderKind
+from neurath.domain.enums.provider_kind import ProviderKind
 
 
 @immutable

@@ -10,14 +10,13 @@ from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 
 from neurath.domain.aggregates.task import Task
+from neurath.domain.enums.task_status import TaskStatus
 from neurath.domain.errors import ContextNotFound, InvalidWorkflowState, RevisionConflict
-from neurath.domain.task_records import TaskStatus
-from neurath.domain.workflow_events import PhaseExecutionRequested, PhaseWaitingRecorded
-from neurath.domain.workflow_records import (
-    PhaseAttempt,
+from neurath.domain.events.phase_execution_requested import PhaseExecutionRequested
+from neurath.domain.events.phase_waiting_recorded import PhaseWaitingRecorded
+from neurath.domain.values.phase_attempt import PhaseAttempt, PhaseResult, PhaseStatus
+from neurath.domain.values.workflow_definition import (
     PhaseDefinition,
-    PhaseResult,
-    PhaseStatus,
     WorkflowDefinition,
     WorkflowRevision,
 )

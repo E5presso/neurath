@@ -9,14 +9,11 @@ from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from neurath.domain.aggregates.article import Article
-from neurath.domain.article_records import (
-    ArticleComment,
-    ArticleNotice,
-    ArticleNoticeStatus,
-    ArticleRead,
-    ArticleRevision,
-    ArticleUse,
-)
+from neurath.domain.values.article_comment import ArticleComment
+from neurath.domain.values.article_notice import ArticleNotice, ArticleNoticeStatus
+from neurath.domain.values.article_read import ArticleRead
+from neurath.domain.values.article_revision import ArticleRevision
+from neurath.domain.values.article_use import ArticleUse
 
 
 @Table(Article)
