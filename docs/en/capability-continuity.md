@@ -9,10 +9,10 @@ The 128 operations and 33 skills below are a **historical capability audit inven
 | Previous name | Replacement path | Exposure | Reason | Outcome |
 | --- | --- | --- | --- | --- |
 | `harness_bypass` | maintenance CLI | internal/config/CLI | Maintenance CLI recovery available even during CLI/runtime failure | B01 |
-| `session_status` | context show | CLI | Consolidate overlapping current-execution reads | B02 |
-| `session_inspect` | context show | CLI | Consolidate overlapping current-execution reads | B02 |
-| `turn_inspect` | context show | CLI | Consolidate overlapping current-execution reads | B02 |
-| `worktree_inspect` | context show | CLI | Consolidate overlapping current-execution reads | B02 |
+| `session_status` | maintenance diagnose / context show | CLI | Consolidate overlapping current-execution reads | B02 |
+| `session_inspect` | maintenance diagnose / context show | CLI | Consolidate overlapping current-execution reads | B02 |
+| `turn_inspect` | maintenance diagnose | CLI | Consolidate overlapping current-execution reads | B02 |
+| `worktree_inspect` | maintenance diagnose | CLI | Consolidate overlapping current-execution reads | B02 |
 | `worktree_claim` | runtime writer lifecycle | internal | Coordinate/release on actual writer lifecycle; no model-assembled lease credentials | B03 |
 | `worktree_release` | runtime writer lifecycle | internal | Coordinate/release on actual writer lifecycle; no model-assembled lease credentials | B03 |
 | `worktree_isolation` | host worktree / Git / filesystem | host | Host tools handle checkout/preservation/cleanup; Neurath handles contention internally | B03 |
@@ -22,11 +22,11 @@ The 128 operations and 33 skills below are a **historical capability audit inven
 | `task_start` | task update | CLI | Consolidate role-checked start/accept transitions | B04 |
 | `task_resolve` | task report | CLI | Consume reviews in current task/phase outcome checks; no separate completion vote | B04 |
 | `phase_start` | workflow start | CLI | Start a selected procedure/review loop as one run | B05 |
-| `phase_current` | context show | CLI | Read procedure/attempt/criteria/iteration history together | B05 |
+| `phase_current` | workflow show | CLI | Read procedure/attempt/criteria/iteration history together | B05 |
 | `phase_evidence_prepare` | workflow validation and evidence binding | internal | Runner validates inputs and binds evidence | B05 |
-| `phase_complete` | task report | CLI | Apply actual phase/round results to current attempt | B05 |
+| `phase_complete` | workflow report | CLI | Apply actual phase/round results to current attempt | B05 |
 | `phase_finalize` | workflow finalization | internal | Finalize together with the last applicable result | B05 |
-| `adaptive_read` | context show | CLI | Read procedure/attempt/criteria/iteration history together | B06 |
+| `adaptive_read` | workflow show | CLI | Read procedure/attempt/criteria/iteration history together | B06 |
 | `adaptive_preflight` | workflow validation and evidence binding | internal | Runner validates inputs and binds evidence | B06 |
 | `adaptive_replace` | workflow revise | CLI | Unify justified method/scope revisions without authority to rewrite originals | B06 |
 | `adaptive_override_goal` | workflow revise | CLI | Unify justified method/scope revisions without authority to rewrite originals | B06 |
@@ -34,27 +34,27 @@ The 128 operations and 33 skills below are a **historical capability audit inven
 | `delegation_prepare` | assignment validation | internal | Validate recipient/scope/review conditions during assignment | B07 |
 | `delegation_assign` | collaboration delegate | CLI | Unify actual work/review assignment | B07 |
 | `evaluation_prepare` | assignment validation | internal | Validate recipient/scope/review conditions during assignment | B08 |
-| `evaluation_read` | context show | CLI | Read procedure/attempt/criteria/iteration history together | B08 |
+| `evaluation_read` | workflow show / collaboration observe | CLI | Read procedure/attempt/criteria/iteration history together | B08 |
 | `evaluation_execute` | host execution tools | host | Host executes checks; Neurath observes attempts/results | B08 |
-| `evaluation_report` | task report | CLI | Attributed executor/reviewer reports | B08 |
-| `evaluation_consume` | task report | CLI | Consume reviews in current task/phase outcome checks; no separate completion vote | B08 |
+| `evaluation_report` | task report --delegation-id | CLI | Attributed executor/reviewer reports | B08 |
+| `evaluation_consume` | workflow report --accepted / --rejected | CLI | Consume reviews in current task/phase outcome checks; no separate completion vote | B08 |
 | `evaluation_loop_open` | workflow start | CLI | Start a selected procedure/review loop as one run | B09 |
-| `evaluation_loop_read` | context show | CLI | Read procedure/attempt/criteria/iteration history together | B09 |
-| `evaluation_loop_round` | task report | CLI | Apply actual phase/round results to current attempt | B09 |
+| `evaluation_loop_read` | workflow show | CLI | Read procedure/attempt/criteria/iteration history together | B09 |
+| `evaluation_loop_round` | workflow report | CLI | Apply actual phase/round results to current attempt | B09 |
 | `evaluation_loop_close` | workflow finalization | internal | Finalize together with the last applicable result | B09 |
 | `review_begin` | collaboration delegate | CLI | Unify actual work/review assignment | B10 |
-| `review_report` | task report | CLI | Attributed executor/reviewer reports | B10 |
-| `review_consume` | task report | CLI | Consume reviews in current task/phase outcome checks; no separate completion vote | B10 |
+| `review_report` | task report --delegation-id | CLI | Attributed executor/reviewer reports | B10 |
+| `review_consume` | workflow report --accepted / --rejected | CLI | Consume reviews in current task/phase outcome checks; no separate completion vote | B10 |
 | `review_abort` | task update | CLI | Cancel assignment while retaining outcomes/history | B10 |
 | `review_publish` | host GitHub / review tools | host | Use existing tools for remote review/comment publication and retrieval | B10 |
 | `review_comments` | host GitHub / review tools | host | Use existing tools for remote review/comment publication and retrieval | B10 |
-| `provider_models` | context show | CLI | Return models and supported policies together | B11 |
+| `provider_models` | context show --section provider --provider | CLI | Return models and supported policies together | B11 |
 | `provider_plan` | provider validation and routing | internal | Validate/store settings/routes within collaboration delegate; preparation is not execution | B11 |
-| `provider_plan_read` | context show | CLI | Read pinned plan and actual execution state together | B11 |
-| `provider_capabilities` | context show | CLI | Return models and supported policies together | B11 |
+| `provider_plan_read` | context show --section collaboration / collaboration observe | CLI | Read pinned plan and actual execution state together | B11 |
+| `provider_capabilities` | context show --section provider --provider | CLI | Return models and supported policies together | B11 |
 | `provider_route` | provider validation and routing | internal | Validate/store settings/routes within collaboration delegate; preparation is not execution | B11 |
 | `provider_run` | collaboration delegate | CLI | Entrypoint for actual supported-provider execution | B12 |
-| `provider_status` | context show | CLI | Read pinned plan and actual execution state together | B12 |
+| `provider_status` | collaboration observe | CLI | Read pinned plan and actual execution state together | B12 |
 | `provider_cancel` | task update | CLI | Actual target-run interruption | B12 |
 | `provider_recover` | provider recovery | internal | Reconcile original run on reconnect; explicit repair uses session resume | B12 |
 | `collaboration_register` | peer connection lifecycle | internal | Register/update using actual connection identity/address | B13 |
@@ -63,7 +63,7 @@ The 128 operations and 33 skills below are a **historical capability audit inven
 | `collaboration_send` | collaboration send | CLI | Same send operation with recipient/subscriber/reply references | B14 |
 | `collaboration_reply` | collaboration send | CLI | Same send operation with recipient/subscriber/reply references | B13 |
 | `collaboration_message` | collaboration read | CLI | Read selected full message | B13 |
-| `collaboration_ack` | message transport and receipt | internal | Reads/transport outcomes produce receipts; adapters recover actual failures finitely | B13 |
+| `collaboration_ack` | collaboration ack | CLI | Acknowledge the read original; separate from task acceptance/success | B13 |
 | `collaboration_forward` | message transport and receipt | internal | Reads/transport outcomes produce receipts; adapters recover actual failures finitely | B14 |
 | `collaboration_submitted` | message transport and receipt | internal | Reads/transport outcomes produce receipts; adapters recover actual failures finitely | B14 |
 | `collaboration_assign` | collaboration delegate | CLI | Unify actual work/review assignment | B15 |
@@ -71,10 +71,10 @@ The 128 operations and 33 skills below are a **historical capability audit inven
 | `collaboration_report` | task report | CLI | Attributed executor/reviewer reports | B15 |
 | `collaboration_task` | context show | CLI | Read tasks and assignments in one ledger | B15 |
 | `collaboration_conversation` | context show | CLI | Read messages/conversation/actual delivery status together | B16 |
-| `collaboration_close` | project notification settings / lifecycle | internal/config/CLI | Project notification settings through host tools and internal lifecycle | B16 |
-| `collaboration_subscribe` | project notification settings | internal/config/CLI | Project notification settings through host tools and internal lifecycle | B16 |
-| `collaboration_unsubscribe` | project notification settings | internal/config/CLI | Project notification settings through host tools and internal lifecycle | B16 |
-| `collaboration_publish` | collaboration send | CLI | Same send operation with recipient/subscriber/reply references | B16 |
+| `collaboration_close` | collaboration close | CLI | Close only the conversation, preserving originals and unfinished work | B16 |
+| `collaboration_subscribe` | collaboration subscribe --topic --enabled | CLI | Add only the selected topic, preserving newsroom and other topics | B16 |
+| `collaboration_unsubscribe` | collaboration subscribe --topic --disabled | CLI | Remove only the selected topic, preserving original messages | B16 |
+| `collaboration_publish` | collaboration publish --conversation-id --topic | CLI | Publish to active subscribers in the original conversation; retain retry recipients | B16 |
 | `delivery_status` | context show | CLI | Read messages/conversation/actual delivery status together | B14 |
 | `delivery_redrive` | message transport and receipt | internal | Reads/transport outcomes produce receipts; adapters recover actual failures finitely | B14 |
 | `newsroom_headlines` | newsroom list | CLI | Read headlines/revisions | B17 |
@@ -95,37 +95,37 @@ The 128 operations and 33 skills below are a **historical capability audit inven
 | `learning_status` | memory search / memory read | CLI | Filter history/lessons by type/state, then read details | B20 |
 | `learning_pending` | memory search / memory read | CLI | Filter history/lessons by type/state, then read details | B20 |
 | `learning_history` | memory search / memory read | CLI | Filter history/lessons by type/state, then read details | B20 |
-| `learning_defer` | reflection / versioned lesson source | internal/config/CLI | Apply deferral/retraction through attributed lesson sources and reflection lifecycle | B20 |
-| `diagnostics_integrity` | context show / maintenance CLI | CLI | One diagnosis interface with scoped inputs | B21 |
-| `diagnostics_project` | context show / maintenance CLI | CLI | One diagnosis interface with scoped inputs | B21 |
-| `diagnostics_profile` | context show / maintenance CLI | CLI | One diagnosis interface with scoped inputs | B21 |
-| `diagnostics_continuation` | context show / maintenance CLI | CLI | One diagnosis interface with scoped inputs | B21 |
-| `incident_record` | incident / observation lifecycle | internal | Derive records from actual fault/execution/recovery events; no arbitrary success-setting tool | B22 |
-| `incident_validate` | context show / maintenance CLI | CLI | One diagnosis interface with scoped inputs | B22 |
-| `incident_resolve` | incident / observation lifecycle | internal | Derive records from actual fault/execution/recovery events; no arbitrary success-setting tool | B22 |
-| `incident_escalate` | incident / observation lifecycle | internal | Derive records from actual fault/execution/recovery events; no arbitrary success-setting tool | B22 |
-| `incident_refresh` | incident / observation lifecycle | internal | Derive records from actual fault/execution/recovery events; no arbitrary success-setting tool | B22 |
-| `incident_supersede` | incident / observation lifecycle | internal | Derive records from actual fault/execution/recovery events; no arbitrary success-setting tool | B22 |
+| `learning_defer` | memory observe-lesson --state deferred | CLI | Record attributed lesson deferral and preserve history | B20 |
+| `diagnostics_integrity` | maintenance diagnose | CLI | One diagnosis interface with scoped inputs | B21 |
+| `diagnostics_project` | maintenance diagnose | CLI | One diagnosis interface with scoped inputs | B21 |
+| `diagnostics_profile` | maintenance diagnose | CLI | One diagnosis interface with scoped inputs | B21 |
+| `diagnostics_continuation` | maintenance diagnose | CLI | One diagnosis interface with scoped inputs | B21 |
+| `incident_record` | maintenance record-failure / maintenance repair | CLI | Derive records from actual fault/execution/recovery events; no arbitrary success-setting tool | B22 |
+| `incident_validate` | maintenance repair --incident-id --kind | CLI | One diagnosis interface with scoped inputs | B22 |
+| `incident_resolve` | maintenance repair --incident-id --resolve | CLI | Derive records from actual fault/execution/recovery events; no arbitrary success-setting tool | B22 |
+| `incident_escalate` | maintenance handoff-failure --destination | CLI | Derive records from actual fault/execution/recovery events; no arbitrary success-setting tool | B22 |
+| `incident_refresh` | maintenance diagnose --incident-id | CLI | Derive records from actual fault/execution/recovery events; no arbitrary success-setting tool | B22 |
+| `incident_supersede` | maintenance handoff-failure --replacement-id | CLI | Derive records from actual fault/execution/recovery events; no arbitrary success-setting tool | B22 |
 | `process_evidence_record` | incident / observation lifecycle | internal | Derive records from actual fault/execution/recovery events; no arbitrary success-setting tool | B22 |
 | `monitor_start` | task dependency lifecycle | internal/config/CLI | Start internal observation from an actually requested external task dependency | B23 |
-| `monitor_status` | context show | CLI | Read monitoring/events/actual state together | B23 |
-| `monitor_cancel` | task update | CLI | Explicit monitoring cancellation | B23 |
+| `monitor_status` | monitor status | CLI | Read monitoring/events/actual state together | B23 |
+| `monitor_cancel` | monitor cancel | CLI | Explicit monitoring cancellation | B23 |
 | `monitor_recover` | monitor lifecycle | internal | Process consumption/wait/recovery/handoff from work/host events | B23 |
-| `monitor_readback` | context show | CLI | Read monitoring/events/actual state together | B23 |
-| `monitor_event` | context show | CLI | Read monitoring/events/actual state together | B24 |
+| `monitor_readback` | monitor status | CLI | Read monitoring/events/actual state together | B23 |
+| `monitor_event` | monitor status | CLI | Read monitoring/events/actual state together | B24 |
 | `monitor_ack` | monitor lifecycle | internal | Process consumption/wait/recovery/handoff from work/host events | B24 |
 | `monitor_external_wait` | monitor lifecycle | internal | Process consumption/wait/recovery/handoff from work/host events | B24 |
 | `monitor_handoff` | monitor lifecycle | internal | Process consumption/wait/recovery/handoff from work/host events | B24 |
-| `installation_plan` | maintenance CLI + update-neurath / session resume | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B25 |
-| `installation_apply` | maintenance CLI + update-neurath / session resume | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B25 |
-| `installation_recover` | maintenance CLI + update-neurath / session resume | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B25 |
-| `releases_status` | maintenance CLI + update-neurath / session resume | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
-| `releases_check` | maintenance CLI + update-neurath / session resume | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
-| `releases_notice` | maintenance CLI + update-neurath / session resume | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
-| `releases_prepare` | maintenance CLI + update-neurath / session resume | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
-| `releases_choose` | maintenance CLI + update-neurath / session resume | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
-| `releases_apply` | maintenance CLI + update-neurath / session resume | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
-| `releases_recover` | maintenance CLI + update-neurath / session resume | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
+| `installation_plan` | distribution plan | CLI | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B25 |
+| `installation_apply` | distribution apply | CLI | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B25 |
+| `installation_recover` | distribution recover / migration recover | CLI | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B25 |
+| `releases_status` | distribution verify / distribution check | CLI | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
+| `releases_check` | distribution check | CLI | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
+| `releases_notice` | distribution check | CLI | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
+| `releases_prepare` | distribution prepare | CLI | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
+| `releases_choose` | distribution plan --candidate | CLI | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
+| `releases_apply` | distribution apply | CLI | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
+| `releases_recover` | distribution recover / migration recover | CLI | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
 | `maintenance_choice_read` | maintenance CLI + update-neurath / session resume | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
 | `maintenance_choice_prepare` | maintenance CLI + update-neurath / session resume | CLI+skill | Self-update/recovery works outside the failed business-command path; remove extra consent-object APIs | B26 |
 | `reporting_status` | host artifact / GitHub tools | host | Use existing artifact/publication tools and actual user authority; no dedicated publication/approval ledger | B27 |

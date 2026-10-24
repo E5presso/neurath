@@ -50,7 +50,7 @@ def start_cli_application(*, management: bool) -> SpakkyApplication:
     실제 잘못된 설정을 관찰하며 사용자 파일이나 설정을 덮어쓰지 않는다.
 
     Args:
-        management: DB에 의존하지 않는 maintenance 그룹 진입 여부.
+        management: 관리·모델 목록처럼 업무 DB에 의존하지 않는 조회 여부.
 
     Returns:
         SpakkyApplication: 공식 플러그인과 스캔으로 시작한 앱.

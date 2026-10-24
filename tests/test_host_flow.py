@@ -937,6 +937,13 @@ async def test_provider_review_validates_before_dispatch_and_observes_same_run(
         and result["provider_output"] == "actual fixture output"
     )
     assert len(starts) == 1 and len(observations) >= 2
+    assert result["plan"]["model"] == "fixture-model"
+    assert result["plan"]["policy"] == "read-only"
+    before = database.read_bytes()
+    context = await invoke(database, ["context", "show", "--section", "collaboration"])
+    assert context["delegations"][0]["plan"] == result["plan"]
+    assert result["plan"]["directory"] == str(host[0])
+    assert database.read_bytes() == before and len(starts) == 1
 
 
 async def test_regular_peer_assignment_and_missing_recipient_are_not_new_sessions(database, host):
@@ -1376,3 +1383,154 @@ async def test_message_recipient_on_later_peer_page_remains_reachable(database, 
     )
     assert [item["id"] for item in inbox["inbox"]] == [sent["id"]]
     assert not inbox["inbox"][0]["read"]
+
+
+async def test_public_topic_subscription_publication_and_retry_preserve_work(
+    database, host, monkeypatch
+):
+    _, client, payload = host
+    task = await create(database)
+    await client.handle(
+        dict(payload, session_id="topic-receiver", hook_event_name="SessionStart", source="startup")
+    )
+    direct = await invoke(
+        database,
+        [
+            "collaboration",
+            "send",
+            "--recipient",
+            "topic-receiver",
+            "--title",
+            "question",
+            "--body",
+            "original",
+        ],
+    )
+    monkeypatch.setenv("NEURATH_SESSION_ID", "topic-receiver")
+    await invoke(database, ["newsroom", "subscribe", "--enabled"])
+    subscribed = await invoke(database, ["collaboration", "subscribe", "--topic", "build"])
+    assert set(subscribed["topics"]) == {"newsroom", "build"}
+    monkeypatch.setenv("NEURATH_SESSION_ID", payload["session_id"])
+    args = [
+        "collaboration",
+        "publish",
+        "--conversation-id",
+        direct["conversation_id"],
+        "--topic",
+        "build",
+        "--title",
+        "result",
+        "--body",
+        "-",
+        "--key",
+        "original-publication",
+    ]
+    published = await invoke(database, args, "original publication")
+    assert len(published["messages"]) == 1 and not published["submitted_to_host"]
+    monkeypatch.setenv("NEURATH_SESSION_ID", "topic-receiver")
+    removed = await invoke(
+        database, ["collaboration", "subscribe", "--topic", "build", "--disabled"]
+    )
+    assert removed["topics"] == ["newsroom"]
+    await invoke(
+        database, ["collaboration", "read", "--message-id", published["messages"][0]["id"]]
+    )
+    await invoke(database, ["collaboration", "ack", "--message-id", published["messages"][0]["id"]])
+    monkeypatch.setenv("NEURATH_SESSION_ID", payload["session_id"])
+    again = await invoke(database, args, "original publication")
+    assert again["messages"][0]["id"] == published["messages"][0]["id"]
+    new = await invoke(database, [*args[:-2], "--key", "new-publication"], "next publication")
+    assert new["messages"] == [] and not new["published"]
+    monkeypatch.setenv("NEURATH_SESSION_ID", "topic-receiver")
+    await invoke(database, ["collaboration", "subscribe", "--topic", "build"])
+    monkeypatch.setenv("NEURATH_SESSION_ID", payload["session_id"])
+    first_actual = await invoke(
+        database, [*args[:-2], "--key", "new-publication"], "next publication"
+    )
+    assert first_actual["published"] and len(first_actual["messages"]) == 1
+    await invoke(database, [*args[:-2], "--key", "new-publication"], "changed", succeeds=False)
+    monkeypatch.setenv("NEURATH_SESSION_ID", "topic-receiver")
+    await invoke(database, ["collaboration", "subscribe", "--topic", "build", "--disabled"])
+    monkeypatch.setenv("NEURATH_SESSION_ID", payload["session_id"])
+    default_key = await invoke(database, [*args[:-2], "--body", "inline body"])
+    assert default_key["key"] and default_key["messages"] == []
+    await invoke(
+        database, ["collaboration", "close", "--conversation-id", direct["conversation_id"]]
+    )
+    assert (await invoke(database, ["context", "show"]))["tasks"][0]["id"] == task["id"]
+    for invalid in (
+        ["collaboration", "subscribe", "--topic", " "],
+        [*args, "--body", " "],
+        [*args, "--title", " "],
+    ):
+        before = database.read_bytes()
+        await invoke(database, invalid, succeeds=False)
+        assert database.read_bytes() == before
+
+
+async def test_public_monitor_cancel_preserves_wait_and_does_not_resume(database, host):
+    directory, _, _ = host
+    task = await create(database)
+    target = directory / "running.jsonl"
+    target.write_text('{"state":"running"}\n')
+    wait = await invoke(
+        database,
+        [
+            "task",
+            "update",
+            "--action",
+            "wait",
+            "--task-id",
+            task["id"],
+            "--target",
+            str(target),
+            "--condition",
+            "done",
+            "--resume-scope",
+            "read result",
+            "--reason",
+            "job pending",
+            "--monitor",
+            "output",
+            "--poll-budget",
+            "3",
+        ],
+    )
+    args = ["--task-id", task["id"], "--monitor-number", "1"]
+    before = await invoke(database, ["monitor", "status", *args])
+    cancelled = await invoke(database, ["monitor", "cancel", *args])
+    assert not cancelled["active"]
+    for field in ("events", "remaining_polls", "owner_execution_id", "generation"):
+        assert cancelled[field] == before[field]
+    repeated = await invoke(database, ["monitor", "cancel", *args])
+    assert repeated == cancelled
+    after = await invoke(database, ["context", "show"])
+    assert wait["status"] == after["tasks"][0]["status"] == "waiting"
+    await invoke(database, ["monitor", "tick", *args])
+    assert (await invoke(database, ["monitor", "status", *args])) == cancelled
+
+
+async def test_new_public_peer_commands_require_observed_peer(database, tmp_path, monkeypatch):
+    from tests.support.session_requests import register_session
+
+    await register_session(str(tmp_path), "codex", "unobserved-peer", database_path=database)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("NEURATH_SESSION_ID", "unobserved-peer")
+    monkeypatch.setenv("NEURATH_PROVIDER", "codex")
+    for args in (
+        ["collaboration", "subscribe", "--topic", "build"],
+        [
+            "collaboration",
+            "publish",
+            "--conversation-id",
+            "00000000-0000-0000-0000-000000000001",
+            "--topic",
+            "build",
+            "--title",
+            "title",
+            "--body",
+            "body",
+        ],
+    ):
+        result = await invoke(database, args, succeeds=False)
+        assert "not been observed" in str(result.exception)

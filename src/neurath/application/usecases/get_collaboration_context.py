@@ -12,6 +12,7 @@ from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionMa
 from sqlalchemy import or_, select
 
 from neurath.domain.errors import ContextNotFound
+from neurath.domain.values.provider_plan import ProviderPlan
 from neurath.infrastructure.models.delegation import DelegationModel
 from neurath.infrastructure.models.message import MessageModel
 from neurath.infrastructure.models.peer import PeerModel
@@ -88,6 +89,7 @@ class DelegationSummary:
         role: 수행 또는 검토 책임.
         status: 배정의 현재 상태.
         provider_status: 실제 provider 실행 관찰.
+        plan: 배정 당시 고정한 공급자·모델·정책·작업 폴더.
         has_report: 선택 조회할 결과 보고가 있는지 여부.
         stop_unconfirmed: 중단 요청은 있으나 실제 중단 관찰이 없는지 여부.
     """
@@ -98,6 +100,7 @@ class DelegationSummary:
     role: str
     status: str
     provider_status: str | None
+    plan: ProviderPlan | None
     has_report: bool
     stop_unconfirmed: bool
 
@@ -226,6 +229,7 @@ class GetCollaborationContextUseCase(
                     role=d.role,
                     status=d.status,
                     provider_status=d.provider_status,
+                    plan=d.to_domain().plan,
                     has_report=d.report_summary is not None,
                     stop_unconfirmed=d.stop_reason is not None and d.stop_evidence is None,
                 )

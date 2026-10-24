@@ -10,12 +10,24 @@ from neurath.bootstrap import start_cli_application
 from neurath.infrastructure.database import configure_sqlite_engine
 
 application = start_cli_application(
-    management=sys.argv[1:2] == ["maintenance"]
-    and sys.argv[2:3] not in (["failures"], ["failure"], ["repair"], ["handoff-failure"])
-    and not (
-        sys.argv[2:3] == ["diagnose"]
-        and any(
-            value == "--incident-id" or value.startswith("--incident-id=") for value in sys.argv[3:]
+    management=(
+        sys.argv[1:3] == ["context", "show"]
+        and (
+            "--section=provider" in sys.argv[3:]
+            or any(
+                sys.argv[i : i + 2] == ["--section", "provider"] for i in range(3, len(sys.argv))
+            )
+        )
+    )
+    or (
+        sys.argv[1:2] == ["maintenance"]
+        and sys.argv[2:3] not in (["failures"], ["failure"], ["repair"], ["handoff-failure"])
+        and not (
+            sys.argv[2:3] == ["diagnose"]
+            and any(
+                value == "--incident-id" or value.startswith("--incident-id=")
+                for value in sys.argv[3:]
+            )
         )
     )
 )
