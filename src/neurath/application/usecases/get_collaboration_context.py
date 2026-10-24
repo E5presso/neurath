@@ -24,7 +24,7 @@ class GetCollaborationContextQuery(AbstractQuery):
 
     Attributes:
         peer_id: 현재 등록 피어.
-        after_id: 이전 페이지 마지막 메시지 ID이며 처음이면 None.
+        after_id: 이어 읽을 목록의 마지막 ID이며 처음이면 None.
         limit: 영역별 최대 결과 수. 1부터 100까지.
     """
 
@@ -111,12 +111,16 @@ class CollaborationContext:
         inbox: 본문을 제외한 원 메시지 요약.
         delegations: 발신하거나 수신한 배정과 실제 결과.
         next_after_id: 다음 메시지 페이지의 시작점이며 마지막이면 None.
+        next_peer_after_id: 다음 피어 목록의 시작점.
+        next_delegation_after_id: 다음 배정 목록의 시작점.
     """
 
     peers: Sequence[PeerAddress]
     inbox: Sequence[MessageSummary]
     delegations: Sequence[DelegationSummary]
     next_after_id: UUID | None
+    next_peer_after_id: UUID | None
+    next_delegation_after_id: UUID | None
 
 
 @UseCase()
@@ -158,12 +162,15 @@ class GetCollaborationContextUseCase(
         )
         if project_id is None:
             raise ContextNotFound("Peer has no observed host session")
-        addresses = await session.execute(
+        addresses_query = (
             select(PeerModel, SessionModel)
             .join(SessionModel, PeerModel.session_id == SessionModel.id)
             .where(SessionModel.project_id == project_id)
-            .order_by(PeerModel.id)
-            .limit(query.limit)
+        )
+        if query.after_id is not None:
+            addresses_query = addresses_query.where(PeerModel.id > query.after_id)
+        addresses = list(
+            await session.execute(addresses_query.order_by(PeerModel.id).limit(query.limit + 1))
         )
         peers = tuple(
             PeerAddress(
@@ -174,7 +181,7 @@ class GetCollaborationContextUseCase(
                 active=p.active,
                 subscriptions=p.subscriptions,
             )
-            for p, s in addresses
+            for p, s in addresses[: query.limit]
         )
         inbox_query = select(MessageModel).where(MessageModel.recipient_id == query.peer_id)
         if query.after_id is not None:
@@ -195,16 +202,18 @@ class GetCollaborationContextUseCase(
             )
             for m in page
         )
-        assignments = await session.scalars(
-            select(DelegationModel)
-            .where(
-                or_(
-                    DelegationModel.sender_id == query.peer_id,
-                    DelegationModel.recipient_id == query.peer_id,
-                )
+        assignments_query = select(DelegationModel).where(
+            or_(
+                DelegationModel.sender_id == query.peer_id,
+                DelegationModel.recipient_id == query.peer_id,
             )
-            .order_by(DelegationModel.id)
-            .limit(query.limit)
+        )
+        if query.after_id is not None:
+            assignments_query = assignments_query.where(DelegationModel.id > query.after_id)
+        assignments = list(
+            await session.scalars(
+                assignments_query.order_by(DelegationModel.id).limit(query.limit + 1)
+            )
         )
         return CollaborationContext(
             peers=peers,
@@ -220,7 +229,11 @@ class GetCollaborationContextUseCase(
                     has_report=d.report_summary is not None,
                     stop_unconfirmed=d.stop_reason is not None and d.stop_evidence is None,
                 )
-                for d in assignments
+                for d in assignments[: query.limit]
             ),
             next_after_id=page[-1].id if len(messages) > query.limit else None,
+            next_peer_after_id=peers[-1].id if len(addresses) > query.limit else None,
+            next_delegation_after_id=assignments[query.limit - 1].id
+            if len(assignments) > query.limit
+            else None,
         )

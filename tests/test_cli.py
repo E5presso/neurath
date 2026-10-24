@@ -300,3 +300,19 @@ async def test_all_scanned_cli_controllers_have_explicit_groups_in_actual_comman
                 assert isinstance(root.commands[group], TyperGroup)
                 assert app.container.get(controller) is not None
         assert groups <= root.commands.keys()
+
+
+@pytest.mark.parametrize("exists", [False, True])
+async def test_version_is_installed_metadata_without_opening_even_broken_database(tmp_path, exists):
+    from importlib.metadata import version
+
+    database = tmp_path / "unavailable.sqlite3"
+    if exists:
+        database.write_bytes(b"not a database")
+    result = await invoke(database, ["maintenance", "version"])
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == {"name": "neurath", "version": version("neurath")}
+    assert result.stderr == ""
+    assert database.exists() == exists
+    if exists:
+        assert database.read_bytes() == b"not a database"

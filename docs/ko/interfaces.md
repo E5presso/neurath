@@ -92,6 +92,32 @@ CLI는 같은 애플리케이션 유스케이스를 직접 호출합니다. MCP 
 
 `newsroom subscribe --enabled/--disabled`는 현재 대화의 제목 알림 설정이며 다른 주제·배정·이력을 변경하지 않습니다. 새 네이티브 피어의 기본 수신과 기존 구독 선택을 구분합니다.
 
+### 범위와 다음 페이지
+
+`context show`는 현재 호스트 세션을 자동 선택합니다. `--session`은 관찰된 다른 호스트 세션 주소를, `--section`은 `current/sources/collaboration/memory`를 선택합니다. `current --task-id UUID`는 선택 세션이 소유한 작업과 관련 runner·사실로 좁힙니다. 세션 공통 사실과 원문 참조는 유지하므로 TODO에 빠진 요구도 확인할 수 있습니다. 다른 세션의 작업이나 다른 section의 작업 필터는 오류입니다.
+
+목록별 기본 출력은 20개, `--limit`은 1~100개입니다. 현재 맥락은 기존 인수 미리보기의 읽기 전용 스냅샷에서 출력 페이지를 구성하며 DB 조회량 전체를 제한하는 계약은 아닙니다. 항목의 본문을 중간에서 잘라 원문이나 현재 사실을 훼손하지 않습니다. 목록이 나뉘면 다음 커서를 반드시 반환합니다.
+
+| 조회 | 다음 커서 | 순서 |
+| --- | --- | --- |
+| `context show` | `next_after_ids`의 `tasks/workflows/facts/source_ids` | 기존 조회 순서: 작업은 생성 시각·UUID, runner/사실은 UUID, 원문은 생성 시각·UUID 오름차순 |
+| `context show --section sources` | `{sources, next_after_id}`의 `next_after_id` | 생성 시각·UUID 오름차순 |
+| `context show --section collaboration` | 인박스 `next_after_id`, 피어 `next_peer_after_id`, 배정 `next_delegation_after_id` | 각 목록의 UUID 오름차순 |
+| `context show --section memory` | `next_after_ids`의 `memory_ids/applied_lessons` | 생성 시각 최신순·동일 시각 UUID 오름차순 |
+| `memory search` | `next_after_id` | 생성 시각 최신순·동일 시각 UUID 오름차순 |
+
+각 목록은 독립적으로 이어 읽습니다. 같은 세션·section·작업/검색 필터·limit에 해당 목록의 커서를 `--after UUID`로 전달하고 **그 목록만** 모읍니다. 커서가 `null`이 될 때 끝입니다. 기억 검색과 적용 교훈의 마지막 페이지가 limit과 같으면 빈 후속 페이지가 올 수 있습니다. 여러 목록의 커서를 하나로 합치거나 첫 페이지를 전체 TODO·원문으로 간주하지 않습니다. 페이지 사이에 새 작업이나 정정이 생기면 최신 첫 페이지를 다시 확인합니다. 원문 응답은 페이지 메타데이터를 위해 과거의 bare 배열 대신 `sources` 배열과 커서를 가진 객체를 사용합니다.
+
+```sh
+neurath context show --section sources --limit 10
+neurath context show --section sources --limit 10 --after <next_after_id>
+neurath context show --task-id <task_uuid> --limit 10
+neurath memory search --text "handoff" --limit 10 --after <next_after_id>
+neurath maintenance version
+```
+
+`maintenance version`은 현재 호출된 설치 배포본의 이름과 버전을 JSON으로 반환하며 저장소를 열거나 초기화하지 않습니다. DB 부재·손상 상황에서도 버전을 확인할 수 있습니다. 버전 조회가 실제 호스트 활성화·업데이트 완료를 뜻하지는 않습니다.
+
 ## 4. 줄인 도구의 실행 경로
 
 - 세션·작업 목록·현재 phase·enclave·피어·모델·메시지 제목·감시 상태는 `context show`의 제한된 조회입니다. 기본 응답은 현재 작업의 간결한 맥락이며 관련 없는 이력 전체를 주입하지 않습니다. sections는 명시한 조회 영역만 선택하고 임의 내부 메서드를 실행하지 않습니다. 본문이 큰 기억·메시지·기사는 별도 선택 조회합니다.

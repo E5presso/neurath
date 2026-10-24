@@ -5,6 +5,9 @@ Use this installed command: `@NEURATH_COMMAND@`. The host session and project ar
 
 Start with `@NEURATH_COMMAND@ context show`. Read original sources with `context show --section sources`; select messages and work from `context show --section collaboration`. Use the host tools for actual work. Simple conversation needs no workflow.
 
+Context lists default to 20 items (maximum 100). Follow each non-null cursor with the same session, section and task filter plus `--after ID`; collect that cursor's named list independently until its cursor is null. The sources section returns `{sources, next_after_id}`. Memory search also returns `next_after_id`; a full final page may require one empty follow-up. A page is not the complete TODO or all original instructions. `--task-id` filters only the current section and retains session-wide original-source references.
+Use `maintenance version` to inspect the invoked distribution without opening the store. JSON stdout is the result; successful command execution alone is not task success.
+
 ## Commands
 
 - `collaboration delegate` — 원 작업의 수행 또는 현재 후보의 독립 평가를 실제 수신 경로에 연결한다.
@@ -35,6 +38,9 @@ Start with `@NEURATH_COMMAND@ context show`. Read original sources with `context
 - `context show` — 현재 호스트의 실제 원문과 다음 작업을 필요한 영역별로 반환한다.
   - `--session`: optional
   - `--section`: optional choices=current,sources,collaboration,memory
+  - `--task-id`: optional
+  - `--limit`: optional
+  - `--after`: optional
   - `--auth-token`: optional
 - `hook handle` — 표준입력의 네이티브 훅 JSON을 처리합니다.
   - `--provider`: required choices=codex,claude
@@ -60,6 +66,8 @@ Start with `@NEURATH_COMMAND@ context show`. Read original sources with `context
 - `maintenance record-failure` — 업무 명령을 실행할 수 없어도 원인과 남은 일을 복구 기록에 남긴다.
   - `--detail`: required
   - `--reference`: required
+  - `--auth-token`: optional
+- `maintenance version` — DB를 열지 않고 현재 호출된 배포본의 설치 버전을 반환한다.
   - `--auth-token`: optional
 - `memory checkpoint` — 원문 참조와 결과·남은 일·다음 행동의 보고를 저장한다.
   - `--project-id`: optional
@@ -94,6 +102,7 @@ Start with `@NEURATH_COMMAND@ context show`. Read original sources with `context
   - `--session-id`: optional
   - `--task-id`: optional
   - `--limit`: optional
+  - `--after`: optional
   - `--graph-directory`: optional
   - `--kind`: optional choices=artifact,checkpoint,handoff,lesson
   - `--lesson-state`: optional choices=proposed,validated,applied,deferred,withdrawn

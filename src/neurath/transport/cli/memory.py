@@ -251,7 +251,8 @@ class MemoryCliController:
         text: str = "",
         session_id: UUID | None = None,
         task_id: UUID | None = None,
-        limit: int = 20,
+        limit: Annotated[int, Option("--limit", min=1, max=100)] = 20,
+        after: UUID | None = None,
         graph_directory: str | None = None,
         kind: MemoryKind | None = None,
         lesson_state: LessonState | None = None,
@@ -264,6 +265,7 @@ class MemoryCliController:
             session_id: 기록 작성 세션 제한.
             task_id: 관련 작업 제한.
             limit: 결과 개수.
+            after: 이전 검색 페이지 마지막 기억 ID.
             graph_directory: 함께 조회할 기존 Graphify 프로젝트 경로.
             kind: 선택할 기억 유형.
             lesson_state: 선택할 교훈의 현재 상태.
@@ -281,6 +283,7 @@ class MemoryCliController:
                     session_id=session_id,
                     task_id=task_id,
                     limit=limit,
+                    after_id=after,
                     kind=kind,
                     lesson_state=lesson_state,
                 )
@@ -294,7 +297,11 @@ class MemoryCliController:
             )
             echo(
                 json.dumps(
-                    {"memory_ids": result, "graph": graph_result},
+                    {
+                        "memory_ids": result,
+                        "graph": graph_result,
+                        "next_after_id": result[-1] if len(result) == limit else None,
+                    },
                     default=encode_uuid,
                     ensure_ascii=False,
                 )
