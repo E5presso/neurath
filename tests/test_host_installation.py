@@ -7,13 +7,15 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from click import unstyle
 
 from neurath.domain.enums.provider_kind import ProviderKind
 from neurath.infrastructure.services.installation import PosixInstallationService
 
 
 @pytest.mark.parametrize("provider", list(ProviderKind))
-async def test_install_preserves_user_content_and_is_idempotent(tmp_path, provider):
+@pytest.mark.parametrize("color", [False, True], ids=["plain", "color"])
+async def test_install_preserves_user_content_and_is_idempotent(tmp_path, provider, color):
     root = tmp_path / "project"
     root.mkdir()
     config = root / (".codex" if provider is ProviderKind.CODEX else ".claude")
@@ -50,10 +52,28 @@ async def test_install_preserves_user_content_and_is_idempotent(tmp_path, provid
         )
     skills = root / (".agents/skills" if provider is ProviderKind.CODEX else ".claude/skills")
     assert len(list(skills.glob("*/SKILL.md"))) == 14
+    env = dict(os.environ)
+    for name in (
+        "NO_COLOR",
+        "FORCE_COLOR",
+        "PY_COLORS",
+        "GITHUB_ACTIONS",
+        "_TYPER_FORCE_DISABLE_TERMINAL",
+    ):
+        env.pop(name, None)
+    env["TERM"] = "xterm-256color" if color else "dumb"
+    if color:
+        env["GITHUB_ACTIONS"] = "true"
     result = subprocess.run(
-        [installed.command, "context", "show", "--help"], capture_output=True, text=True, timeout=20
+        [installed.command, "context", "show", "--help"],
+        capture_output=True,
+        text=True,
+        timeout=20,
+        env=env,
     )
-    assert result.returncode == 0 and "--section" in result.stdout
+    assert result.returncode == 0, result.stderr
+    assert ("\x1b[" in result.stdout) is color
+    assert "--section" in unstyle(result.stdout)
 
 
 @pytest.mark.parametrize(
