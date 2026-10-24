@@ -17,6 +17,7 @@ dependencies = [
     "spakky-sqlalchemy==8.2.0",
     "spakky-typer==8.2.0",
     "spakky-event==8.2.0",
+    "ijson>=3.4,<4",
 ]
 
 [project.scripts]

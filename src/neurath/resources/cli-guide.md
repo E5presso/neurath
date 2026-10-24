@@ -142,6 +142,43 @@ Read an existing run with `workflow show --run-id ID`; its definition and attemp
   - `--changes`: required
   - `--task-id`: optional
   - `--auth-token`: optional
+- `migration fence` — 실제 연결 정지와 SQLite 잠금 뒤 원 경로를 퇴역하고 새 기록·사건을 보존한다.
+  - `--source`: required
+  - `--archive-directory`: required
+  - `--auth-token`: optional
+- `migration inspect` — 원본을 변경하지 않고 형식·전체 행 수·WAL 유무를 읽는다.
+  - `--source`: required
+  - `--auth-token`: optional
+- `migration prepare` — 원본/WAL·설정과 일관된 사본을 보존하고 현재 저장소에 위치를 등록한다.
+  - `--source`: required
+  - `--directory`: required
+  - `--archive-directory`: required
+  - `--config`: optional repeatable
+  - `--auth-token`: optional
+- `migration read` — 원문·미완료·절차·사실·메시지·학습·미인식 자료를 선택해 읽는다.
+  - `--archive-id`: required
+  - `--section`: optional
+  - `--offset`: optional
+  - `--limit`: optional
+  - `--auth-token`: optional
+- `migration recall` — 선택한 과거 맥락·협업·학습 자료를 현재 기억과 미검증 참조로 연결한다.
+  - `--archive-id`: required
+  - `--section`: required
+  - `--key`: required
+  - `--task-id`: optional
+  - `--auth-token`: optional
+- `migration recover` — 새 코어 기록을 유지한 호환 복구 사본을 만들고 구버전 rollback은 수행하지 않는다.
+  - `--source`: required
+  - `--destination`: required
+  - `--auth-token`: optional
+- `migration replay` — 현재 호환 코어에 전환 사건을 원 순서로 한 번씩 반영한다.
+  - `--directory`: required
+  - `--auth-token`: optional
+- `migration resume` — 선택한 과거 미완료 작업을 현재 관찰된 세션의 같은 원장으로 이어간다.
+  - `--archive-id`: required
+  - `--key`: required
+  - `--workflow-key`: optional
+  - `--auth-token`: optional
 - `monitor status` — 실제 관찰과 정확한 사건·실패·잔여 예산을 부작용 없이 조회한다.
   - `--project-id`: optional
   - `--session-id`: optional

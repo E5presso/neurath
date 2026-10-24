@@ -222,3 +222,5 @@ Typer가 제공하는 명령/도움말 정의를 입력으로 Neurath의 릴리�
 [감시 관찰·사건·알림과 후보 실행 경계](monitoring.md).
 
 [#138: 결과 평가·회고 구현](result-evaluation.md)
+
+기존 자료의 관찰·보존·선택 재개와 작성 경로 전환은 [보존형 이전](migration.md)을 따릅니다. `migration inspect/prepare/read/resume/recall/fence/recover/replay`는 같은 애플리케이션 경계를 사용하며 과거 기록을 현재 권한으로 승격하지 않습니다.
