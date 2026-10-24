@@ -219,9 +219,12 @@ class Execution(AbstractAggregateRoot[UUID]):
         Returns:
             HookAction: 정상 종료 허용, 작업 계속 또는 성공과 구별되는 일시 중지.
         """
-        if (
-            self.status in (ExecutionStatus.CANCELLED, ExecutionStatus.ENDED)
-            or self.pause_cause is ExecutionPauseCause.CANCELLATION
+        if self.status in (
+            ExecutionStatus.CANCELLED,
+            ExecutionStatus.ENDED,
+        ) or self.pause_cause in (
+            ExecutionPauseCause.CANCELLATION,
+            ExecutionPauseCause.TURN_CONTROL,
         ):
             return HookAction.PAUSE
         unfinished = tuple(

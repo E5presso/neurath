@@ -11,10 +11,12 @@ from neurath.application.ports.services.evaluation_context import (
     EvaluationContext,
     IEvaluationContextService,
 )
+from neurath.domain.aggregates.memory import MemoryKind
 from neurath.domain.aggregates.request_source import SourceKind
 from neurath.domain.aggregates.workflow import WorkflowRun
 from neurath.domain.errors import InvalidWorkflowState
 from neurath.domain.values.workflow_definition import PhaseDefinition
+from neurath.infrastructure.repositories.memory import SQLAlchemyMemoryRepository
 from neurath.infrastructure.repositories.request_source import SQLAlchemyRequestSourceRepository
 from neurath.infrastructure.repositories.task import SQLAlchemyTaskRepository
 from neurath.serialization import encode_uuid
@@ -28,15 +30,18 @@ class SQLAlchemyEvaluationContextService(IEvaluationContextService):
         self,
         tasks: SQLAlchemyTaskRepository,
         sources: SQLAlchemyRequestSourceRepository,
+        memories: SQLAlchemyMemoryRepository,
     ) -> None:
         """현재 요청의 SQLAlchemy 저장소를 받는다.
 
         Args:
             tasks: 전체 TODO와 관련 요구를 조회한다.
             sources: 최초 원문과 정정 이력을 조회한다.
+            memories: 현재 원문에 대한 에이전트 판단 근거를 조회한다.
         """
         self.tasks = tasks
         self.sources = sources
+        self.memories = memories
 
     @override
     async def load(self, run: WorkflowRun, phase: PhaseDefinition) -> EvaluationContext:
@@ -65,7 +70,7 @@ class SQLAlchemyEvaluationContextService(IEvaluationContextService):
         if {task.uid for task in related} != selected:
             raise InvalidWorkflowState("Evaluation scope contains unavailable work")
         own_sources = await self.sources.find_by_session_id(run.session_id)
-        originals = {source.uid: source.body for source in own_sources}
+        originals = {source.uid: f"[{source.kind}] {source.body}" for source in own_sources}
         assigned_sources = {
             definition.source_id for task in tasks for definition in task.definitions
         }
@@ -78,10 +83,17 @@ class SQLAlchemyEvaluationContextService(IEvaluationContextService):
         for task in tasks:
             for definition in task.definitions:
                 source = await self.sources.get(definition.source_id)
-                originals[source.uid] = source.body
+                originals[source.uid] = f"[{source.kind}] {source.body}"
                 while source.corrects_id is not None:
                     source = await self.sources.get(source.corrects_id)
-                    originals[source.uid] = source.body
+                    originals[source.uid] = f"[{source.kind}] {source.body}"
+        interpretations = [
+            memory.content
+            for memory in await self.memories.find_by_project_id_and_kind(
+                run.project_id, MemoryKind.ARTIFACT
+            )
+            if any(f"source-interpretation:{uid}" in memory.references for uid in originals)
+        ]
         payload = json.dumps(
             {
                 "target": phase.target_revision,
@@ -102,6 +114,8 @@ Evaluation purpose: {phase.purpose}
 Required checks: {json.dumps(phase.checks, ensure_ascii=False)}
 Original user sources and corrections (source IDs retain their provenance):
 {chr(10).join(f"Source {uid}: {body}" for uid, body in originals.items())}
+Agent interpretations of those preserved sources (not new authority; compare the original text):
+{chr(10).join(interpretations)}
 Full current TODO, including incomplete and failed work:
 {chr(10).join(f"{task.uid} / definition {task.definition.number} / {task.status}: {task.definition.title}; required: {task.definition.required_result}" for task in tasks)}
 Actual artifacts: {json.dumps(target.artifacts, ensure_ascii=False)}

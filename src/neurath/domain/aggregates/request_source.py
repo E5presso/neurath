@@ -18,7 +18,7 @@ class SourceKind(StrEnum):
         TICKET: 지정 티켓 원문.
         SPEC: 지정 명세 원문.
         CORRECTION: 실제 정정 원문.
-        STATUS: 상태 질문.
+        STATUS: 결과 요구를 바꾸지 않는 상태·설명·턴 제어 원문.
         SUMMARY: 과거 요약.
     """
 
@@ -117,6 +117,24 @@ class RequestSource(AbstractAggregateRoot[UUID]):
             raise InvalidTaskState(
                 "Corrections require an existing source; other source kinds cannot correct"
             )
+
+    def interpret(self, kind: SourceKind) -> None:
+        """보존 원문의 요구/응답 용도만 정정하고 본문·출처를 바꾸지 않는다.
+
+        Args:
+            kind: 에이전트가 원문에서 판단한 요구 또는 상태·설명 용도.
+
+        Raises:
+            InvalidTaskState: 티켓·명세·정정이나 요약을 현재 원문 해석으로 바꾸려는 경우.
+        """
+        if self.kind not in (SourceKind.PROMPT, SourceKind.STATUS) or kind not in (
+            SourceKind.PROMPT,
+            SourceKind.STATUS,
+        ):
+            raise InvalidTaskState(
+                "Only observed prompts can be interpreted as requirements or response context"
+            )
+        self.kind = kind
 
     def require_project(self, project_id: UUID) -> None:
         """프로젝트 밖의 출처 참조를 거부한다.

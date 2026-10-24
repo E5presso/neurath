@@ -7,12 +7,14 @@ class ExecutionPauseCause(StrEnum):
     """해소 사건이 다른 중지 원인을 구분한다.
 
     Attributes:
+        TURN_CONTROL: 현재 원문 해석에 따라 이번 턴만 제어권을 반환함.
         WAITING: 실제 외부 의존 해소를 기다림.
         FAILURE: 호스트 또는 하네스 오류.
         NO_PROGRESS: 동일 Stop 피드백 반복으로 제어권을 반환함.
         CANCELLATION: 실제 중단 요청의 종료 확인 대기.
     """
 
+    TURN_CONTROL = "turn_control"
     WAITING = "waiting"
     FAILURE = "failure"
     NO_PROGRESS = "no_progress"

@@ -12,6 +12,9 @@ For work needing a procedure, read the selected SKILL.md from the index below; d
 Reading a skill or mentioning its name is not a started run. Confirm the returned run ID and current phase, perform the actual work with host tools, and report the phase's verified checks and evidence through `workflow report`. The existing runner owns phase attempts, result evaluation and completion conditions. Skill selection never expands the user's requested scope or grants additional execution or publishing permission.
 
 When current work context is needed, use `@NEURATH_COMMAND@ context show`. Read original sources with `context show --section sources`; select messages and work from `context show --section collaboration`. Use the host tools for actual work.
+When preserved unfinished work or accepted evaluation would be affected by a status-only or explanatory response, interpret the current original with `session interpret --kind status --reason ...`. Add `--pause` when the current request excludes execution in this turn; Stop then returns control immediately while preserving tasks and phases. This is the agent's interpretation of the actual original, not a keyword classifier or a mode the user must select. A real new requirement or a mixed request remains `prompt`, including requirements missing from TODO. Never relabel an existing task requirement to avoid evaluation. Interpretation reasons are retained in memory and original text remains available to reviewers.
+Do not represent a response-only turn as task cancellation, an external dependency wait, or success. The next actual work turn resumes the same preserved task/run; a current authorized resumption can use `session resume`. Simple conversation without affected work requires no task, workflow, or extra interpretation procedure.
+An observed host address identifies its session even when a tool runs from another cwd. Context reports the original session directory and actual invocation directory separately. If that address has multiple observed project links, use the observed provider and returned project ID with `context show --provider/--project-id`; do not merge unrelated projects or invent a new session.
 
 Context lists default to 20 items (maximum 100). Follow each non-null cursor with the same session, section and task filter plus `--after ID`; collect that cursor's named list independently until its cursor is null. The sources section returns `{sources, next_after_id}`. Memory search also returns `next_after_id`; a full final page may require one empty follow-up. A page is not the complete TODO or all original instructions. `--task-id` filters only the current section and retains session-wide original-source references.
 Use `maintenance version` to inspect the invoked distribution without opening the store. JSON stdout is the result; successful command execution alone is not task success.
@@ -66,6 +69,8 @@ Read an existing run with `workflow show --run-id ID`; its definition and attemp
 - `context show` — 현재 호스트의 실제 원문과 다음 작업을 필요한 영역별로 반환한다.
   - `--session`: optional
   - `--section`: optional choices=current,sources,collaboration,memory
+  - `--provider`: optional choices=codex,claude
+  - `--project-id`: optional
   - `--task-id`: optional
   - `--limit`: optional
   - `--after`: optional
@@ -256,6 +261,12 @@ Read an existing run with `workflow show --run-id ID`; its definition and attemp
   - `--auth-token`: optional
 - `newsroom subscribe` — 현재 대화의 뉴스룸 제목 알림을 설정하고 다른 주제 구독은 유지한다.
   - `--enabled`: optional
+  - `--auth-token`: optional
+- `session interpret` — 현재 원문에 대한 판단을 연결하고 필요한 경우 이번 턴만 제어권을 반환한다.
+  - `--kind`: required choices=prompt,status
+  - `--reason`: required
+  - `--pause`: optional
+  - `--source-id`: optional
   - `--auth-token`: optional
 - `session preview` — 원문·작업·runner·현재 맥락을 소유권 변경 없이 인수 전에 미리 본다.
   - `--project-id`: optional

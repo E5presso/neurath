@@ -226,3 +226,5 @@ Agents persist current facts, hypotheses, decisions and evidence with `memory up
 For historical inspection, preservation, selective resumption, and writer cutover, see [preserving migration](migration.md). `migration inspect/prepare/read/resume/recall/fence/recover/replay` use the same application boundaries without promoting historical records into current authority.
 
 For distribution candidates, official release observation, same-version artifact updates, shared databases, and recovery, see [distribution](distribution.md).
+
+For original-source interpretation, current-turn control return, and observed sessions across tool directories, see [current-turn intent](turn-intent.md). The agent connects its judgment through `session interpret` without requiring a user-selected mode or additional approval.

@@ -47,11 +47,13 @@ class SessionScope:
         session: 같은 프로젝트에 연결된 세션.
         execution: 실제 관찰한 현재 실행이며 미관찰이면 None.
         peer: 실제 관찰한 협업 주소이며 미관찰이면 None.
+        invocation_directory: 조회 호출의 실제 작업 폴더이며 세션 소유 경로와 구분한다.
     """
 
     session: HostSession
     execution: Execution | None
     peer: Peer | None
+    invocation_directory: str = ""
 
 
 @UseCase()
@@ -85,7 +87,7 @@ class ReadSessionScopeUseCase(IAsyncQueryUseCase[ReadSessionScopeQuery, SessionS
             statement = statement.where(SessionModel.successor_id.is_(None))
         if query.session_id is not None:
             statement = statement.where(SessionModel.id == query.session_id)
-        else:
+        elif not query.native_session:
             statement = statement.where(
                 SessionModel.project_id.in_(
                     select(ProjectLocationModel.project_id).where(
@@ -109,10 +111,26 @@ class ReadSessionScopeUseCase(IAsyncQueryUseCase[ReadSessionScopeQuery, SessionS
                 )
             )
         records = (await self.sessions.session.scalars(statement)).all()
+        if len(records) > 1 and query.native_session and query.project_id is None:
+            projects = set(
+                (
+                    await self.sessions.session.scalars(
+                        select(ProjectLocationModel.project_id).where(
+                            ProjectLocationModel.path == query.directory
+                        )
+                    )
+                ).all()
+            )
+            matching = [item for item in records if item.project_id in projects]
+            if matching:
+                records = matching
         if len(records) != 1:
-            addresses = [f"{item.provider}:{item.host_session_id}" for item in records]
+            addresses = [
+                f"{item.provider}:{item.host_session_id} project={item.project_id} directory={item.working_directory}"
+                for item in records
+            ]
             raise ContextNotFound(
-                f"Current host session is unavailable or ambiguous: {addresses}. Use --session with an observed host address; check the session hook installation."
+                f"Current host session is unavailable or ambiguous: {addresses}. Use --session with an observed host address and --provider/--project-id only to disambiguate observed links; check the session hook installation."
             )
         session = records[0]
         executions = (

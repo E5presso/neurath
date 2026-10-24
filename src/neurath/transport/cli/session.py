@@ -2,6 +2,7 @@
 
 import json
 from dataclasses import asdict
+from enum import StrEnum
 from typing import Annotated
 from uuid import UUID
 
@@ -9,13 +10,28 @@ from spakky.plugins.sqlalchemy.persistency.connection_manager import AsyncConnec
 from spakky.plugins.typer.stereotypes.cli_controller import CliController, command
 from typer import Option, echo
 
+from neurath.application.usecases.interpret_turn import InterpretTurnCommand, InterpretTurnUseCase
 from neurath.application.usecases.preview_session import PreviewSessionQuery, PreviewSessionUseCase
 from neurath.application.usecases.resolve_session_context import (
     ResolveSessionContextQuery,
     ResolveSessionContextUseCase,
 )
 from neurath.application.usecases.resume_session import ResumeSessionCommand, ResumeSessionUseCase
+from neurath.domain.aggregates.request_source import SourceKind
+from neurath.domain.errors import ContextNotFound
 from neurath.serialization import encode_uuid
+
+
+class TurnSourceKind(StrEnum):
+    """현재 보존 원문에 지정할 수 있는 두 용도만 CLI에 노출한다.
+
+    Attributes:
+        PROMPT: 실제 결과 요구가 있거나 아직 요구 여부가 미분류인 원문.
+        STATUS: 결과 요구를 바꾸지 않는 상태·설명·턴 제어 원문.
+    """
+
+    PROMPT = "prompt"
+    STATUS = "status"
 
 
 @CliController("session")
@@ -28,6 +44,7 @@ class SessionCliController:
         resume: ResumeSessionUseCase,
         connection: AsyncConnectionManager,
         context: ResolveSessionContextUseCase,
+        interpret: InterpretTurnUseCase,
     ) -> None:
         """세션 작업 단위와 명령 루프에서 정리할 연결을 받는다.
 
@@ -36,11 +53,55 @@ class SessionCliController:
             resume: 확인된 후속 세션으로 실제 작업을 재개·인수하는 유스케이스.
             connection: 명령 실행 이벤트 루프에서 정리할 비동기 엔진.
             context: 실제 호스트에서 현재 세션·턴을 찾는다.
+            interpret: 현재 원문의 용도와 이번 턴 제어 반환을 연결한다.
         """
         self.preview = preview
         self.resume = resume
         self.connection = connection
         self.context = context
+        self.interpret = interpret
+
+    @command("interpret")
+    async def interpret_turn(
+        self,
+        kind: Annotated[
+            TurnSourceKind,
+            Option("--kind", help="현재 원문의 prompt(요구) 또는 status(상태·설명) 용도"),
+        ],
+        reason: Annotated[str, Option("--reason", help="원문에 근거한 판단 이유")],
+        pause: bool = False,
+        source_id: UUID | None = None,
+    ) -> None:
+        """현재 원문에 대한 판단을 연결하고 필요한 경우 이번 턴만 제어권을 반환한다.
+
+        Args:
+            kind: 실제 새 요구인지 상태·설명인지에 대한 에이전트의 판단.
+            reason: 원문에서 확인한 구체적인 판단 근거.
+            pause: 원 TODO·phase를 유지한 채 이번 턴 수행을 중지할지 여부.
+            source_id: 현재 턴의 특정 원문이며 미지정이면 마지막 원문.
+
+        Raises:
+            ContextNotFound: 현재 호스트 실행이 관찰되지 않은 경우.
+        """
+        try:
+            scope = await self.context.run(ResolveSessionContextQuery())
+            if scope.execution is None:
+                raise ContextNotFound("Current host execution has not been observed")
+            result = await self.interpret.run(
+                InterpretTurnCommand(
+                    project_id=scope.session.project_id,
+                    session_id=scope.session.uid,
+                    execution_id=scope.execution.uid,
+                    turn_id=scope.execution.turn_id,
+                    kind=SourceKind(kind.value),
+                    reason=reason,
+                    pause=pause,
+                    source_id=source_id,
+                )
+            )
+            echo(json.dumps(asdict(result), default=encode_uuid, ensure_ascii=False))
+        finally:
+            await self.connection.dispose()
 
     @command("preview")
     async def preview_session(

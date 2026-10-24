@@ -241,6 +241,7 @@ async def test_cli_groups_and_injected_usecases_match_memory_and_session_respons
     from typer.main import get_command
 
     from neurath.application.ports.services.graph import IGraphService
+    from neurath.application.usecases.interpret_turn import InterpretTurnUseCase
     from neurath.application.usecases.preview_session import PreviewSessionUseCase
     from neurath.application.usecases.resume_session import ResumeSessionUseCase
     from neurath.application.usecases.update_checkpoint_graph import UpdateCheckpointGraphUseCase
@@ -259,13 +260,13 @@ async def test_cli_groups_and_injected_usecases_match_memory_and_session_respons
             "propose-lesson",
             "observe-lesson",
         }
-        assert set(root.commands["session"].commands) == {"preview", "resume"}
+        assert set(root.commands["session"].commands) == {"preview", "resume", "interpret"}
         assert {"read", "update", "search", "checkpoint", "preview", "resume"}.isdisjoint(
             root.commands
         )
     memory_dependencies = set(get_type_hints(MemoryCliController.__init__).values())
     session_dependencies = set(get_type_hints(SessionCliController.__init__).values())
-    session_operations = {PreviewSessionUseCase, ResumeSessionUseCase}
+    session_operations = {PreviewSessionUseCase, ResumeSessionUseCase, InterpretTurnUseCase}
     assert memory_dependencies.isdisjoint(session_operations)
     assert memory_dependencies.isdisjoint({IGraphService, UpdateCheckpointGraphUseCase})
     assert session_operations <= session_dependencies
