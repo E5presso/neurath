@@ -22,6 +22,12 @@ Installed rules are Neurath's default entry point. Users need not enable a separ
 
 Skill selection is an agent judgment; the existing phase runner manages the selected definition, phases, attempts, results and completion conditions. Reading or mentioning a skill does not establish a started run. Start the selected skill through the existing `workflow start` path and inspect actual execution state. Selecting a skill neither expands the user request nor grants additional authority.
 
+The Neurath-managed block in installed `AGENTS.md`/`CLAUDE.md` includes this default-entry policy plus the purpose, selection/exclusion conditions, and actual `SKILL.md` link for each of the 14 skills. The index is generated from the skill catalog alongside the CLI guide; installation substitutes the host's actual skill directory. The agent reads only the relevant skill and uses the same `workflow start` path. The user does not need to choose a mode or issue a separate entry command for each request.
+
+An explicitly selected native, project, or user skill takes precedence over an inferred built-in choice, while existing host/project instruction precedence remains intact. Reuse the task/run already handling the request and continue through `workflow show/revise` when needed. Simple questions, explanations, status queries, and single host operations such as commits or worktrees do not create a separate skill or run. Query stored context only when needed; selecting a skill never expands the request or grants execution/publication authority.
+
+Installation regressions verify the actual managed block, skill paths, metadata, existing CLI start/report connection, and the absence of automatically created tasks/runs for simple prompts and reads. Representative request/skill pairs are test inputs: string checks and fixtures do not establish a native model's semantic selection accuracy. Actual host loading of rules, skill selection, and model work remain a separate verification boundary.
+
 | Skill | Trigger | Procedure | Exclusions |
 | --- | --- | --- | --- |
 | `define-spec` | Define or refine user intent into an actionable specification | Intent/scope/alternatives → behavior/acceptance → execution order/dependencies/validation plan → decisions/open questions | Simple questions or unnecessarily redefining sufficient specifications |

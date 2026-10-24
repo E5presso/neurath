@@ -139,13 +139,15 @@ exec {shlex.quote(sys.executable)} -m neurath.entrypoint "$@"
 """
         if executable.exists() and "# neurath-managed executable" not in executable.read_text():
             raise FileExistsError(f"Unowned executable was preserved: {executable}")
-        instructions = guide.replace("@NEURATH_COMMAND@", shlex.quote(str(executable)))
+        skills = root / (".agents/skills" if provider is ProviderKind.CODEX else ".claude/skills")
+        instructions = guide.replace("@NEURATH_COMMAND@", shlex.quote(str(executable))).replace(
+            "@NEURATH_SKILLS@", str(skills)
+        )
         rules = root / ("AGENTS.md" if provider is ProviderKind.CODEX else "CLAUDE.md")
         planned: dict[Path, str] = {
             executable: wrapper,
             rules: self._managed(rules.read_text() if rules.exists() else "", instructions),
         }
-        skills = root / (".agents/skills" if provider is ProviderKind.CODEX else ".claude/skills")
         for entry in catalog:
             name = entry.workflow.skill
             path = skills / name / "SKILL.md"

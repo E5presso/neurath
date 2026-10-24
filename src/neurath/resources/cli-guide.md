@@ -3,13 +3,38 @@
 Neurath preserves the current request, work, context and collaboration across host events. The host agent performs the actual reasoning, editing, tools and native delegation.
 Use this installed command: `@NEURATH_COMMAND@`. The host session and project are resolved automatically. Never invent native identities or ask the user to re-enter existing instructions. No Neurath approval token is required.
 
-Start with `@NEURATH_COMMAND@ context show`. Read original sources with `context show --section sources`; select messages and work from `context show --section collaboration`. Use the host tools for actual work. Simple conversation needs no workflow.
+## Default entry and skill selection
+
+These installed rules are the default entry for ordinary requests. The user does not need to enable a Neurath mode, enter a special command, or choose a mode before you act. Choose a suitable procedure from the request's meaning and available skill descriptions; do not ask for information already present in the request or current context.
+An explicitly named skill takes precedence over an inferred built-in choice. Read that selected skill's actual source, including a native, project, or user skill, and follow existing host/project instruction precedence. This built-in index does not replace those skills or grant authority to rewrite them. When the named specialist procedure needs runner tracking, pass its faithful definition through the existing custom-skill CLI path below.
+Simple questions, explanations, and status requests do not require a skill, task, or workflow. Single host operations such as a commit or worktree creation use the host's own tools without an unrelated procedure. Use context queries only when current stored state is needed; do not create a run merely to answer a question.
+For work needing a procedure, read the selected SKILL.md from the index below; do not load every skill. Reuse the task/run already handling the request. Create a task only for actual work missing from the ledger. Start a new selected built-in procedure with `@NEURATH_COMMAND@ workflow start --task-id ID --skill NAME`; inspect an existing run with `workflow show` and continue or revise it instead of creating duplicate work.
+Reading a skill or mentioning its name is not a started run. Confirm the returned run ID and current phase, perform the actual work with host tools, and report the phase's verified checks and evidence through `workflow report`. The existing runner owns phase attempts, result evaluation and completion conditions. Skill selection never expands the user's requested scope or grants additional execution or publishing permission.
+
+When current work context is needed, use `@NEURATH_COMMAND@ context show`. Read original sources with `context show --section sources`; select messages and work from `context show --section collaboration`. Use the host tools for actual work.
 
 Context lists default to 20 items (maximum 100). Follow each non-null cursor with the same session, section and task filter plus `--after ID`; collect that cursor's named list independently until its cursor is null. The sources section returns `{sources, next_after_id}`. Memory search also returns `next_after_id`; a full final page may require one empty follow-up. A page is not the complete TODO or all original instructions. `--task-id` filters only the current section and retains session-wide original-source references.
 Use `maintenance version` to inspect the invoked distribution without opening the store. JSON stdout is the result; successful command execution alone is not task success.
 
 Built-in skill definitions and installed SKILL.md instructions share the packaged catalog. Start a selected project/user procedure with `workflow start --task-id ID --skill NAME --definition @file.json` (or `--definition -` with stdin). The JSON object supplies version, phases with key/purpose/checks, optional string-valued inputs and optional source pointing to the selected SKILL.md; its source text is snapshotted without editing that file. Starting records the procedure, not completed work.
 Read an existing run with `workflow show --run-id ID`; its definition and attempts survive catalog or source changes. Use `workflow revise` for method changes in the same run and retain required result evaluation. For nested or finishing work, reuse an unchanged valid evaluation instead of creating a new review task or recursive reviewer. Report only the current phase's actually verified checks.
+
+## Built-in procedure index
+
+- [define-spec](<@NEURATH_SKILLS@/define-spec/SKILL.md>) — 명세와 실행 계획을 함께 정한다. Use: 사용자 의도를 구현 가능한 명세로 정하거나 보완할 때. Exclude: 단순 질문; 이미 충분한 명세를 다시 정의하는 요청 아닌 경우.
+- [implement-spec](<@NEURATH_SKILLS@/implement-spec/SKILL.md>) — 요청한 기능을 UI를 포함해 구현하고 검증한다. Use: 명세나 요청에 따른 기능 구현과 관련 수정이 필요할 때. Exclude: 단순 파일 수정; 명세 재작성·이슈 생성·별도 plan만을 위한 경우.
+- [autopilot](<@NEURATH_SKILLS@/autopilot/SKILL.md>) — 허용된 여러 작업을 의존성에 맞춰 자율적으로 완수한다. Use: 여러 작업이나 티켓·의존성을 자율적으로 처리해 달라는 요청. Exclude: 한 번의 명령; 일반 질문·상태 조회.
+- [review-spec](<@NEURATH_SKILLS@/review-spec/SKILL.md>) — 원문·명세·구현의 누락과 과잉을 감사한다. Use: 요구·명세·구현 전체의 일치 여부를 검토할 때. Exclude: 오탈자 수정; 코드 diff만의 일반 리뷰.
+- [review-code](<@NEURATH_SKILLS@/review-code/SKILL.md>) — 변경 코드의 실제 실행 경로와 결함을 검토한다. Use: 코드 변경이나 PR의 정확성·회귀를 검토할 때. Exclude: 명세 논의; PR 생성·댓글 게시만 요청한 경우.
+- [qa](<@NEURATH_SKILLS@/qa/SKILL.md>) — 여러 사용자 시나리오의 수락 여부를 실제 동작으로 검증한다. Use: UI·API·저장 상태를 포함한 여러 시나리오를 검증할 때. Exclude: 시험 명령 한 번 실행; 화면 설명만 요청한 경우.
+- [debug](<@NEURATH_SKILLS@/debug/SKILL.md>) — 실패 원인을 구별하고 수정 효과를 확인한다. Use: 원인이 불명확한 실패를 조사하고 고칠 때. Exclude: 원인이 이미 정해진 작은 변경.
+- [design-ui](<@NEURATH_SKILLS@/design-ui/SKILL.md>) — 사용자 목표와 상태·상호작용을 UI 방향으로 정한다. Use: 새 UI 방향이나 사용자 흐름을 설계할 때. Exclude: 단일 스타일 값 변경.
+- [review-ui](<@NEURATH_SKILLS@/review-ui/SKILL.md>) — 실제 UI의 상태·동작·접근성을 검토한다. Use: 구현한 UI의 사용성·일관성·기준 충족을 검토할 때. Exclude: 스크린샷의 내용 설명만 요청한 경우.
+- [sync-design](<@NEURATH_SKILLS@/sync-design/SKILL.md>) — 선택한 디자인 기준과 구현의 차이를 반영한다. Use: 디자인 원본과 구현의 변경을 동기화할 때. Exclude: 새 디자인 방향을 임의 선택하는 경우.
+- [sync-docs](<@NEURATH_SKILLS@/sync-docs/SKILL.md>) — 변경 사실을 독자별 문서와 언어에 동기화한다. Use: 소스·명세 변경을 관련 문서·언어에 반영할 때. Exclude: 오탈자 하나 수정.
+- [pr-feedback](<@NEURATH_SKILLS@/pr-feedback/SKILL.md>) — PR 피드백의 타당성을 판단하고 수정·검증한다. Use: 현재 PR의 피드백을 검토하고 대응할 때. Exclude: 댓글 게시 한 번; 무관한 변경 요청.
+- [finish-session](<@NEURATH_SKILLS@/finish-session/SKILL.md>) — 남은 결과를 확인하고 인계 가능한 상태로 마무리한다. Use: 진행한 작업 묶음을 검증·인계하고 마무리할 때. Exclude: 일반 답변의 매 턴 종료; 커밋 하나.
+- [update-neurath](<@NEURATH_SKILLS@/update-neurath/SKILL.md>) — 설치 자료를 보존하며 요청한 Neurath 버전을 적용한다. Use: Neurath 설치·업데이트를 요청한 경우. Exclude: 버전 조회; 다른 의존성 업데이트.
 
 ## Commands
 
@@ -234,7 +259,7 @@ Read an existing run with `workflow show --run-id ID`; its definition and attemp
 
 ## Execution and recovery
 
-Create work from the observed original source, select a matching skill, perform its steps with host tools, and report actual evidence. Independent evaluation reads original sources and the full TODO; delivery is not task success. A changed method does not require a new user goal. Preserve required result evaluation.
+Reuse work linked to the observed original source; create only missing work, select a matching skill when needed, perform its steps with host tools, and report actual evidence. Independent evaluation reads original sources and the full TODO; delivery is not task success. A changed method does not require a new user goal. Preserve required result evaluation.
 
 The Stop hook checks the latest tasks without running a model. Cancellation, external waiting and errors are not success. Ordinary shell tools and recovery remain available. Resolve only the actual dependency; do not ask the user to repair internal revisions or repeat approvals.
 
