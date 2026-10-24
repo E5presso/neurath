@@ -64,4 +64,6 @@ omit·커스텀 제외·`pragma: no cover`·`pragma: no branch`로 수치를 맞
 
 직접 저장소, 스캔·DI, 앱 수명, 재시작을 검사할 때는 `spakky_context`/`scanned_application`을 사용합니다. 이 경로와 별도 프로세스 시험은 앱을 새로 만듭니다. `storage_scope`도 새 앱을 유지하여 컨텍스트별 AggregateCollector와 저장소 수명을 원래대로 검사합니다.
 
+필수 검사와 pre-commit 회귀 시험은 pytest-xdist의 `-n auto --maxprocesses=4 --dist=worksteal`로 실행합니다. CPU 수에 맞춰 최대 4개 독립 프로세스를 사용하고, 남은 시험을 재분배합니다. 각 worker의 임시 폴더·빈 DB 템플릿·앱 수명은 분리됩니다. 전체 시험을 한 번씩 실행한 뒤 pytest-cov가 커버리지를 병합하며, 기존 라인·분기 100% 검사와 제외 라인 0 기준을 그대로 적용합니다. 개별 시험 디버깅은 `uv run pytest <경로>`로 순차 실행할 수 있습니다.
+
 기본 `database` fixture는 실제 마이그레이션으로 만든 빈 스키마를 SQLite backup으로 독립 파일에 복제합니다. 원본은 읽기 전용으로 열고 기존 대상 파일을 덮어쓰지 않습니다. 초기화·이전·downgrade 시험은 실제 마이그레이션을 직접 호출합니다. `tests/test_fixture_isolation.py`는 DB·읽기 정책·세션·앱 수명·실패·동시 호출 격리를 검증합니다.

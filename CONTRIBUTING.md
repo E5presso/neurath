@@ -64,4 +64,6 @@ Ordinary use-case and hook scenarios reuse a real application through `request_c
 
 Use `spakky_context`/`scanned_application` when testing direct repositories, scanning/DI, application lifecycle or restart. Those paths and separate-process tests retain fresh applications. `storage_scope` also stays fresh so context-scoped AggregateCollector and repository lifetimes retain their original checks.
 
+Required checks and pre-commit regression tests use pytest-xdist with `-n auto --maxprocesses=4 --dist=worksteal`. Up to four independent processes run according to available CPUs and redistribute pending tests. Temporary directories, pristine database templates, and application lifetimes remain isolated per worker. Every test runs once before pytest-cov combines coverage; the existing 100% line/branch gates and zero excluded-line requirement remain unchanged. Use `uv run pytest <path>` for sequential debugging of individual tests.
+
 The default `database` fixture clones a pristine schema built by real migrations into independent files using SQLite backup. The source opens read-only and existing destinations cannot be overwritten. Initialization, migration and downgrade tests still invoke the real migration paths directly. `tests/test_fixture_isolation.py` checks database, read-policy, session, lifecycle, failure and overlapping-call isolation.

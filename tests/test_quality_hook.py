@@ -147,6 +147,8 @@ def test_required_runner_executes_full_suite_once_with_coverage_and_build_gates(
     commands = [command for command, _ in calls]
     pytest = [command for command in commands if command[1:3] == ["-m", "pytest"]]
     assert len(pytest) == 1
+    assert pytest[0][pytest[0].index("-n") + 1] == "auto"
+    assert {"--maxprocesses=4", "--dist=worksteal"} <= set(pytest[0])
     assert {"--cov=src/neurath", "--cov-branch", "--cov-fail-under=100"} <= set(pytest[0])
     assert not any(
         argument.startswith("tests/") or argument in {"-k", "-m", "--ignore", "--deselect"}
@@ -168,6 +170,8 @@ def test_precommit_keeps_regression_tests_after_shared_static_checks(monkeypatch
     quality.main()
     assert calls[0][1:] == ["tools/static_quality.py"]
     assert len([command for command in calls if command[1:3] == ["-m", "pytest"]]) == 1
+    assert calls[1][calls[1].index("-n") + 1] == "auto"
+    assert {"--maxprocesses=4", "--dist=worksteal"} <= set(calls[1])
     assert {
         "tests/test_architecture.py",
         "tests/test_review_contracts.py",
