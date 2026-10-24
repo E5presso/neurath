@@ -6,6 +6,7 @@ import subprocess
 import time
 from collections.abc import Generator
 from contextlib import closing
+from importlib.metadata import version
 from typing import cast
 
 from spakky.core.common.mutability import immutable
@@ -98,7 +99,7 @@ def _initial_request(provider: ProviderKind) -> dict[str, object]:
                 "id": 1,
                 "method": "initialize",
                 "params": {
-                    "clientInfo": {"name": "neurath", "version": "0.3.1"},
+                    "clientInfo": {"name": "neurath", "version": version("neurath")},
                     "capabilities": {},
                 },
             }

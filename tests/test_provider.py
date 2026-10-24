@@ -1128,3 +1128,50 @@ def test_codex_without_isolated_execution_support_is_not_advertised(monkeypatch)
     )
     with pytest.raises(RuntimeError, match="isolated process"):
         SubprocessProviderService().discover("codex")
+
+
+def test_live_provider_identity_is_observed_before_fixture_can_exit(provider_environment):
+    binpath, plan = provider_environment
+    ready = Path(plan.directory) / "provider-ready"
+    release = Path(plan.directory) / "provider-release"
+    executable(
+        binpath,
+        "codex",
+        f"""import json,time
+from pathlib import Path
+print(json.dumps({{"type":"thread.started","thread_id":"gated-live-session"}}),flush=True)
+Path({str(ready)!r}).touch()
+while not Path({str(release)!r}).exists():
+ time.sleep(0.01)
+print(json.dumps({{"type":"turn.completed"}}),flush=True)
+""",
+    )
+    service = SubprocessProviderService()
+    uid = str(uuid4())
+    assert not service._is_running(service._directory(uid))
+    try:
+        service.start(uid, plan, "observe the actual live process")
+        record = service._directory(uid) / "process.json"
+        deadline = time.monotonic() + 10
+        while True:
+            assert time.monotonic() < deadline, "Provider did not reach the observed ready boundary"
+            if ready.exists():
+                try:
+                    process = json.loads(record.read_text())
+                except FileNotFoundError, json.JSONDecodeError:
+                    pass
+                else:
+                    break
+            time.sleep(0.01)
+        observed = service.observe(uid)
+        assert process_identity(process["pid"]) == process["identity"]
+        assert observed.status is ProviderStatus.RUNNING
+        assert observed.native_session_id == "gated-live-session"
+        assert not (record.parent / "result.json").exists()
+        assert service.observe(uid).status is ProviderStatus.RUNNING
+    finally:
+        release.touch()
+        finished(service, uid)
+    assert service.observe(uid).status is ProviderStatus.COMPLETED
+    assert not process_identity(process["pid"])
+    assert not service._is_running(service._directory(uid))

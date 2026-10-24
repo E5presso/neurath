@@ -1,6 +1,7 @@
 """DB 장애와 호스트 출력 실패를 독립적인 복구 기록에 노출한다."""
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 
 from spakky.core.common.mutability import immutable
 
@@ -22,6 +23,23 @@ class RecoveryReceipt:
     delivery: str = "unverified"
 
 
+@immutable
+class RecoveryRecord:
+    """독립 journal의 원문과 안정된 출처를 코어에 연결할 관찰이다.
+
+    Attributes:
+        origin: 같은 원문 행을 중복 연결하지 않는 내용 식별자.
+        detail: 원래 장애 증상.
+        reference: 실패한 원 호출의 참조.
+        journal_reference: 원문 파일과 행의 위치.
+    """
+
+    origin: str
+    detail: str
+    reference: str
+    journal_reference: str
+
+
 class IRecoveryLogService(ABC):
     """업무 DB가 고장나도 원인·남은 상태를 한 번 기록하는 계약이다."""
 
@@ -38,5 +56,20 @@ class IRecoveryLogService(ABC):
 
         Raises:
             NotImplementedError: 구현체가 추상 계약에 잘못 위임한 경우.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def read(self, path: str | None = None) -> Sequence[RecoveryRecord]:
+        """복구 뒤 원 journal을 변경하지 않고 유효한 원문 행을 읽는다.
+
+        Args:
+            path: 선택한 journal 또는 사용자 기본 파일의 None.
+
+        Returns:
+            Sequence[RecoveryRecord]: 전체 형식을 확인한 원문과 출처.
+
+        Raises:
+            NotImplementedError: 구현하지 않은 계약을 호출한 경우.
         """
         raise NotImplementedError

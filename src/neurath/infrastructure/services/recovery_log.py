@@ -1,15 +1,21 @@
 """장애 원인을 코어 DB와 독립된 append-only 복구 파일과 stderr에 남긴다."""
 
+import hashlib
 import json
 import os
 import sys
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import override
 
 from spakky.core.pod.annotations.pod import Pod
 
-from neurath.application.ports.services.recovery_log import IRecoveryLogService, RecoveryReceipt
+from neurath.application.ports.services.recovery_log import (
+    IRecoveryLogService,
+    RecoveryReceipt,
+    RecoveryRecord,
+)
 
 
 @Pod()
@@ -61,6 +67,43 @@ class PosixRecoveryLogService(IRecoveryLogService):
         except (OSError, ValueError) as error:
             errors.append(f"recovery record failed: {error}")
         return RecoveryReceipt(record_path=path, host_submitted=submitted, error="; ".join(errors))
+
+    @override
+    def read(self, path: str | None = None) -> Sequence[RecoveryRecord]:
+        """원문을 모두 검증한 뒤 반환하며 손상된 행을 빈 기록으로 숨기지 않는다.
+
+        Args:
+            path: 선택한 실제 journal 또는 기본 파일.
+
+        Returns:
+            Sequence[RecoveryRecord]: 파일을 바꾸지 않고 읽은 원 증상.
+
+        Raises:
+            ValueError: 행이 독립 복구 기록 형식이 아닌 경우.
+        """
+        source = self._destination() if path is None else Path(path).expanduser().resolve()
+        if not source.exists() and path is None:
+            return ()
+        records = []
+        with source.open() as stream:
+            for number, line in enumerate(stream, 1):
+                item = json.loads(line)
+                if not isinstance(item, dict) or any(
+                    not isinstance(item.get(key), str) or not item[key].strip()
+                    for key in ("time", "detail", "reference")
+                ):
+                    raise ValueError(
+                        f"Invalid recovery journal record at {source}:{number}; original preserved"
+                    )
+                records.append(
+                    RecoveryRecord(
+                        origin="recovery:" + hashlib.sha256(line.encode()).hexdigest(),
+                        detail=item["detail"],
+                        reference=item["reference"],
+                        journal_reference=f"{source}#L{number}",
+                    )
+                )
+        return tuple(records)
 
     @staticmethod
     def _destination() -> Path:

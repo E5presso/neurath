@@ -22,6 +22,7 @@ from neurath.application.usecases.resolve_session_context import (
 )
 from neurath.application.usecases.search_memory import SearchMemoryQuery, SearchMemoryUseCase
 from neurath.domain.aggregates.memory import MemoryKind
+from neurath.domain.enums.provider_kind import ProviderKind
 from neurath.domain.errors import ContextNotFound
 from neurath.domain.values.lesson_observation import LessonState
 from neurath.serialization import encode_uuid
@@ -98,6 +99,12 @@ class ContextCliController:
         self,
         session: Annotated[str, Option("--session", help="다른 관찰된 호스트 세션 주소")] = "",
         section: ContextSection = ContextSection.CURRENT,
+        provider: Annotated[
+            ProviderKind | None, Option("--provider", help="같은 관찰 주소의 호스트 종류만 구분")
+        ] = None,
+        project_id: Annotated[
+            UUID | None, Option("--project-id", help="같은 관찰 주소의 복수 프로젝트 연결만 구분")
+        ] = None,
         task_id: Annotated[
             UUID | None, Option("--task-id", help="current 영역의 작업 범위")
         ] = None,
@@ -111,6 +118,8 @@ class ContextCliController:
         Args:
             session: 미지정이면 호스트 환경의 현재 세션.
             section: 필요한 정보 영역.
+            provider: 같은 주소가 여러 호스트에 있을 때 선택할 실제 공급자.
+            project_id: 관찰된 같은 주소가 여러 프로젝트에 있을 때만 지정할 범위.
             task_id: 현재 세션이 소유한 작업의 요약·절차·사실로 제한.
             limit: 목록별 최대 출력 수.
             after: 같은 범위의 다음 페이지 시작점.
@@ -122,7 +131,13 @@ class ContextCliController:
         try:
             if task_id is not None and section is not ContextSection.CURRENT:
                 raise BadParameter("--task-id is available with --section current")
-            scope = await self.resolve.run(ResolveSessionContextQuery(session=session))
+            scope = await self.resolve.run(
+                ResolveSessionContextQuery(
+                    session=session,
+                    project_id=project_id,
+                    provider="" if provider is None else provider.value,
+                )
+            )
             if section is ContextSection.COLLABORATION:
                 data = (
                     None
@@ -214,6 +229,9 @@ class ContextCliController:
                     "provider": scope.session.provider,
                     "session": scope.session.host_session_id,
                     "turn": None if scope.execution is None else scope.execution.turn_id,
+                    "project_id": scope.session.project_id,
+                    "session_directory": scope.session.working_directory,
+                    "invocation_directory": scope.invocation_directory,
                 },
                 "tasks": [
                     {

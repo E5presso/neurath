@@ -1,4 +1,4 @@
-# Neurath 0.3.1 CLI
+# Neurath 0.4.0 CLI
 
 Neurath preserves the current request, work, context and collaboration across host events. The host agent performs the actual reasoning, editing, tools and native delegation.
 Use this installed command: `@NEURATH_COMMAND@`. The host session and project are resolved automatically. Never invent native identities or ask the user to re-enter existing instructions. No Neurath approval token is required.
@@ -12,11 +12,16 @@ For work needing a procedure, read the selected SKILL.md from the index below; d
 Reading a skill or mentioning its name is not a started run. Confirm the returned run ID and current phase, perform the actual work with host tools, and report the phase's verified checks and evidence through `workflow report`. The existing runner owns phase attempts, result evaluation and completion conditions. Skill selection never expands the user's requested scope or grants additional execution or publishing permission.
 
 When current work context is needed, use `@NEURATH_COMMAND@ context show`. Read original sources with `context show --section sources`; select messages and work from `context show --section collaboration`. Use the host tools for actual work.
+When preserved unfinished work or accepted evaluation would be affected by a status-only or explanatory response, interpret the current original with `session interpret --kind status --reason ...`. Add `--pause` when the current request excludes execution in this turn; Stop then returns control immediately while preserving tasks and phases. This is the agent's interpretation of the actual original, not a keyword classifier or a mode the user must select. A real new requirement or a mixed request remains `prompt`, including requirements missing from TODO. Never relabel an existing task requirement to avoid evaluation. Interpretation reasons are retained in memory and original text remains available to reviewers.
+Do not represent a response-only turn as task cancellation, an external dependency wait, or success. The next actual work turn resumes the same preserved task/run; a current authorized resumption can use `session resume`. Simple conversation without affected work requires no task, workflow, or extra interpretation procedure.
+An observed host address identifies its session even when a tool runs from another cwd. Context reports the original session directory and actual invocation directory separately. If that address has multiple observed project links, use the observed provider and returned project ID with `context show --provider/--project-id`; do not merge unrelated projects or invent a new session.
 
+For an existing peer conversation, send a reply with `collaboration send --recipient ADDRESS --title ... --body ... --reply-to MESSAGE_ID`; use the returned conversation_id and reply_to rather than starting another conversation. `collaboration read` submits the full original then records read; `collaboration ack --message-id ID` explicitly acknowledges a read message. `collaboration close --conversation-id ID` closes only that conversation, preserving messages and unfinished tasks. None of these means assignment acceptance or task success.
+For a real storage failure, `maintenance record-failure --detail ... --reference ...` preserves an independent journal even while the core is unavailable. After restoring the core in the authorized repair scope, `maintenance repair` (or `--journal PATH`) connects original journal entries idempotently; do not ask the user to re-enter symptoms. `maintenance failures` and `failure --incident-id ID` only read. Report actual reproduction/fix/regression with `maintenance repair --incident-id ID --kind KIND --detail ... --reference ...`; regression requires --passed or --failed, and --resolve EXPLANATION only succeeds after ordered passing evidence. `maintenance diagnose --incident-id ID` explicitly records real re-observation. `maintenance handoff-failure --incident-id ID --destination ...` or --replacement-id links unresolved work without claiming resolution. Preserve the original journal and task state; no approval token or new lease is required.
 Context lists default to 20 items (maximum 100). Follow each non-null cursor with the same session, section and task filter plus `--after ID`; collect that cursor's named list independently until its cursor is null. The sources section returns `{sources, next_after_id}`. Memory search also returns `next_after_id`; a full final page may require one empty follow-up. A page is not the complete TODO or all original instructions. `--task-id` filters only the current section and retains session-wide original-source references.
 Use `maintenance version` to inspect the invoked distribution without opening the store. JSON stdout is the result; successful command execution alone is not task success.
 
-Built-in skill definitions and installed SKILL.md instructions share the packaged catalog. Start a selected project/user procedure with `workflow start --task-id ID --skill NAME --definition @file.json` (or `--definition -` with stdin). The JSON object supplies version, phases with key/purpose/checks, optional string-valued inputs and optional source pointing to the selected SKILL.md; its source text is snapshotted without editing that file. Starting records the procedure, not completed work.
+Packaged built-in skill definitions and Neurath-owned SKILL.md instructions share the catalog. An existing same-name user/project SKILL.md takes precedence and is preserved; installation skips only that built-in file and reports skill_overrides. The built-in index and packaged catalog describe defaults, not the preserved specialist source. Read the selected actual source and use its faithful custom definition, even when its name matches a built-in. Shared SKILL.md files are host-neutral: replace <current-host-command> with the actual installed command given by this host guide; do not execute that placeholder or use another host wrapper. Start a selected project/user procedure with `workflow start --task-id ID --skill NAME --definition @file.json` (or `--definition -` with stdin). The JSON object supplies version, phases with key/purpose/checks, optional string-valued inputs and optional source pointing to the selected SKILL.md; its source text is snapshotted without editing that file. Starting records the procedure, not completed work.
 Read an existing run with `workflow show --run-id ID`; its definition and attempts survive catalog or source changes. Use `workflow revise` for method changes in the same run and retain required result evaluation. For nested or finishing work, reuse an unchanged valid evaluation instead of creating a new review task or recursive reviewer. Report only the current phase's actually verified checks.
 
 ## Built-in procedure index
@@ -38,6 +43,12 @@ Read an existing run with `workflow show --run-id ID`; its definition and attemp
 
 ## Commands
 
+- `collaboration ack` — 읽은 메시지의 수신을 확인하며 작업 수락이나 성공으로 바꾸지 않는다.
+  - `--message-id`: required
+  - `--auth-token`: optional
+- `collaboration close` — 참여 중인 대화만 종료하고 원 메시지·미완료 작업을 보존한다.
+  - `--conversation-id`: required
+  - `--auth-token`: optional
 - `collaboration delegate` — 원 작업의 수행 또는 현재 후보의 독립 평가를 실제 수신 경로에 연결한다.
   - `--task-id`: required
   - `--scope`: required
@@ -62,10 +73,13 @@ Read an existing run with `workflow show --run-id ID`; its definition and attemp
   - `--title`: required
   - `--body`: required
   - `--key`: optional
+  - `--reply-to`: optional
   - `--auth-token`: optional
 - `context show` — 현재 호스트의 실제 원문과 다음 작업을 필요한 영역별로 반환한다.
   - `--session`: optional
   - `--section`: optional choices=current,sources,collaboration,memory
+  - `--provider`: optional choices=codex,claude
+  - `--project-id`: optional
   - `--task-id`: optional
   - `--limit`: optional
   - `--after`: optional
@@ -109,6 +123,19 @@ Read an existing run with `workflow show --run-id ID`; its definition and attemp
   - `--directory`: optional
   - `--provider`: optional
   - `--host-session-id`: optional
+  - `--incident-id`: optional
+  - `--auth-token`: optional
+- `maintenance failure` — 원 장애의 증상·재현·수정·회귀·이관 이력을 변경 없이 읽는다.
+  - `--incident-id`: required
+  - `--auth-token`: optional
+- `maintenance failures` — 기존 장애를 읽기만 하며 journal 연결은 명시적 repair로 수행한다.
+  - `--after`: optional
+  - `--limit`: optional
+  - `--auth-token`: optional
+- `maintenance handoff-failure` — 미해결 사건을 이관하거나 기존 대체 사건에 연결하고 해결로 기록하지 않는다.
+  - `--incident-id`: required
+  - `--destination`: optional
+  - `--replacement-id`: optional
   - `--auth-token`: optional
 - `maintenance initialize` — 원본을 보존하고 명시적으로 현재 저장소 스키마를 준비한다.
   - `--database`: optional
@@ -122,6 +149,15 @@ Read an existing run with `workflow show --run-id ID`; its definition and attemp
 - `maintenance record-failure` — 업무 명령을 실행할 수 없어도 원인과 남은 일을 복구 기록에 남긴다.
   - `--detail`: required
   - `--reference`: required
+  - `--auth-token`: optional
+- `maintenance repair` — journal을 코어에 복원하거나 기존 장애에 실제 수리 근거·해결을 기록한다.
+  - `--journal`: optional
+  - `--incident-id`: optional
+  - `--kind`: optional choices=observation,reproduction,fix,regression
+  - `--detail`: optional
+  - `--reference`: optional repeatable
+  - `--passed`: optional
+  - `--resolve`: optional
   - `--auth-token`: optional
 - `maintenance version` — DB를 열지 않고 현재 호출된 배포본의 설치 버전을 반환한다.
   - `--auth-token`: optional
@@ -256,6 +292,12 @@ Read an existing run with `workflow show --run-id ID`; its definition and attemp
   - `--auth-token`: optional
 - `newsroom subscribe` — 현재 대화의 뉴스룸 제목 알림을 설정하고 다른 주제 구독은 유지한다.
   - `--enabled`: optional
+  - `--auth-token`: optional
+- `session interpret` — 현재 원문에 대한 판단을 연결하고 필요한 경우 이번 턴만 제어권을 반환한다.
+  - `--kind`: required choices=prompt,status
+  - `--reason`: required
+  - `--pause`: optional
+  - `--source-id`: optional
   - `--auth-token`: optional
 - `session preview` — 원문·작업·runner·현재 맥락을 소유권 변경 없이 인수 전에 미리 본다.
   - `--project-id`: optional

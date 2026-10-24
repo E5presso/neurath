@@ -22,11 +22,13 @@ class OpenIncidentCommand(AbstractCommand):
         symptom: 처음 관찰한 증상 원문.
         references: 원문과 실행 결과로 돌아갈 출처 목록.
         project_id: 관련 프로젝트의 외래 키이며 전역 장애는 None.
+        origin: journal에서 복원한 원문 출처이며 새 사건은 None.
     """
 
     symptom: str
     references: Sequence[str]
     project_id: UUID | None = None
+    origin: str | None = None
 
 
 @UseCase()
@@ -54,8 +56,18 @@ class OpenIncidentUseCase(IAsyncCommandUseCase[OpenIncidentCommand, Incident]):
         Returns:
             Incident: 원 작업 상태와 독립적인 장애 기록.
         """
+        if command.origin is not None:
+            existing = await self.incidents.find_by_origin(command.origin)
+            if existing is not None:
+                return existing
         if command.project_id is not None:
             await self.projects.get(command.project_id)
         return await self.incidents.save(
-            Incident.create(command.project_id, command.symptom, command.references)
+            Incident.create(
+                command.project_id,
+                command.symptom,
+                command.references
+                if command.origin is None
+                else (command.origin, *command.references),
+            )
         )

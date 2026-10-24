@@ -1,6 +1,7 @@
 """환경·Git 관찰을 DB 조회 밖에서 수행하고 현재 명령의 세션을 결정한다."""
 
 import asyncio
+from dataclasses import replace
 from typing import override
 from uuid import UUID
 
@@ -75,7 +76,7 @@ class ResolveSessionContextUseCase(IAsyncQueryUseCase[ResolveSessionContextQuery
         native = query.session or environment.session
         if query.session_id is not None:
             native = ""
-        return await self.read.run(
+        scope = await self.read.run(
             ReadSessionScopeQuery(
                 directory=Project.root_for(observation),
                 native_session=native,
@@ -85,3 +86,5 @@ class ResolveSessionContextUseCase(IAsyncQueryUseCase[ResolveSessionContextQuery
                 session_id=query.session_id,
             )
         )
+
+        return replace(scope, invocation_directory=query.directory or environment.directory)

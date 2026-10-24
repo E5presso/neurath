@@ -110,12 +110,17 @@ async def test_invalid_install_plan_leaves_user_files_and_database_unchanged(tmp
         }[kind]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content)
-    with pytest.raises((ValueError, FileExistsError)):
-        await PosixInstallationService(PosixSkillCatalogService()).install(
-            ProviderKind.CODEX, str(tmp_path), str(tmp_path / "data")
-        )
+    service = PosixInstallationService(PosixSkillCatalogService())
+    if kind == "skill":
+        result = await service.install(ProviderKind.CODEX, str(tmp_path), str(tmp_path / "data"))
+        assert result.skill_overrides == {"qa": str(path.resolve())}
+        assert Path(result.command).is_file()
+        assert (tmp_path / "data/neurath/core.sqlite3").exists()
+    else:
+        with pytest.raises((ValueError, FileExistsError)):
+            await service.install(ProviderKind.CODEX, str(tmp_path), str(tmp_path / "data"))
+        assert not (tmp_path / "data/neurath/core.sqlite3").exists()
     assert path.read_text() == content
-    assert not (tmp_path / "data/neurath/core.sqlite3").exists()
 
 
 async def test_install_rollback_restores_previous_settings(tmp_path, monkeypatch):

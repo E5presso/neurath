@@ -1,5 +1,6 @@
 """로컬 호스트 설정의 Neurath 관리 영역만 원본 보존 후 갱신한다."""
 
+import hashlib
 import json
 import os
 import re
@@ -125,7 +126,7 @@ class PosixInstallationService(IInstallationService):
 
         Raises:
             ValueError: 실제 디렉터리가 없거나 설정이 올바른 객체가 아닌 경우.
-            FileExistsError: Neurath 소유가 아닌 실행 파일·스킬을 덮어써야 하는 경우.
+            FileExistsError: Neurath 소유가 아닌 실행 파일·가이드를 덮어써야 하는 경우.
             Exception: 파일 적용 실패 시 원래 설정을 복원한 뒤 원 오류를 전파한다.
         """
         root = Path(directory).expanduser().resolve(strict=True)
@@ -159,18 +160,36 @@ exec {shlex.quote(sys.executable)} -I -m neurath.entrypoint "$@"
             "@NEURATH_SKILLS@", str(skills)
         )
         rules = root / ("AGENTS.md" if provider is ProviderKind.CODEX else "CLAUDE.md")
+        guide_path = managed / "guide.md"
+        guide_marker = f"<!-- neurath:provider-guide:{provider.value} -->"
+        if guide_path.exists() and not guide_path.read_text().startswith(guide_marker):
+            raise FileExistsError(f"Unowned provider guide was preserved: {guide_path}")
+        routing = self._guide_routing(root, provider, rules)
+        existing_rules = self._legacy_rules(root, rules)
         planned: dict[Path, str] = {
             executable: wrapper,
-            rules: self._managed(rules.read_text() if rules.exists() else "", instructions),
+            guide_path: f"{guide_marker}\n{instructions}",
+            rules: self._managed(existing_rules, routing),
         }
+        overrides: dict[str, str] = {}
         for entry in catalog:
             name = entry.workflow.skill
             path = skills / name / "SKILL.md"
             old = path.read_text() if path.exists() else ""
-            if old and "<!-- neurath:begin -->" not in old:
-                raise FileExistsError(f"Existing user skill was preserved: {path}")
+            if path.exists() and not any(
+                marker in old for marker in ("<!-- neurath:begin -->", "<!-- neurath:end -->")
+            ):
+                overrides[name] = str(path.resolve())
+                instructions = "\n".join(
+                    f"- [{name}](<{path}>) — Preserved user/project override. Read this actual source; packaged catalog metadata does not describe it. Use `workflow start --task-id ID --skill {name} --definition @file.json` with its faithful phases and source."
+                    if line.startswith(f"- [{name}](")
+                    else line
+                    for line in instructions.split("\n")
+                )
+                continue
             initial = self._skill_header(old, name, f"{entry.use_when}. 제외: {entry.exclude}")
-            planned[path] = self._managed(initial, self._skill_body(entry, executable))
+            planned[path] = self._managed(initial, self._skill_body(entry))
+        planned[guide_path] = f"{guide_marker}\n{instructions}"
         hooks_path = config / ("hooks.json" if provider is ProviderKind.CODEX else "settings.json")
         document: dict[str, object] = (
             json.loads(hooks_path.read_text()) if hooks_path.exists() else {}
@@ -193,11 +212,23 @@ exec {shlex.quote(sys.executable)} -I -m neurath.entrypoint "$@"
         ]
         if provider is ProviderKind.CODEX:
             events.append("Interrupt")
-        for name in events:
-            groups = hooks.setdefault(name, [])
+        legacy = self._legacy_launcher(root)
+        legacy_verified = (
+            legacy is not None
+            and self._legacy_digest(root, hooks_path)
+            == hashlib.sha256(hooks_path.read_bytes()).hexdigest()
+            if hooks_path.exists()
+            else False
+        )
+        for name, groups in tuple(hooks.items()):
             if not isinstance(groups, list):
                 raise ValueError("Host hook groups must be arrays")
-            retained = [group for group in groups if not self._managed_hook(group, hook_command)]
+            hooks[name] = self._retain_hooks(
+                groups, hook_command, root / ".neurath/run", provider, legacy_verified
+            )
+        for name in events:
+            retained = hooks.setdefault(name, [])
+            assert isinstance(retained, list)
             group: dict[str, object] = {
                 "hooks": [
                     {
@@ -224,6 +255,7 @@ exec {shlex.quote(sys.executable)} -I -m neurath.entrypoint "$@"
                 database=str(database),
                 changed_files=tuple(str(path) for path in changed),
                 backups=(),
+                skill_overrides=overrides,
                 host_action="Preview only; no files, database or native host were changed. "
                 + legacy_retained,
                 planned_files={str(path): body for path, body in planned.items()},
@@ -272,9 +304,234 @@ exec {shlex.quote(sys.executable)} -I -m neurath.entrypoint "$@"
             database=str(database),
             changed_files=tuple(str(path) for path in changed),
             backups=tuple(backups),
+            skill_overrides=overrides,
             host_action="Files applied. Native hook trust and sandbox access remain the host's decisions. Review changed hooks with /hooks if requested, then verify SessionStart and a real CLI request; no trust hashes or permissions were forged. "
             + legacy_retained,
         )
+
+    @staticmethod
+    def _guide_routing(root: Path, provider: ProviderKind, rules: Path) -> str:
+        """공유 파일에는 호스트별 상대 참조만 두어 설치 순서로 명령이 바뀌지 않게 한다.
+
+        Args:
+            root: 명시한 설치 루트.
+            provider: 이번에 설치하는 호스트.
+            rules: 해당 호스트가 읽는 지침 파일.
+
+        Returns:
+            str: 현재 호스트를 명시적으로 선택하는 프로젝트 상대 guide 참조.
+        """
+        other_rules = root / ("CLAUDE.md" if provider is ProviderKind.CODEX else "AGENTS.md")
+        shared = rules.exists() and other_rules.exists() and rules.samefile(other_rules)
+        lines = [
+            "# Neurath host guides",
+            "",
+            "Read only the guide for the host running this conversation. Follow existing user/project instructions. Each guide contains that host's installed CLI, skill selection, and recovery instructions; do not use another host's wrapper or infer a new session identity.",
+            "",
+        ]
+        for host in ProviderKind:
+            relative = (
+                Path(".codex" if host is ProviderKind.CODEX else ".claude") / "neurath/guide.md"
+            )
+            guide = root / relative
+            if (
+                host is provider
+                or shared
+                and guide.is_file()
+                and guide.read_text().startswith(f"<!-- neurath:provider-guide:{host.value} -->")
+            ):
+                lines.append(
+                    f"- {host.value}: [Read the {host.value} CLI and skills guide](<{relative.as_posix()}>)."
+                )
+        return "\n".join(lines)
+
+    @staticmethod
+    def _legacy_digest(root: Path, path: Path) -> str | None:
+        """구형 manifest가 기록한 해당 경로의 digest만 읽고 활성화 값을 신뢰 근거로 쓰지 않는다.
+
+        Args:
+            root: 명시한 프로젝트 루트.
+            path: 소유 범위를 대조할 실제 대상.
+
+        Returns:
+            str | None: 인식한 파일 기록의 SHA256 또는 미확인.
+        """
+        manifest = root / ".neurath/install.json"
+        if not manifest.is_file():
+            return None
+        data = json.loads(manifest.read_text())
+        if (
+            not isinstance(data, dict)
+            or data.get("server") != "neurath"
+            or not isinstance(data.get("files"), dict)
+        ):
+            return None
+        paths = [path.relative_to(root).as_posix()]
+        resolved = path.resolve()
+        if resolved.is_relative_to(root):
+            paths.append(resolved.relative_to(root).as_posix())
+        for key in paths:
+            digest = data["files"].get(key)
+            if isinstance(digest, str) and re.fullmatch("[0-9a-fA-F]{64}", digest):
+                return digest.lower()
+        return None
+
+    @classmethod
+    def _legacy_launcher(cls, root: Path) -> Path | None:
+        """주석 없는 구형 launcher도 현재 바이트·manifest·정확한 실행 대상을 함께 대조한다.
+
+        Args:
+            root: 요청한 프로젝트 루트.
+
+        Returns:
+            Path | None: 실제 옛 설치로 확인한 launcher 또는 미확인.
+        """
+        path = root / ".neurath/run"
+        if (
+            not path.is_file()
+            or cls._legacy_digest(root, path) != hashlib.sha256(path.read_bytes()).hexdigest()
+        ):
+            return None
+        data = json.loads((root / ".neurath/install.json").read_text())
+        commands = [
+            shlex.split(line) for line in path.read_text().splitlines() if line.startswith("exec ")
+        ]
+        if len(commands) != 1:
+            return None
+        tokens = commands[0]
+        if (
+            len(tokens) != 8
+            or tokens[:6] != ["exec", data.get("python"), "-I", "-m", "neurath", "--root"]
+            or tokens[-1] != "$@"
+            or Path(tokens[6]).resolve() != root
+        ):
+            return None
+        return path
+
+    @classmethod
+    def _legacy_rules(cls, root: Path, rules: Path) -> str:
+        """정확한 구형 관리 영역만 바꾸며 변경된 외부 사용자 정책은 그대로 보존한다.
+
+        Args:
+            root: 요청한 프로젝트 루트.
+            rules: 물리적으로 공유될 수도 있는 지침 경로.
+
+        Returns:
+            str: 구형 블록을 신형 관리 경계로 이어 놓은 원문.
+
+        Raises:
+            ValueError: 경계·본문·manifest 소유 항목이 불명확한 경우.
+        """
+        existing = rules.read_text() if rules.exists() else ""
+        begin, end = "<!-- neurath:managed -->", "<!-- /neurath:managed -->"
+        if begin not in existing and end not in existing:
+            return existing
+        if (
+            existing.count(begin) != 1
+            or existing.count(end) != 1
+            or existing.index(end) < existing.index(begin)
+        ):
+            raise ValueError(
+                "Legacy Neurath instruction boundaries are damaged; original file was preserved"
+            )
+        start, finish = existing.index(begin), existing.index(end) + len(end)
+        body = existing[start + len(begin) : existing.index(end)]
+        digest = cls._legacy_digest(root, rules)
+        known = digest is not None and (
+            digest == hashlib.sha256(rules.read_bytes()).hexdigest()
+            or "neurath" in body.lower()
+            and "mcp" in body.lower()
+        )
+        if not known or "<!-- neurath:begin -->" in body or "<!-- neurath:end -->" in body:
+            raise ValueError(
+                "Legacy Neurath instruction ownership is unclear; original block and user policy were preserved"
+            )
+        if "<!-- neurath:begin -->" in existing or "<!-- neurath:end -->" in existing:
+            return existing[:start] + existing[finish:]
+        return existing.replace(begin, "<!-- neurath:begin -->").replace(
+            end, "<!-- neurath:end -->"
+        )
+
+    @staticmethod
+    def _old_hook(value: object, launcher: Path, provider: ProviderKind) -> bool:
+        """공백·인용 차이와 무관하게 정확한 옛 hook 인자만 대조한다.
+
+        Args:
+            value: 기존 handler의 명령 값.
+            launcher: 구형 launcher의 실제 위치.
+            provider: 설정을 소유한 호스트.
+
+        Returns:
+            bool: 추가 명령이나 인자 없는 정확한 옛 호출인지 여부.
+        """
+        if not isinstance(value, str):
+            return False
+        try:
+            arguments = shlex.split(value)
+        except ValueError:
+            return False
+        return (
+            len(arguments) == 4
+            and Path(arguments[0]).is_absolute()
+            and Path(arguments[0]).resolve() == launcher
+            and arguments[1:3] == ["hook", "--provider"]
+            and arguments[3]
+            in (["codex"] if provider is ProviderKind.CODEX else ["claude", "claude-code"])
+        )
+
+    @classmethod
+    def _retain_hooks(
+        cls,
+        groups: list[object],
+        command: str,
+        launcher: Path,
+        provider: ProviderKind,
+        legacy_verified: bool,
+    ) -> list[object]:
+        """확인된 handler만 제거하고 mixed group의 다른 명령과 속성을 보존한다.
+
+        Args:
+            groups: 실제 호스트의 기존 사건 그룹.
+            command: 현재 설치의 정확한 새 명령.
+            launcher: 구형 설치가 사용한 정확한 launcher 위치.
+            provider: 해당 설정의 실제 호스트.
+            legacy_verified: launcher와 훅 파일의 manifest digest가 모두 일치하는지 여부.
+
+        Returns:
+            list[object]: 관계없는 handler와 그룹의 원래 자료.
+
+        Raises:
+            ValueError: 옛 명령이 있으나 소유를 확인하지 못해 중복 전환을 피해야 하는 경우.
+        """
+        retained = []
+        for group in groups:
+            if cls._managed_hook(group, command):
+                continue
+            if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+                retained.append(group)
+                continue
+            handlers = []
+            removed = False
+            for handler in group["hooks"]:
+                value = (
+                    handler.get("command", "")
+                    if isinstance(handler, dict) and handler.get("type") == "command"
+                    else ""
+                )
+                old = cls._old_hook(value, launcher, provider)
+                if old and not legacy_verified:
+                    raise ValueError(
+                        "Legacy hook ownership is unverified; original configuration was preserved without adding a competing handler"
+                    )
+                if value != command and not old:
+                    handlers.append(handler)
+                else:
+                    removed = True
+            if not removed:
+                retained.append(group)
+            elif handlers:
+                retained.append({**group, "hooks": handlers})
+        return retained
 
     @staticmethod
     def _legacy_mcp(root: Path, provider: ProviderKind) -> tuple[dict[Path, str], str]:
@@ -309,6 +566,20 @@ exec {shlex.quote(sys.executable)} -I -m neurath.entrypoint "$@"
             and "# neurath-managed" in launcher.read_text(errors="replace")
             and arguments
             and arguments[0] in {"mcp", "serve"}
+        )
+        legacy = PosixInstallationService._legacy_launcher(root)
+        legacy_arguments = [
+            "mcp",
+            "--provider",
+            "codex" if provider is ProviderKind.CODEX else "claude-code",
+        ]
+        owned = owned or (
+            legacy is not None
+            and launcher.is_absolute()
+            and launcher.resolve() == legacy
+            and arguments == legacy_arguments
+            and PosixInstallationService._legacy_digest(root, path)
+            == hashlib.sha256(path.read_bytes()).hexdigest()
         )
         retained = "Legacy MCP entry named neurath was retained because ownership is unverified. Read that exact entry and replace only its Neurath invocation with the installed grouped CLI; do not retry cached MCP calls."
         if not owned:
@@ -361,17 +632,16 @@ exec {shlex.quote(sys.executable)} -I -m neurath.entrypoint "$@"
         return f"---\n{fields}\n---\n{body}"
 
     @staticmethod
-    def _skill_body(entry: SkillDescription, executable: Path) -> str:
+    def _skill_body(entry: SkillDescription) -> str:
         """각 스킬의 실제 선택·입력·단계·결과와 기존 CLI 사용을 연결한다.
 
         Args:
             entry: runner와 같은 원천에서 읽은 스킬 계약.
-            executable: 설치된 CLI 경로.
 
         Returns:
             str: 해당 요청에 필요한 절차와 결과 조건.
         """
-        command = shlex.quote(str(executable))
+        command = "<current-host-command>"
         workflow = entry.workflow
         distribution = (
             f"""## 정확한 배포본 업데이트
@@ -419,6 +689,8 @@ exec {shlex.quote(sys.executable)} -I -m neurath.entrypoint "$@"
 
 ## 기존 작업에 연결
 
+이 파일은 여러 호스트가 공유할 수 있는 절차다. 프로젝트의 `AGENTS.md`/`CLAUDE.md` 관리 영역에서 현재 대화를 실행하는 호스트의 guide를 먼저 읽는다. 그 guide의 `Use this installed command`에 나온 실제 명령으로 아래 `<current-host-command>`를 대체하고 모든 CLI 호출에 같은 명령을 사용한다. 이 표기를 그대로 실행하거나 다른 호스트 wrapper·새 세션 신원을 추정하지 않는다.
+
 `{command} context show`와 `context show --section sources`의 모든 관련 페이지를 읽는다. 스킬을 읽은 것만으로 수행·완료를 기록하지 않는다. 단순 대화에는 task나 workflow가 필요 없다.
 이미 있는 작업을 선택한다. 실제 수행할 일이 원장에 없을 때만 `task create --title ... --result ...`로 연결한다. 새 절차는 `workflow start --task-id ... --skill {workflow.skill}`로 시작한다. 현재 단계의 작업은 호스트의 추론·파일·명령·네이티브 협업 도구로 수행한다.
 호스트에서 실제 확인한 뒤 `workflow report --run-id ... --summary ... --reference ... --check <현재 단계 checks의 항목>`으로 보고한다. 여러 조건이면 --check를 반복하며 확인하지 않은 조건은 통과시키지 않는다.
@@ -446,5 +718,8 @@ exec {shlex.quote(sys.executable)} -I -m neurath.entrypoint "$@"
         if not isinstance(handlers, list) or not handlers:
             return False
         return all(
-            isinstance(handler, dict) and handler.get("command") == command for handler in handlers
+            isinstance(handler, dict)
+            and handler.get("type") == "command"
+            and handler.get("command") == command
+            for handler in handlers
         )
