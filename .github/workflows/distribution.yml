@@ -1,0 +1,23 @@
+name: distribution-candidate
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked
+      - name: Require current generated guide and all checks
+        run: uv run --locked python tools/check.py
+      - name: Build exact source candidate with packaged provenance
+        run: uv run --locked python tools/build_release.py --output release-candidate
+      - name: Record artifact identities
+        run: sha256sum release-candidate/*.whl > release-candidate/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-candidate
+          path: release-candidate/*
+          if-no-files-found: error

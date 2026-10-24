@@ -70,6 +70,33 @@ Read an existing run with `workflow show --run-id ID`; its definition and attemp
   - `--limit`: optional
   - `--after`: optional
   - `--auth-token`: optional
+- `distribution apply` — 명시적으로 선택한 후보를 적용하고 실제 새 CLI 호출을 검증한다.
+  - `--candidate`: required
+  - `--provider`: required choices=codex,claude
+  - `--directory`: required
+  - `--data-home`: required
+  - `--auth-token`: optional
+- `distribution check` — 공식 릴리스 없음·조회 실패·관찰과 현재 artifact 일치를 구분한다.
+  - `--installed`: optional
+  - `--auth-token`: optional
+- `distribution guide` — 진행 중 세션이 현재 호출 배포본의 실제 안내 본문을 다시 읽도록 반환한다.
+  - `--auth-token`: optional
+- `distribution plan` — 선택 후보와 파일 변경 전후를 개인 계획 파일에 연결한다.
+  - `--candidate`: required
+  - `--provider`: required choices=codex,claude
+  - `--directory`: required
+  - `--data-home`: required
+  - `--auth-token`: optional
+- `distribution prepare` — 정확한 wheel을 별도 환경에 준비하며 현재 호스트 설정은 바꾸지 않는다.
+  - `--wheel`: required
+  - `--store`: required
+  - `--source-commit`: optional
+  - `--auth-token`: optional
+- `distribution recover` — 새 DB 기록·사건을 유지하고 해당 설치 전 실행·가이드만 복원한다.
+  - `--receipt`: required
+  - `--auth-token`: optional
+- `distribution verify` — 현재 실행의 실제 명령과 패키지 가이드를 대조하고 내용 식별을 반환한다.
+  - `--auth-token`: optional
 - `hook handle` — 표준입력의 네이티브 훅 JSON을 처리합니다.
   - `--provider`: required choices=codex,claude
   - `--bypass`: optional
@@ -90,6 +117,7 @@ Read an existing run with `workflow show --run-id ID`; its definition and attemp
   - `--provider`: required choices=codex,claude
   - `--directory`: required
   - `--data-home`: optional
+  - `--preview`: optional
   - `--auth-token`: optional
 - `maintenance record-failure` — 업무 명령을 실행할 수 없어도 원인과 남은 일을 복구 기록에 남긴다.
   - `--detail`: required

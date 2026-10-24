@@ -1,7 +1,7 @@
 """호스트 소유 설정을 보존하며 CLI·가이드·스킬·훅을 함께 연결하는 계약이다."""
 
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from spakky.core.common.mutability import immutable
 
@@ -18,6 +18,7 @@ class InstallationResult:
         changed_files: 실제 갱신한 Neurath 소유 파일/영역.
         backups: 변경 전 보존한 파일과 DB 스냅샷.
         host_action: 호스트가 별도로 요구하는 실제 활성화 안내.
+        planned_files: 내부 배포 계획이 요청한 파일 본문이며 일반 적용은 None.
     """
 
     command: str
@@ -25,6 +26,7 @@ class InstallationResult:
     changed_files: Sequence[str]
     backups: Sequence[str]
     host_action: str
+    planned_files: Mapping[str, str] | None = None
 
 
 class IInstallationService(ABC):
@@ -47,7 +49,12 @@ class IInstallationService(ABC):
 
     @abstractmethod
     async def install(
-        self, provider: ProviderKind, directory: str, data_home: str | None
+        self,
+        provider: ProviderKind,
+        directory: str,
+        data_home: str | None,
+        *,
+        preview: bool = False,
     ) -> InstallationResult:
         """지정 호스트 설정의 Neurath 소유 영역만 적용한다.
 
@@ -55,6 +62,7 @@ class IInstallationService(ABC):
             provider: 실제 설치 대상 호스트.
             directory: 사용자 홈 또는 명시한 프로젝트 루트.
             data_home: 격리 검증 등에 명시한 데이터 홈. None이면 사용자 기본 경로.
+            preview: 파일·DB를 변경하지 않고 계획만 반환할지 여부.
 
         Returns:
             InstallationResult: 파일 적용 결과이며 hook trust·활성화 성공은 별도다.

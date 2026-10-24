@@ -31,6 +31,7 @@ class PollTaskMonitorCommand(AbstractCommand):
         session: 실제 네이티브 세션 주소.
         directory: 호스트가 관찰한 현재 폴더.
         provider: 실제 호스트 공급자.
+        transition_event_id: 실제 전환 큐 사건이며 일반 콜백은 None.
     """
 
     task_id: UUID
@@ -38,6 +39,7 @@ class PollTaskMonitorCommand(AbstractCommand):
     session: str = ""
     directory: str = ""
     provider: str = ""
+    transition_event_id: UUID | None = None
 
 
 @immutable
@@ -115,6 +117,7 @@ class PollTaskMonitorUseCase(IAsyncCommandUseCase[PollTaskMonitorCommand, PollTa
                 execution_id=previous.owner_execution_id,
                 generation=previous.generation,
                 notify=False,
+                transition_event_id=command.transition_event_id,
             )
         )
         events = tuple(

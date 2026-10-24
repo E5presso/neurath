@@ -119,6 +119,7 @@ class MaintenanceCliController:
         provider: Annotated[ProviderKind, Option("--provider")],
         directory: Annotated[str, Option("--directory")],
         data_home: str | None = None,
+        preview: bool = False,
     ) -> None:
         """지정한 실제 호스트의 지침·스킬·훅을 다른 설정과 함께 설치한다.
 
@@ -126,8 +127,11 @@ class MaintenanceCliController:
             provider: 설치할 호스트.
             directory: 사용자 홈 또는 프로젝트 루트.
             data_home: 격리 검증용 데이터 홈 또는 사용자 기본 경로.
+            preview: 파일·DB를 바꾸지 않고 변경 대상만 조회할지 여부.
         """
         result = await self.install.run(
-            InstallHostCommand(provider=provider, directory=directory, data_home=data_home)
+            InstallHostCommand(
+                provider=provider, directory=directory, data_home=data_home, preview=preview
+            )
         )
         echo(json.dumps(asdict(result), ensure_ascii=False))

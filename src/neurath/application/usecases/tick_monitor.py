@@ -48,6 +48,7 @@ class TickMonitorCommand(AbstractCommand):
         execution_id: 현재 자원 소유 실행.
         generation: 조회 시 확인한 자원 세대.
         notify: 독립 알림 어댑터 사용 여부. 네이티브 콜백은 실제 응답으로 전달한다.
+        transition_event_id: 실제 전환 큐 사건이며 일반 콜백은 None.
     """
 
     project_id: UUID
@@ -57,6 +58,7 @@ class TickMonitorCommand(AbstractCommand):
     execution_id: UUID
     generation: int
     notify: bool = True
+    transition_event_id: UUID | None = None
 
 
 @UseCase()
@@ -110,6 +112,7 @@ class TickMonitorUseCase(IAsyncCommandUseCase[TickMonitorCommand, TaskMonitor]):
                 monitor_number=command.monitor_number,
                 execution_id=command.execution_id,
                 generation=command.generation,
+                transition_event_id=command.transition_event_id,
             )
         )
         query = GetMonitorQuery(
@@ -176,6 +179,7 @@ class TickMonitorUseCase(IAsyncCommandUseCase[TickMonitorCommand, TaskMonitor]):
                 state=observation.state,
                 reference=observation.reference,
                 error=observation.error,
+                transition_event_id=command.transition_event_id,
             )
         )
 
