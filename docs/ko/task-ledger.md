@@ -3,7 +3,7 @@
 [문서 안내](index.md) · [코어 기반](core-foundation.md) · [English](../en/task-ledger.md)
 
 #140은 사용자 요구와 정정, 현재 작업, 실행 시도의 제출·관찰 결과를 같은 SQLite 원장에
-연결합니다. 현재 비동기 Python 요청 API이며 훅 CLI는 #142에서 제공하고 업무 CLI는 후속 범위입니다. [phase runner](workflow-runner.md)는 #141에서 연결합니다.
+연결합니다. 비동기 요청 API는 `task create/update/report`와 실제 호스트 훅에 연결됩니다. [phase runner](workflow-runner.md)는 #141에서 연결합니다.
 
 ## 도메인과 저장
 

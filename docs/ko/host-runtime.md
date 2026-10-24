@@ -2,53 +2,38 @@
 
 [문서 목록](index.md) · [태스크 원장](task-ledger.md) · [단계 실행](workflow-runner.md) · [English](../en/host-runtime.md)
 
-이 모듈은 #142의 요청별 런타임 라이브러리입니다. 현재 설치된 Codex·Claude 설정을 바꾸지 않습니다. 훅 진입점은 spakky-typer로 제공합니다. 관리 명령은 [복구 문서](recovery.md), 나머지 업무 CLI·설치 연결은 #148·#151에서 이어갑니다.
+에이전트는 Codex·Claude의 기존 대화 안에서 실행합니다. 설치한 rules가 현재 CLI와 스킬을 안내하고, 호스트가 전달한 실제 사건을 훅이 코어에 보존합니다. 코어는 요청마다 같은 사용자 SQLite를 조회하며 모델·셸·파일 편집·네이티브 자식 생성은 호스트 도구가 수행합니다.
 
-## 실행과 작성의 구분
+## 원문에서 실제 작업까지
 
-`Execution`은 등록된 호스트 세션과 실제 `agent_id`를 연결합니다. 루트는 빈 자식 ID를 사용합니다. 다른 provider 루트는 기존 세션의 provider 범위로 구분합니다. `SessionStart.source`의 시작·재개·포크·압축 원인을 보존하되, 그 문자열이나 네이티브 ID를 권한 증명으로 사용하지 않습니다.
+`SessionStart`는 프로젝트와 실제 세션·자식 주소를 연결하고 현재 기억을 복원합니다. `UserPromptSubmit`는 원문을 TODO와 독립적으로 보존합니다. 에이전트는 `context show`와 `context show --section sources`로 원문을 확인하고 작업이 필요한 요청에만 태스크와 스킬 절차를 선택합니다. 단순 질문에는 태스크를 만들지 않습니다.
 
-Codex의 `turn_id`, Claude의 `prompt_id`를 그대로 저장합니다. 식별자가 없는 구형 호스트도 읽기·진단은 가능하지만 현재 턴을 확정해야 하는 변경·종료는 미확인으로 중지합니다. 새 메시지는 턴만 갱신합니다. 취소·중지된 작업을 자동 재개하지 않으며, 실제 재개 지시는 `ResumeExecutionUseCase`가 처리합니다. 재개는 이전 작성의 종료를 대신하지 않습니다.
+Codex의 `turn_id`와 Claude의 `prompt_id`가 있으면 그대로 사용합니다. 호스트가 이를 제공하지 않으면 실제 수신 사건에 내부 `observed:` 순번을 부여합니다. 내부 순번은 네이티브 신원이나 승인 증명이 아닙니다. 도구 사건은 현재 관찰된 턴과 실제 도구 호출 ID에 연결합니다. 같은 문장의 별도 사용자 발화를 합치지 않습니다.
 
-`Writer`는 공유 작업 폴더의 작성 실행·턴·도구 호출·세대를 관리합니다. 같은 Git 작업 트리의 하위 디렉터리는 하나의 작성 범위이며 서로 다른 worktree는 분리됩니다. 읽기·진단·자식의 조회에는 작성 임대를 요구하지 않습니다. 현재 작업 폴더 작성 도구로 해석하는 이름은 `Edit`·`Write`·`Bash`·`apply_patch`·`exec_command`입니다. 다른 작업 폴더 작성 도구를 연결할 때도 그 효과를 명시합니다. 작업 트리 생성·삭제·보관은 호스트 도구의 책임입니다.
+현재 CLI는 호스트 환경·실제 작업 폴더·저장된 주소로 프로젝트·세션·피어를 찾습니다. Claude에는 공식 `CLAUDE_ENV_FILE`을 통해 주소를 전달합니다. 모호한 여러 세션에서 하나를 임의로 선택하지 않으며, `--session`으로 이미 관찰된 주소를 선택할 수 있습니다. 사용자에게 내부 UUID나 낙관적 revision을 관리하도록 요구하지 않습니다.
 
-두 요청의 동시 취득은 기존 SQLite 쓰기 트랜잭션과 저장소 버전 검사로 직렬화합니다. 같은 호출의 재전달은 동일 세대를 반환하며 다른 호출은 충돌합니다. 오래된 소유자·세대의 회수는 현재 임대를 해제하지 못합니다.
+## 작성 충돌과 도구 권한
 
-## 훅 계약
+`Writer`는 `Edit`·`Write`·`apply_patch` 입력에 명시된 실제 파일 경로의 동시 작성만 조정합니다. 패치의 여러 파일은 함께 취득하거나 전체 롤백합니다. `Bash`·`exec_command`를 이름만으로 쓰기로 분류하거나 작업 폴더 전체에 임대를 걸지 않습니다. 읽기·진단·재개·일반 셸 호출은 Neurath의 별도 도구 허가 절차를 거치지 않습니다.
 
-`neurath hook handle --provider codex` 또는 `--provider claude`는 stdin의 호스트 JSON을 읽고 stdout에 제어 JSON 하나를 반환합니다. `HookCliController`는 `@CliController`·`@command`로 스캔되며 비동기 `ReceiveHookUseCase`를 직접 주입받습니다. 세션 등록·훅 적용은 유스케이스의 `AsyncTransaction`에서 수행합니다. 지원 계약은 [Codex 훅 스키마](https://github.com/openai/codex/blob/main/codex-rs/hooks/src/schema.rs)와 [Claude 훅 문서](https://code.claude.com/docs/en/hooks)에 근거합니다.
+실제 동일 파일의 충돌만 `PreToolUse.permissionDecision: deny`로 반환합니다. 과거 실행의 paused/cancelled 상태만으로 일반 도구를 차단하지 않습니다. 호스트 자체의 권한·샌드박스 결정은 그대로 적용됩니다. 같은 호출의 재전달은 같은 작성 세대를 사용하며 오래된 결과는 새 소유자를 해제하지 못합니다.
 
-| 사건 | 처리 |
-| --- | --- |
-| `SessionStart`, `SubagentStart` | 실제 세션·자식 연결과 시작 원인을 보존. 기존 중지를 자동 해제하지 않음 |
-| `UserPromptSubmit` | 실제 턴을 기록. 같은 턴의 재전달은 취소를 되돌리지 않음 |
-| `PreToolUse` | 읽기는 임대 없이 통과. 쓰기는 현재 실행 상태와 작성 소유자를 검사 |
-| `PostToolUse`, `PostToolUseFailure` | 동일 실행·턴·호출의 확인된 작성 종료만 해제. 실제 중단 표시는 취소로 구분 |
-| `Interrupt` | Codex의 실제 중단 사건을 해당 턴에 기록 |
-| `StopFailure` | 장애로 일시 중지하고 미완료 작업을 유지 |
-| `Stop`, `SubagentStop` | 최신 적용 태스크와 phase 진행으로 계속·대기·종료를 결정 |
-| `SessionEnd` | 연결 종료를 기록. 태스크 성공이나 미확인 작성 해제로 바꾸지 않음 |
+동기 파일 호출의 `PostToolUse`·`PostToolUseFailure`, 후속 실제 사용자 턴, `SessionEnd`에서 종료가 확인되는 해당 호출을 해제합니다. 직접 관리한 외부 프로세스는 실제 프로세스 관찰이 필요하며, 빈 요청별 프로세스 맵을 호스트 전체의 관찰로 사용하지 않습니다. PID를 추측하거나 앱 전체를 종료하지 않습니다.
 
-허용 결과 `{}`는 호스트의 네이티브 권한 판단을 그대로 거칩니다. 미완료 수행에는 `decision:block`과 TODO를 반환합니다. 같은 태스크·phase 상태에서 Stop 거절이 반복되면 `continue:false`와 `stopReason`을 반환합니다. 외부 대기만 남거나 실행이 취소·중지된 경우도 제어권을 반환하며 성공을 기록하지 않습니다. 독립적인 실행 가능 작업이 남으면 대기보다 계속 수행이 우선합니다. 빈 TODO는 대화 종료를 허용하지만 목표 달성 증명으로 쓰지 않습니다.
+## 종료·대기·재개
 
-Stop은 평가자를 새로 생성하지 않습니다. 제3자 결과 평가 phase의 구성은 #138에서 담당하며, 연결된 필수 phase가 끝나기 전 태스크 성공을 막는 기존 runner 계약을 사용합니다. 자식에게 루트 TODO를 자동 전가하지 않습니다. 위임 태스크 연결은 #144에서 실제 배정을 기준으로 확장합니다.
+`Stop`·`SubagentStop`은 현재 적용되는 TODO와 phase 진행을 결정론적으로 검사하며 모델을 호출하지 않습니다. 실행 가능한 미완료 작업에는 `decision: block`과 다음 작업을 반환합니다. 같은 상태의 반복 거절에는 제어권을 돌려주어 모델 루프를 끝냅니다. 외부 대기만 남으면 정상 대기로 양보하며 실패·취소·대기를 성공으로 저장하지 않습니다.
 
-## 실제 종료와 불명 결과
+대기 해소는 Task의 표준 도메인 사건을 통해 정상 WAITING 실행과 피어를 함께 재개합니다. 취소·장애를 대기 해소로 지우지 않습니다. 새로운 실제 사용자 턴은 새 실행을 시작할 수 있지만, 취소한 태스크·감시·인수한 옛 작업의 소유권은 그대로입니다. 연결 종료는 이미 요청된 외부 감시 자체의 취소가 아닙니다.
 
-Codex unified-exec는 도구를 `Bash`로 정규화하고 프로세스가 종료된 뒤에만 해당 `PostToolUse`를 발생시킵니다. 그 문자열 결과는 종료 사건으로만 사용합니다. 출력이 잘렸거나 실패했을 수 있으므로 성공·전체 읽음 근거로 바꾸지 않습니다. 근거는 [현재 실행 결과 구현](https://github.com/openai/codex/blob/main/codex-rs/core/src/tools/context.rs)입니다.
+선택한 스킬의 독립 결과 평가는 runner 안에서 실제 피어·자식·provider에 위임합니다. 원문과 전체 TODO를 제공하고, 보고를 읽어 관련 결과를 반영한 후 작업 결과를 보고합니다. Stop마다 새 평가자를 만들지 않고 자식에게 무관한 루트 TODO를 전가하지 않습니다.
 
-Claude의 동기 `Bash` 결과는 `stdout`·`stderr`·`interrupted` 계약을 확인합니다. 백그라운드 핸들, 실행 중 세션 ID, 종료를 알 수 없는 결과에서는 임대를 유지합니다. 이런 실행의 회수에는 해당 실행기가 제공하는 `IWriterObserverService`의 실제 종료 관찰이 필요합니다. 현재 포함한 구체 어댑터는 실행기가 `Popen(start_new_session=True)`로 직접 생성한 POSIX 프로세스 그룹용 `PosixWriterObserverService`입니다. 외부 호스트 실행을 PID 추측으로 인수하거나 호스트 앱 전체를 종료하지 않습니다.
+## 응답·장애·검증
 
-`CancelExecutionUseCase`는 추가 쓰기를 중지하고 `ExecutionCancellationRequested`를 기록합니다. `RecoverWriterUseCase`는 현재 임대 세대를 검사하고 `WriterRecoveryRequested`를 기록합니다. 커밋 뒤 이벤트 어댑터가 InterruptExecution 또는 ObserveWriter 유스케이스를 호출합니다. 해당 유스케이스가 DB 잠금 없이 호스트를 관찰하고 결과 이벤트를 발행합니다. 이벤트 어댑터는 그 결과를 ConfirmCancellation 또는 ReleaseWriter의 입력으로 변환하여 호출합니다. 이때 턴·소유자·세대를 다시 대조합니다. 요청의 반환값은 관찰 완료를 뜻하지 않으며 최신 DB 상태가 종료·회수의 근거입니다. 핸들러 실패 시 paused/활성 임대를 보존합니다.
+`neurath hook handle --provider codex|claude`는 실제 호스트 JSON 한 건에 JSON 한 건을 출력합니다. 메시지·기사 제목과 감시 변화의 제출은 stdout 반환 이후에만 기록합니다. 본문 읽음·ACK·작업 수락·성공과는 별개입니다. 출력 실패는 독립 복구 기록에 남기며 정상 전달을 꾸며 쓰지 않습니다.
 
-DB·훅 장애는 `continue:false`와 복구 안내로 반환합니다. 명시적 `--bypass`는 차단만 중지하고 가능한 턴·중단·종료 관찰을 유지합니다. DB 장애에서는 기록 미확인을 표시하며 독립 복구 기록을 시도합니다. 이 인자를 네이티브 승인으로 사용하지 않습니다. 반환된 `stopReason`·TODO는 호스트에 전달할 본문이며 JSON 생성만으로 사용자가 알림을 수신했다고 기록하지 않습니다. 운영 진단과 복원 검증은 [복구 명령](recovery.md), 설치 연결은 #151의 범위입니다.
+일반 훅·DB 장애는 기록 미확인을 알리고 복구 도구를 사용할 수 있게 합니다. Stop 장애와 변화 없는 감시 콜백은 모델 작업을 반복시키지 않고 종료합니다. `--bypass`는 하네스 집행만 우회하며 네이티브 승인이나 성공을 만들지 않습니다. [복구](recovery.md)에서 진단 경로를 설명합니다.
 
-## 저장과 검증
+설치는 `maintenance install`이 관리 영역만 갱신합니다. 호스트 신뢰 승인은 호스트가 판단하며 설치 성공·훅 JSON 생성·실제 모델 전달은 서로 다른 검증입니다. [Codex 계약](https://learn.chatgpt.com/docs/hooks)과 [Claude 계약](https://code.claude.com/docs/en/hooks)에 맞춰 실제 호스트를 별도 검증합니다.
 
-`core_0005`는 실행과 작성 임대 테이블을 추가합니다. 이전 세션에서 현재 실행·승인·성공을 추정해 채우지 않습니다. 실행 또는 임대 기록이 있으면 파괴적인 downgrade를 거부합니다.
-
-회귀 시험은 실제 SQLite 동시 취득·재시작·늦은 결과·취소·명시적 재개·자식 읽기·phase 진전·외부 대기·DB 장애·우회를 확인합니다. 실제 프로세스로 중단 대상 분리와 종료 관찰을 검증합니다. 이 시험을 통과한 것을 사용자 호스트에 설치·활성화됐다는 증거로 보고하지 않습니다.
-
-SQLite 기본 URL은 `sqlite+aiosqlite`입니다. 명시적 연결 설정은 Spakky의 `SPAKKY_SQLALCHEMY__CONNECTION_STRING`을 사용하며, Spakky의 기본 비동기 지원을 끄지 않습니다. 도움말은 DB 트랜잭션을 열지 않습니다. `--bypass`는 가능한 수명 관찰을 저장하지만 저장 실패가 우회를 막지 않습니다. 설치 스크립트가 사용자 훅에 이 명령을 연결하는 작업은 아직 수행하지 않았습니다.
-
-CLI 진입점은 공식 Typer 가이드에 따라 `neurath.cli:cli`입니다. 모듈 전역의 Typer 객체를 컨테이너에서 가져오며 프로세스 종료 시 앱을 정리합니다. 비동기 엔진은 명령의 이벤트 루프에서 정리합니다. 호스트 JSON의 사건 문자열은 transport에서 `HookEvent`로 변환하며 지원하지 않는 사건은 DB 작업 전에 거절합니다.
+일반 DB 요청은 지연 트랜잭션으로 시작하고 조회가 쓰기 잠금을 선점하지 않습니다. 명시적 스키마 이전만 쓰기를 예약하며, 외부 관찰과 모델 실행 동안 DB 트랜잭션을 유지하지 않습니다. 롤백된 동일 세션 등록·훅 경합은 유한하게 재조회합니다. 실행·작성·배정 이력은 `core_0014` 이전에서도 보존합니다.

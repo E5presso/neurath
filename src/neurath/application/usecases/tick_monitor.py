@@ -47,6 +47,7 @@ class TickMonitorCommand(AbstractCommand):
         monitor_number: 정확한 감시 순번.
         execution_id: 현재 자원 소유 실행.
         generation: 조회 시 확인한 자원 세대.
+        notify: 독립 알림 어댑터 사용 여부. 네이티브 콜백은 실제 응답으로 전달한다.
     """
 
     project_id: UUID
@@ -55,6 +56,7 @@ class TickMonitorCommand(AbstractCommand):
     monitor_number: int
     execution_id: UUID
     generation: int
+    notify: bool = True
 
 
 @UseCase()
@@ -119,6 +121,8 @@ class TickMonitorUseCase(IAsyncCommandUseCase[TickMonitorCommand, TaskMonitor]):
         if prepared is not None:
             await self._observe(command, prepared, query)
         current = await self.query.run(query)
+        if not command.notify:
+            return current
         for event in current.events:
             if event.notice_status not in (NoticeStatus.WRITTEN, NoticeStatus.FAILED):
                 continue

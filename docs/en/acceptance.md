@@ -18,7 +18,7 @@ These are full-product validation criteria. The [core foundation](core-foundatio
 | A08 | A phase command actually fails | Retain failed attempt; do not advance required work before a justified retry |
 | A09 | A phase requires independent semantic review | Consume the actual candidate/reviewer result rather than a claimed pass |
 | A10 | Response lost after an external effect; runner restarts | Use read-back/deduplication first; with neither, retain unknown outcome without blind resend |
-| A11 | Attempt to skip optional and required phases | Allow only defined conditions or actual scope correction; retain reason/history |
+| A11 | Attempt to skip optional and required phases | Retain reasons/history for method revisions without requiring a user-goal correction; evaluate the original result |
 | A12 | User instruction or verification target changes mid-run | Reassess affected phases/evidence and preserve prior definitions/results |
 | A13 | Finish the last phase, run, and task | No duplicate finalization; distinguish procedure completion from user success |
 | A14 | New task added after a read before Stop | Deterministically inspect completion of every current task; reject stale-turn completion and new unfinished work |
@@ -67,13 +67,13 @@ These are full-product validation criteria. The [core foundation](core-foundatio
 | A61 | DB and notification delivery fail together | Expose unfinished work through available host/recovery surfaces; impossible delivery remains unconfirmed; no inference loop |
 | A62 | Managed execution passes but actual user connection remains untested | Do not report full rollout until actual hook/CLI/delegation outcomes are verified on that connection |
 | A63 | Commit/worktree creation/simple code explanation | Use host tools without unnecessary skills/runners |
-| A64 | Inspect core CLI and default skill lists | Match 20 core commands/14 skills; no MCP server/adapter or reexposed internal aliases |
+| A64 | Inspect core CLI and default skill lists | Match actual grouped commands/14 skills; no MCP server/adapter or reexposed internal aliases |
 | A65 | Leases/ACK/finalization and truncated body | Derive internally from actual events; no fabricated identity/consent/success; truncated body is not confirmed read |
 | A66 | Run selected default and project specialist skills | Complete their procedure/outcomes; default removal is not capability deletion or human handwork |
 | A67 | Public interface changes during an old skill run | Retain pinned definition/original work; direct cached calls to replacement; preserve project skills without failure loops |
 | A68 | Specify behavior/execution plan and implement including UI | define-spec includes requirements/behavior/execution order/validation; implement-spec performs UI checks without separate plan/implement-ui calls |
 | A69 | Context/result/review/delegation for the same work | Bounded context, attributed role/evidence, no duplicate delegation or arbitrary dispatcher |
-| A70 | Inspect public command names and help | 20 core neurath command paths; actual help and installed guide agree |
+| A70 | Inspect public command names and help | Actual grouped neurath command paths; actual help and installed guide agree |
 | A71 | Validate/apply improvement during a user-requested retrospective | Start from ordinary conversational instruction; controls/effect/retraction; no user-facing harness skill or consent certificate |
 | A72 | Context loss or explicit session resume/adoption | Automatic restoration or session resume retains originals/unfinished work/runner without a recover-session skill |
 | A73 | Peer conveys work within existing instructions | Perform normally; nonhuman authorship alone triggers no rejection, repeated human input, hash or signature |
@@ -107,3 +107,7 @@ These are full-product validation criteria. The [core foundation](core-foundatio
 5. Test migration/rollback/resumption on copies of actual data, then perform requested release, project updates, live activation and finish-session.
 
 Record implemented outcomes and unfinished work at each stage. Documents or simulated tests do not establish actual host validation or full implementation completion.
+
+[#138: Result evaluation and reflection implementation](result-evaluation.md)
+
+Actual-entry-point regressions live in `tests/test_host_flow.py` and `tests/test_host_installation.py`: pre-output receipts, read-side writer locks, repeated model work on unchanged monitoring, complete context restoration, and preserved settings on conflict/failure. Native activation remains a separately reported verification boundary.

@@ -9,11 +9,14 @@ from uuid import UUID, uuid7
 from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 
+from neurath.domain.aggregates.delegation import Delegation
 from neurath.domain.aggregates.task import Task
+from neurath.domain.enums.reflection_choice import ReflectionChoice
 from neurath.domain.enums.task_status import TaskStatus
 from neurath.domain.errors import ContextNotFound, InvalidWorkflowState, RevisionConflict
 from neurath.domain.events.phase_execution_requested import PhaseExecutionRequested
 from neurath.domain.events.phase_waiting_recorded import PhaseWaitingRecorded
+from neurath.domain.values.evaluation_target import EvaluationKind
 from neurath.domain.values.phase_attempt import PhaseAttempt, PhaseResult, PhaseStatus
 from neurath.domain.values.workflow_definition import (
     PhaseDefinition,
@@ -33,6 +36,8 @@ class WorkflowRun(AbstractAggregateRoot[UUID]):
         revisions: 최초 정의와 후속 수정의 순서 있는 이력.
         attempts: 실제 실행·선택 단계 생략·결과 불명 이력.
         revision: 저장소가 갱신하는 낙관적 잠금 버전.
+        reflection: 미제안·제안·요청·거절·무응답의 선택 상태.
+        reflection_context: 문제 또는 실제 사용자 발화의 근거.
     """
 
     project_id: UUID
@@ -41,6 +46,8 @@ class WorkflowRun(AbstractAggregateRoot[UUID]):
     revisions: Sequence[WorkflowRevision]
     attempts: Sequence[PhaseAttempt] = ()
     revision: int = 1
+    reflection: ReflectionChoice = ReflectionChoice.UNASKED
+    reflection_context: str = ""
 
     @classmethod
     @override
@@ -215,6 +222,12 @@ class WorkflowRun(AbstractAggregateRoot[UUID]):
             PhaseDefinition | None: 다음 처리할 단계. 모두 끝났으면 None.
         """
         for phase in self.definition.phases:
+            if (
+                phase.evaluation is not None
+                and phase.evaluation.kind is EvaluationKind.REFLECTION
+                and self.reflection is not ReflectionChoice.REQUESTED
+            ):
+                continue
             if self.status_for(phase) not in (PhaseStatus.SUCCEEDED, PhaseStatus.SKIPPED):
                 return phase
         return None
@@ -286,6 +299,25 @@ class WorkflowRun(AbstractAggregateRoot[UUID]):
             return
         if settled:
             raise InvalidWorkflowState("A settled phase result cannot be overwritten")
+        phase = self.phase_for(attempt)
+        if phase.evaluation is not None:
+            raise InvalidWorkflowState("Consume the independent evaluation report instead")
+        self._report(attempt, result, notify_waiting=notify_waiting)
+
+    def _report(
+        self, attempt: PhaseAttempt, result: PhaseResult, *, notify_waiting: bool = False
+    ) -> None:
+        """검증된 실행 또는 독립 보고를 기존 시도에 반영한다.
+
+        Args:
+            attempt: 실제 예약한 시도.
+            result: 대조한 결과.
+            notify_waiting: 새 대기 안내 사건을 발행할지 여부.
+
+        Raises:
+            InvalidWorkflowState: 대상·검사·출력 한도가 맞지 않는 경우.
+        """
+        number = attempt.number
         phase = self.phase_for(attempt)
         if result.target_revision != phase.target_revision:
             raise InvalidWorkflowState("Result belongs to another target revision")
@@ -365,7 +397,7 @@ class WorkflowRun(AbstractAggregateRoot[UUID]):
             reason: 방법 변경 또는 사용자 정정의 이유.
 
         Raises:
-            InvalidWorkflowState: 이유가 없거나 요구 정정 없이 필수 단계를 삭제한 경우.
+            InvalidWorkflowState: 변경 이유가 없는 경우.
         """
         if not reason.strip():
             raise InvalidWorkflowState("Workflow revision requires a reason")
@@ -374,14 +406,6 @@ class WorkflowRun(AbstractAggregateRoot[UUID]):
             and task_definition_number == self.revisions[-1].task_definition_number
         ):
             return
-        required = {phase.key for phase in self.definition.phases if phase.skip_condition is None}
-        retained = {phase.key for phase in definition.phases if phase.skip_condition is None}
-        if task_definition_number == self.revisions[
-            -1
-        ].task_definition_number and not required.issubset(retained):
-            raise InvalidWorkflowState(
-                "Required phases need an actual task correction before removal"
-            )
         self.revisions = tuple(self.revisions) + (
             WorkflowRevision(
                 definition=deepcopy(definition),
@@ -411,7 +435,14 @@ class WorkflowRun(AbstractAggregateRoot[UUID]):
         Args:
             attempt: 새로 예약했거나 결과를 조정할 기존 시도.
             fresh: 새 실행이면 True이며 기존 시도는 먼저 결과를 조회한다.
+
+        Raises:
+            InvalidWorkflowState: 독립 평가를 일반 명령으로 실행하려는 경우.
         """
+        if self.phase_for(attempt).evaluation is not None:
+            raise InvalidWorkflowState("Evaluation uses the existing collaboration route")
+        if not self.phase_for(attempt).arguments:
+            return
         self.add_event(
             PhaseExecutionRequested(
                 project_id=self.project_id,
@@ -422,6 +453,203 @@ class WorkflowRun(AbstractAggregateRoot[UUID]):
                 fresh=fresh,
             )
         )
+
+    def requires_evaluation(self, phase: PhaseDefinition) -> bool:
+        """현재 사용자 선택에서 결과 보고에 필요한 평가만 구분한다.
+
+        Args:
+            phase: 현재 정의의 단계.
+
+        Returns:
+            bool: 결과 평가 또는 사용자가 계속 요청한 회고 평가이면 True.
+        """
+        return phase.evaluation is not None and (
+            phase.evaluation.kind is EvaluationKind.RESULT
+            or self.reflection is ReflectionChoice.REQUESTED
+        )
+
+    def evaluation_phase(self, key: str) -> PhaseDefinition:
+        """명시한 평가 단계를 찾으며 일반 실행 단계를 평가로 오인하지 않는다.
+
+        Args:
+            key: 정의에 있는 평가 단계 이름.
+
+        Returns:
+            PhaseDefinition: 현재 평가 정의.
+
+        Raises:
+            InvalidWorkflowState: 해당 평가 단계가 없는 경우.
+        """
+        for phase in self.definition.phases:
+            if phase.key == key and phase.evaluation is not None:
+                return phase
+        raise InvalidWorkflowState("Independent evaluation phase does not exist")
+
+    def require_evaluation(self, phase: PhaseDefinition) -> None:
+        """실제 외부 배정 전에 단계 순서와 회고 선택을 확인한다.
+
+        Args:
+            phase: 실행하려는 평가 정의.
+
+        Raises:
+            InvalidWorkflowState: 일반 단계·미요청 회고·선행 작업 미완료인 경우.
+        """
+        if phase.evaluation is None:
+            raise InvalidWorkflowState("Phase is not an evaluation")
+        phase.evaluation.require_ready()
+        if (
+            phase.evaluation.kind is EvaluationKind.REFLECTION
+            and self.reflection is not ReflectionChoice.REQUESTED
+        ):
+            raise InvalidWorkflowState("Reflection evaluation requires a user request")
+        for preceding in self.definition.phases:
+            if preceding == phase:
+                return
+            if (
+                preceding.evaluation is not None
+                and preceding.evaluation.kind is EvaluationKind.REFLECTION
+                and self.reflection is not ReflectionChoice.REQUESTED
+            ):
+                continue
+            if self.status_for(preceding) not in (PhaseStatus.SUCCEEDED, PhaseStatus.SKIPPED):
+                raise InvalidWorkflowState("Complete preceding phases before evaluation")
+        raise InvalidWorkflowState("Evaluation phase is not in this workflow")
+
+    def choose_reflection(self, choice: ReflectionChoice, reason: str) -> None:
+        """문제가 있으면 한 번 제안하고 일반 수락·거절·무응답을 보존한다.
+
+        Args:
+            choice: offered·requested·declined·unanswered 중 사용자 선택 분기.
+            reason: 관찰한 문제 또는 사용자 발화의 근거.
+
+        Raises:
+            InvalidWorkflowState: 지원하지 않는 선택 또는 근거 없는 요청인 경우.
+        """
+        if choice is ReflectionChoice.UNASKED or not reason.strip():
+            raise InvalidWorkflowState("Reflection requires an ordinary choice and its context")
+        if choice is ReflectionChoice.OFFERED and self.reflection is not ReflectionChoice.UNASKED:
+            return
+        if choice in (ReflectionChoice.DECLINED, ReflectionChoice.UNANSWERED):
+            for attempt in tuple(self.attempts):
+                phase = self.phase_for(attempt)
+                if (
+                    phase.evaluation is not None
+                    and phase.evaluation.kind is EvaluationKind.REFLECTION
+                    and attempt.status in (PhaseStatus.RUNNING, PhaseStatus.WAITING)
+                ):
+                    retired = replace(attempt, status=PhaseStatus.SKIPPED, skip_reason=reason)
+                    self.attempts = tuple(
+                        retired if item.number == attempt.number else item for item in self.attempts
+                    )
+        self.reflection = choice
+        self.reflection_context = reason
+
+    def bind_evaluation(
+        self, phase: PhaseDefinition, delegation: Delegation, candidate: str
+    ) -> PhaseAttempt:
+        """현재 평가 단계에 기존 배정을 연결하고 중복 대기 시도를 만들지 않는다.
+
+        Args:
+            phase: 요청한 현재 평가 정의.
+            delegation: 검증·저장된 독립 검토 배정.
+            candidate: 현재 관련 요구·산출물의 내용 지문.
+
+        Returns:
+            PhaseAttempt: 배정과 연결한 현재 평가 시도.
+
+        Raises:
+            InvalidWorkflowState: 평가 단계가 아니거나 배정이 다른 후보인 경우.
+        """
+        if phase.evaluation is None or delegation.candidate != candidate:
+            raise InvalidWorkflowState("Evaluation must match the current phase and candidate")
+        self.require_evaluation(phase)
+        previous = self.latest(phase)
+        if previous is not None and previous.delegation_id == delegation.uid:
+            return previous
+        for old in self.attempts:
+            if old.phase_key != phase.key or old.status not in (
+                PhaseStatus.RUNNING,
+                PhaseStatus.WAITING,
+            ):
+                continue
+            retired = replace(
+                old,
+                status=PhaseStatus.FAILED,
+                result=PhaseResult(
+                    status=PhaseStatus.FAILED,
+                    target_revision=self.phase_for(old).target_revision,
+                    summary="Related candidate changed; original delegation report remains available",
+                ),
+            )
+            self.attempts = tuple(
+                retired if item.number == old.number else item for item in self.attempts
+            )
+        attempt = PhaseAttempt(
+            number=len(self.attempts) + 1,
+            definition_number=len(self.revisions),
+            phase_key=phase.key,
+            status=PhaseStatus.RUNNING,
+        )
+        self.attempts = (*self.attempts, attempt)
+        updated = replace(attempt, delegation_id=delegation.uid, candidate=candidate)
+        self.attempts = (*self.attempts[:-1], updated)
+        return updated
+
+    def consume_evaluation(
+        self,
+        number: int,
+        delegation: Delegation,
+        candidate: str,
+        *,
+        accepted: bool,
+        rationale: str,
+        references: Sequence[str],
+    ) -> None:
+        """독립 보고를 현재 후보와 대조하고 실행자의 근거 있는 수용 판단을 보존한다.
+
+        평가자의 지적 자체는 새 사용자 요구나 태스크 성공이 아니다. 미달 수용은
+        실패로 남기며 기존 revise 경로로 관련 수행 단계를 다시 진행한다.
+
+        Args:
+            number: 배정이 연결된 평가 시도.
+            delegation: 실제 수신한 검토 배정과 보고.
+            candidate: 현재 관련 요구·산출물의 내용 지문.
+            accepted: 원문·근거와 대조한 최종 충족 여부.
+            rationale: 오판 기각을 포함하는 실행자의 판단 근거.
+            references: 그 판단을 뒷받침하는 원문·검증 참조.
+
+        Raises:
+            InvalidWorkflowState: 독립 보고·후보·근거가 없거나 이미 확정한 경우.
+        """
+        attempt = next((item for item in self.attempts if item.number == number), None)
+        if attempt is None or not self.applies_to_current(number):
+            raise InvalidWorkflowState("Evaluation attempt is no longer current")
+        if (
+            attempt.delegation_id != delegation.uid
+            or attempt.candidate != candidate
+            or delegation.candidate != candidate
+            or delegation.sender_id == delegation.recipient_id
+            or delegation.stop_reason is not None
+        ):
+            raise InvalidWorkflowState("Independent evaluation does not match this candidate")
+        report = delegation.evaluation_report()
+        if not rationale.strip() or not references or any(not ref.strip() for ref in references):
+            raise InvalidWorkflowState("Accept or reject findings against original evidence")
+        phase = self.phase_for(attempt)
+        self.require_evaluation(phase)
+        result = PhaseResult(
+            status=PhaseStatus.SUCCEEDED if accepted else PhaseStatus.FAILED,
+            target_revision=phase.target_revision,
+            summary=rationale,
+            evidence=(*report.references, *references),
+            checks=phase.checks if accepted else (),
+            output=report.summary,
+        )
+        if attempt.result == result:
+            return
+        if attempt.status in (PhaseStatus.SUCCEEDED, PhaseStatus.FAILED):
+            raise InvalidWorkflowState("A consumed evaluation cannot be overwritten")
+        self._report(attempt, result)
 
     def transfer(self, source_session_id: UUID, target_session_id: UUID) -> None:
         """원 소유자가 일치할 때 현재 소유만 옮기고 과거 이력을 유지한다.

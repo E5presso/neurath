@@ -4,7 +4,7 @@
 
 #137은 사용자 단위 SQLite 안에서 프로젝트와 세션을 요청별로 관리합니다.
 현재 의존성은 정식 Spakky 8.2.0 배포판을 사용합니다. 커밋 후 이벤트 발행·인프로세스 구성·요청 격리 수정이 포함된 이 버전으로 모든 직접 Spakky 의존성을 통일하며, `uv.lock`으로 배포 패키지를 고정합니다. 임시 Git 커밋이나 로컬 경로에는 의존하지 않습니다.
-패키지는 비동기 기반과 훅 CLI를 제공합니다. 기억·인수 CLI도 제공하며 나머지 업무 CLI·설치 전환은 후속 구현 범위입니다.
+패키지는 비동기 코어와 업무 CLI·스킬·rules·훅 설치 경로를 제공합니다. 실제 사용자 저장소 전환과 네이티브 활성화는 별도 근거로 확인합니다.
 
 ## 프레임워크 사용과 책임
 
@@ -36,8 +36,7 @@ SQLite는 `sqlite+aiosqlite`와 `AsyncSessionManager`·`AsyncTransaction`으로 
 세션·트랜잭션은 Spakky 구현이 정리합니다. CLI는 명령을 실행한 이벤트 루프가 닫히기 전에 비동기 엔진을 dispose합니다.
 
 Git 관찰은 DB 트랜잭션 전에 끝냅니다. SQLite 연결 정책은 구성 루트가
-비동기 엔진의 `sync_engine` 이벤트에 연결합니다. 쓰기는 `BEGIN IMMEDIATE`, 읽기는 URI의
-`mode=ro`와 `query_only`를 사용하고 모든 연결에서 외래 키를 강제합니다. 숨은 재시도는 없습니다.
+비동기 엔진의 `sync_engine` 이벤트에 연결합니다. 일반 요청은 `BEGIN`으로 지연 시작하고 순수 읽기는 URI의 `mode=ro`와 `query_only`도 사용할 수 있습니다. 명시적 스키마 이전만 `BEGIN IMMEDIATE`로 직렬화하며 일반 연결은 외래 키를 강제합니다. 롤백된 세션 등록·훅 DB 경합만 유한하게 재조회하며 외부 작업을 무조건 재실행하지 않습니다.
 프레임워크 저장소의 부재·낙관적 충돌 오류는 그대로 전파하며 CLI 경계에서 호스트 응답으로 표현합니다.
 
 네이티브 ID는 `(project_id, provider, host_session_id)`로 구분합니다. 재등록은 최신 작업
@@ -63,7 +62,7 @@ Project 저장은 소유한 위치 관계까지 기본 merge로 반영합니다.
 
 ## 스키마와 보존
 
-명시적 초기화는 배포된 Alembic head까지 적용합니다. 현재 head는 `core_0005`입니다.
+명시적 초기화는 배포된 Alembic head까지 적용합니다. 현재 head는 `core_0014`입니다.
 `core_0002`는 메타데이터·프로젝트 revision·위치 소유 제약을, `core_0003`는
 [원문·태스크 원장](task-ledger.md)을 추가합니다. `core_0004`는 [단계 실행](workflow-runner.md)의 정의·시도 이력을 추가합니다. 적용된 이전 revision은 수정하지 않으며
 기존 ID·세션 revision·프로젝트·위치·세션 데이터와 종속 외래 키를 유지합니다.
@@ -80,14 +79,15 @@ Alembic migration 파일과 version table이 revision의 유일한 기준입니�
 ## 내부 요청 API
 
 ```python
+from uuid import UUID
 from spakky.core.pod.interfaces.container import IContainer
 from neurath.application.usecases.get_session_context import GetSessionContextQuery, GetSessionContextUseCase
 
 
-async def read_session(scope: IContainer, project_id: str, session_id: str):
+async def read_session(scope: IContainer, project_id: UUID, session_id: UUID):
     # scope는 neurath.bootstrap에서 구성한 애플리케이션의 컨테이너다.
     return await scope.get(GetSessionContextUseCase).run(
-        GetSessionContextQuery(project_id, session_id)
+        GetSessionContextQuery(project_id=project_id, session_id=session_id)
     )
 ```
 
@@ -101,9 +101,7 @@ async def read_session(scope: IContainer, project_id: str, session_id: str):
 Git/worktree/clone 구분과 명시적·동시 초기화를 검증합니다. 이전 스키마의 값·종속 자료 보존,
 반복 이전, 이전 도중 실패의 전체 롤백도 확인합니다. 검사 실행 방법은 [기여 안내](../../CONTRIBUTING.ko.md)를 참고하세요.
 
-기억·인수는 [현재 맥락·기억](memory.md)에 구현되어 있습니다. 훅 CLI의 실제 설치 연결, 협업·나머지 업무 CLI·사용자 자료 이전은 후속 티켓입니다.
-`setup`은 이 기반 후보의 설치를 거부합니다. 실제 사용자 DB와 설치된 배포본은 이번 소스
-수정으로 변경하지 않습니다.
+기억·인수·업무 CLI·스킬·rules·설치는 같은 요청 흐름으로 연결합니다. `maintenance install`은 현재 저장소와 소유 설정을 보존하며 설치합니다. 과거 하네스의 다른 DB 형식 변환은 별도 이전 범위이며 원본을 수정하지 않습니다. 소스 수정이나 설치 파일 생성만으로 실제 호스트 활성화를 주장하지 않습니다.
 
 [태스크 원장](task-ledger.md)은 #140에서 추가한 원문·정정·시도·TODO의 구현 범위입니다.
 

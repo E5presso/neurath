@@ -4,7 +4,7 @@
 
 #137 manages projects and sessions per request in a user-wide SQLite database.
 Dependencies use the official Spakky 8.2.0 release, including post-commit event publishing, in-process setup and request isolation fixes. All direct Spakky dependencies use this version, with published packages locked by `uv.lock`. No temporary Git pins or local path dependencies are required.
-The candidate provides hook, memory and handoff CLI commands; remaining commands and installation remain subsequent work.
+The candidate connects the async core, business CLI, skills, rules, and hook installation. Actual user-store cutover and native activation require separate evidence.
 
 ## Framework components and responsibilities
 
@@ -39,9 +39,7 @@ are cleaned up on normal and exceptional completion. The CLI disposes the async 
 before the command execution event loop closes.
 
 Git observation finishes before the database transaction begins. The composition root
-attaches SQLite policies to the async engine's `sync_engine` events. Writers use `BEGIN IMMEDIATE`;
-readers use URI `mode=ro` and `query_only`. All connections enforce foreign keys. There are
-no hidden retries. Framework repository not-found/version-conflict errors propagate to the
+attaches SQLite policies to the async engine's `sync_engine` events. Ordinary requests use deferred `BEGIN`; strictly read-only callers can also use URI `mode=ro` and `query_only`. Only explicit schema migration uses `BEGIN IMMEDIATE`. Normal connections enforce foreign keys. Rolled-back session-registration/hook DB conflicts receive bounded rereads, never unconditional external execution retries. Framework repository not-found/version-conflict errors propagate to the
 CLI boundary, which presents host-protocol responses.
 
 Native identifiers are scoped by `(project_id, provider, host_session_id)`.
@@ -70,7 +68,7 @@ The enclosing transaction rolls back both parent and child changes on failure.
 ## Schema and preservation
 
 Explicit initialization upgrades through the distributed Alembic head, currently
-`core_0005`. `core_0002` adds metadata, project revision and location ownership enforcement;
+`core_0014`. `core_0002` adds metadata, project revision and location ownership enforcement;
 `core_0003` adds the [source/task ledger](task-ledger.md), and `core_0004` adds [workflow definitions and attempts](workflow-runner.md). Applied revisions remain
 unchanged, preserving existing IDs, session revisions, project/location/session values
 and dependent foreign keys.
@@ -90,14 +88,15 @@ Alembic migration files and its version table define revisions. At the first dat
 ## Internal request API
 
 ```python
+from uuid import UUID
 from spakky.core.pod.interfaces.container import IContainer
 from neurath.application.usecases.get_session_context import GetSessionContextQuery, GetSessionContextUseCase
 
 
-async def read_session(scope: IContainer, project_id: str, session_id: str):
+async def read_session(scope: IContainer, project_id: UUID, session_id: UUID):
     # scope is the container of the application bootstrapped by neurath.bootstrap.
     return await scope.get(GetSessionContextUseCase).run(
-        GetSessionContextQuery(project_id, session_id)
+        GetSessionContextQuery(project_id=project_id, session_id=session_id)
     )
 ```
 
@@ -113,9 +112,7 @@ identity and explicit/concurrent initialization. Migration tests retain original
 values and dependent records, repeat initialization and verify full rollback after
 migration failure. See [Contributing](../../CONTRIBUTING.md) for running the checks.
 
-[Memory and handoff](memory.md) are implemented. Hook installation, collaboration, remaining business CLI, actual user-data migration
-and installation remain subsequent tickets. `setup` rejects installation of this
-foundation candidate. Source changes do not alter user databases or installed distributions.
+Memory, handoff, business CLI, skills, rules, and installation share the same request flow. `maintenance install` preserves the current store and owned settings. Conversion of other historical DB formats remains a separate migration boundary and never modifies the original. Source changes or generated installation files alone do not prove native activation.
 
 [Task ledger](task-ledger.md) documents the source/correction/attempt/TODO implementation added by #140.
 

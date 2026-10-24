@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import DateTime
 
 from neurath.domain.aggregates.execution import Execution
+from neurath.domain.enums.execution_pause_cause import ExecutionPauseCause
 from neurath.domain.enums.execution_status import ExecutionStatus
 
 
@@ -29,6 +30,7 @@ class ExecutionModel(AbstractMappableTable[Execution]):
         status: 실행 중·대기·취소·종료 구분.
         reason: 최근 호스트 중지나 취소 사유.
         stop_snapshot: 직전 계속 피드백에 사용한 태스크 개정과 상태.
+        pause_cause: 정상 대기·장애·취소 요청의 원인.
         revision: 저장 시 비교하는 낙관적 잠금 버전.
     """
 
@@ -52,6 +54,7 @@ class ExecutionModel(AbstractMappableTable[Execution]):
     status: Mapped[str] = mapped_column(String, nullable=False)
     reason: Mapped[str] = mapped_column(String, nullable=False)
     stop_snapshot: Mapped[str] = mapped_column(String, nullable=False)
+    pause_cause: Mapped[str | None] = mapped_column(String)
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
 
     __mapper_args__ = {"version_id_col": revision}
@@ -73,6 +76,7 @@ class ExecutionModel(AbstractMappableTable[Execution]):
             created_at=domain.created_at.astimezone(UTC).replace(tzinfo=None),
             updated_at=domain.updated_at.astimezone(UTC).replace(tzinfo=None),
             revision=domain.revision,
+            pause_cause=domain.pause_cause,
             session_id=domain.session_id,
             agent_id=domain.agent_id,
             start_source=domain.start_source,
@@ -95,6 +99,7 @@ class ExecutionModel(AbstractMappableTable[Execution]):
             created_at=self.created_at.replace(tzinfo=UTC),
             updated_at=self.updated_at.replace(tzinfo=UTC),
             revision=self.revision,
+            pause_cause=None if self.pause_cause is None else ExecutionPauseCause(self.pause_cause),
             session_id=self.session_id,
             agent_id=self.agent_id,
             start_source=self.start_source,

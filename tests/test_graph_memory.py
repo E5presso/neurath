@@ -83,9 +83,9 @@ def test_graph_update_failure_restores_original_and_preserves_failed_output(
         if failure == "relation":
             data["links"] = []
         if failure == "node":
-            data["nodes"][0]["label"] = "lost meaning"
+            data["nodes"] = data["nodes"][1:]
         if failure == "description":
-            data["links"][1]["description"] = "changed semantics"
+            data["links"][1]["relation"] = "contradicts"
         if failure == "hyperedge":
             data["hyperedges"] = []
         graph.write_text(json.dumps(data))

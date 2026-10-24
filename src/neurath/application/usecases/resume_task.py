@@ -22,6 +22,7 @@ class ResumeTaskCommand(AbstractCommand):
         task_id: 외부 대기를 해소하고 같은 시도를 재개할 태스크 ID.
         expected_revision: 수정 전에 읽은 Task.revision. 요구 개정 번호와는 별개다.
         resolution: 마지막 외부 대기를 해소한 관찰 내용 또는 참조. 공백만 있는 값은 거부한다.
+        monitor_event: 현재 감시에서 실제 해소 근거로 삼은 사건 순번.
     """
 
     project_id: UUID
@@ -29,6 +30,7 @@ class ResumeTaskCommand(AbstractCommand):
     task_id: UUID
     expected_revision: int
     resolution: str
+    monitor_event: int | None = None
 
 
 @immutable
@@ -72,5 +74,9 @@ class ResumeTaskUseCase(IAsyncCommandUseCase[ResumeTaskCommand, ResumeTaskResult
         task = await self.tasks.get(command.task_id)
         task.require_scope(command.project_id, command.session_id)
         task.require_revision(command.expected_revision)
-        task.resume(command.resolution)
+        if command.monitor_event is None:
+            task.resume(command.resolution)
+        else:
+            number = task.monitors[-1].number if task.monitors else 0
+            task.resolve_monitor(number, command.monitor_event, command.resolution)
         return ResumeTaskResult(task=(await self.tasks.save(task)))

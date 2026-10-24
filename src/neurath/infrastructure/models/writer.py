@@ -5,7 +5,7 @@ from typing import Self, override
 from uuid import UUID
 
 from spakky.plugins.sqlalchemy.orm.table import AbstractMappableTable, Table
-from sqlalchemy import ForeignKey, Integer, String, UniqueConstraint, Uuid
+from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import DateTime
 
@@ -26,6 +26,7 @@ class WriterModel(AbstractMappableTable[Writer]):
         turn_id: 실제 호스트 턴 또는 prompt ID.
         tool_use_id: 작성 결과와 대조할 실제 도구 호출 ID.
         generation: 재취득 때 증가하는 작성 세대.
+        native_sync: 실제 동기 파일 변경 사건으로 얻은 작성 관찰인지 여부.
         revision: 저장 시 비교하는 낙관적 잠금 버전.
     """
 
@@ -49,6 +50,7 @@ class WriterModel(AbstractMappableTable[Writer]):
     turn_id: Mapped[str] = mapped_column(String, nullable=False)
     tool_use_id: Mapped[str] = mapped_column(String, nullable=False)
     generation: Mapped[int] = mapped_column(Integer, nullable=False)
+    native_sync: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
 
     __mapper_args__ = {"version_id_col": revision}
@@ -70,6 +72,7 @@ class WriterModel(AbstractMappableTable[Writer]):
             created_at=domain.created_at.astimezone(UTC).replace(tzinfo=None),
             updated_at=domain.updated_at.astimezone(UTC).replace(tzinfo=None),
             revision=domain.revision,
+            native_sync=domain.native_sync,
             resource=domain.resource,
             execution_id=domain.execution_id,
             turn_id=domain.turn_id,
@@ -90,6 +93,7 @@ class WriterModel(AbstractMappableTable[Writer]):
             created_at=self.created_at.replace(tzinfo=UTC),
             updated_at=self.updated_at.replace(tzinfo=UTC),
             revision=self.revision,
+            native_sync=self.native_sync,
             resource=self.resource,
             execution_id=self.execution_id,
             turn_id=self.turn_id,

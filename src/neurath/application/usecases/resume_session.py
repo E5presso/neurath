@@ -91,6 +91,8 @@ class ResumeSessionUseCase(IAsyncCommandUseCase[ResumeSessionCommand, HostSessio
         target = await self.sessions.get(command.target_session_id)
         source.require_project(command.project_id)
         target.require_project(command.project_id)
+        if source.successor_id == target.uid:
+            return target
         target.require_current_owner()
         target_execution = await self.executions.find_by_session_id_and_agent_id(target.uid, "")
         if target_execution is None:
@@ -109,10 +111,9 @@ class ResumeSessionUseCase(IAsyncCommandUseCase[ResumeSessionCommand, HostSessio
             execution.require_stopped()
             for writer in await self.writers.find_by_execution_id(execution.uid):
                 writer.require_released()
-        if await self.enclaves.find_by_session_id(target.uid):
-            raise InvalidExecutionState(
-                "Target enclave exists; read and reconcile it before handoff"
-            )
+        target_enclaves = {
+            item.task_id: item for item in await self.enclaves.find_by_session_id(target.uid)
+        }
         source.hand_off(target, command.expected_revision)
         for task in await self.tasks.find_by_project_id(command.project_id):
             if task.owner_session_id != source.uid:
@@ -127,6 +128,14 @@ class ResumeSessionUseCase(IAsyncCommandUseCase[ResumeSessionCommand, HostSessio
             task.transfer(source.uid, target.uid)
             await self.tasks.save(task)
         for enclave in await self.enclaves.find_by_session_id(source.uid):
+            existing = target_enclaves.get(enclave.task_id)
+            if existing is not None:
+                existing.merge_from(enclave)
+                await self.enclaves.save(existing)
+                for fact in tuple(enclave.facts):
+                    enclave.remove(fact.key, enclave.revision)
+                await self.enclaves.save(enclave)
+                continue
             enclave.transfer(source.uid, target.uid)
             await self.enclaves.save(enclave)
         await self.sessions.save(source)

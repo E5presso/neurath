@@ -3,6 +3,7 @@
 from collections.abc import Sequence
 from enum import StrEnum
 from typing import override
+from uuid import UUID
 
 from spakky.core.common.mutability import immutable
 from spakky.domain.models.value_object import AbstractValueObject
@@ -80,6 +81,8 @@ class PhaseAttempt(AbstractValueObject):
         status: 시도의 현재 진행·결과 상태.
         result: 마지막 관찰 결과. 실행 예약 직후에는 None.
         skip_reason: 선택 단계 생략의 근거. 실행 시도에는 None.
+        delegation_id: 실제 평가 배정이며 일반 실행·미배정은 None.
+        candidate: 배정 당시 관련 요구·산출물의 내용 지문.
     """
 
     number: int
@@ -88,3 +91,5 @@ class PhaseAttempt(AbstractValueObject):
     status: PhaseStatus
     result: PhaseResult | None = None
     skip_reason: str | None = None
+    delegation_id: UUID | None = None
+    candidate: str = ""

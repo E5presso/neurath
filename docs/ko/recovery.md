@@ -6,7 +6,7 @@
 
 현재 기반 라이브러리는 명시적 `initialize_database`로 해당 패키지의 Alembic head까지 초기화·이전합니다. 기본 DB 경로와 스키마, 호출 예제는 [코어 기반](core-foundation.md)에 있습니다. 일반 요청은 스키마를 변경하지 않고 호환성을 확인합니다.
 
-이 초기화는 과거 하네스 DB를 새 모델로 변환하는 기능이 아닙니다. 인식하지 못한 기존 저장소는 수정하지 않고 거부합니다. 현재 `setup`도 후보 설치를 수행하지 않습니다. 기존 사용자 자료 변환은 #150, 설치 전환은 #151, 운영 진단·우회·장애 기록은 아래 관리 명령으로 제공합니다. 담당 범위는 [구현 계획](implementation-plan.md)을 참고하세요.
+`neurath maintenance initialize`는 명시적으로 현재 저장소를 초기화·이전합니다. `./setup --provider codex --directory <프로젝트>` 또는 `maintenance install`은 같은 배포본의 CLI 가이드·14개 스킬·rules·훅을 소유 영역에 설치합니다. 기존 SQLite는 backup API로 WAL을 포함해 복구 사본을 만들고 설정도 변경 전 보관합니다. 관련 없는 사용자 지침·훅·스킬은 유지하며 파일 적용 실패는 원래 설정으로 복원합니다. 다른 형식의 과거 하네스 DB를 새 모델로 변환하는 작업은 별도 이전이며, 미식별 DB를 초기화하거나 지우지 않습니다.
 
 ## 이전·복구에서 보존할 내용
 
@@ -28,12 +28,7 @@
 
 `maintenance` 그룹은 잘못된 업무 연결 URL에서도 시작할 수 있습니다. 공식 앱을 구성할 동안에만 연결하지 않는 읽기 전용 SQLite URL을 사용하고 진단 전에 원 환경 값을 복원합니다. 사용자 설정 파일이나 DB를 수정하지 않으며 진단은 원래 설정과 명시한 파일을 관찰합니다.
 
-- `incident open --symptom <증상> --reference <출처> [--project-id <ID>]`: 미해결 장애를 등록합니다.
-- `incident show --incident-id <ID>`: 원 증상·근거·이관·대체·개정을 조회합니다.
-- `incident record --incident-id <ID> --revision <개정> --kind reproduction|fix|regression --detail <실제 수행> --reference <근거>`: 재현·수정·회귀 결과를 순서대로 추가합니다. 회귀에는 `--passed` 또는 `--failed`가 필수입니다.
-- `incident refresh --incident-id <ID> --revision <개정> [진단 옵션]`: 실제 진단을 다시 실행해 새 관찰을 추가합니다.
-- `incident escalate --incident-id <ID> --revision <개정> --destination <이관 대상·사유>`와 `incident supersede --incident-id <ID> --revision <개정> --replacement-id <ID>`는 미해결 이력과 원 사건 연결을 보존합니다.
-- `incident resolve --incident-id <ID> --revision <개정> --explanation <해결 내용>`은 최신 재현 뒤 수정·회귀 성공 근거가 있어야 성공합니다. 사건 해결은 원 작업의 성공이나 완료가 아닙니다.
+장애의 원 증상·재현·수정·회귀·이관 이력은 내부 저장 계약으로 보존합니다. 별도 `incident` 관리 명령을 공개하여 사용자에게 같은 사실을 다시 등록·승격·해결하도록 요구하지 않습니다. 정상 재관찰은 기존 해결 근거를 초기화하지 않습니다. 장애 해결은 작업 성공과 구분합니다.
 
 DB 저장이 불가능하면 `maintenance record-failure --detail <원인·남은 일> --reference <원 호출>`로 `$XDG_STATE_HOME/neurath/recovery.jsonl`(기본 `~/.local/state/neurath/recovery.jsonl`)에 독립 기록을 남깁니다. 훅·장애 명령의 실패도 이 경로와 stderr 출력을 각각 한 번 시도합니다. 두 경로가 실패해도 재시도 루프나 모델 실행을 만들지 않습니다. `host_submitted`는 출력 제출이며 `delivery: unverified`는 실제 사용자 전달을 확인하지 못했다는 뜻입니다. 복구 파일은 코어 원장이나 성공 판정을 대체하지 않습니다.
 

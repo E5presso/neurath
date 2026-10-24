@@ -31,3 +31,7 @@ class InvalidWorkflowState(NeurathError):
 
 class InvalidExecutionState(NeurathError):
     """현재 턴·작성 세대·실제 실행 관찰과 일치하지 않는 런타임 요청이다."""
+
+
+class WriteConflict(InvalidExecutionState):
+    """같은 파일에 아직 끝나지 않은 다른 작성 호출이 있는 경우다."""

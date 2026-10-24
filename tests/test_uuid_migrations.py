@@ -142,7 +142,22 @@ BEGIN INSERT INTO audit_log VALUES ('must not run during migration'); END;
             str(task.uid),
         )
     await initialize_database(database)
-    assert snapshot(database) == before
+    after = snapshot(database)
+    # core_0014의 중복 제출 키는 옛 스키마에 없던 파생 인덱스다. 사용자 이력과
+    # 실제 재사용 의미는 보존하고, 재구성되는 파생 표현만 별도로 대조한다.
+    with closing(sqlite3.connect(database)) as connection:
+        columns = [row[1] for row in connection.execute("PRAGMA table_info(core_delegations)")]
+    key_index = columns.index("request_key")
+    for state in (before, after):
+        state["core_delegations"] = [
+            tuple(value for index, value in enumerate(row) if index != key_index)
+            for row in state["core_delegations"]
+        ]
+    assert after == before
+    restored_delegation = await call(
+        database, "get_delegation", "GetDelegation", delegation.uid, sender.uid, query=True
+    )
+    assert restored_delegation.request_identity == delegation.request_identity
     async with storage_scope(database, write=False) as scope:
         restored = await scope.get(ITaskRepository).get(task.uid)
         assert restored.status.value == "pending"

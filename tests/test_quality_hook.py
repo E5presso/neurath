@@ -147,6 +147,8 @@ def test_required_runner_executes_full_suite_once_with_coverage_and_build_gates(
     commands = [command for command, _ in calls]
     pytest = [command for command in commands if command[1:3] == ["-m", "pytest"]]
     assert len(pytest) == 1
+    assert pytest[0][pytest[0].index("-n") + 1] == "auto"
+    assert {"--maxprocesses=4", "--dist=worksteal"} <= set(pytest[0])
     assert {"--cov=src/neurath", "--cov-branch", "--cov-fail-under=100"} <= set(pytest[0])
     assert not any(
         argument.startswith("tests/") or argument in {"-k", "-m", "--ignore", "--deselect"}
@@ -168,6 +170,8 @@ def test_precommit_keeps_regression_tests_after_shared_static_checks(monkeypatch
     quality.main()
     assert calls[0][1:] == ["tools/static_quality.py"]
     assert len([command for command in calls if command[1:3] == ["-m", "pytest"]]) == 1
+    assert calls[1][calls[1].index("-n") + 1] == "auto"
+    assert {"--maxprocesses=4", "--dist=worksteal"} <= set(calls[1])
     assert {
         "tests/test_architecture.py",
         "tests/test_review_contracts.py",
@@ -179,6 +183,54 @@ def test_precommit_keeps_regression_tests_after_shared_static_checks(monkeypatch
     assert all("pytest" not in command for command in calls)
     assert any("tools/architecture.py" in command for command in calls)
     assert any(command[1:3] == ["-m", "pyrefly"] for command in calls)
+
+
+def test_combined_ci_coverage_keeps_full_gates_without_rerunning_tests(monkeypatch):
+    from tools import check
+
+    calls = []
+    monkeypatch.setattr(check.subprocess, "run", lambda command, **kwargs: calls.append(command))
+    check.main(combine_coverage=True)
+    assert not any("pytest" in command for command in calls)
+    assert [command[1:4] for command in calls[2:6]] == [
+        ["-m", "coverage", "combine"],
+        ["-m", "coverage", "report"],
+        ["-m", "coverage", "json"],
+        ["-m", "coverage", "xml"],
+    ]
+    assert calls[-2][1:] == ["tools/check_coverage.py"]
+    assert calls[-1][1:3] == ["-m", "build"]
+    assert not any("--fail-under=0" in command for command in calls)
+
+
+@pytest.mark.parametrize("failed_stage", [3, 4, 7])
+def test_combined_ci_failure_prevents_build(monkeypatch, failed_stage):
+    from tools import check
+
+    calls = []
+
+    def execute(command, **kwargs):
+        calls.append(command)
+        if len(calls) == failed_stage:
+            raise subprocess.CalledProcessError(1, command)
+
+    monkeypatch.setattr(check.subprocess, "run", execute)
+    with pytest.raises(subprocess.CalledProcessError):
+        check.main(combine_coverage=True)
+    assert not any(command[1:3] == ["-m", "build"] for command in calls)
+
+
+def test_ci_requires_all_test_and_coverage_partitions_before_final_gate():
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github/workflows/check.yml").read_text()
+    assert "group: [1, 2, 3, 4]" in workflow
+    assert "fail-fast: false" in workflow
+    assert "--splits 4 --group ${{ matrix.group }}" in workflow
+    assert "needs: tests" in workflow and "if: always()" in workflow
+    assert "test '${{ needs.tests.result }}' = success" in workflow
+    assert 'test -s "coverage-out/.coverage.part-$group"' in workflow
+    assert "if-no-files-found: error" in workflow
+    assert "tools/check.py --combine-coverage" in workflow
 
 
 @pytest.mark.parametrize("failed_stage", [0, 1, 2])

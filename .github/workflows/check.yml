@@ -6,13 +6,53 @@ on:
 permissions:
   contents: read
 jobs:
-  check:
+  tests:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --locked
-      - run: uv run --locked python tools/check.py
+      - name: Run test partition
+        run: >-
+          uv run --locked python -m pytest -q -n 2 --dist=worksteal
+          --splits 4 --group ${{ matrix.group }} --splitting-algorithm=least_duration
+          --cov=src/neurath --cov-branch --cov-report= --cov-fail-under=0
+          --durations=10 --junitxml=coverage-out/tests-${{ matrix.group }}.xml
+      - name: Name partition coverage
+        run: mv coverage-out/.coverage coverage-out/.coverage.part-${{ matrix.group }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-part-${{ matrix.group }}
+          path: |
+            coverage-out/.coverage.part-${{ matrix.group }}
+            coverage-out/tests-${{ matrix.group }}.xml
+          include-hidden-files: true
+          if-no-files-found: error
+  check:
+    if: always()
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every test partition to pass
+        run: test '${{ needs.tests.result }}' = success
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-part-*
+          merge-multiple: true
+          path: coverage-out
+      - name: Require every coverage partition
+        run: |
+          for group in 1 2 3 4; do
+            test -s "coverage-out/.coverage.part-$group"
+          done
+      - run: uv run --locked python tools/check.py --combine-coverage
       - name: Upload coverage reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -21,4 +61,5 @@ jobs:
           path: |
             coverage-out/coverage.json
             coverage-out/coverage.xml
+            coverage-out/tests-*.xml
           if-no-files-found: ignore

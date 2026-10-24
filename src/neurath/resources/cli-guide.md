@@ -1,0 +1,227 @@
+# Neurath 0.3.1 CLI
+
+Neurath preserves the current request, work, context and collaboration across host events. The host agent performs the actual reasoning, editing, tools and native delegation.
+Use this installed command: `@NEURATH_COMMAND@`. The host session and project are resolved automatically. Never invent native identities or ask the user to re-enter existing instructions. No Neurath approval token is required.
+
+Start with `@NEURATH_COMMAND@ context show`. Read original sources with `context show --section sources`; select messages and work from `context show --section collaboration`. Use the host tools for actual work. Simple conversation needs no workflow.
+
+## Commands
+
+- `collaboration delegate` — 원 작업의 수행 또는 현재 후보의 독립 평가를 실제 수신 경로에 연결한다.
+  - `--task-id`: required
+  - `--scope`: required
+  - `--role`: optional choices=executor,reviewer
+  - `--recipient`: optional
+  - `--provider`: optional choices=codex,claude
+  - `--model`: optional
+  - `--policy`: optional
+  - `--artifact`: optional repeatable
+  - `--verification`: optional repeatable
+  - `--retry-of`: optional
+  - `--auth-token`: optional
+- `collaboration observe` — 기존 provider의 실제 관찰 결과를 저장하며 새 모델 실행을 만들지 않는다.
+  - `--delegation-id`: required
+  - `--wait`: optional
+  - `--auth-token`: optional
+- `collaboration read` — 원 메시지 전체를 출력한 뒤에만 읽음 기록을 반영한다.
+  - `--message-id`: required
+  - `--auth-token`: optional
+- `collaboration send` — 원문 메시지를 지정 동료에게 전달하도록 저장한다.
+  - `--recipient`: required
+  - `--title`: required
+  - `--body`: required
+  - `--key`: optional
+  - `--auth-token`: optional
+- `context show` — 현재 호스트의 실제 원문과 다음 작업을 필요한 영역별로 반환한다.
+  - `--session`: optional
+  - `--section`: optional choices=current,sources,collaboration,memory
+  - `--auth-token`: optional
+- `hook handle` — 표준입력의 네이티브 훅 JSON을 처리합니다.
+  - `--provider`: required choices=codex,claude
+  - `--bypass`: optional
+  - `--auth-token`: optional
+- `hook verify` — 복원 후 실제 Stop·작성 선행 훅의 차단 경로를 우회 없이 다시 실행한다.
+  - `--provider`: required choices=codex,claude
+  - `--auth-token`: optional
+- `maintenance diagnose` — 무결성·설정·프로젝트·재개 경계를 각각 진단한다.
+  - `--database`: optional
+  - `--directory`: optional
+  - `--provider`: optional
+  - `--host-session-id`: optional
+  - `--auth-token`: optional
+- `maintenance initialize` — 원본을 보존하고 명시적으로 현재 저장소 스키마를 준비한다.
+  - `--database`: optional
+  - `--auth-token`: optional
+- `maintenance install` — 지정한 실제 호스트의 지침·스킬·훅을 다른 설정과 함께 설치한다.
+  - `--provider`: required choices=codex,claude
+  - `--directory`: required
+  - `--data-home`: optional
+  - `--auth-token`: optional
+- `maintenance record-failure` — 업무 명령을 실행할 수 없어도 원인과 남은 일을 복구 기록에 남긴다.
+  - `--detail`: required
+  - `--reference`: required
+  - `--auth-token`: optional
+- `memory checkpoint` — 원문 참조와 결과·남은 일·다음 행동의 보고를 저장한다.
+  - `--project-id`: optional
+  - `--session-id`: optional
+  - `--content`: required
+  - `--reference`: required repeatable
+  - `--task-id`: optional
+  - `--graph-directory`: optional
+  - `--auth-token`: optional
+- `memory observe-lesson` — 호스트 도구로 실제 적용·검증한 교훈의 효과를 다음 작업에 연결한다.
+  - `--memory-id`: required
+  - `--state`: required choices=proposed,validated,applied,deferred,withdrawn
+  - `--reason`: required
+  - `--reference`: required repeatable
+  - `--failure-case`: optional
+  - `--normal-case`: optional
+  - `--effective`: optional
+  - `--auth-token`: optional
+- `memory propose-lesson` — 요청되고 독립 평가된 회고에서 출처 있는 개선 후보를 보존한다.
+  - `--run-id`: required
+  - `--phase`: required
+  - `--content`: required
+  - `--reference`: required repeatable
+  - `--auth-token`: optional
+- `memory read` — 선택한 기억 기록의 원문과 출처를 읽는다.
+  - `--project-id`: optional
+  - `--memory-id`: required
+  - `--auth-token`: optional
+- `memory search` — 관련 범위의 과거 자료를 검색해 상세 조회할 ID를 반환한다.
+  - `--project-id`: optional
+  - `--text`: optional
+  - `--session-id`: optional
+  - `--task-id`: optional
+  - `--limit`: optional
+  - `--graph-directory`: optional
+  - `--kind`: optional choices=artifact,checkpoint,handoff,lesson
+  - `--lesson-state`: optional choices=proposed,validated,applied,deferred,withdrawn
+  - `--auth-token`: optional
+- `memory update` — JSON 변경 목록을 같은 개정의 현재 맥락에 원자적으로 적용한다.
+  - `--project-id`: optional
+  - `--session-id`: optional
+  - `--expected-revision`: optional
+  - `--changes`: required
+  - `--task-id`: optional
+  - `--auth-token`: optional
+- `monitor status` — 실제 관찰과 정확한 사건·실패·잔여 예산을 부작용 없이 조회한다.
+  - `--project-id`: optional
+  - `--session-id`: optional
+  - `--task-id`: required
+  - `--monitor-number`: required
+  - `--auth-token`: optional
+- `monitor tick` — 등록된 정확한 감시를 내부 런타임에서 한 번만 관찰한다.
+  - `--project-id`: optional
+  - `--session-id`: optional
+  - `--task-id`: required
+  - `--monitor-number`: required
+  - `--execution-id`: optional
+  - `--generation`: optional
+  - `--auth-token`: optional
+- `newsroom comment` — 실제 읽은 개정에 댓글을 남기고 작업 결과의 성공은 변경하지 않는다.
+  - `--peer-id`: optional
+  - `--article-id`: required
+  - `--revision-number`: required
+  - `--body`: required
+  - `--auth-token`: optional
+- `newsroom list` — 제목과 현재 개정·열람·실제 사용 작업의 정정 영향을 제한 조회한다.
+  - `--peer-id`: optional
+  - `--text`: optional
+  - `--after-id`: optional
+  - `--limit`: optional
+  - `--auth-token`: optional
+- `newsroom publish` — 기사와 근거를 저장하고 활성 구독자에게 제목 알림을 예약한다.
+  - `--peer-id`: optional
+  - `--title`: required
+  - `--body`: required
+  - `--reference`: required repeatable
+  - `--auth-token`: optional
+- `newsroom read` — 선택 개정의 본문·댓글 전체를 반환하고 그 개정만 열람으로 남긴다.
+  - `--peer-id`: optional
+  - `--article-id`: required
+  - `--revision-number`: required
+  - `--task-id`: optional
+  - `--auth-token`: optional
+- `newsroom revise` — 원 작성자의 기사 정정과 이전 본문을 함께 보존한다.
+  - `--peer-id`: optional
+  - `--article-id`: required
+  - `--expected-revision`: required
+  - `--title`: required
+  - `--body`: required
+  - `--reference`: required repeatable
+  - `--reason`: required
+  - `--auth-token`: optional
+- `newsroom subscribe` — 현재 대화의 뉴스룸 제목 알림을 설정하고 다른 주제 구독은 유지한다.
+  - `--enabled`: optional
+  - `--auth-token`: optional
+- `session preview` — 원문·작업·runner·현재 맥락을 소유권 변경 없이 인수 전에 미리 본다.
+  - `--project-id`: optional
+  - `--session-id`: optional
+  - `--auth-token`: optional
+- `session resume` — 종료·작성 해제 확인 뒤 미완료 작업과 현재 맥락을 이어받는다.
+  - `--project-id`: optional
+  - `--source-session-id`: optional
+  - `--target-session-id`: optional
+  - `--expected-revision`: optional
+  - `--turn-id`: optional
+  - `--auth-token`: optional
+- `task create` — 현재 원문에서 수행할 결과를 등록한다. 외부 코드는 실행하지 않는다.
+  - `--title`: required
+  - `--result`: required
+  - `--source-id`: optional
+  - `--dependency`: optional repeatable
+  - `--start`: optional
+  - `--auth-token`: optional
+- `task report` — 실제 수행 결과를 원 작업 또는 수신한 배정에 연결한다.
+  - `--summary`: required
+  - `--reference`: required repeatable
+  - `--task-id`: optional
+  - `--delegation-id`: optional
+  - `--outcome`: optional choices=succeeded,failed,partial
+  - `--remaining`: optional
+  - `--exit-code`: optional
+  - `--auth-token`: optional
+- `task update` — 현재 조회한 개정으로 실제 수행·외부 대기·사용자 정정을 기록한다.
+  - `--action`: required choices=start,wait,resume,correct,cancel,accept
+  - `--task-id`: optional
+  - `--delegation-id`: optional
+  - `--reason`: optional
+  - `--target`: optional
+  - `--condition`: optional
+  - `--resume-scope`: optional
+  - `--title`: optional
+  - `--result`: optional
+  - `--source-id`: optional
+  - `--monitor`: optional choices=pull_request,output
+  - `--poll-budget`: optional
+  - `--monitor-event`: optional
+  - `--auth-token`: optional
+- `workflow report` — 호스트에서 실제 수행한 현재 단계 또는 독립 평가의 판단을 보고한다.
+  - `--run-id`: required
+  - `--summary`: required
+  - `--reference`: required repeatable
+  - `--check`: optional repeatable
+  - `--status`: optional choices=pending,running,waiting,succeeded,failed,skipped
+  - `--accepted`: optional
+  - `--auth-token`: optional
+- `workflow revise` — 원 목표를 바꾸지 않는 방법 변경 또는 사용자의 회고 선택을 반영한다.
+  - `--run-id`: required
+  - `--reason`: required
+  - `--definition`: optional
+  - `--reflection`: optional choices=unasked,offered,requested,declined,unanswered
+  - `--auth-token`: optional
+- `workflow start` — 현재 작업에 요청에 맞게 선택한 실제 스킬 절차를 연결한다.
+  - `--task-id`: required
+  - `--skill`: required
+  - `--auth-token`: optional
+
+## Execution and recovery
+
+Create work from the observed original source, select a matching skill, perform its steps with host tools, and report actual evidence. Independent evaluation reads original sources and the full TODO; delivery is not task success. A changed method does not require a new user goal. Preserve required result evaluation.
+
+The Stop hook checks the latest tasks without running a model. Cancellation, external waiting and errors are not success. Ordinary shell tools and recovery remain available. Resolve only the actual dependency; do not ask the user to repair internal revisions or repeat approvals.
+
+Use `memory update` for current facts and `memory checkpoint` for reports. After compaction the hook restores current context; if it provides a complete-context file, read it before continuing. Requested reflection is optional and retractable. Prior lessons do not override current instructions.
+
+Installations preserve unrelated instructions and hooks. Hook trust and sandbox permissions belong to the host. File installation alone does not prove activation. Never edit trust hashes or fabricate a successful native connection.

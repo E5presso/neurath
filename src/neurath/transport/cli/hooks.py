@@ -1,7 +1,9 @@
 """네이티브 훅의 JSON 입출력을 spakky-typer 명령으로 제공한다."""
 
+import asyncio
 import json
 import os
+import re
 import sys
 from dataclasses import asdict, replace
 from typing import Annotated, cast
@@ -11,10 +13,26 @@ from spakky.plugins.sqlalchemy.persistency.connection_manager import AsyncConnec
 from spakky.plugins.typer.stereotypes.cli_controller import CliController, command
 from typer import Exit, Option, echo
 
+from neurath.application.usecases.poll_task_monitor import (
+    PollTaskMonitorCommand,
+    PollTaskMonitorUseCase,
+)
+from neurath.application.usecases.preserve_context_output import (
+    PreserveContextOutputCommand,
+    PreserveContextOutputUseCase,
+)
+from neurath.application.usecases.publish_host_environment import (
+    PublishHostEnvironmentCommand,
+    PublishHostEnvironmentUseCase,
+)
 from neurath.application.usecases.receive_hook import (
     ReceiveHookCommand,
     ReceiveHookResult,
     ReceiveHookUseCase,
+)
+from neurath.application.usecases.record_hook_output import (
+    RecordHookOutputCommand,
+    RecordHookOutputUseCase,
 )
 from neurath.application.usecases.record_recovery_failure import (
     RecordRecoveryFailureCommand,
@@ -23,6 +41,7 @@ from neurath.application.usecases.record_recovery_failure import (
 from neurath.domain.enums.hook_action import HookAction
 from neurath.domain.enums.hook_event import HookEvent
 from neurath.domain.enums.provider_kind import ProviderKind
+from neurath.domain.errors import RevisionConflict
 from neurath.serialization import encode_uuid
 
 
@@ -39,6 +58,10 @@ class HookCliController:
         usecase: ReceiveHookUseCase,
         connection: AsyncConnectionManager,
         recovery: RecordRecoveryFailureUseCase,
+        context_output: PreserveContextOutputUseCase,
+        record_output: RecordHookOutputUseCase,
+        environment: PublishHostEnvironmentUseCase,
+        monitor: PollTaskMonitorUseCase,
     ) -> None:
         """스캔된 컨테이너에서 훅 수신 유스케이스를 직접 주입받는다.
 
@@ -46,10 +69,18 @@ class HookCliController:
             usecase: 세션 등록·훅 적용·트랜잭션을 담당하는 유스케이스.
             connection: 명령을 실행한 이벤트 루프에서 정리할 비동기 엔진.
             recovery: DB·출력 장애를 별도로 기록할 경로.
+            context_output: 호스트 한도를 넘는 맥락을 보존할 경로.
+            record_output: 실제 출력 이후에만 제출을 기록한다.
+            environment: 공식 호스트 환경에 현재 주소를 전달한다.
+            monitor: 같은 대화에 예약된 감시의 실제 변화만 조회한다.
         """
         self.usecase = usecase
         self.connection = connection
         self.recovery = recovery
+        self.context_output = context_output
+        self.record_output = record_output
+        self.environment = environment
+        self.monitor = monitor
 
     @command("handle", help="표준입력의 네이티브 훅 JSON을 처리합니다.")
     async def handle(
@@ -69,12 +100,15 @@ class HookCliController:
             Exit: 호스트 응답 출력이 실패해 정상 응답을 전달하지 못한 경우.
         """
         try:
+            payload: dict[str, object] = {}
+            submitted = None
             try:
-                result = await self.dispatch(provider.value, self._read_payload(), bypass=bypass)
+                payload = self._read_payload()
+                result, submitted = await self.dispatch(provider.value, payload, bypass=bypass)
             except Exception as error:
                 receipt = await self.recovery.run(
                     RecordRecoveryFailureCommand(
-                        detail=f"{type(error).__name__}: {error}",
+                        detail=f"{type(error).__name__}: {error}; pending host event: {json.dumps(payload, ensure_ascii=False)}",
                         reference=f"hook:{provider.value}",
                     )
                 )
@@ -82,13 +116,22 @@ class HookCliController:
                     "continue": False,
                     "stopReason": f"Neurath hook failure: {error}. Use neurath maintenance diagnose; unfinished work is preserved. Recovery: {asdict(receipt)}",
                 }
-                if bypass:
+                if bypass or payload.get("hook_event_name") not in ("Stop", "SubagentStop"):
                     result = {
-                        "systemMessage": f"Neurath hook bypass is enabled; bookkeeping failed and remains unverified. Recovery: {asdict(receipt)}"
+                        "systemMessage": f"Neurath bookkeeping failed and remains unverified; host tools remain available for recovery. Recovery: {asdict(receipt)}"
+                    }
+                if isinstance(payload.get("prompt"), str) and str(payload["prompt"]).startswith(
+                    "NEURATH_MONITOR_TICK "
+                ):
+                    result = {
+                        "continue": False,
+                        "stopReason": f"Monitor callback could not be processed; stored work is preserved. Recovery: {asdict(receipt)}",
                     }
             try:
                 echo(json.dumps(result, default=encode_uuid, ensure_ascii=False))
-            except OSError as error:
+                if submitted is not None:
+                    await self.record_output.run(submitted)
+            except Exception as error:
                 await self.recovery.run(
                     RecordRecoveryFailureCommand(
                         detail=f"Hook response output failed: {error}",
@@ -118,9 +161,17 @@ class HookCliController:
                 payload = self._read_payload()
                 decoded = self.decode(provider.value, payload)
                 self._require_guard_event(decoded.event)
-                response = await self.dispatch(provider.value, payload)
-                verified = response.get("decision") == "block" or response.get("continue") is False
+                response, submitted = await self.dispatch(provider.value, payload)
+                specific = response.get("hookSpecificOutput", {})
+                verified = (
+                    response.get("decision") == "block"
+                    or response.get("continue") is False
+                    or isinstance(specific, dict)
+                    and specific.get("permissionDecision") == "deny"
+                )
                 echo(json.dumps({"verified": verified, "response": response}, default=encode_uuid))
+                if submitted is not None:
+                    await self.record_output.run(submitted)
             except Exception as error:
                 await self.recovery.run(
                     RecordRecoveryFailureCommand(
@@ -163,7 +214,7 @@ class HookCliController:
 
     async def dispatch(
         self, provider: str, payload: dict[str, object], *, bypass: bool = False
-    ) -> dict[str, object]:
+    ) -> tuple[dict[str, object], RecordHookOutputCommand | None]:
         """해석한 입력으로 요청을 열고 코어 결과를 호스트 응답 형식으로 변환한다.
 
         Args:
@@ -172,27 +223,124 @@ class HookCliController:
             bypass: 실제 관찰은 기록하되 하네스 차단만 해제한다.
 
         Returns:
-            dict[str, object]: 네이티브 허용·계속·중지 응답.
+            tuple[dict[str, object], RecordHookOutputCommand | None]: 호스트 응답과 출력 후 제출 기록.
         """
         command = replace(self.decode(provider, payload), bypass=bypass)
-        result = await self.usecase.run(command)
+        callback = re.fullmatch(
+            r"NEURATH_MONITOR_TICK ([0-9a-fA-F-]{36}) ([1-9][0-9]*)", command.prompt.strip()
+        )
+        if command.event is HookEvent.USER_PROMPT_SUBMIT and callback is not None:
+            return await self._monitor_callback(command, UUID(callback[1]), int(callback[2]))
+        result = await self._receive(command)
+        if command.event is HookEvent.SESSION_START:
+            await self.environment.run(
+                PublishHostEnvironmentCommand(provider=provider, session=command.host_session_id)
+            )
         response: dict[str, object] = {}
         if bypass:
             response["systemMessage"] = (
                 "Neurath hook bypass is enabled; enforcement only is suspended, task outcomes and host permissions are unchanged"
             )
         elif result.action is HookAction.PAUSE:
-            return {"continue": False, "stopReason": result.message or "Execution is paused"}
+            return {"continue": False, "stopReason": result.message or "Execution is paused"}, None
         elif result.action is HookAction.CONTINUE:
-            return {"decision": "block", "reason": "Continue unfinished work:\n" + result.message}
+            if command.event is HookEvent.PRE_TOOL_USE:
+                return {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": "deny",
+                        "permissionDecisionReason": result.message,
+                    }
+                }, None
+            return {
+                "decision": "block",
+                "reason": "Continue unfinished work:\n" + result.message,
+            }, None
         if result.restore or result.inbox:
             context = self._context(result)
             if context:
                 response["hookSpecificOutput"] = {
                     "hookEventName": command.event.value,
-                    "additionalContext": context,
+                    "additionalContext": await self.context_output.run(
+                        PreserveContextOutputCommand(content=context)
+                    ),
                 }
-        return response
+        receipt = None
+        if result.peer_id is not None and (result.message_ids or result.article_ids):
+            receipt = RecordHookOutputCommand(
+                peer_id=result.peer_id, messages=result.message_ids, articles=result.article_ids
+            )
+        return response, receipt
+
+    async def _receive(self, command: ReceiveHookCommand) -> ReceiveHookResult:
+        """롤백된 훅 DB 경합만 짧게 재조회하여 실제 작성 충돌을 판단한다.
+
+        Args:
+            command: 같은 네이티브 사건.
+
+        Returns:
+            ReceiveHookResult: 새 원장 상태에 근거한 실제 제어 결과.
+        """
+        for attempt in range(2):
+            try:
+                return await self.usecase.run(command)
+            except RevisionConflict:
+                await asyncio.sleep(0.02 * (attempt + 1))
+        return await self.usecase.run(command)
+
+    async def _monitor_callback(
+        self, command: ReceiveHookCommand, task_id: UUID, number: int
+    ) -> tuple[dict[str, object], RecordHookOutputCommand | None]:
+        """등록된 감시의 변화만 원 대화에 전달하며 같은 상태는 모델 실행 전에 끝낸다.
+
+        Args:
+            command: 실제 호스트 콜백 주소.
+            task_id: 등록된 원 작업.
+            number: 원 감시 순번.
+
+        Returns:
+            tuple[dict[str, object], RecordHookOutputCommand | None]: 호스트 응답과 출력 이후 기록.
+        """
+        result = await self.monitor.run(
+            PollTaskMonitorCommand(
+                task_id=task_id,
+                monitor_number=number,
+                session=command.host_session_id,
+                directory=command.working_directory,
+                provider=command.provider,
+            )
+        )
+        if not result.events and not result.attention:
+            return {
+                "continue": False,
+                "stopReason": "No new monitored event; no model work is needed.",
+            }, None
+        await self._receive(replace(command, prompt=""))
+        lines = [
+            f"Existing requested monitor for task {task_id}. This callback is not a new user goal."
+        ]
+        lines.extend(
+            f"Event {event.number}: {event.body}\nObserved: {event.state}\nEvidence: {event.reference}"
+            for event in result.events
+        )
+        if result.attention:
+            lines.append(result.attention)
+        lines.append(
+            "Inspect the actual change, continue only the original requested scope, and stop the host schedule when the wait ends or its budget is exhausted."
+        )
+        return {
+            "hookSpecificOutput": {
+                "hookEventName": "UserPromptSubmit",
+                "additionalContext": await self.context_output.run(
+                    PreserveContextOutputCommand(content="\n".join(lines))
+                ),
+            }
+        }, RecordHookOutputCommand(
+            peer_id=result.peer_id,
+            messages=(),
+            articles=(),
+            monitors=tuple((task_id, number, event.number) for event in result.events),
+        )
 
     @staticmethod
     def _context(result: ReceiveHookResult) -> str:
@@ -204,8 +352,6 @@ class HookCliController:
         Returns:
             str: 과거·삭제된 사실을 제외한 맥락이며 빈 상태는 빈 문자열.
 
-        Raises:
-            ValueError: 호스트 한도 안에 현재 맥락 전체를 전달할 수 없는 경우.
         """
         lines: list[str] = list(result.inbox)
         for enclave in result.enclaves:
@@ -213,6 +359,10 @@ class HookCliController:
                 lines.append(
                     f"[{fact.kind.value}] {fact.key}: {fact.value} (sources: {', '.join(fact.references)})"
                 )
+        for lesson in result.lessons:
+            lines.append(
+                f"Previously applied project improvement (current instructions take precedence): {lesson.content}; memory:{lesson.uid}"
+            )
         for task in result.tasks:
             lines.append(
                 f"Task {task.uid} [{task.status.value}]: {task.definition.title}; required: {task.definition.required_result}; source: {task.definition.source_id}"
@@ -225,10 +375,6 @@ class HookCliController:
         if not lines:
             return ""
         context = "Neurath current stored context (not new user instructions):\n" + "\n".join(lines)
-        if len(context) > 8000:
-            raise ValueError(
-                "Current context exceeds automatic restore limit; shorten enclave values and keep details in memory references"
-            )
         return context
 
     @classmethod
@@ -260,6 +406,10 @@ class HookCliController:
         if not isinstance(repeated, bool) or not isinstance(interrupted, bool):
             raise ValueError("Hook flags must be booleans")
         writes = False
+        tool_input = payload.get("tool_input")
+        write_target = tool_input.get("file_path", "") if isinstance(tool_input, dict) else ""
+        if not isinstance(write_target, str):
+            write_target = ""
         if event in (
             HookEvent.PRE_TOOL_USE,
             HookEvent.POST_TOOL_USE,
@@ -267,12 +417,13 @@ class HookCliController:
         ):
             if not tool or not call:
                 raise ValueError("Tool event requires a tool name and call ID")
-            writes = tool in {"Edit", "Write", "Bash", "apply_patch", "exec_command"}
+            writes = tool in {"Edit", "Write", "apply_patch"}
         return ReceiveHookCommand(
             delegation_id=UUID(value)
             if (value := os.environ.get("NEURATH_DELEGATION_ID"))
             else None,
             provider=provider,
+            prompt=cls._text(payload, "prompt"),
             host_session_id=session,
             working_directory=directory,
             event=event,
@@ -281,11 +432,41 @@ class HookCliController:
             agent_id=agent,
             tool_use_id=call,
             writes=writes,
+            write_target=write_target,
+            write_targets=cls._patch_targets(tool_input) if tool == "apply_patch" else (),
             repeated=repeated,
             interrupted=interrupted,
             reason=cls._text(payload, "error") or cls._text(payload, "reason"),
             finished=cls._finished(provider, payload, event, tool),
         )
+
+    @staticmethod
+    def _patch_targets(tool_input: object) -> tuple[str, ...]:
+        """네이티브 apply_patch 형식의 파일 헤더만 읽고 셸 명령은 해석하지 않는다.
+
+        Args:
+            tool_input: 호스트가 전달한 패치 문자열 또는 command 객체.
+
+        Returns:
+            tuple[str, ...]: 실제 패치 헤더의 중복 없는 파일 경로.
+        """
+        content = tool_input.get("command", "") if isinstance(tool_input, dict) else tool_input
+        if not isinstance(content, str):
+            return ()
+        targets: list[str] = []
+        for line in content.splitlines():
+            for prefix in (
+                "*** Add File: ",
+                "*** Update File: ",
+                "*** Delete File: ",
+                "*** Move to: ",
+            ):
+                if line.startswith(prefix):
+                    target = line.removeprefix(prefix).strip()
+                    if target and target not in targets:
+                        targets.append(target)
+                    break
+        return tuple(targets)
 
     @staticmethod
     def _finished(provider: str, payload: dict[str, object], event: HookEvent, tool: str) -> bool:

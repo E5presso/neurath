@@ -52,7 +52,7 @@ async def test_malformed_stdin_yields_json_without_opening_database(tmp_path, pa
     missing = tmp_path / "missing"
     response = await invoke(missing, ["hook", "handle", "--provider", "codex"], payload)
     assert response.exit_code == 0
-    assert json.loads(response.stdout)["continue"] is False
+    assert "host tools remain available" in json.loads(response.stdout)["systemMessage"]
     assert not missing.exists()
 
 
@@ -206,9 +206,9 @@ def test_git_workspace_error_is_not_plain_folder(repository, monkeypatch):
         lambda directory, *args: subprocess.CompletedProcess(args, 128, "", "permission denied"),
     )
     with pytest.raises(NeurathError, match="permission denied"):
-        service.workspace(str(repository))
+        service.observe(str(repository))
     with pytest.raises(NotImplementedError):
-        IDirectoryObserverService.workspace(service, str(repository))
+        IDirectoryObserverService.observe(service, str(repository))
 
 
 async def test_unsupported_event_is_rejected_before_usecase_or_database(tmp_path, monkeypatch):
@@ -230,8 +230,8 @@ async def test_unsupported_event_is_rejected_before_usecase_or_database(tmp_path
     )
     assert response.exit_code == 0
     result = json.loads(response.stdout)
-    assert result["continue"] is False
-    assert "HookEvent" in result["stopReason"]
+    assert "host tools remain available" in result["systemMessage"]
+    assert "unverified" in result["systemMessage"]
     assert not missing.exists()
 
 
@@ -251,7 +251,14 @@ async def test_cli_groups_and_injected_usecases_match_memory_and_session_respons
     missing = tmp_path / "uninitialized.sqlite3"
     async with scanned_application(sqlite_url(missing, "rw")) as app:
         root = get_command(app.container.get(Typer))
-        assert set(root.commands["memory"].commands) == {"read", "update", "search", "checkpoint"}
+        assert set(root.commands["memory"].commands) == {
+            "read",
+            "update",
+            "search",
+            "checkpoint",
+            "propose-lesson",
+            "observe-lesson",
+        }
         assert set(root.commands["session"].commands) == {"preview", "resume"}
         assert {"read", "update", "search", "checkpoint", "preview", "resume"}.isdisjoint(
             root.commands

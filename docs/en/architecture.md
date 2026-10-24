@@ -50,7 +50,7 @@ A skill defines a procedure; the runner manages one execution of that definition
 
 Phases record `pending → running → succeeded/failed/waiting/skipped`. Runs retain current phase and attempt history. A user-driven definition change preserves old definitions/results. Reconcile a waiting attempt when its existing outcome becomes known; create another attempt only for an actual re-execution. Skipping requires a definition's optional condition or actual scope change; it cannot erase required work.
 
-Actual executors provide mechanical results; selected reviewers provide semantic assessments when needed. Move the old `phase_evidence_prepare` evidence binding inside the runner. Public `report-result` receives actual attempt outcomes and checks conditions; internal transitions retain phase completion/run finalization responsibilities without duplicate termination.
+Actual executors provide mechanical results; selected reviewers provide semantic assessments when needed. Move the old `phase_evidence_prepare` evidence binding inside the runner. Public `task report` receives actual attempt outcomes and checks conditions; internal transitions retain phase completion/run finalization responsibilities without duplicate termination.
 
 Host tools execute commands; collaboration/provider adapters execute independent work. Recording an execution request is not execution. Record actual interruption/timeouts and inspect stored results/host state after response loss. Response loss alone does not justify repeating a mutation.
 
@@ -98,7 +98,7 @@ Retain Graphify retrieval and updates of code/document relationships. Rebuilding
 
 **Separate enclave writes from context restoration.** Agents call `neurath memory update` to persist/update working facts, hypotheses, decisions and evidence in the core. Skills/rules and the generated CLI guide explain this use. A conversational statement alone does not imply persistence.
 
-After compaction, do not wait for the agent to remember a read. The post-compaction hook reads the current session/task enclave from the core and automatically supplies it through a supported context output before the next model request. Keep `neurath get-context` for explicit inspection. No new public restoration command or skill is needed.
+After compaction, do not wait for the agent to remember a read. The post-compaction hook reads the current session/task enclave from the core and automatically supplies it through a supported context output before the next model request. Keep `neurath context show` for explicit inspection. No new public restoration command or skill is needed.
 
 ```text
 Agent → memory update CLI → core SQLite state
@@ -148,7 +148,7 @@ These groups are not deployment service counts. Implement the core as stateless 
 
 Persist requests/tasks, runs/phase attempts, host events/executions, current facts/memory, assignments/messages/articles, reviews/learning, and installation/recovery by responsibility. Keep large originals retrievable through references. Do not hold DB write locks during external execution. Use filtered/paginated reads and read transactions, and atomic revision-checked mutations with their related records.
 
-Connect public operations to these use cases without arbitrary per-call token or approval-object assembly. Adapters supply actual identity and authority. Return results/current state/actionable faults; accepted work is not a successful goal. The [public list](interfaces.md) selects 14 skills/20 CLI commands; the [disposition map](capability-continuity.md) connects historical capabilities to public/internal/host paths.
+Connect public operations to these use cases without arbitrary per-call token or approval-object assembly. Adapters supply actual identity and authority. Return results/current state/actionable faults; accepted work is not a successful goal. The [public list](interfaces.md) selects 14 skills and grouped CLI commands; the [disposition map](capability-continuity.md) connects historical capabilities to public/internal/host paths.
 
 ## 9. Installation, upgrade, recovery, and finish-session
 
@@ -179,3 +179,5 @@ In-flight runs retain their pinned definition/current attempt/remaining outcomes
 CLI definitions → release-time guide generation/validation → package CLI and prompt → installer refreshes the managed harness region. Generation is a release task, not a new runtime ledger or resident service. Skills/host shell → CLI → existing use cases/storage.
 
 Determine next-action constraints from relevant current core task/phase/assignment/writer state. Reject operations violating applicable prerequisites or premature termination at the supported host boundary and return the necessary next action; proceed when conditions hold. Existing recovery rules prevent self-lockout of reads/diagnostics/state repair and repeated fault blocking. Prompt guidance alone is not enforcement; hooks create no separate requirement/consent/completion ledger.
+
+[#138: Result evaluation and reflection implementation](result-evaluation.md)

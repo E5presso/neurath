@@ -34,7 +34,7 @@ from tests.test_task_requests import create, record
 
 async def call(database, module, name, *args, query=False, **kwargs):
     loaded = importlib.import_module("neurath.application.usecases." + module)
-    contract = getattr(loaded, name + ("Query" if query else "Command"))
+    contract = getattr(loaded, name + ("Query" if query or module == "read_message" else "Command"))
     from dataclasses import fields
 
     arguments = dict(zip((field.name for field in fields(contract)), args, strict=False))
@@ -147,7 +147,8 @@ async def test_original_message_read_ack_reply_and_closed_conversation(database,
         ("claude", "receiver"),
     }
     read = await call(database, "read_message", "ReadMessage", message.uid, recipient.uid)
-    assert read.body == "original full body" and read.read and not read.acknowledged
+    assert read.body == "original full body" and not read.read and not read.acknowledged
+    await call(database, "record_message_read", "RecordMessageRead", message.uid, recipient.uid)
     ack = await call(
         database, "acknowledge_message", "AcknowledgeMessage", message.uid, recipient.uid
     )
@@ -206,6 +207,7 @@ async def test_delegation_accept_progress_report_preserves_original_scope_and_ro
         )
     read = await call(database, "read_message", "ReadMessage", delegation.message_id, recipient.uid)
     assert str(task.definition.source_id) in read.body and "original requirement text" in read.body
+    await call(database, "record_message_read", "RecordMessageRead", read.uid, recipient.uid)
     await call(database, "acknowledge_message", "AcknowledgeMessage", read.uid, recipient.uid)
     assert (
         await call(
@@ -250,8 +252,8 @@ async def test_delegation_accept_progress_report_preserves_original_scope_and_ro
         database, collaboration, role=DelegationRole.REVIEWER, scope="Review artifact:abc"
     )
     assert review.role is DelegationRole.REVIEWER and review.source_id == task.definition.source_id
-    with pytest.raises(InvalidTaskState):
-        await prepare(database, collaboration, scope="different assignment")
+    other = await prepare(database, collaboration, scope="different assignment")
+    assert other.uid != delegation.uid and other.scope == "different assignment"
     with pytest.raises(ContextNotFound):
         await call(
             database,
@@ -335,6 +337,16 @@ async def test_hook_delivers_summary_once_without_ack_or_task_acceptance(databas
     )
     first = await run(ReceiveHookUseCase, command, database_path=database)
     assert len(first.inbox) == 1 and str(delegation.message_id) in first.inbox[0]
+    # 코어 조회만으로는 출력하지 않았으므로 다음 조회에도 제목이 남는다.
+    assert (await run(ReceiveHookUseCase, command, database_path=database)).inbox == first.inbox
+    await call(
+        database,
+        "record_hook_output",
+        "RecordHookOutput",
+        first.peer_id,
+        first.message_ids,
+        first.article_ids,
+    )
     assert not (await run(ReceiveHookUseCase, command, database_path=database)).inbox
     async with storage_scope(database) as scope:
         message = await scope.get(IMessageRepository).get(delegation.message_id)
@@ -379,6 +391,7 @@ async def test_delivery_recovery_does_not_regress_ack_or_resend_unknown(database
         "late old failure",
     )
     await call(database, "read_message", "ReadMessage", begun.uid, recipient.uid)
+    await call(database, "record_message_read", "RecordMessageRead", begun.uid, recipient.uid)
     await call(database, "acknowledge_message", "AcknowledgeMessage", begun.uid, recipient.uid)
     late = await call(
         database,
@@ -841,7 +854,12 @@ async def test_cancelled_assignment_blocks_only_its_receiver_writes_and_preserve
     )
     assert (
         await run(ReceiveHookUseCase, command, database_path=database)
-    ).action is HookAction.PAUSE
+    ).action is HookAction.ALLOW
+    assert (
+        await run(
+            ReceiveHookUseCase, replace(command, event=HookEvent.STOP), database_path=database
+        )
+    ).action is HookAction.ALLOW
     assert (
         await run(ReceiveHookUseCase, replace(command, writes=False), database_path=database)
     ).action is HookAction.ALLOW

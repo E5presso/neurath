@@ -134,3 +134,25 @@ class Enclave(AbstractAggregateRoot[UUID]):
         if self.session_id != source_session_id:
             raise ContextNotFound("Ownership changed before handoff")
         self.session_id = target_session_id
+
+    def merge_from(self, source: Enclave) -> None:
+        """다른 세션의 현재 사실을 충돌 없이 합치며 원 이력의 참조를 보존한다.
+
+        Args:
+            source: 인수할 현재 사실과 원 이력을 가진 enclave.
+
+        Raises:
+            ValueError: 프로젝트·작업 범위가 다르거나 같은 키의 현재 내용이 충돌하는 경우.
+        """
+        if (self.project_id, self.task_id) != (source.project_id, source.task_id):
+            raise ValueError("Cannot merge unrelated enclave scopes")
+        current = {fact.key: fact for fact in self.facts}
+        conflicts = [
+            fact.key for fact in source.facts if fact.key in current and current[fact.key] != fact
+        ]
+        if conflicts:
+            raise ValueError(
+                f"Enclave facts conflict: {', '.join(conflicts)}; compare the original facts"
+            )
+        for fact in source.facts:
+            self.set(fact, self.revision)

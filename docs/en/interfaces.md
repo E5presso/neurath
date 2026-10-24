@@ -2,17 +2,17 @@
 
 [Specification](specification.md) · [Capability disposition](capability-continuity.md) · [한국어](../ko/interfaces.md)
 
-This is a design specification. Public CLI and default-skill distribution remain subsequent work in the [implementation plan](implementation-plan.md).
+This is the current CLI and installed-skill contract. File installation, native hook invocation, and actual model-context delivery require distinct evidence.
 
 The [specification](specification.md) defines the core and its three surfaces; [architecture](architecture.md) defines execution, hooks and transitions. This page specifies skill selection and the public CLI contract.
 
-CLI controllers follow the responsibility of each operation. `memory` handles memory reads, searches, reports and current-context updates; `session` handles handoff preview and resume. Moving the session option of memory read to session preview yields 20 public command paths.
+CLI controllers follow the responsibility of each operation. `memory` handles memory reads, searches, reports and current-context updates; `session` handles handoff preview and resume. Moving the session option of memory read to session preview yields grouped public command paths.
 
 ## 1. Selection criteria
 
 A skill is a **reusable procedure with decisions, ordering and verification**, not only Neurath administration. Provide useful specification/implementation/debugging/review/QA/UI/documentation workflows. Dependency audits/updates belong to selected project/specialist capabilities rather than default Neurath skills. Commits/worktree or PR creation/simple edits are host operations, not separate skills. One test command differs from QA across user scenarios.
 
-Expose CLI only for intentional agent commands or directly needed Neurath information, not CRUD per table. Consolidate current-work context queries and result reporting through the same task/attempt path. Do not hide unrelated effects behind `execute(action=...)`. The selected lists contain 14 skills and 20 core business CLI commands. Help/version and existing maintenance commands are separate; no MCP server or optional MCP adapter is provided.
+Expose CLI only for intentional agent commands or directly needed Neurath information, not CRUD per table. Consolidate current-work context queries and result reporting through the same task/attempt path. Do not hide unrelated effects behind `execute(action=...)`. The selected lists contain 14 skills and grouped core business CLI commands. Help/version and existing maintenance commands are separate; no MCP server or optional MCP adapter is provided.
 
 ## 2. Skills
 
@@ -20,7 +20,7 @@ Expose CLI only for intentional agent commands or directly needed Neurath inform
 
 Installed rules are Neurath's default entry point. Users need not enable a separate mode or entry command for each task. Rules explain skill purposes, applicability, exclusions and CLI startup; the agent selects a skill according to the meaning of the user request. Follow an explicitly named skill when the user specifies one. Do not force skill execution for simple questions, explanations or status checks.
 
-Skill selection is an agent judgment; the existing phase runner manages the selected definition, phases, attempts, results and completion conditions. Reading or mentioning a skill does not establish a started run. Start the selected skill through the existing `start-workflow` path and inspect actual execution state. Selecting a skill neither expands the user request nor grants additional authority.
+Skill selection is an agent judgment; the existing phase runner manages the selected definition, phases, attempts, results and completion conditions. Reading or mentioning a skill does not establish a started run. Start the selected skill through the existing `workflow start` path and inspect actual execution state. Selecting a skill neither expands the user request nor grants additional authority.
 
 | Skill | Trigger | Procedure | Exclusions |
 | --- | --- | --- | --- |
@@ -61,15 +61,17 @@ Unimplemented action names below identify capabilities rather than instruct root
 
 | Tool | Inputs/outcomes and effect boundary | Effect |
 | --- | --- | --- |
-| `get-context` | Read scoped session/task originals, TODO, assignments, runner, facts, peers/models, monitor/diagnostic summary; bound output with sections/filter/cursor | read |
-| `create-task` | Create work with original-backed outcomes and dependencies | write |
-| `update-task` | Revise scoped work/progress/wait/accept/cancel; cannot directly set success, passing checks or human consent | write |
-| `report-result` | Report scoped task/attempt/target results and evidence; only applicable responsible-actor outcomes drive task/phase transitions; delegate reports do not complete parents | write |
-| `start-workflow` | Start runner with pinned selected skill definition/inputs | write |
-| `revise-workflow` | Apply justified procedure revisions/retry/branch while preserving originals and required outcomes | write |
-| `delegate-task` | Assign/connect existing work to peer or provider with explicit necessary model/policy; redelivery cannot duplicate execution | write |
-| `send-message` | Send to recipients/subscribers; replies reference original message | write |
-| `read-message` | Read selected body; only confirmed full delivery produces read receipt, not understanding/acceptance | read+receipt |
+| `context show` | Read scoped session/task originals, TODO, assignments, runner, facts, peers/models, monitor/diagnostic summary; bound output with sections/filter/cursor | read |
+| `task create` | Create work with original-backed outcomes and dependencies | write |
+| `task update` | Revise scoped work/progress/wait/accept/cancel; cannot directly set success, passing checks or human consent | write |
+| `task report` | Report scoped task/attempt/target results and evidence; only applicable responsible-actor outcomes drive task/phase transitions; delegate reports do not complete parents | write |
+| `workflow start` | Start runner with pinned selected skill definition/inputs | write |
+| `workflow report` | Connect actual host phase results or acceptance/rejection of an independent report | write |
+| `workflow revise` | Apply justified procedure revisions/retry/branch while preserving originals and required outcomes | write |
+| `collaboration delegate` | Assign/connect existing work to peer or provider with explicit necessary model/policy; redelivery cannot duplicate execution | write |
+| `collaboration observe` | Read or boundedly wait for the original assignment/report; never launch a new model | read+observed state |
+| `collaboration send` | Send to recipients/subscribers; replies reference original message | write |
+| `collaboration read` | Read selected body; only confirmed full delivery produces read receipt, not understanding/acceptance | read+receipt |
 | `neurath memory search` | Search related memory/lessons/checkpoints/handoff candidates | read |
 | `neurath memory read` | Read a selected historical memory and its evidence | read |
 | `neurath session preview` | Preview a source session, originals, current tasks, runner and enclave without changing ownership | read |
@@ -86,16 +88,20 @@ CLI commands call the same application use cases directly, without MCP registrat
 
 Business invocations run the selected installed version. New invocations use the updated distribution after cutover; settle in-flight calls at safe boundaries. The core retains no resident state. Verify version transition/handoff for in-flight host execution under its execution contract. CLI use alone does not automatically replace every resident process or rewrite an ongoing conversation's instructions.
 
+`memory propose-lesson` and `memory observe-lesson` preserve candidates and actual effects from requested reflection; `memory search/read` retrieves them. These commands are neither approval nor actual code application. `monitor status/tick` reads or observes a current monitor; native follow-up uses the [monitor callback](monitoring.md). `maintenance` owns installation, initialization, diagnostics, and independent failure journaling; `hook` owns host events. Ordinary calls resolve current project/session/peer/revision rather than requiring human bookkeeping.
+
+`newsroom subscribe --enabled/--disabled` configures headlines for the current conversation without changing other topics, assignments, or history. New-native-peer defaults do not overwrite existing subscription choices.
+
 ## 4. Execution paths behind removed tools
 
-- `get-context` provides bounded session/task/phase/fact/peer/model/message-headline/monitor projections. Default to concise current-work context, not unrelated history. Sections select documented read areas, never arbitrary internal methods. Large memory/message/article bodies remain explicitly selected reads.
-- `report-result` binds outcomes to task/attempt. Recipients report; internal transitions require applicable responsible-actor judgment and actual evidence. Reports are not automatic success or owner acceptance. `update-task` cannot directly set success/evidence/consent.
-- Peer delegation and provider execution are target choices of `delegate-task`. Internal adapters validate model/policy and execute. Observe through `get-context`; cancel the assigned work through `update-task`. Submission differs from actual launch/interruption.
-- External monitoring belongs to a requested task's waiting dependency. `update-task` records the actual requested target/release conditions/allowed follow-up; the internal monitor observes that dependency. A waiting reason alone never authorizes arbitrary monitoring. Cancellation/resumption/handoff follow the same work lifecycle.
+- `context show` provides bounded session/task/phase/fact/peer/model/message-headline/monitor projections. Default to concise current-work context, not unrelated history. Sections select documented read areas, never arbitrary internal methods. Large memory/message/article bodies remain explicitly selected reads.
+- `task report` binds outcomes to task/attempt. Recipients report; internal transitions require applicable responsible-actor judgment and actual evidence. Reports are not automatic success or owner acceptance. `task update` cannot directly set success/evidence/consent.
+- Peer delegation and provider execution are target choices of `collaboration delegate`. Internal adapters validate model/policy and execute. Observe through `context show`; cancel the assigned work through `task update`. Submission differs from actual launch/interruption.
+- External monitoring belongs to a requested task's waiting dependency. `task update` records the actual requested target/release conditions/allowed follow-up; the internal monitor observes that dependency. A waiting reason alone never authorizes arbitrary monitoring. Cancellation/resumption/handoff follow the same work lifecycle.
 - `memory update` combines set/remove on one fact change set. Explicit remove plus expected revision is distinct from a null value.
 - Peer subscriptions/conversation notification closure are project notification settings, read/edited with host file tools and consumed by runtime. They neither cancel assignments nor delete history; no per-turn CLI call is needed.
 - Lesson generation/validation/deferral/retraction run within a user-requested retrospective. Read through memory tools. Explicit correction revises the attributed lesson source for runtime consumption while retaining prior effects/failures; learning cannot invent user instructions.
-- Bypass/deep diagnosis/installation/update/DB repair use a maintenance CLI available outside the failed business-command path. `get-context` exposes healthy-runtime diagnostic summaries. `update-neurath` and runtime recovery use maintenance paths as needed; implementation docs define exact CLI syntax.
+- Bypass/deep diagnosis/installation/update/DB repair use a maintenance CLI available outside the failed business-command path. `context show` exposes healthy-runtime diagnostic summaries. `update-neurath` and runtime recovery use maintenance paths as needed; implementation docs define exact CLI syntax.
 
 Assignments and attribution follow the [request interpretation rules](specification.md#3-requests-and-outcomes).
 
@@ -147,8 +153,10 @@ Neurath release automation generates the guide prompt from Typer command/help de
 
 ## 8. Enclave and hook responsibilities
 
-Agents persist current facts, hypotheses, decisions and evidence with `memory update` and inspect them with `get-context`. Generated CLI guidance explains what to retain and how to call these commands. The [enclave restoration](architecture.md#5-enclave-memory-graphify-and-pull) hook handles automatic post-compaction loading and failures.
+Agents persist current facts, hypotheses, decisions and evidence with `memory update` and inspect them with `context show`. Generated CLI guidance explains what to retain and how to call these commands. The [enclave restoration](architecture.md#5-enclave-memory-graphify-and-pull) hook handles automatic post-compaction loading and failures.
 
 ## #146 Monitoring
 
 [Monitoring observations, events, notifications, and candidate boundaries](monitoring.md).
+
+[#138: Result evaluation and reflection implementation](result-evaluation.md)
