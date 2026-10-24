@@ -152,8 +152,9 @@ def request_scope() -> Iterator[Session]:
 ''',
         "neurath.domain.values.directory_observation": '''"""구조 계약을 검증하는 테스트 대상이다."""
 from spakky.core.common.mutability import immutable
+from spakky.domain.models.value_object import AbstractValueObject
 @immutable
-class Observation:
+class Observation(AbstractValueObject):
     """구조 계약을 검증하는 테스트 대상이다."""
     working_directory: str
 ''',
@@ -214,12 +215,14 @@ def test_owned_values_relationships_and_domain_creation_are_valid():
     sources = {
         "neurath.domain.aggregates.project": '''"""프로젝트와 소유 위치 값을 정의한다."""
 from spakky.core.common.mutability import immutable
+from spakky.domain.models.value_object import AbstractValueObject
+from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 @immutable
-class ProjectLocation:
+class ProjectLocation(AbstractValueObject):
     """프로젝트가 소유하는 불변 위치 값이다."""
     kind: str
     path: str
-class Project:
+class Project(AbstractAggregateRoot):
     """위치 값을 소유하는 aggregate다."""
     locations: list[ProjectLocation]
     @classmethod
@@ -270,7 +273,7 @@ class Factory:
         """생성한 결과를 반환한다."""
         return cls()
 '''
-    errors = ArchitectureChecker({"neurath.application.services.factory": source}).check()
+    errors = ArchitectureChecker({"neurath.application.support.factory": source}).check()
     assert any("SELF_RETURN:" in error for error in errors)
 
 
@@ -287,7 +290,7 @@ class Factory:
         """구체 도메인 결과로 변환한다."""
         return Factory()
 '''
-    assert ArchitectureChecker({"neurath.application.services.factory": source}).check() == []
+    assert ArchitectureChecker({"neurath.application.support.factory": source}).check() == []
 
 
 def test_python_314_lint_rejects_quoted_and_legacy_typing_annotations(tmp_path):
@@ -411,7 +414,12 @@ class Labels:
         """표시용 문자열을 반환한다."""
         return normalize_label(value)
 '''
-    layer = "values" if package == "domain" else "services"
+    layer = "values" if package == "domain" else "support"
+    if package == "domain":
+        source = (
+            "from spakky.domain.models.value_object import AbstractValueObject\n"
+            + source.replace("class Labels:", "class Labels(AbstractValueObject):")
+        )
     assert ArchitectureChecker({f"neurath.{package}.{layer}.labels": source}).check() == []
 
 
@@ -465,10 +473,10 @@ def test_confirmed_contracts_fail_at_their_actual_boundary(module, source, rule)
 @pytest.mark.parametrize(
     ("module", "source"),
     [
-        ("neurath.application.services.core", "class Core: pass"),
+        ("neurath.application.support.core", "class Core: pass"),
         ("neurath.infrastructure.core_schema", "class SqliteDatabase: pass"),
         (
-            "neurath.domain.values.records",
+            "neurath.transport.support.records",
             "class UnitOfWork: pass\nclass CommitObserver:\n def observe(self, work: UnitOfWork): pass",
         ),
         (
@@ -480,16 +488,16 @@ def test_confirmed_contracts_fail_at_their_actual_boundary(module, source, rule)
         ("neurath.infrastructure.database", 'diagnostic_revision = "core_0001"'),
         (
             "neurath.domain.values.example",
-            "from spakky.core.common.mutability import immutable\n@immutable\nclass Reference:\n id: str",
+            "from spakky.core.common.mutability import immutable\nfrom spakky.domain.models.value_object import AbstractValueObject\n@immutable\nclass Reference(AbstractValueObject):\n id: str",
         ),
         (
             "neurath.domain.values.example",
             "from typing import Any, Literal, cast\ntype Option = Literal['yes', 'no']\nvalue: Any = None\nlabel = cast(str, 'ok')",
         ),
         ("neurath.domain.values.example", "from pathlib import PurePath\nimport hashlib, json"),
-        ("neurath.application.services.values", "def records() -> tuple[str, ...]: return ()"),
+        ("neurath.application.support.values", "def records() -> tuple[str, ...]: return ()"),
         (
-            "neurath.application.services.values",
+            "neurath.application.support.values",
             "class ExampleCommand: pass\nclass ExampleUseCase:\n def run(self, command: ExampleCommand): pass",
         ),
         (
@@ -502,7 +510,7 @@ def test_confirmed_contracts_fail_at_their_actual_boundary(module, source, rule)
         ),
         ("neurath.infrastructure.repositories.values", "value = mapping.get(key) or fallback"),
         (
-            "neurath.application.services.values",
+            "neurath.application.support.values",
             "value: str = 'ok' # type: ignore[assignment]\nunused = 1 # noqa",
         ),
         (
@@ -510,7 +518,7 @@ def test_confirmed_contracts_fail_at_their_actual_boundary(module, source, rule)
             "from contextlib import contextmanager\n@contextmanager\ndef connection(engine):\n with engine.begin() as conn: yield conn",
         ),
         (
-            "neurath.application.services.factories",
+            "neurath.application.support.factories",
             "class Factory:\n @classmethod\n def fixed(cls) -> Factory: return Factory()",
         ),
     ],
@@ -1075,8 +1083,9 @@ class ITaskRepository(IAsyncGenericRepository, ABC):
 def test_immutable_assignment_bypass_is_rejected_without_requiring_tuple_inputs():
     source = """from spakky.core.common.mutability import immutable
 from collections.abc import Sequence
+from spakky.domain.models.value_object import AbstractValueObject
 @immutable
-class Value:
+class Value(AbstractValueObject):
     items: Sequence[str]
     def __post_init__(self):
         object.__setattr__(self, "items", tuple(self.items))
@@ -1175,7 +1184,7 @@ class ForeignController:
     ],
 )
 def test_independent_declaration_clusters_are_rejected_without_syntax_bans(source):
-    errors = ArchitectureChecker({"neurath.application.services.sample": source}).check()
+    errors = ArchitectureChecker({"neurath.application.support.sample": source}).check()
     assert any(
         "MODULE_COHESION" in error and "notify | observe" in error.lower() for error in errors
     )
@@ -1196,7 +1205,7 @@ def test_independent_declaration_clusters_are_rejected_without_syntax_bans(sourc
     ],
 )
 def test_real_declaration_dependencies_allow_one_responsibility_with_multiple_types(source):
-    assert ArchitectureChecker({"neurath.application.services.sample": source}).check() == []
+    assert ArchitectureChecker({"neurath.application.support.sample": source}).check() == []
 
 
 @pytest.mark.parametrize("linked", [False, True])
@@ -1244,11 +1253,11 @@ def test_layer_root_records_have_no_implicit_responsibility(layer):
             "from spakky.core.stereotype.usecase import UseCase as U\n@U()\nclass RunUseCase: pass",
         ),
         (
-            "neurath.application.services.run",
+            "neurath.application.support.run",
             "from spakky.domain.application.command import IAsyncCommandUseCase as C\nclass RunUseCase(C): pass",
         ),
         (
-            "neurath.application.services.events",
+            "neurath.application.support.events",
             "from spakky.event.stereotype.event_handler import EventHandler as E\n@E()\nclass Handler: pass",
         ),
         (
@@ -1256,23 +1265,23 @@ def test_layer_root_records_have_no_implicit_responsibility(layer):
             "from spakky.plugins.typer.stereotypes.cli_controller import CliController as C\n@C('hook')\nclass HookController: pass",
         ),
         (
-            "neurath.application.services.model",
+            "neurath.application.support.model",
             "from spakky.plugins.sqlalchemy.orm.table import Table\n@Table()\nclass Model: pass",
         ),
         (
-            "neurath.application.services.repository",
+            "neurath.application.support.repository",
             "from spakky.data.stereotype.repository import Repository\n@Repository()\nclass SQLAlchemyProbeRepository: pass",
         ),
         (
-            "neurath.application.services.event",
+            "neurath.application.support.event",
             "from spakky.domain.models.event import AbstractDomainEvent\nclass Changed(AbstractDomainEvent): pass",
         ),
         (
-            "neurath.application.services.aggregate",
+            "neurath.application.support.aggregate",
             "from spakky.domain.models.aggregate_root import AbstractAggregateRoot\nclass Task(AbstractAggregateRoot): pass",
         ),
         (
-            "neurath.application.services.value",
+            "neurath.application.support.value",
             "from spakky.domain.models.value_object import AbstractValueObject\nclass Result(AbstractValueObject): pass",
         ),
     ],
@@ -1303,3 +1312,112 @@ def test_inherited_port_role_cannot_be_moved_to_an_unrelated_adapter_package(kin
         "neurath.infrastructure.unrelated.probe": f"from {port} import IProbe{suffix} as Port\nclass Child(Port): pass",
     }
     assert any("COMPONENT_PACKAGE" in error for error in ArchitectureChecker(source).check())
+
+
+@pytest.mark.parametrize(
+    "module,source,required",
+    [
+        ("neurath.domain.values.comment", "class ArticleComment: pass", "AbstractValueObject"),
+        (
+            "neurath.domain.values.comment",
+            "from spakky.core.common.mutability import immutable as frozen\n@frozen\nclass ArticleComment: pass",
+            "AbstractValueObject",
+        ),
+        (
+            "neurath.domain.values.comment",
+            "from dataclasses import dataclass\n@dataclass\nclass ArticleComment: pass",
+            "AbstractValueObject",
+        ),
+        ("neurath.domain.aggregates.article", "class Article: pass", "AbstractAggregateRoot"),
+        ("neurath.domain.events.changed", "class ArticleChanged: pass", "AbstractDomainEvent"),
+        (
+            "neurath.domain.aggregates.article",
+            "from spakky.core.common.mutability import immutable\n@immutable\nclass ArticleComment: pass",
+            "AbstractValueObject",
+        ),
+    ],
+)
+def test_domain_roles_cannot_omit_their_framework_base(module, source, required):
+    errors = ArchitectureChecker({module: source}).check()
+    assert any("DOMAIN_INHERITANCE" in error and required in error for error in errors)
+
+
+def test_domain_inheritance_follows_aliases_and_indirect_bases():
+    sources = {
+        "neurath.domain.values.base": "from spakky.domain.models.value_object import AbstractValueObject as Value\nclass Base(Value): pass",
+        "neurath.domain.values.comment": "from .base import Base as Parent\nclass ArticleComment(Parent): pass",
+        "neurath.domain.aggregates.article": "from spakky.domain.models.aggregate_root import AbstractAggregateRoot as Root\nclass Article(Root): pass",
+        "neurath.domain.events.changed": "from spakky.domain.models.event import AbstractDomainEvent as Event\nclass ArticleChanged(Event): pass",
+    }
+    assert ArchitectureChecker(sources).check() == []
+
+
+def test_value_inheritance_does_not_apply_to_enums_errors_or_application_responses():
+    sources = {
+        "neurath.domain.values.status": "from enum import StrEnum as E\nclass Status(E): OK='ok'",
+        "neurath.domain.errors": "class NeurathError(Exception): pass",
+        "neurath.application.ports.services.read": "from spakky.core.common.mutability import immutable\n@immutable\nclass ReadResponse:\n value: str",
+    }
+    assert ArchitectureChecker(sources).check() == []
+
+
+@pytest.mark.parametrize(
+    "dependency",
+    ["repositories.task.ITaskRepository", "services.monitor_observer.IMonitorObserverService"],
+)
+def test_shared_application_procedure_requires_a_service_contract_even_through_aliases(dependency):
+    module, name = dependency.rsplit(".", 1)
+    sources = {
+        f"neurath.application.ports.{module}": f"from abc import ABC, abstractmethod\nclass {name}(ABC):\n @abstractmethod\n async def get(self): raise NotImplementedError",
+        "neurath.application.shared.context": f"from neurath.application.ports.{module} import {name} as Port\nasync def load(repository: Port): return await repository.get()",
+        "neurath.application.usecases.prepare": "from neurath.application.shared.context import load as fetch\nasync def execute(repo): return await fetch(repo)",
+    }
+    assert any("SERVICE_PROCEDURE" in error for error in ArchitectureChecker(sources).check())
+
+
+def test_pure_shared_transformations_and_local_usecase_helpers_are_not_blanket_banned():
+    sources = {
+        "neurath.application.ports.repositories.task": "from abc import ABC, abstractmethod\nclass ITaskRepository(ABC):\n @abstractmethod\n async def get(self): raise NotImplementedError",
+        "neurath.application.ports.services.observer": "class Observation:\n value: str",
+        "neurath.application.shared.text": "from neurath.application.ports.services.observer import Observation\ndef normalize(value: Observation) -> str: return value.value.strip()",
+        "neurath.application.usecases.prepare": "from neurath.application.shared.text import normalize\nfrom neurath.application.ports.repositories.task import ITaskRepository\nasync def load(repository: ITaskRepository): return await repository.get()\nasync def execute(repo): return normalize(await load(repo))",
+    }
+    assert ArchitectureChecker(sources).check() == []
+
+
+def test_registered_service_adapter_must_inherit_its_nominal_service_port():
+    sources = {
+        "neurath.infrastructure.services.monitor_context": "from spakky.core.pod.annotations.pod import Pod as Component\n@Component()\nclass SQLAlchemyMonitorContextService: pass",
+    }
+    assert any("SERVICE_PORT" in error for error in ArchitectureChecker(sources).check())
+    sources["neurath.application.ports.services.monitor_context"] = (
+        "from abc import ABC, abstractmethod\nclass IMonitorContextService(ABC):\n @abstractmethod\n async def load(self): raise NotImplementedError"
+    )
+    sources["neurath.infrastructure.services.monitor_context"] = (
+        "from spakky.core.pod.annotations.pod import Pod as Component\nfrom neurath.application.ports.services.monitor_context import IMonitorContextService as Port\n@Component()\nclass SQLAlchemyMonitorContextService(Port):\n async def load(self): return None"
+    )
+    assert ArchitectureChecker(sources).check() == []
+
+
+def test_new_value_file_without_inheritance_fails_the_real_architecture_command(tmp_path):
+    import shutil
+
+    root = Path(__file__).resolve().parents[1]
+    (tmp_path / "tools").mkdir()
+    shutil.copyfile(root / "tools/architecture.py", tmp_path / "tools/architecture.py")
+    target = tmp_path / "src/neurath/domain/values/comment.py"
+    target.parent.mkdir(parents=True)
+    target.write_text(
+        "from spakky.core.common.mutability import immutable\n@immutable\nclass ArticleComment:\n body: str\n"
+    )
+    rejected = subprocess.run(
+        [sys.executable, str(tmp_path / "tools/architecture.py")], capture_output=True, text=True
+    )
+    assert rejected.returncode == 1 and "DOMAIN_INHERITANCE" in rejected.stdout
+    target.write_text(
+        "from spakky.core.common.mutability import immutable\nfrom spakky.domain.models.value_object import AbstractValueObject\n@immutable\nclass ArticleComment(AbstractValueObject):\n body: str\n"
+    )
+    accepted = subprocess.run(
+        [sys.executable, str(tmp_path / "tools/architecture.py")], capture_output=True, text=True
+    )
+    assert accepted.returncode == 0 and "ARCHITECTURE_CHECK_OK" in accepted.stdout

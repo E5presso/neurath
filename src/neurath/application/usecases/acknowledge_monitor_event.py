@@ -8,9 +8,8 @@ from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
-from neurath.application.ports.repositories.execution import IExecutionRepository
 from neurath.application.ports.repositories.task import ITaskRepository
-from neurath.application.services.monitor_context import load_monitor
+from neurath.application.ports.services.monitor_context import IMonitorContextService
 from neurath.domain.values.task_monitor import TaskMonitor
 
 
@@ -43,15 +42,15 @@ class AcknowledgeMonitorEventUseCase(
 ):
     """사건 하나의 ACK만 보존하며 작업·대기 해소 권한과 구분한다."""
 
-    def __init__(self, tasks: ITaskRepository, executions: IExecutionRepository) -> None:
-        """정확한 사건을 저장할 의존성을 받는다.
+    def __init__(self, tasks: ITaskRepository, context: IMonitorContextService) -> None:
+        """태스크 저장소와 감시 범위 대조 서비스를 주입받는다.
 
         Args:
             tasks: 원 사건 소비 저장.
-            executions: 현재 소유·취소 대조.
+            context: 감시 범위·자원 소유·최신 취소를 대조한다.
         """
         self.tasks = tasks
-        self.executions = executions
+        self.context = context
 
     @transactional
     @override
@@ -64,9 +63,7 @@ class AcknowledgeMonitorEventUseCase(
         Returns:
             TaskMonitor: ACK가 기록된 최신 감시.
         """
-        task, monitor, _ = await load_monitor(
-            self.tasks,
-            self.executions,
+        task, monitor, _ = await self.context.load(
             project_id=command.project_id,
             session_id=command.session_id,
             task_id=command.task_id,

@@ -345,7 +345,7 @@ class ArchitectureChecker:
             "Repository": "neurath.application.ports.repositories.",
         }
         technologies = {
-            "Service": ("Git", "Subprocess", "Stderr", "Posix"),
+            "Service": ("Git", "Subprocess", "Stderr", "Posix", "SQLAlchemy"),
             "Repository": ("SQLAlchemy",),
         }
         errors: list[str] = []
@@ -369,12 +369,13 @@ class ArchitectureChecker:
                 and parent in self.classes
                 and "abc.ABC" in self._ancestors(parent)
             }
-            stereotype = (
-                "spakky.data.stereotype.repository.Repository"
+            registered = (
+                "spakky.data.stereotype.repository.Repository" in decorators
                 if suffix == "Repository"
-                else "spakky.core.stereotype.service.Service"
+                else module.startswith("neurath.infrastructure.services.")
+                and "spakky.core.pod.annotations.pod.Pod" in decorators
             )
-            if not contracts and stereotype not in decorators:
+            if not contracts and not registered:
                 continue
             expected = {
                 technology + contract
@@ -560,6 +561,7 @@ class ArchitectureChecker:
             self._name(module, item.func if isinstance(item, ast.Call) else item)
             for item in node.decorator_list
         }
+        errors.extend(self._check_domain_contract(module, node, ancestors, decorators))
         locations = {
             "spakky.core.stereotype.usecase.UseCase": "neurath.application.usecases.",
             "spakky.event.stereotype.event_handler.EventHandler": "neurath.transport.events.",
@@ -664,6 +666,19 @@ class ArchitectureChecker:
             for parent in ancestors
         )
         if (
+            module.startswith("neurath.infrastructure.services.")
+            and "spakky.core.pod.annotations.pod.Pod" in decorators
+            and not any(
+                parent.startswith("neurath.application.ports.services.")
+                and parent in self.classes
+                and "abc.ABC" in self._ancestors(parent)
+                for parent in ancestors
+            )
+        ):
+            errors.append(
+                f"{location} SERVICE_PORT: service adapters must implement an ABC service port"
+            )
+        if (
             "spakky.data.stereotype.repository.Repository" in decorators
             and not has_port
             and not ancestors.intersection(repository_bases)
@@ -725,6 +740,101 @@ class ArchitectureChecker:
                 )
         return errors
 
+    def _check_domain_contract(
+        self, module: str, node: ast.ClassDef, ancestors: set[str], decorators: set[str]
+    ) -> list[str]:
+        """도메인의 값·aggregate·사건 역할에 해당하는 프레임워크 상속을 검사한다.
+
+        Enum과 도메인 예외를 값 객체로 취급하지 않는다. 애플리케이션의 입출력 DTO와
+        외부 포트 응답에는 도메인 값 객체 상속 규칙을 적용하지 않는다.
+
+        Args:
+            module: 선언을 소유한 모듈.
+            node: 검사할 클래스.
+            ancestors: 별칭과 간접 상속을 해석한 기반 타입.
+            decorators: 정규화한 등록·불변성 데코레이터.
+
+        Returns:
+            list[str]: 역할에 필요한 도메인 기반 클래스가 누락된 진단.
+        """
+        if not module.startswith("neurath.domain.") or ancestors & {
+            "enum.Enum",
+            "enum.StrEnum",
+            "enum.IntEnum",
+            "enum.Flag",
+            "enum.IntFlag",
+        }:
+            return []
+        value = "spakky.domain.models.value_object.AbstractValueObject"
+        aggregate = "spakky.domain.models.aggregate_root.AbstractAggregateRoot"
+        event = "spakky.domain.models.event.AbstractDomainEvent"
+        required = ""
+        if module.startswith("neurath.domain.events."):
+            required = event
+        elif module.startswith("neurath.domain.values.") or (
+            "spakky.core.common.mutability.immutable" in decorators and event not in ancestors
+        ):
+            required = value
+        elif module.startswith("neurath.domain.aggregates.") and value not in ancestors:
+            required = aggregate
+        if not required or required in ancestors:
+            return []
+        return [f"{module}:{node.lineno} DOMAIN_INHERITANCE: {node.name} must inherit {required}"]
+
+    def _check_shared_service_procedures(self) -> list[str]:
+        """다른 유스케이스가 직접 호출하는 저장소·서비스 의존 공통 함수를 찾는다.
+
+        공통 업무를 추출할 때 포트·어댑터·DI를 빠뜨린 구체적인 구조를 검사한다.
+        순수 변환 함수나 한 유스케이스 내부 보조 함수, 기술 프로토콜 함수의 문법을
+        일괄 금지하지 않는다.
+
+        Returns:
+            list[str]: 서비스 계약을 우회하는 유스케이스의 공통 함수 호출 진단.
+        """
+        procedures: set[str] = set()
+        for module, tree in self.trees.items():
+            if not module.startswith("neurath.application."):
+                continue
+            for node in tree.body:
+                if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                arguments = (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs)
+                dependencies = {
+                    parent
+                    for argument in arguments
+                    if argument.annotation is not None
+                    for item in ast.walk(argument.annotation)
+                    if isinstance(item, (ast.Name, ast.Attribute))
+                    for parent in self._ancestors(self._name(module, item))
+                }
+                if any(
+                    dependency in self.classes
+                    and dependency.startswith(
+                        (
+                            "neurath.application.ports.repositories.",
+                            "neurath.application.ports.services.",
+                        )
+                    )
+                    and dependency.rsplit(".", 1)[-1].startswith("I")
+                    and dependency.endswith(("Repository", "Service"))
+                    and "abc.ABC" in self._ancestors(dependency)
+                    for dependency in dependencies
+                ):
+                    procedures.add(f"{module}.{node.name}")
+        errors: list[str] = []
+        for module, tree in self.trees.items():
+            if not module.startswith("neurath.application.usecases."):
+                continue
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                target = self._name(module, node.func)
+                if target in procedures and target.rsplit(".", 1)[0] != module:
+                    errors.append(
+                        f"{module}:{node.lineno} SERVICE_PROCEDURE: inject an ABC service port instead of calling {target}"
+                    )
+        return errors
+
     def check(self) -> list[str]:
         """소스·import·클래스별 검사를 모아 위치와 규칙 코드로 반환한다.
 
@@ -734,7 +844,7 @@ class ArchitectureChecker:
         Returns:
             list[str]: 중복을 제거하고 정렬한 현재 소스의 계약 위반 목록.
         """
-        errors: list[str] = []
+        errors: list[str] = self._check_shared_service_procedures()
         protocols = {"typing.Protocol", "typing_extensions.Protocol"}
         for module, tree in self.trees.items():
             errors.extend(self._check_module(module, tree))

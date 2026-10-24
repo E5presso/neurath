@@ -3,10 +3,11 @@
 from uuid import UUID
 
 from spakky.core.common.mutability import immutable
+from spakky.domain.models.value_object import AbstractValueObject
 
 
 @immutable
-class ArticleUse:
+class ArticleUse(AbstractValueObject):
     """기사 개정을 실제 사용한다고 연결한 작업의 범위다.
 
     Attributes:

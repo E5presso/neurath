@@ -8,9 +8,8 @@ from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
-from neurath.application.ports.repositories.execution import IExecutionRepository
 from neurath.application.ports.repositories.task import ITaskRepository
-from neurath.application.services.monitor_context import load_monitor
+from neurath.application.ports.services.monitor_context import IMonitorContextService
 from neurath.domain.values.task_monitor import NoticeStatus, TaskMonitor
 
 
@@ -47,15 +46,15 @@ class RecordMonitorNoticeCommand(AbstractCommand):
 class RecordMonitorNoticeUseCase(IAsyncCommandUseCase[RecordMonitorNoticeCommand, TaskMonitor]):
     """외부 제출 결과와 확인 가능한 실제 전달을 원 사건에 저장한다."""
 
-    def __init__(self, tasks: ITaskRepository, executions: IExecutionRepository) -> None:
-        """정확한 시도·취소를 확인할 저장소를 받는다.
+    def __init__(self, tasks: ITaskRepository, context: IMonitorContextService) -> None:
+        """태스크 저장소와 감시 범위 대조 서비스를 주입받는다.
 
         Args:
             tasks: 원 사건과 제출 실패 저장.
-            executions: 제출 중 취소 대조.
+            context: 감시 범위·자원 소유·최신 취소를 대조한다.
         """
         self.tasks = tasks
-        self.executions = executions
+        self.context = context
 
     @transactional
     @override
@@ -68,9 +67,7 @@ class RecordMonitorNoticeUseCase(IAsyncCommandUseCase[RecordMonitorNoticeCommand
         Returns:
             TaskMonitor: 정확한 사건에 저장한 결과.
         """
-        task, monitor, _ = await load_monitor(
-            self.tasks,
-            self.executions,
+        task, monitor, _ = await self.context.load(
             project_id=command.project_id,
             session_id=command.session_id,
             task_id=command.task_id,

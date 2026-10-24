@@ -10,8 +10,6 @@ from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseC
 
 from neurath.application.ports.repositories.execution import IExecutionRepository
 from neurath.application.ports.repositories.task import ITaskRepository
-from neurath.domain.enums.execution_status import ExecutionStatus
-from neurath.domain.errors import ContextNotFound, InvalidTaskState
 from neurath.domain.values.task_monitor import MonitorKind, TaskMonitor
 
 
@@ -64,19 +62,13 @@ class RegisterMonitorUseCase(IAsyncCommandUseCase[RegisterMonitorCommand, TaskMo
 
         Returns:
             TaskMonitor: 아직 첫 관찰을 수행하지 않은 감시.
-
-        Raises:
-            ContextNotFound: 소유 세션과 실제 실행이 다른 경우.
-            InvalidTaskState: 실제 실행이 취소·종료된 경우.
         """
         task = await self.tasks.get(command.task_id)
         task.require_scope(command.project_id, command.session_id)
         task.require_revision(command.expected_revision)
         execution = await self.executions.get(command.execution_id)
-        if execution.session_id != command.session_id:
-            raise ContextNotFound("Monitor execution belongs to another session")
-        if execution.status not in (ExecutionStatus.RUNNING, ExecutionStatus.PAUSED):
-            raise InvalidTaskState("Cannot register monitoring for a stopped execution")
+        execution.require_session(command.session_id)
+        execution.require_monitoring()
         monitor = task.register_monitor(
             command.execution_id, command.kind, command.target, command.budget
         )

@@ -8,9 +8,8 @@ from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
-from neurath.application.ports.repositories.execution import IExecutionRepository
 from neurath.application.ports.repositories.task import ITaskRepository
-from neurath.application.services.monitor_context import load_monitor
+from neurath.application.ports.services.monitor_context import IMonitorContextService
 from neurath.domain.values.task_monitor import TaskMonitor
 
 
@@ -43,15 +42,15 @@ class ResolveMonitorEventCommand(AbstractCommand):
 class ResolveMonitorEventUseCase(IAsyncCommandUseCase[ResolveMonitorEventCommand, TaskMonitor]):
     """원 해소 조건의 명시적 판단만 현재 시도의 재개로 연결한다."""
 
-    def __init__(self, tasks: ITaskRepository, executions: IExecutionRepository) -> None:
-        """원 대기와 실행을 대조할 의존성을 받는다.
+    def __init__(self, tasks: ITaskRepository, context: IMonitorContextService) -> None:
+        """태스크 저장소와 감시 범위 대조 서비스를 주입받는다.
 
         Args:
             tasks: 대기 해소와 사건 소비의 원자적 저장.
-            executions: 현재 소유·취소 대조.
+            context: 감시 범위·자원 소유·최신 취소를 대조한다.
         """
         self.tasks = tasks
-        self.executions = executions
+        self.context = context
 
     @transactional
     @override
@@ -64,9 +63,7 @@ class ResolveMonitorEventUseCase(IAsyncCommandUseCase[ResolveMonitorEventCommand
         Returns:
             TaskMonitor: 해소 사건과 감시 종료를 보존한 값.
         """
-        task, _, _ = await load_monitor(
-            self.tasks,
-            self.executions,
+        task, _, _ = await self.context.load(
             project_id=command.project_id,
             session_id=command.session_id,
             task_id=command.task_id,

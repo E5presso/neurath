@@ -4,6 +4,7 @@ from enum import StrEnum
 from uuid import UUID
 
 from spakky.core.common.mutability import immutable
+from spakky.domain.models.value_object import AbstractValueObject
 
 
 class ArticleNoticeStatus(StrEnum):
@@ -21,7 +22,7 @@ class ArticleNoticeStatus(StrEnum):
 
 
 @immutable
-class ArticleNotice:
+class ArticleNotice(AbstractValueObject):
     """발행 당시 확정한 활성 구독자의 제목 알림이다.
 
     Attributes:

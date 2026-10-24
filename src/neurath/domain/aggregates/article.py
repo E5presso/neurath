@@ -195,14 +195,11 @@ class Article(AbstractAggregateRoot[UUID]):
 
         Raises:
             InvalidTaskState: 선택 개정을 읽지 않은 경우.
-            ValueError: 댓글이 공백이거나 크기 한도를 넘는 경우.
         """
         if not any(
             item.peer_id == peer_id and item.revision_number == number for item in self.reads
         ):
             raise InvalidTaskState("Read this article revision before commenting")
-        if not body.strip() or len(body.encode()) > 1048576:
-            raise ValueError("Comment body must be non-empty and within its delivery limit")
         self.comments = (
             *self.comments,
             ArticleComment(

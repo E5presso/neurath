@@ -890,3 +890,73 @@ async def cancel_after_reservation(database, m, selected):
 
         dependencies[selected] = SimpleNamespace(run=interleave)
         return await TickMonitorUseCase(**dependencies).run(command(m))
+
+
+async def test_monitor_context_is_injected_through_its_port_and_shares_framework_repositories(
+    database,
+):
+    from neurath.application.ports.repositories.execution import IExecutionRepository
+    from neurath.application.ports.services.monitor_context import IMonitorContextService
+    from neurath.infrastructure.services.monitor_context import SQLAlchemyMonitorContextService
+    from tests.support.application import spakky_context
+
+    async with spakky_context(database) as container:
+        context = container.get(IMonitorContextService)
+        assert isinstance(context, SQLAlchemyMonitorContextService)
+        assert context.tasks is container.get(ITaskRepository)
+        assert context.executions is container.get(IExecutionRepository)
+        for usecase in (
+            PrepareMonitorPollUseCase,
+            RecordMonitorObservationUseCase,
+            AcknowledgeMonitorEventUseCase,
+            ResolveMonitorEventUseCase,
+            CancelMonitorUseCase,
+            RecoverMonitorUseCase,
+            PrepareMonitorNoticeUseCase,
+            RecordMonitorNoticeUseCase,
+        ):
+            assert container.get(usecase).context is context
+
+
+async def test_monitor_context_abstract_fallback_fails_explicitly():
+    from neurath.application.ports.services.monitor_context import IMonitorContextService
+
+    with pytest.raises(TypeError):
+        IMonitorContextService()
+    with pytest.raises(NotImplementedError):
+        await IMonitorContextService.load(
+            None,
+            project_id=uuid7(),
+            session_id=uuid7(),
+            task_id=uuid7(),
+            monitor_number=1,
+            execution_id=uuid7(),
+            generation=1,
+        )
+
+
+@pytest.mark.parametrize(
+    "status,allowed,cancelled",
+    [
+        ("running", True, False),
+        ("paused", True, False),
+        ("cancelled", False, True),
+        ("ended", False, False),
+    ],
+)
+def test_execution_owns_monitoring_permission_and_session_scope(status, allowed, cancelled):
+    from neurath.domain.aggregates.execution import Execution
+    from neurath.domain.enums.execution_status import ExecutionStatus
+
+    owner = Execution.create(uuid7())
+    owner.status = ExecutionStatus(status)
+    owner.require_session(owner.session_id)
+    with pytest.raises(ContextNotFound, match="another session"):
+        owner.require_session(uuid7())
+    assert owner.allows_monitoring is allowed
+    assert owner.is_cancelled is cancelled
+    if allowed:
+        owner.require_monitoring()
+    else:
+        with pytest.raises(InvalidTaskState):
+            owner.require_monitoring()

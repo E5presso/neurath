@@ -8,9 +8,8 @@ from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
-from neurath.application.ports.repositories.execution import IExecutionRepository
 from neurath.application.ports.repositories.task import ITaskRepository
-from neurath.application.services.monitor_context import load_monitor
+from neurath.application.ports.services.monitor_context import IMonitorContextService
 from neurath.domain.values.task_monitor import TaskMonitor
 
 
@@ -39,15 +38,15 @@ class CancelMonitorCommand(AbstractCommand):
 class CancelMonitorUseCase(IAsyncCommandUseCase[CancelMonitorCommand, TaskMonitor]):
     """명시적인 감시 취소를 현재 태스크에 보존한다."""
 
-    def __init__(self, tasks: ITaskRepository, executions: IExecutionRepository) -> None:
-        """현재 원장과 실행 저장소를 받는다.
+    def __init__(self, tasks: ITaskRepository, context: IMonitorContextService) -> None:
+        """태스크 저장소와 감시 범위 대조 서비스를 주입받는다.
 
         Args:
             tasks: 취소 상태와 남은 사건 저장.
-            executions: 현재 자원 소유 대조.
+            context: 감시 범위·자원 소유·최신 취소를 대조한다.
         """
         self.tasks = tasks
-        self.executions = executions
+        self.context = context
 
     @transactional
     @override
@@ -60,9 +59,7 @@ class CancelMonitorUseCase(IAsyncCommandUseCase[CancelMonitorCommand, TaskMonito
         Returns:
             TaskMonitor: 취소와 미확인 자원을 포함한 감시.
         """
-        task, monitor, _ = await load_monitor(
-            self.tasks,
-            self.executions,
+        task, monitor, _ = await self.context.load(
             project_id=command.project_id,
             session_id=command.session_id,
             task_id=command.task_id,

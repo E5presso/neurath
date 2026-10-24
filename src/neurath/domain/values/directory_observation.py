@@ -1,10 +1,11 @@
 """읽기 전용 관찰로 얻은 정규 디렉터리와 선택적 Git 메타데이터다."""
 
 from spakky.core.common.mutability import immutable
+from spakky.domain.models.value_object import AbstractValueObject
 
 
 @immutable
-class DirectoryObservation:
+class DirectoryObservation(AbstractValueObject):
     """읽기 전용 관찰로 얻은 정규 디렉터리와 선택적 Git 메타데이터다.
 
     Attributes:

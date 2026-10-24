@@ -8,9 +8,8 @@ from spakky.core.stereotype.usecase import UseCase
 from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
-from neurath.application.ports.repositories.execution import IExecutionRepository
 from neurath.application.ports.repositories.task import ITaskRepository
-from neurath.application.services.monitor_context import load_monitor
+from neurath.application.ports.services.monitor_context import IMonitorContextService
 from neurath.domain.enums.liveness import Liveness
 from neurath.domain.values.task_monitor import TaskMonitor
 
@@ -44,15 +43,15 @@ class RecoverMonitorCommand(AbstractCommand):
 class RecoverMonitorUseCase(IAsyncCommandUseCase[RecoverMonitorCommand, TaskMonitor]):
     """실제 자원 종료를 현재 소유 세대와 비교하여 복구한다."""
 
-    def __init__(self, tasks: ITaskRepository, executions: IExecutionRepository) -> None:
-        """최신 취소·자원 상태를 대조할 의존성을 받는다.
+    def __init__(self, tasks: ITaskRepository, context: IMonitorContextService) -> None:
+        """태스크 저장소와 감시 범위 대조 서비스를 주입받는다.
 
         Args:
             tasks: 자원 종료·새 세대·남은 예산 저장.
-            executions: 현재 소유 실행 대조.
+            context: 감시 범위·자원 소유·최신 취소를 대조한다.
         """
         self.tasks = tasks
-        self.executions = executions
+        self.context = context
 
     @transactional
     @override
@@ -65,9 +64,7 @@ class RecoverMonitorUseCase(IAsyncCommandUseCase[RecoverMonitorCommand, TaskMoni
         Returns:
             TaskMonitor: 현재 취소와 새 세대를 보존한 감시.
         """
-        task, monitor, _ = await load_monitor(
-            self.tasks,
-            self.executions,
+        task, monitor, _ = await self.context.load(
             project_id=command.project_id,
             session_id=command.session_id,
             task_id=command.task_id,
