@@ -708,7 +708,8 @@ async def test_actual_hook_queue_replay_is_ordered_idempotent_and_keeps_recovery
         ["hook", "handle", "--provider", "codex"],
         json.dumps(dict(payload, hook_event_name="Stop")),
     )
-    assert stopped["continue"] is False
+    assert "return control to the user" in stopped["systemMessage"]
+    assert "decision" not in stopped and "continue" not in stopped
     assert len(service.pending(fence.directory)) == 3
     restored = tmp_path / "recovered.sqlite3"
     await invoke(
@@ -1170,3 +1171,39 @@ async def test_nonidentifier_historical_dependency_is_preserved(database, host, 
     )
     assert "identifier is unrecognized" in str(response.exception)
     assert database.read_bytes() == before
+
+
+@pytest.mark.parametrize("provider", ["codex", "claude"])
+@pytest.mark.parametrize("event", ["Stop", "SubagentStop"])
+async def test_repeated_transition_stop_returns_control_without_completion(
+    database, host, tmp_path, provider, event
+):
+    task = await invoke(
+        database,
+        ["task", "create", "--title", "Unfinished transition work", "--result", "Still required"],
+    )
+    service = await transition_service(database)
+    fence = service.fence(str(database), str(tmp_path / "backups"))
+    original = Path(fence.snapshot).read_bytes()
+    for number in range(3):
+        payload = dict(host[2], hook_event_name=event, marker=f"original-{number}")
+        response = await invoke(
+            database, ["hook", "handle", "--provider", provider], json.dumps(payload)
+        )
+        assert set(response) == {"systemMessage"}
+        assert "without another recovery turn" in response["systemMessage"]
+        assert "not task completion" in response["systemMessage"]
+    pending = service.pending(fence.directory)
+    assert [item.payload["marker"] for item in pending] == [
+        f"original-{number}" for number in range(3)
+    ]
+    assert all(item.command["event"] in {"Stop", "SubagentStop"} for item in pending)
+    assert Path(fence.snapshot).read_bytes() == original
+    with sqlite3.connect(fence.snapshot) as db:
+        assert (
+            db.execute(
+                "SELECT status FROM core_tasks WHERE id=?", (task["id"].replace("-", ""),)
+            ).fetchone()[0]
+            == "pending"
+        )
+    assert not (Path(fence.directory) / "applied.jsonl").exists()

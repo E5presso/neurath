@@ -238,10 +238,11 @@ class HookCliController:
         )
         if queued is not None:
             message = f"Neurath store transition: event {queued} is durably queued. Work completion and host response delivery remain unverified; ordinary host tools remain available for compatible recovery and migration replay."
-            if command.event in (
-                HookEvent.STOP,
-                HookEvent.SUBAGENT_STOP,
-            ) or command.prompt.startswith("NEURATH_MONITOR_TICK "):
+            if command.event in (HookEvent.STOP, HookEvent.SUBAGENT_STOP):
+                return {
+                    "systemMessage": f"{message} Harness enforcement is suspended for this stop: return control to the user without another recovery turn. Pending work and events remain unfinished; this is not task completion."
+                }, None
+            if command.prompt.startswith("NEURATH_MONITOR_TICK "):
                 return {"continue": False, "stopReason": message}, None
             return {"systemMessage": message}, None
         callback = re.fullmatch(
