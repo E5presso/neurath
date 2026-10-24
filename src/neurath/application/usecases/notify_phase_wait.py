@@ -7,7 +7,7 @@ from spakky.core.common.mutability import immutable
 from spakky.core.stereotype.usecase import UseCase
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
-from neurath.application.ports.services.phase_executor import IWorkflowNotifierService
+from neurath.application.ports.services.workflow_notifier import IWorkflowNotifierService
 
 
 @immutable

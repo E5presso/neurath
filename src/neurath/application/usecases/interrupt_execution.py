@@ -10,7 +10,7 @@ from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseC
 from spakky.event.event_publisher import IAsyncEventPublisher
 
 from neurath.application.ports.services.execution_controller import IExecutionControllerService
-from neurath.domain.runtime_events import ExecutionInterruptionObserved
+from neurath.domain.events.execution_interruption_observed import ExecutionInterruptionObserved
 
 
 @immutable

@@ -31,3 +31,5 @@ This checkout is an internal Python library implementing the #137 project/sessio
 | [Contributing](../../CONTRIBUTING.md) | Environment, coding guidance, quality checks and coverage |
 
 Git history retains earlier runtime guidance and candidate-verification/audit records. These designs and temporary-database tests do not modify or activate an existing installation.
+
+- [Requested external dependency monitoring](monitoring.md)

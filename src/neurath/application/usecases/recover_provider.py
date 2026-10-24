@@ -9,11 +9,10 @@ from spakky.core.stereotype.usecase import UseCase
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 from spakky.event.event_publisher import IAsyncEventPublisher
 
-from neurath.application.ports.services.provider import IProviderService
-from neurath.application.provider_records import ProviderObservation
+from neurath.application.ports.services.provider import IProviderService, ProviderObservation
 from neurath.application.usecases.get_delegation import GetDelegationQuery, GetDelegationUseCase
-from neurath.domain.collaboration_events import ProviderExecutionObserved
 from neurath.domain.errors import InvalidTaskState
+from neurath.domain.events.provider_execution_observed import ProviderExecutionObserved
 
 
 @immutable

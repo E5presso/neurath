@@ -11,8 +11,8 @@ from spakky.domain.application.query import AbstractQuery, IAsyncQueryUseCase
 from spakky.plugins.sqlalchemy.persistency.session_manager import AsyncSessionManager
 from sqlalchemy import func, select
 
-from neurath.domain.article_records import ArticleUse
 from neurath.domain.errors import ContextNotFound
+from neurath.domain.values.article_use import ArticleUse
 from neurath.infrastructure.models.article import ArticleModel, ArticleRevisionModel
 from neurath.infrastructure.models.peer import PeerModel
 from neurath.infrastructure.models.session import SessionModel

@@ -7,10 +7,12 @@ from contextlib import asynccontextmanager
 from uuid import UUID
 
 import pytest
+import pytest_asyncio
 from spakky.plugins.sqlalchemy.persistency.transaction import AsyncTransaction
 
 from neurath.infrastructure.database import initialize_database
-from tests.support.application import spakky_context
+from tests.support.application import request_application_lifetime, spakky_context
+from tests.support.database import copy_empty_database
 
 # 원시 SQL 검증에서도 Uuid의 SQLite 저장 표현인 32자리 hex를 사용한다.
 sqlite3.register_adapter(UUID, lambda value: value.hex)
@@ -41,11 +43,22 @@ def initialize_git(directory):
     )
 
 
+@pytest.fixture(autouse=True)
+async def application_lifetime():
+    async with request_application_lifetime():
+        yield
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def empty_database_template(tmp_path_factory):
+    template = tmp_path_factory.mktemp("empty-schema") / "template.sqlite3"
+    await initialize_database(template)
+    return template
+
+
 @pytest.fixture
-async def database(tmp_path):
-    database = tmp_path / "user" / "identity.sqlite3"
-    await initialize_database(database)
-    return database
+async def database(tmp_path, empty_database_template):
+    return copy_empty_database(empty_database_template, tmp_path / "user" / "identity.sqlite3")
 
 
 @pytest.fixture

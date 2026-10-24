@@ -17,7 +17,7 @@ uv run --locked python tools/check.py
 
 The Git hook installer uses a private hook directory and per-worktree settings for this checkout. It preserves shared/user configuration, chains an existing executable pre-commit first and does not overwrite unknown private hook directories.
 
-Pre-commit and the required runner share `tools/quality.py`: Ruff lint/formatting, strict Pyrefly, Google-style pydoclint, docstring-language checks and structure/contract regression tests. The required runner then executes all behavioral tests and builds the wheel, emitting `NEURATH_CHECK_OK` on success. CI uses the same runner.
+Pre-commit and the required runner share `tools/static_quality.py` for Ruff lint/formatting, strict Pyrefly, Google-style pydoclint, docstring-language and architecture checks. Pre-commit uses `tools/quality.py` to add structure/contract regression tests. The required `tools/check.py` runner executes the complete pytest suite, including those tests, once with coverage; it then enforces 100% line/branch coverage and builds the wheel, emitting `NEURATH_CHECK_OK` on success. CI uses the same runner.
 
 Type/docstring checks cover all production sources and development tools. Tests receive lint/formatting checks without requiring new docstrings or annotations. Existing docstrings, including tests and root Python configuration, use Korean summaries and natural-language field descriptions. Keep Google section headings and code/type identifiers; define argument types in signatures.
 
@@ -57,3 +57,11 @@ Production services end with `Service`; repositories end with `Repository`. Inte
 `tools/architecture.py` scans all source modules and resolves ports, registration decorators, aliases and indirect inheritance. Missing suffixes, missing interface `I`, and missing or mismatched technology prefixes fail shared pre-commit and required CI. Current technology prefixes are `Git`, `Subprocess`, `Stderr`, `Posix` and `SQLAlchemy`. Add the corresponding prefix and positive/negative regression fixtures when introducing another technology; individual implementation classes are not allowlisted.
 
 Use cases require only the `UseCase` suffix. Keep names such as `CreateTaskUseCase` without a technology prefix, and retain the existing Spakky `IAsyncCommandUseCase`/`IAsyncQueryUseCase` contracts instead of adding per-use-case interfaces for naming purposes. The same gate detects missing suffixes through decorators and direct or indirect inheritance.
+
+## Integration-test startup cost and isolation
+
+Ordinary use-case and hook scenarios reuse a real application through `request_context`/`request_application` within one test. Reuse applies only to sequential calls on the same event loop, database and read policy; the framework still opens and closes each operation's transaction and database session. Overlapping, nested and different-loop calls create fresh applications. Applications stop and dispose on both successful and failed test teardown.
+
+Use `spakky_context`/`scanned_application` when testing direct repositories, scanning/DI, application lifecycle or restart. Those paths and separate-process tests retain fresh applications. `storage_scope` also stays fresh so context-scoped AggregateCollector and repository lifetimes retain their original checks.
+
+The default `database` fixture clones a pristine schema built by real migrations into independent files using SQLite backup. The source opens read-only and existing destinations cannot be overwritten. Initialization, migration and downgrade tests still invoke the real migration paths directly. `tests/test_fixture_isolation.py` checks database, read-policy, session, lifecycle, failure and overlapping-call isolation.

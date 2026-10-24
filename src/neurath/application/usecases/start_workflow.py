@@ -11,9 +11,9 @@ from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseC
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.application.ports.repositories.workflow import IWorkflowRepository
 from neurath.domain.aggregates.workflow import WorkflowRun
+from neurath.domain.enums.task_status import TaskStatus
 from neurath.domain.errors import InvalidWorkflowState
-from neurath.domain.task_records import TaskStatus
-from neurath.domain.workflow_records import WorkflowDefinition
+from neurath.domain.values.workflow_definition import WorkflowDefinition
 
 
 @immutable

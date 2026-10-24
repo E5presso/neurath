@@ -8,10 +8,11 @@ from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 
 from neurath.domain.aggregates.task import Task
-from neurath.domain.errors import InvalidExecutionState
-from neurath.domain.runtime_events import ExecutionCancellationRequested
-from neurath.domain.runtime_records import ExecutionStatus, HookAction
-from neurath.domain.task_records import TaskStatus
+from neurath.domain.enums.execution_status import ExecutionStatus
+from neurath.domain.enums.hook_action import HookAction
+from neurath.domain.enums.task_status import TaskStatus
+from neurath.domain.errors import ContextNotFound, InvalidExecutionState, InvalidTaskState
+from neurath.domain.events.execution_cancellation_requested import ExecutionCancellationRequested
 
 
 @mutable
@@ -70,6 +71,45 @@ class Execution(AbstractAggregateRoot[UUID]):
             stop_snapshot="",
             revision=1,
         )
+
+    def require_session(self, session_id: UUID) -> None:
+        """현재 실행을 다른 소유 세션의 작업에 연결하지 못하게 한다.
+
+        Args:
+            session_id: 요청한 작업의 소유 세션.
+
+        Raises:
+            ContextNotFound: 실행의 실제 소유 세션과 다른 경우.
+        """
+        if self.session_id != session_id:
+            raise ContextNotFound("Execution belongs to another session")
+
+    @property
+    def is_cancelled(self) -> bool:
+        """현재 실행의 명시적인 취소 상태를 반환한다.
+
+        Returns:
+            bool: 실제 취소가 기록됐으면 True.
+        """
+        return self.status is ExecutionStatus.CANCELLED
+
+    @property
+    def allows_monitoring(self) -> bool:
+        """실행 중이거나 외부 대기 중일 때 감시의 새 관찰·알림을 허용한다.
+
+        Returns:
+            bool: 취소·종료된 실행이면 False.
+        """
+        return self.status in (ExecutionStatus.RUNNING, ExecutionStatus.PAUSED)
+
+    def require_monitoring(self) -> None:
+        """취소·종료된 실행에 새 감시를 등록하지 못하게 한다.
+
+        Raises:
+            InvalidTaskState: 현재 실행이 감시 등록을 허용하지 않는 경우.
+        """
+        if not self.allows_monitoring:
+            raise InvalidTaskState("Cannot register monitoring for a stopped execution")
 
     def observe_start(self, source: str) -> None:
         """시작·재개·포크·압축의 실제 원인을 보존하며 실행 정지를 해제하지 않는다.

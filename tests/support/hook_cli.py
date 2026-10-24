@@ -6,10 +6,10 @@ import json
 from typer import Typer
 from typer.testing import CliRunner
 
-from neurath.domain.provider import ProviderKind
+from neurath.domain.enums.provider_kind import ProviderKind
 from neurath.infrastructure.database import sqlite_url
 from neurath.transport.cli.hooks import HookCliController
-from tests.support.application import scanned_application
+from tests.support.application import request_application
 
 
 class HookCliClient:
@@ -26,7 +26,7 @@ class HookCliClient:
         ]
         if bypass:
             arguments.append("--bypass")
-        async with scanned_application(sqlite_url(self.database, "rw")) as application:
+        async with request_application(sqlite_url(self.database, "rw")) as application:
             response = await asyncio.to_thread(
                 CliRunner().invoke,
                 application.container.get(Typer),

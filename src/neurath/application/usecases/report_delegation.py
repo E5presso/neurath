@@ -12,7 +12,7 @@ from neurath.application.ports.repositories.delegation import IDelegationReposit
 from neurath.application.ports.repositories.peer import IPeerRepository
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.domain.aggregates.delegation import Delegation
-from neurath.domain.delegation_records import DelegationReport
+from neurath.domain.values.delegation_report import DelegationReport
 
 
 @immutable

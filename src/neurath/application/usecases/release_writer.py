@@ -10,7 +10,7 @@ from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseC
 
 from neurath.application.ports.repositories.writer import IWriterRepository
 from neurath.domain.aggregates.writer import Writer
-from neurath.domain.runtime_records import Liveness
+from neurath.domain.enums.liveness import Liveness
 
 
 @immutable

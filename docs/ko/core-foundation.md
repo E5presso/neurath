@@ -116,3 +116,29 @@ Git/worktree/clone 구분과 명시적·동시 초기화를 검증합니다. 이
 내부 aggregate ID와 관련 Command·Query·저장소 참조는 `UUID`로 전달하고 새 ID는 시간 순서로 정렬되는 `uuid7()`로 생성합니다. ORM은 SQLAlchemy의 `Uuid()`를 사용합니다. `core_0009`는 기존 UUID4·UUID7 값과 참조를 재발급하지 않고 SQLite의 키 저장 표현을 32자리 hex로 이전합니다. 관계형 참조·복합 제약·인덱스·트리거와 미완료 이력을 보존하며, 이전 전후 외래 키 검사에 실패하면 자료·스키마·revision을 함께 롤백합니다. 외부 호스트 ID와 JSON·원문·산출물 참조는 원래 문자열을 유지하며, JSON·CLI 경계에서 내부 UUID를 정규 문자열로 표현합니다.
 
 불변 입력·결과·관찰 계약은 Spakky `@immutable`과 키워드 인자를 사용합니다. 필드 재할당을 막는 계약이며 내부 목록까지 깊게 동결하는 계약은 아닙니다. 도메인 값 객체의 동등성은 해당 프레임워크 계약을 유지합니다.
+
+## 패키지와 모듈 책임
+
+[Ports and Adapters 원문](https://alistair.cockburn.us/hexagonal-architecture/)은 외부 기술과 애플리케이션 내부의 경계를 정의하며 고정된 디렉터리 이름을 요구하지 않습니다. Neurath는 이 경계를 다음 패키지 규칙으로 구체화합니다.
+
+| 패키지 | 소유 책임 |
+| --- | --- |
+| `domain/aggregates`, `values`, `enums`, `events` | 식별자와 상태 전이, 값과 검증, 상태 구분, 커밋된 도메인 사건 |
+| `application/usecases` | 모듈당 한 작업과 그 작업의 전용 Command/Query·Result |
+| `application/ports/repositories`, `services` | 저장·외부 실행·공통 업무 서비스의 추상 계약. 응답 자료형은 해당 포트와 같은 모듈 |
+| `infrastructure/models`, `repositories`, `services`, `migrations` | ORM, 저장소 구현, 외부 기술 어댑터, Alembic revision |
+| `transport/cli`, `events` | CLI와 커밋 후 사건을 유스케이스 입력으로 바꾸는 인바운드 어댑터 |
+
+구성 루트·SQLite 설정·외부 프로토콜·JSON 직렬화는 그 기술 경계의 모듈로 유지합니다. 도메인 값은 소유 aggregate와 함께 둘 수도 있습니다. 여러 역할을 가진 records 묶음을 `application` 바로 아래에 두지 않습니다.
+
+`tools/architecture.py`는 새 파일까지 탐색해 프레임워크 구성요소의 소속, 모듈당 한 유스케이스와 선언 참조 그래프의 연결성을 검사합니다. 연결된 입출력·유스케이스, aggregate·소유 값, 부모·자식 매핑은 함께 둡니다. 공통 import·외부 기반 타입·데코레이터나 docstring의 문자열 언급은 연결로 인정하지 않으며, 지역 변수의 같은 이름도 전역 참조로 오인하지 않습니다. Alembic의 upgrade/downgrade는 한 revision의 콜백 계약입니다. 정상·실패 fixture와 실제 패키지 스캔 시험을 pre-commit·CI에 공유합니다. 그래프 연결은 기계적으로 확인할 수 있는 최소 조건이며 실제 책임의 타당성은 코드 검토로 확인합니다.
+
+## 서비스 계약과 도메인 상속
+
+공통 업무 서비스는 `application/ports/services`의 ABC 인터페이스와 이를 상속하는 `infrastructure/services` 어댑터로 구성합니다. 어댑터는 [공식 DI 가이드](https://framework.spakky.com/guides/dependency-injection/)의 `@Pod`와 패키지 스캔으로 등록하고 유스케이스에 인터페이스를 생성자 주입합니다. 자유 함수를 서비스 폴더에 옮기는 것은 이 구조를 충족하지 않습니다. 순수 변환·프로토콜·구성 함수의 형태 자체를 금지하지는 않습니다.
+
+감시 컨텍스트의 공통 대조는 `IMonitorContextService.load` 계약과 `SQLAlchemyMonitorContextService` 구현으로 제공합니다. 구현체는 기존 SQLAlchemy 저장소의 `get`을 재사용하고 소유권·실행 상태 판단을 도메인에 요청합니다. 호출 유스케이스의 트랜잭션 안에서 동작하며, 별도 트랜잭션·커밋·외부 관찰을 만들지 않습니다. 대조 결과를 반영한 Task의 최종 저장도 유스케이스가 담당합니다.
+
+[공식 도메인 모델링 가이드](https://framework.spakky.com/guides/domain-modeling/)에 따라 도메인 값은 `AbstractValueObject`, aggregate는 `AbstractAggregateRoot`, 도메인 사건은 `AbstractDomainEvent`를 상속합니다. `@immutable`은 필드 재대입을 막는 선언이며 값 객체 기반 클래스의 동등성·hash·clone·생성 시 validate 호출을 대신하지 않습니다. Enum·예외·애플리케이션 DTO·포트 응답은 각자의 역할을 유지합니다.
+
+공통 검사는 값 객체·aggregate·사건의 상속 누락, 서비스 어댑터의 인터페이스 누락, 저장소·서비스 의존 공통 함수를 유스케이스가 직접 호출하는 우회를 검출합니다. 실제 도메인 선언 전체의 기반 클래스와 모든 서비스 포트·구현체의 스캔 등록·DI 연결도 시험합니다. 상속한 클래스만 미리 골라 누락된 선언을 검사에서 제외하지 않습니다.

@@ -16,17 +16,16 @@ from neurath.domain.aggregates.delegation import Delegation
 from neurath.domain.aggregates.message import DeliveryStatus, Message
 from neurath.domain.aggregates.peer import Peer
 from neurath.domain.aggregates.request_source import SourceKind
-from neurath.domain.delegation_records import (
-    DelegationReport,
-    DelegationRole,
-    DelegationRoute,
-    DelegationStatus,
-    ProviderPlan,
-)
+from neurath.domain.enums.delegation_role import DelegationRole
+from neurath.domain.enums.delegation_route import DelegationRoute
+from neurath.domain.enums.delegation_status import DelegationStatus
+from neurath.domain.enums.hook_action import HookAction
+from neurath.domain.enums.hook_event import HookEvent
+from neurath.domain.enums.provider_kind import ProviderKind
+from neurath.domain.enums.task_status import TaskStatus
 from neurath.domain.errors import ContextNotFound, InvalidTaskState
-from neurath.domain.provider import ProviderKind
-from neurath.domain.runtime_records import HookAction, HookEvent
-from neurath.domain.task_records import TaskStatus
+from neurath.domain.values.delegation_report import DelegationReport
+from neurath.domain.values.provider_plan import ProviderPlan
 from tests.conftest import storage_scope
 from tests.support.requests import run
 from tests.support.session_requests import register_session
@@ -1056,9 +1055,12 @@ async def test_direct_inactive_recipient_is_queued_without_wakeup_and_receives_o
 async def test_assignment_text_preserves_source_order_and_literal_newlines(
     database, collaboration, monkeypatch, provider_route
 ):
-    from neurath.application.provider_records import ProviderCapabilities, ProviderObservation
-    from neurath.domain.provider import ProviderStatus
-    from neurath.infrastructure.provider import SubprocessProviderService
+    from neurath.application.ports.services.provider import (
+        ProviderCapabilities,
+        ProviderObservation,
+    )
+    from neurath.domain.enums.provider_status import ProviderStatus
+    from neurath.infrastructure.services.provider import SubprocessProviderService
 
     actor, sender, _, recipient, task = collaboration
     correction = await call(

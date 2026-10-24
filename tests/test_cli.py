@@ -24,7 +24,7 @@ from neurath.application.ports.services.directory_observer import IDirectoryObse
 from neurath.application.usecases.receive_hook import ReceiveHookUseCase
 from neurath.domain.errors import NeurathError
 from neurath.infrastructure.database import initialize_database, sqlite_url
-from neurath.infrastructure.directory_observer import GitDirectoryObserverService
+from neurath.infrastructure.services.directory_observer import GitDirectoryObserverService
 from neurath.transport.cli.hooks import HookCliController
 from tests.conftest import storage_scope
 from tests.support.application import scanned_application

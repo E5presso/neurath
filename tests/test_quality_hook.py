@@ -101,12 +101,13 @@ def test_existing_private_hook_directory_is_never_overwritten(tmp_path):
     )
 
 
-def test_precommit_and_required_runner_use_the_same_quality_entrypoint():
+def test_precommit_and_required_runner_share_static_checks_without_nested_test_suites():
     root = Path(__file__).resolve().parents[1]
     assert (
         "uv run --locked python tools/quality.py" in (root / ".pre-commit-config.yaml").read_text()
     )
-    assert '["tools/quality.py"]' in (root / "tools/check.py").read_text()
+    for script in ("tools/quality.py", "tools/check.py"):
+        assert '["tools/static_quality.py"]' in (root / script).read_text()
     assert (
         "uv run --locked python tools/check.py"
         in (root / ".github/workflows/check.yml").read_text()
@@ -133,3 +134,66 @@ def test_hook_fixture_timeout_reaps_its_process_group(tmp_path):
     hook.chmod(0o755)
     with pytest.raises(subprocess.TimeoutExpired):
         run_hook(hook, tmp_path, git_environment(), timeout=0.1)
+
+
+def test_required_runner_executes_full_suite_once_with_coverage_and_build_gates(monkeypatch):
+    from tools import check
+
+    calls = []
+    monkeypatch.setattr(
+        check.subprocess, "run", lambda command, **kwargs: calls.append((command, kwargs))
+    )
+    check.main()
+    commands = [command for command, _ in calls]
+    pytest = [command for command in commands if command[1:3] == ["-m", "pytest"]]
+    assert len(pytest) == 1
+    assert {"--cov=src/neurath", "--cov-branch", "--cov-fail-under=100"} <= set(pytest[0])
+    assert not any(
+        argument.startswith("tests/") or argument in {"-k", "-m", "--ignore", "--deselect"}
+        for argument in pytest[0][3:]
+    )
+    assert commands[0][1:] == ["tools/static_quality.py"]
+    assert commands.index(pytest[0]) < next(
+        i for i, command in enumerate(commands) if "tools/check_coverage.py" in command
+    )
+    assert commands[-1][1:3] == ["-m", "build"]
+    assert all(options["check"] is True for _, options in calls)
+
+
+def test_precommit_keeps_regression_tests_after_shared_static_checks(monkeypatch):
+    from tools import quality, static_quality
+
+    calls = []
+    monkeypatch.setattr(quality.subprocess, "run", lambda command, **kwargs: calls.append(command))
+    quality.main()
+    assert calls[0][1:] == ["tools/static_quality.py"]
+    assert len([command for command in calls if command[1:3] == ["-m", "pytest"]]) == 1
+    assert {
+        "tests/test_architecture.py",
+        "tests/test_review_contracts.py",
+        "tests/test_monitoring.py",
+        "tests/test_coverage_gate.py",
+    } <= set(calls[1])
+    calls.clear()
+    static_quality.main()
+    assert all("pytest" not in command for command in calls)
+    assert any("tools/architecture.py" in command for command in calls)
+    assert any(command[1:3] == ["-m", "pyrefly"] for command in calls)
+
+
+@pytest.mark.parametrize("failed_stage", [0, 1, 2])
+def test_required_runner_stops_before_build_when_a_required_stage_fails(monkeypatch, failed_stage):
+    from tools import check
+
+    calls = []
+
+    def execute(command, **kwargs):
+        calls.append(command)
+        if len(calls) == failed_stage + 1:
+            raise subprocess.CalledProcessError(1, command)
+
+    monkeypatch.setattr(check.subprocess, "run", execute)
+    with pytest.raises(subprocess.CalledProcessError):
+        check.main()
+    assert len(calls) == failed_stage + 1
+    assert not any(command[1:3] == ["-m", "build"] for command in calls)

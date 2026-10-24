@@ -10,7 +10,7 @@ from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseC
 from spakky.event.event_publisher import IAsyncEventPublisher
 
 from neurath.application.ports.services.writer_observer import IWriterObserverService
-from neurath.domain.runtime_events import WriterLivenessObserved
+from neurath.domain.events.writer_liveness_observed import WriterLivenessObserved
 
 
 @immutable

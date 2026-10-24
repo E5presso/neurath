@@ -7,7 +7,7 @@ import pytest
 from neurath.domain.aggregates.project import Project, ProjectKind, ProjectLocation
 from neurath.domain.aggregates.session import HostSession
 from neurath.domain.errors import ProjectIdentityConflict, RevisionConflict
-from neurath.domain.observations import DirectoryObservation
+from neurath.domain.values.directory_observation import DirectoryObservation
 
 
 def test_identity_and_root_policy_distinguishes_clones_and_unifies_worktrees():

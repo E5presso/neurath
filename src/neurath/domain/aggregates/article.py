@@ -9,15 +9,12 @@ from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 
 from neurath.domain.aggregates.peer import Peer
-from neurath.domain.article_records import (
-    ArticleComment,
-    ArticleNotice,
-    ArticleNoticeStatus,
-    ArticleRead,
-    ArticleRevision,
-    ArticleUse,
-)
 from neurath.domain.errors import ContextNotFound, InvalidTaskState, RevisionConflict
+from neurath.domain.values.article_comment import ArticleComment
+from neurath.domain.values.article_notice import ArticleNotice, ArticleNoticeStatus
+from neurath.domain.values.article_read import ArticleRead
+from neurath.domain.values.article_revision import ArticleRevision
+from neurath.domain.values.article_use import ArticleUse
 
 
 @mutable
@@ -198,14 +195,11 @@ class Article(AbstractAggregateRoot[UUID]):
 
         Raises:
             InvalidTaskState: 선택 개정을 읽지 않은 경우.
-            ValueError: 댓글이 공백이거나 크기 한도를 넘는 경우.
         """
         if not any(
             item.peer_id == peer_id and item.revision_number == number for item in self.reads
         ):
             raise InvalidTaskState("Read this article revision before commenting")
-        if not body.strip() or len(body.encode()) > 1048576:
-            raise ValueError("Comment body must be non-empty and within its delivery limit")
         self.comments = (
             *self.comments,
             ArticleComment(

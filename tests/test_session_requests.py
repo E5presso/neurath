@@ -26,7 +26,7 @@ from neurath.domain.errors import (
     ProjectIdentityConflict,
     RevisionConflict,
 )
-from neurath.domain.observations import DirectoryObservation
+from neurath.domain.values.directory_observation import DirectoryObservation
 from neurath.infrastructure.database import create_database_engine
 from neurath.infrastructure.models.project import ProjectModel
 from neurath.infrastructure.models.session import SessionModel
@@ -372,7 +372,7 @@ async def test_git_environment_is_ignored_and_errors_are_not_folder_fallback(
     first = await register_session(str(repository), "codex", "native", database_path=database)
     second = await register_session(str(plain), "codex", "native", database_path=database)
     assert first.project.id != second.project.id
-    from neurath.infrastructure.directory_observer import GitDirectoryObserverService
+    from neurath.infrastructure.services.directory_observer import GitDirectoryObserverService
 
     def fail(self, directory, *arguments):
         return subprocess.CompletedProcess(arguments, 128, "", "fatal: dubious ownership")

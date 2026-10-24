@@ -32,10 +32,13 @@ from neurath.domain.aggregates.session import HostSession
 from neurath.domain.aggregates.task import Task
 from neurath.domain.aggregates.workflow import WorkflowRun
 from neurath.domain.aggregates.writer import Writer
+from neurath.domain.enums.execution_status import ExecutionStatus
+from neurath.domain.enums.hook_action import HookAction
+from neurath.domain.enums.hook_event import HookEvent
+from neurath.domain.enums.liveness import Liveness
+from neurath.domain.enums.task_status import TaskStatus
 from neurath.domain.errors import InvalidExecutionState, InvalidTaskState
-from neurath.domain.observations import DirectoryObservation
-from neurath.domain.runtime_records import ExecutionStatus, HookAction, HookEvent, Liveness
-from neurath.domain.task_records import TaskStatus
+from neurath.domain.values.directory_observation import DirectoryObservation
 
 
 @immutable
@@ -194,6 +197,10 @@ class ReceiveHookUseCase(IAsyncCommandUseCase[ReceiveHookCommand, ReceiveHookRes
         except InvalidExecutionState as error:
             return ReceiveHookResult(action=HookAction.PAUSE, message=f"{error}\n{todo}")
         execution = await self.executions.save(execution)
+        if execution.status is ExecutionStatus.CANCELLED:
+            for task in await self.tasks.find_by_project_id(session.project_id):
+                task.cancel_monitors("Host confirmed owner interruption", execution.uid)
+                await self.tasks.save(task)
         continuous = peer.active and (
             command.event is not HookEvent.SESSION_START or command.start_source == "compact"
         )

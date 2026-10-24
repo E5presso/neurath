@@ -9,7 +9,7 @@ from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Uuid,
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from neurath.domain.aggregates.enclave import Enclave
-from neurath.domain.enclave_records import EnclaveChange, EnclaveFact, EnclaveKind
+from neurath.domain.values.enclave_fact import EnclaveChange, EnclaveFact, EnclaveKind
 
 
 @Table(Enclave)

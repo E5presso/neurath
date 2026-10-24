@@ -10,7 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import DateTime
 
 from neurath.domain.aggregates.execution import Execution
-from neurath.domain.runtime_records import ExecutionStatus
+from neurath.domain.enums.execution_status import ExecutionStatus
 
 
 @Table(Execution)

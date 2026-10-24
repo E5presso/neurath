@@ -12,8 +12,8 @@ from neurath.application.ports.repositories.execution import IExecutionRepositor
 from neurath.application.ports.repositories.peer import IPeerRepository
 from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.domain.aggregates.peer import Peer
+from neurath.domain.enums.execution_status import ExecutionStatus
 from neurath.domain.errors import ContextNotFound
-from neurath.domain.runtime_records import ExecutionStatus
 
 
 @immutable

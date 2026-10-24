@@ -26,7 +26,7 @@ from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.application.usecases.register_session import RegisterSessionUseCase
 from neurath.domain.aggregates.project import Project
 from neurath.domain.aggregates.session import HostSession
-from neurath.domain.observations import DirectoryObservation
+from neurath.domain.values.directory_observation import DirectoryObservation
 from neurath.infrastructure.models.project import ProjectLocationModel, ProjectModel
 from neurath.infrastructure.models.session import SessionModel
 from neurath.infrastructure.repositories.project import SQLAlchemyProjectRepository

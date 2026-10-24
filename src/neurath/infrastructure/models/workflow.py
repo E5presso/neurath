@@ -18,11 +18,9 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from neurath.domain.aggregates.workflow import WorkflowRun
-from neurath.domain.workflow_records import (
-    PhaseAttempt,
+from neurath.domain.values.phase_attempt import PhaseAttempt, PhaseResult, PhaseStatus
+from neurath.domain.values.workflow_definition import (
     PhaseDefinition,
-    PhaseResult,
-    PhaseStatus,
     WorkflowDefinition,
     WorkflowRevision,
 )

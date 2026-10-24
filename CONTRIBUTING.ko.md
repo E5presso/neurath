@@ -17,7 +17,7 @@ uv run --locked python tools/check.py
 
 Git hook 설치 도구는 현재 체크아웃의 전용 hook 디렉터리와 worktree별 설정을 사용합니다. 기존 공통·사용자 설정을 보존하고 실행 가능한 기존 pre-commit을 먼저 호출하며, 알 수 없는 전용 hook 디렉터리를 덮어쓰지 않습니다.
 
-pre-commit과 필수 runner는 `tools/quality.py`를 공유합니다. Ruff lint·포맷, strict Pyrefly, Google 형식 pydoclint, docstring 언어 검사와 구조·계약 회귀 시험을 실행합니다. 필수 runner는 이어서 전체 동작 시험과 휠 생성을 수행하고 성공하면 `NEURATH_CHECK_OK`를 출력합니다. CI도 같은 runner를 사용합니다.
+pre-commit과 필수 runner는 `tools/static_quality.py`의 Ruff lint·포맷, strict Pyrefly, Google 형식 pydoclint, docstring 언어·구조 검사를 공유합니다. pre-commit의 `tools/quality.py`는 여기에 구조·계약 회귀 시험을 실행합니다. 필수 runner인 `tools/check.py`는 같은 시험을 포함한 전체 pytest를 커버리지와 함께 한 번만 실행한 뒤 라인·분기 100%를 확인하고 휠을 생성합니다. 성공하면 `NEURATH_CHECK_OK`를 출력하며 CI도 같은 runner를 사용합니다.
 
 제품 소스와 개발 도구 전체에 타입·docstring 검사를 적용합니다. 테스트는 lint·포맷 대상이며 새 docstring·타입 표기를 강제하지 않습니다. 기존 docstring은 테스트·루트 Python 설정을 포함해 한국어 요약과 자연어 필드 설명을 사용합니다. Google 섹션명과 코드·타입 식별자는 유지하고, 인자 타입은 signature에 정의합니다.
 
@@ -57,3 +57,11 @@ omit·커스텀 제외·`pragma: no cover`·`pragma: no branch`로 수치를 맞
 `tools/architecture.py`가 전체 소스의 포트와 등록 데코레이터, 별칭·간접 상속을 추적합니다. 접미사 누락, 인터페이스의 `I` 누락, 기술 접두어 누락·불일치는 공통 pre-commit과 필수 CI를 실패시킵니다. 현재 기술 접두어는 `Git`·`Subprocess`·`Stderr`·`Posix`·`SQLAlchemy`입니다. 다른 기술을 도입할 때는 해당 접두어와 정상·실패 회귀 시험을 함께 추가합니다. 새 구현 클래스마다 허용 목록에 올리는 방식은 사용하지 않습니다.
 
 유스케이스에는 `UseCase` 접미사만 강제합니다. `CreateTaskUseCase`처럼 이름을 유지하며 기술 접두어를 붙이지 않습니다. 명명 규칙을 이유로 개별 인터페이스를 추가하지 않고 기존 Spakky `IAsyncCommandUseCase`·`IAsyncQueryUseCase` 계약을 사용합니다. 데코레이터·직접 및 간접 상속으로 유스케이스를 찾아 접미사 누락을 같은 검사에서 거절합니다.
+
+## 통합 시험의 초기화 비용과 격리
+
+일반 유스케이스·훅 시나리오는 `request_context`/`request_application`으로 시험별 실제 앱을 재사용합니다. 같은 이벤트 루프·DB·읽기 정책의 순차 호출에만 적용하며 트랜잭션과 DB 세션은 매 작업에서 프레임워크가 열고 닫습니다. 동시·중첩 호출이나 다른 이벤트 루프는 새 앱으로 실행합니다. 앱은 시험의 성공·실패와 관계없이 종료·dispose합니다.
+
+직접 저장소, 스캔·DI, 앱 수명, 재시작을 검사할 때는 `spakky_context`/`scanned_application`을 사용합니다. 이 경로와 별도 프로세스 시험은 앱을 새로 만듭니다. `storage_scope`도 새 앱을 유지하여 컨텍스트별 AggregateCollector와 저장소 수명을 원래대로 검사합니다.
+
+기본 `database` fixture는 실제 마이그레이션으로 만든 빈 스키마를 SQLite backup으로 독립 파일에 복제합니다. 원본은 읽기 전용으로 열고 기존 대상 파일을 덮어쓰지 않습니다. 초기화·이전·downgrade 시험은 실제 마이그레이션을 직접 호출합니다. `tests/test_fixture_isolation.py`는 DB·읽기 정책·세션·앱 수명·실패·동시 호출 격리를 검증합니다.

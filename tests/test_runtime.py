@@ -18,11 +18,13 @@ from neurath.application.usecases.observe_writer import ObserveWriterUseCase
 from neurath.application.usecases.recover_writer import RecoverWriterCommand, RecoverWriterUseCase
 from neurath.domain.aggregates.execution import Execution
 from neurath.domain.aggregates.writer import Writer
+from neurath.domain.enums.execution_status import ExecutionStatus
+from neurath.domain.enums.hook_action import HookAction
+from neurath.domain.enums.liveness import Liveness
 from neurath.domain.errors import InvalidExecutionState
-from neurath.domain.runtime_records import ExecutionStatus, HookAction, Liveness
 from neurath.infrastructure.models.execution import ExecutionModel
 from neurath.infrastructure.models.writer import WriterModel
-from neurath.infrastructure.process_observer import PosixWriterObserverService
+from neurath.infrastructure.services.process_observer import PosixWriterObserverService
 from tests.conftest import storage_scope
 from tests.support.application import spakky_context
 from tests.support.hook_cli import HookCliClient
@@ -464,7 +466,7 @@ async def test_abstract_contracts_fail_explicitly():
 async def test_waiting_only_yields_but_independent_work_continues(database, native):
     from neurath.application.usecases.start_task import StartTaskCommand, StartTaskUseCase
     from neurath.application.usecases.wait_task import WaitTaskCommand, WaitTaskUseCase
-    from neurath.domain.task_records import ExternalWait
+    from neurath.domain.values.external_wait import ExternalWait
     from tests.support.requests import run
 
     task = await create(database, native[0])
@@ -550,7 +552,7 @@ async def test_read_only_query_stays_available_when_other_execution_writes(datab
 def test_workspace_normalization_and_missing_git(database, repository, monkeypatch):
     child = repository / "nested"
     child.mkdir()
-    from neurath.infrastructure.directory_observer import GitDirectoryObserverService
+    from neurath.infrastructure.services.directory_observer import GitDirectoryObserverService
 
     service = GitDirectoryObserverService()
     assert service.workspace(str(child)) == str(repository)
@@ -804,7 +806,7 @@ async def test_stop_recognizes_actual_phase_progress_without_task_revision_chang
         StartWorkflowCommand,
         StartWorkflowUseCase,
     )
-    from neurath.domain.workflow_records import PhaseDefinition, WorkflowDefinition
+    from neurath.domain.values.workflow_definition import PhaseDefinition, WorkflowDefinition
     from tests.support.requests import run
 
     folder = tmp_path / "phase-progress"

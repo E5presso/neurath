@@ -16,8 +16,8 @@ from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.domain.aggregates.enclave import Enclave
 from neurath.domain.aggregates.memory import Memory, MemoryKind
-from neurath.domain.enclave_records import EnclaveFact
 from neurath.domain.errors import RevisionConflict
+from neurath.domain.values.enclave_fact import EnclaveFact
 
 
 @immutable

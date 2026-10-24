@@ -15,8 +15,9 @@ from neurath.application.usecases.receive_hook import (
     ReceiveHookResult,
     ReceiveHookUseCase,
 )
-from neurath.domain.provider import ProviderKind
-from neurath.domain.runtime_records import HookAction, HookEvent
+from neurath.domain.enums.hook_action import HookAction
+from neurath.domain.enums.hook_event import HookEvent
+from neurath.domain.enums.provider_kind import ProviderKind
 from neurath.serialization import encode_uuid
 
 

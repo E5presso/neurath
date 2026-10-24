@@ -9,6 +9,8 @@ from spakky.data.aspects.transactional import transactional
 from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseCase
 
 from neurath.application.ports.repositories.execution import IExecutionRepository
+from neurath.application.ports.repositories.session import ISessionRepository
+from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.domain.aggregates.execution import Execution
 
 
@@ -33,13 +35,19 @@ class CancelExecutionUseCase(IAsyncCommandUseCase[CancelExecutionCommand, Execut
     요청 응답을 cancelled 판정으로 사용하지 않으며 최신 실행 상태를 조회한다.
     """
 
-    def __init__(self, executions: IExecutionRepository) -> None:
+    def __init__(
+        self, executions: IExecutionRepository, sessions: ISessionRepository, tasks: ITaskRepository
+    ) -> None:
         """현재 상태와 후속 관찰 요청을 저장할 저장소를 받는다.
 
         Args:
             executions: 실제 소유 상태를 조회하고 요청을 기록한다.
+            sessions: 실행이 속한 프로젝트 확인.
+            tasks: 같은 실행의 감시·새 알림을 원자적으로 중지함.
         """
         self.executions = executions
+        self.sessions = sessions
+        self.tasks = tasks
 
     @transactional
     @override
@@ -54,4 +62,8 @@ class CancelExecutionUseCase(IAsyncCommandUseCase[CancelExecutionCommand, Execut
         """
         current = await self.executions.get(command.execution_id)
         current.request_cancellation(command.turn_id)
+        session = await self.sessions.get(current.session_id)
+        for task in await self.tasks.find_by_project_id(session.project_id):
+            task.cancel_monitors("Owner execution cancellation requested", current.uid)
+            await self.tasks.save(task)
         return await self.executions.save(current)

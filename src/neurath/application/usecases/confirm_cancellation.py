@@ -10,7 +10,7 @@ from spakky.domain.application.command import AbstractCommand, IAsyncCommandUseC
 
 from neurath.application.ports.repositories.execution import IExecutionRepository
 from neurath.domain.aggregates.execution import Execution
-from neurath.domain.runtime_records import Liveness
+from neurath.domain.enums.liveness import Liveness
 
 
 @immutable

@@ -10,7 +10,8 @@ from neurath.application.usecases.update_checkpoint_graph import (
     UpdateCheckpointGraphCommand,
     UpdateCheckpointGraphUseCase,
 )
-from neurath.domain.memory_events import CheckpointGraphObserved, CheckpointGraphRequested
+from neurath.domain.events.checkpoint_graph_observed import CheckpointGraphObserved
+from neurath.domain.events.checkpoint_graph_requested import CheckpointGraphRequested
 
 
 @EventHandler()

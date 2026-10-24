@@ -148,3 +148,7 @@ Neurath release automation generates the guide prompt from Typer command/help de
 ## 8. Enclave and hook responsibilities
 
 Agents persist current facts, hypotheses, decisions and evidence with `memory update` and inspect them with `get-context`. Generated CLI guidance explains what to retain and how to call these commands. The [enclave restoration](architecture.md#5-enclave-memory-graphify-and-pull) hook handles automatic post-compaction loading and failures.
+
+## #146 Monitoring
+
+[Monitoring observations, events, notifications, and candidate boundaries](monitoring.md).

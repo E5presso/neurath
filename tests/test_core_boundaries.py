@@ -20,7 +20,7 @@ from neurath.application.usecases.get_session_context import GetSessionContextRe
 from neurath.domain.aggregates.project import Project, ProjectKind, ProjectLocation
 from neurath.domain.aggregates.session import HostSession
 from neurath.domain.errors import ContextNotFound, ProjectIdentityConflict, RevisionConflict
-from neurath.domain.observations import DirectoryObservation
+from neurath.domain.values.directory_observation import DirectoryObservation
 from neurath.infrastructure.models.project import ProjectLocationModel
 from tests.conftest import initialize_git, storage_scope
 from tests.support.application import spakky_context
@@ -255,7 +255,7 @@ async def test_git_execution_failures_preserve_state_and_are_not_plain_folder_fa
     database, repository, monkeypatch, failure
 ):
     from neurath.domain.errors import NeurathError
-    from neurath.infrastructure import directory_observer
+    from neurath.infrastructure.services import directory_observer
 
     before = persisted_state(database)
 
@@ -273,7 +273,7 @@ async def test_invalid_worktree_metadata_preserves_state(
     database, repository, monkeypatch, status, output
 ):
     from neurath.domain.errors import NeurathError
-    from neurath.infrastructure.directory_observer import GitDirectoryObserverService
+    from neurath.infrastructure.services.directory_observer import GitDirectoryObserverService
 
     def git_result(self, directory, *arguments):
         if arguments[0] == "rev-parse":
@@ -332,7 +332,7 @@ async def test_incomplete_observer_fails_explicitly_without_registering_a_projec
     database, repository, monkeypatch
 ):
     from neurath.application.ports.services.directory_observer import IDirectoryObserverService
-    from neurath.infrastructure.directory_observer import GitDirectoryObserverService
+    from neurath.infrastructure.services.directory_observer import GitDirectoryObserverService
 
     with pytest.raises(TypeError, match="abstract"):
         IDirectoryObserverService()

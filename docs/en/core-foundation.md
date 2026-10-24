@@ -128,3 +128,29 @@ Additional aggregate lookups use `find_by_<criteria>` names. The owned project l
 Internal aggregate IDs and their command, query, and repository references use `UUID`. New IDs use time-ordered `uuid7()`. ORM columns use SQLAlchemy `Uuid()`. Migration `core_0009` converts SQLite key storage to 32-character hex without reissuing UUID4 or UUID7 identifiers. It preserves relational references, composite constraints, indexes, triggers, and unfinished history. Foreign key checks before and after migration protect the transaction; a failure rolls back data, schema, and revision together. External host IDs and strings within JSON, source text, and artifact references retain their original representation. JSON and CLI boundaries render internal UUIDs as canonical strings.
 
 Immutable inputs, results, and observations use Spakky `@immutable` with keyword arguments. This prevents field reassignment without imposing deep immutability on nested collections. Domain value objects retain their framework equality semantics.
+
+## Package and module responsibilities
+
+The [original Ports and Adapters paper](https://alistair.cockburn.us/hexagonal-architecture/) defines the boundary between application internals and external technology; it does not prescribe directory names. Neurath expresses that boundary through these package conventions.
+
+| Package | Owned responsibility |
+| --- | --- |
+| `domain/aggregates`, `values`, `enums`, `events` | Identity and transitions, values and validation, state distinctions, committed domain events |
+| `application/usecases` | One operation per module with its dedicated Command/Query and Result |
+| `application/ports/repositories`, `services` | Abstract persistence, external execution and shared business service contracts, with response records beside their owning port |
+| `infrastructure/models`, `repositories`, `services`, `migrations` | ORM, repository implementations, technical adapters, Alembic revisions |
+| `transport/cli`, `events` | Inbound adapters translating CLI requests and committed events into use-case inputs |
+
+Composition, SQLite configuration, external protocols and JSON serialization retain their technical boundary modules. Owned domain values may stay beside their aggregate. Unowned records collections do not belong directly under `application`.
+
+`tools/architecture.py` discovers new files and checks framework component placement, one use case per module, and connectivity of the declaration reference graph. Connected inputs/results/use cases, aggregates/owned values and parent/child mappings may stay together. Common imports, external base types, decorators and docstring mentions do not establish a declaration dependency; shadowing local names do not count as global references. Alembic upgrade/downgrade callbacks define one revision contract. Positive/negative fixtures and real package-scan tests run through shared pre-commit and CI checks. Graph connectivity is a mechanically checkable minimum; semantic responsibility still requires code review.
+
+## Service contracts and domain inheritance
+
+Shared business services consist of an ABC interface in `application/ports/services` and an inheriting adapter in `infrastructure/services`. Adapters use `@Pod` and package scanning from the [official DI guide](https://framework.spakky.com/guides/dependency-injection/); use cases receive interfaces through constructor injection. Moving a free function into a services directory does not establish this contract. Pure transformations, protocol functions and composition functions are not banned by their syntax.
+
+`IMonitorContextService.load` and `SQLAlchemyMonitorContextService` provide shared monitor reconciliation. The adapter reuses `get` from existing SQLAlchemy repositories and delegates ownership and execution-state decisions to domain objects. It runs within the calling use case's transaction and introduces no independent transaction, commit or external observation. The use case also owns the final save of the reconciled Task.
+
+Following the [official domain-modeling guide](https://framework.spakky.com/guides/domain-modeling/), domain values inherit `AbstractValueObject`, aggregates inherit `AbstractAggregateRoot`, and domain events inherit `AbstractDomainEvent`. `@immutable` prevents field reassignment; it does not replace the value-object base's equality, hash, clone or construction-time validation contract. Enums, exceptions, application DTOs and port responses retain their own roles.
+
+Shared checks reject missing domain bases, missing service interfaces, and direct use-case calls to shared procedures that take repository/service dependencies. Runtime tests enumerate all domain declarations and verify every service port's registered adapter and actual DI binding. Candidates are not prefiltered by the very inheritance being checked, which would hide omissions.

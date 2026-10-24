@@ -12,7 +12,7 @@ from neurath.application.ports.repositories.project import IProjectRepository
 from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.domain.aggregates.project import Project
 from neurath.domain.aggregates.session import HostSession
-from neurath.domain.observations import DirectoryObservation
+from neurath.domain.values.directory_observation import DirectoryObservation
 
 
 @immutable

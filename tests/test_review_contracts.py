@@ -12,8 +12,8 @@ import neurath.domain.aggregates
 from neurath.application.ports.repositories.project import IProjectRepository
 from neurath.application.usecases.close_conversation import CloseConversationCommand
 from neurath.domain.aggregates.project import Project
-from neurath.domain.observations import DirectoryObservation
-from neurath.domain.provider import ProviderKind
+from neurath.domain.enums.provider_kind import ProviderKind
+from neurath.domain.values.directory_observation import DirectoryObservation
 from neurath.infrastructure.provider_worker import _execution_arguments
 from neurath.serialization import encode_uuid
 from tests.conftest import storage_scope
@@ -63,9 +63,9 @@ class MutableBuffer:
     value: str
 @immutable
 class Request:
-    value: str
+    buffer: MutableBuffer
 """
-    assert ArchitectureChecker({"neurath.application.requests": source}).check() == []
+    assert ArchitectureChecker({"neurath.application.support.requests": source}).check() == []
 
 
 def test_commands_use_keyword_only_immutable_fields():
@@ -131,7 +131,7 @@ def test_missing_provider_parent_is_rejected_instead_of_inventing_an_identity():
 )
 def test_unknown_provider_never_falls_through_to_claude(function, args):
     from neurath.infrastructure import provider_protocol
-    from neurath.infrastructure.provider import SubprocessProviderService
+    from neurath.infrastructure.services.provider import SubprocessProviderService
 
     functions = {
         "arguments": provider_protocol._discovery_arguments,
@@ -147,9 +147,9 @@ def test_unknown_provider_never_falls_through_to_claude(function, args):
 def test_initial_notifications_do_not_claim_a_model_catalog_or_process_start(tmp_path, monkeypatch):
     import json
 
-    from neurath.domain.provider import ProviderStatus
-    from neurath.infrastructure.provider import SubprocessProviderService
+    from neurath.domain.enums.provider_status import ProviderStatus
     from neurath.infrastructure.provider_protocol import _parse_page
+    from neurath.infrastructure.services.provider import SubprocessProviderService
 
     assert _parse_page(ProviderKind.CODEX, {"method": "notification"}) is None
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
@@ -169,7 +169,8 @@ def test_reusing_root_assignment_does_not_confuse_another_senders_child_assignme
     from dataclasses import replace
 
     from neurath.domain.aggregates.delegation import Delegation
-    from neurath.domain.delegation_records import DelegationRole, DelegationRoute
+    from neurath.domain.enums.delegation_role import DelegationRole
+    from neurath.domain.enums.delegation_route import DelegationRoute
 
     root = Delegation(
         uid=uuid7(),
@@ -209,3 +210,154 @@ def test_all_domain_and_application_immutable_records_use_framework_constructor_
                 ), name
                 checked.append(cls)
     assert CloseConversationCommand in checked
+
+
+def declared_classes(package):
+    for item in pkgutil.walk_packages(package.__path__, package.__name__ + "."):
+        module = importlib.import_module(item.name)
+        for _, candidate in inspect.getmembers(module, inspect.isclass):
+            if candidate.__module__ == module.__name__:
+                yield candidate
+
+
+def test_every_declared_domain_role_inherits_the_framework_contract():
+    from dataclasses import InitVar, fields, is_dataclass
+    from enum import Enum
+    from typing import ClassVar, get_origin
+
+    from spakky.domain.models.aggregate_root import AbstractAggregateRoot
+    from spakky.domain.models.event import AbstractDomainEvent
+    from spakky.domain.models.value_object import AbstractValueObject
+
+    import neurath.domain.events
+    import neurath.domain.values
+
+    checked = []
+    for package, base in (
+        (neurath.domain.values, AbstractValueObject),
+        (neurath.domain.events, AbstractDomainEvent),
+        (neurath.domain.aggregates, AbstractAggregateRoot),
+    ):
+        for candidate in declared_classes(package):
+            if issubclass(candidate, Enum):
+                continue
+            if package is neurath.domain.aggregates and issubclass(candidate, AbstractValueObject):
+                expected_base = AbstractValueObject
+            else:
+                expected_base = base
+            assert issubclass(candidate, expected_base), candidate
+            assert is_dataclass(candidate), candidate
+            declared_fields = {
+                name
+                for name, annotation in candidate.__annotations__.items()
+                if get_origin(annotation) is not ClassVar and not isinstance(annotation, InitVar)
+            }
+            assert declared_fields <= {field.name for field in fields(candidate)}, candidate
+            checked.append(candidate)
+    from neurath.domain.values.article_comment import ArticleComment
+
+    assert ArticleComment in checked
+
+
+@pytest.mark.parametrize(
+    "name,fields",
+    [
+        (
+            "article_comment.ArticleComment",
+            dict(number=1, revision_number=1, peer_id=UUID(int=1), body="의견"),
+        ),
+        ("article_read.ArticleRead", dict(peer_id=UUID(int=1), revision_number=1)),
+        (
+            "article_use.ArticleUse",
+            dict(task_id=UUID(int=1), definition_number=1, revision_number=1, peer_id=UUID(int=2)),
+        ),
+        ("article_notice.ArticleNotice", dict(peer_id=UUID(int=1), revision_number=1)),
+        (
+            "directory_observation.DirectoryObservation",
+            dict(
+                working_directory="/project",
+                git_common_directory="/project/.git",
+                primary_worktree="/project",
+            ),
+        ),
+    ],
+)
+def test_domain_records_have_value_equality_hash_clone_and_immutable_fields(name, fields):
+    from dataclasses import replace
+
+    from spakky.domain.models.value_object import AbstractValueObject
+
+    module, class_name = name.split(".")
+    value_type = getattr(importlib.import_module("neurath.domain.values." + module), class_name)
+    first, second = value_type(**fields), value_type(**fields)
+    assert isinstance(first, AbstractValueObject)
+    assert first is not second and first == second
+    assert hash(first) == hash(second)
+    assert first.clone() is first
+    assert first != object()
+    field = next(iter(fields))
+    original = fields[field]
+    changed = (
+        UUID(int=9)
+        if isinstance(original, UUID)
+        else original + 1
+        if isinstance(original, int)
+        else original + "/other"
+    )
+    assert first != replace(second, **{field: changed})
+    with pytest.raises(FrozenInstanceError):
+        setattr(first, field, changed)
+
+
+@pytest.mark.parametrize("body", ["", "  ", "가" * 349526])
+def test_comment_value_validates_the_existing_body_rule_on_construction(body):
+    from neurath.domain.values.article_comment import ArticleComment
+
+    with pytest.raises(ValueError, match="Comment body"):
+        ArticleComment(number=1, revision_number=1, peer_id=uuid7(), body=body)
+
+
+async def test_all_service_ports_bind_to_registered_inheriting_adapters(database):
+    from spakky.core.pod.annotations.pod import Pod
+
+    import neurath.application.ports.services
+    import neurath.infrastructure.services
+    from tests.support.application import spakky_context
+
+    ports = tuple(
+        candidate
+        for candidate in declared_classes(neurath.application.ports.services)
+        if candidate.__name__.startswith("I") and candidate.__name__.endswith("Service")
+    )
+    implementations = tuple(
+        candidate
+        for candidate in declared_classes(neurath.infrastructure.services)
+        if candidate.__name__.endswith("Service")
+    )
+    assert ports and implementations
+    async with spakky_context(database) as container:
+        for port in ports:
+            assert inspect.isabstract(port), port
+            adapter = container.get(port)
+            assert isinstance(adapter, port) and type(adapter) in implementations
+            assert Pod.exists(type(adapter)), type(adapter)
+        for implementation in implementations:
+            assert Pod.exists(implementation), implementation
+            assert any(issubclass(implementation, port) for port in ports), implementation
+            assert container.get(implementation).__class__ is implementation
+
+
+async def test_all_repository_contracts_reuse_framework_crud_and_bind_to_sqlalchemy(database):
+    from spakky.data.persistency.repository import IAsyncGenericRepository
+    from spakky.plugins.sqlalchemy.persistency.repository import AbstractAsyncGenericRepository
+
+    import neurath.application.ports.repositories
+    from tests.support.application import spakky_context
+
+    ports = tuple(declared_classes(neurath.application.ports.repositories))
+    assert ports
+    async with spakky_context(database) as container:
+        for port in ports:
+            assert issubclass(port, IAsyncGenericRepository) and inspect.isabstract(port), port
+            adapter = container.get(port)
+            assert isinstance(adapter, port) and isinstance(adapter, AbstractAsyncGenericRepository)

@@ -2,11 +2,11 @@
 
 from spakky.domain.application.command import IAsyncCommandUseCase
 
-from tests.support.application import spakky_context
+from tests.support.application import request_context
 
 
 async def run(use_case, request, *, database_path=None):
-    async with spakky_context(
+    async with request_context(
         database_path, write=issubclass(use_case, IAsyncCommandUseCase)
     ) as scope:
         return await scope.get(use_case).run(request)

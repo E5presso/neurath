@@ -8,7 +8,7 @@ from uuid import UUID, uuid7
 from spakky.core.common.mutability import mutable
 from spakky.domain.models.aggregate_root import AbstractAggregateRoot
 
-from neurath.domain.memory_events import CheckpointGraphRequested
+from neurath.domain.events.checkpoint_graph_requested import CheckpointGraphRequested
 
 
 class GraphUpdateStatus(StrEnum):

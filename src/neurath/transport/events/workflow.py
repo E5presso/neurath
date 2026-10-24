@@ -8,11 +8,9 @@ from neurath.application.usecases.notify_phase_wait import (
 )
 from neurath.application.usecases.report_phase import ReportPhaseCommand, ReportPhaseUseCase
 from neurath.application.usecases.run_phase import RunPhaseCommand, RunPhaseUseCase
-from neurath.domain.workflow_events import (
-    PhaseExecutionObserved,
-    PhaseExecutionRequested,
-    PhaseWaitingRecorded,
-)
+from neurath.domain.events.phase_execution_observed import PhaseExecutionObserved
+from neurath.domain.events.phase_execution_requested import PhaseExecutionRequested
+from neurath.domain.events.phase_waiting_recorded import PhaseWaitingRecorded
 
 
 @EventHandler()

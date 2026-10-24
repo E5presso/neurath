@@ -14,7 +14,7 @@ from sqlalchemy import select
 from neurath.application.ports.repositories.session import ISessionRepository
 from neurath.application.ports.repositories.task import ITaskRepository
 from neurath.domain.aggregates.task import Task
-from neurath.domain.task_records import TaskStatus
+from neurath.domain.enums.task_status import TaskStatus
 from neurath.infrastructure.models.task import TaskModel
 
 

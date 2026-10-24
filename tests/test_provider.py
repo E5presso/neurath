@@ -11,20 +11,19 @@ from uuid import uuid4
 
 import pytest
 
-from neurath.application.provider_records import ProviderCapabilities, ProviderObservation
+from neurath.application.ports.services.provider import ProviderCapabilities, ProviderObservation
 from neurath.domain.aggregates.delegation import Delegation
 from neurath.domain.aggregates.request_source import SourceKind
-from neurath.domain.delegation_records import (
-    DelegationRole,
-    DelegationRoute,
-    DelegationStatus,
-    ProviderPlan,
-)
+from neurath.domain.enums.delegation_role import DelegationRole
+from neurath.domain.enums.delegation_route import DelegationRoute
+from neurath.domain.enums.delegation_status import DelegationStatus
+from neurath.domain.enums.provider_kind import ProviderKind
+from neurath.domain.enums.provider_status import ProviderStatus
 from neurath.domain.errors import InvalidTaskState
-from neurath.domain.provider import ProviderKind, ProviderStatus
-from neurath.infrastructure.provider import SubprocessProviderService
+from neurath.domain.values.provider_plan import ProviderPlan
 from neurath.infrastructure.provider_protocol import discover_models
 from neurath.infrastructure.provider_worker import execute, process_identity
+from neurath.infrastructure.services.provider import SubprocessProviderService
 from tests.test_collaboration import call, prepare
 from tests.test_collaboration import collaboration as collaboration
 from tests.test_task_requests import record
@@ -238,7 +237,9 @@ def test_disappearing_process_during_cancel_remains_unconfirmed(provider_environ
     directory = service._directory(uid)
     directory.mkdir(parents=True)
     (directory / "process.json").write_text(json.dumps({"pid": 42, "identity": "observed"}))
-    monkeypatch.setattr("neurath.infrastructure.provider.process_identity", lambda pid: "observed")
+    monkeypatch.setattr(
+        "neurath.infrastructure.services.provider.process_identity", lambda pid: "observed"
+    )
 
     def disappeared(*args):
         raise ProcessLookupError
@@ -568,7 +569,8 @@ async def test_provider_hook_binds_only_actual_session_and_current_assignment(
 ):
     from neurath.application.ports.repositories.delegation import IDelegationRepository
     from neurath.application.usecases.receive_hook import ReceiveHookCommand, ReceiveHookUseCase
-    from neurath.domain.runtime_records import HookAction, HookEvent
+    from neurath.domain.enums.hook_action import HookAction
+    from neurath.domain.enums.hook_event import HookEvent
     from tests.conftest import storage_scope
     from tests.support.requests import run
 
@@ -782,7 +784,7 @@ time.sleep(30)
 
 
 def test_policy_discovery_does_not_claim_unsupported_cli_modes(tmp_path, monkeypatch):
-    import neurath.infrastructure.provider as implementation
+    import neurath.infrastructure.services.provider as implementation
 
     monkeypatch.setattr(implementation, "discover_models", lambda p: ("model",))
     monkeypatch.setattr(
@@ -1114,7 +1116,7 @@ async def test_handoff_reuses_original_assignment_without_old_owner_or_duplicate
 
 
 def test_codex_without_isolated_execution_support_is_not_advertised(monkeypatch):
-    import neurath.infrastructure.provider as implementation
+    import neurath.infrastructure.services.provider as implementation
 
     monkeypatch.setattr(implementation, "discover_models", lambda p: ("model",))
     monkeypatch.setattr(
